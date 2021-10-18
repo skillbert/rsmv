@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"moduleResolution": "node",
+		"module": "commonjs",
+		"lib": [ "ESNext","DOM"],
+		"target": "ESNext",
+		"sourceMap": false,
+		"alwaysStrict": true,
+		"jsx": "react",
+		"allowJs": false,
+		"strictNullChecks": true,
+		"baseUrl": "./src",
+		"outDir": "./dist"
+	},
+	"exclude": [ "node_modules" ],
+	"compileOnSave": false
+}

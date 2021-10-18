@@ -1,0 +1,145 @@
+[
+  {"opcode": "0x01", "name": "models", "type": "Array",
+    "count": {"readType": "readUByte"},
+    "element_type": {"readType": "readSmart32"}
+  },
+  {"opcode": "0x02", "name": "name", "readType": "readString"},
+  {"opcode": "0x0C", "name": "boundSize", "readType": "readUByte"},
+  {"opcode": "0x1E", "name": "actions", "readType": "readString", "index": 0},
+  {"opcode": "0x1F", "name": "actions", "readType": "readString", "index": 1},
+  {"opcode": "0x20", "name": "actions", "readType": "readString", "index": 2},
+  {"opcode": "0x21", "name": "actions", "readType": "readString", "index": 3},
+  {"opcode": "0x22", "name": "actions", "readType": "readString", "index": 4},
+  {"opcode": "0x28", "name": "color_replacements", "type": "KVArray",
+    "count": {"readType": "readUByte"},
+    "key_type": {"readType": "readUShort"},
+    "element_type": {"readType": "readUShort"}
+  },
+  {"opcode": "0x29", "name": "texture_replacements", "type": "KVArray",
+    "count": {"readType": "readUByte"},
+    "key_type": {"readType": "readUShort"},
+    "element_type": {"readType": "readUShort"}
+  },
+  {"opcode": "0x2A", "name": "recolourPalette", "type": "Array",
+    "count": {"readType": "readUByte"},
+    "element_type": {"readType": "readByte"}
+  },
+  {"opcode": "0x3C", "name": "headModels", "type": "Array",
+    "count": {"readType": "readUByte"},
+    "element_type": {"readType": "readSmart32"}
+  },
+  {"opcode": "0x5D", "name": "drawMapDot", "readType": "returnFalse"},
+  {"opcode": "0x5F", "name": "combat", "readType": "readUShort"},
+  {"opcode": "0x61", "name": "scaleXZ", "readType": "readUShort"},
+  {"opcode": "0x62", "name": "scaleY", "readType": "readUShort"},
+  {"opcode": "0x63", "name": "unknown", "readType": "returnTrue"},
+  {"opcode": "0x64", "name": "ambience", "readType": "readByte"},
+  {"opcode": "0x65", "name": "modelContract", "readType": "readByte"},
+  {"opcode": "0x67", "name": "unknown", "readType": "readUShort"},
+  {"opcode": "0x6B", "name": "unknown", "readType": "returnFalse"},
+  {"opcode": "0x6D", "name": "slowWalk", "readType": "returnFalse"},
+  {"opcode": "0x6F", "name": "animateIdle", "readType": "returnFalse"},
+  {"opcode": "0x71", "name": "Shadow", "type": "Structure",
+    "fields": [
+      {"name": "SrcColor", "readType": "readUShort"},
+      {"name": "DstColor", "readType": "readUShort"}
+    ]
+  },
+  {"opcode": "0x72", "name": "shadowAlphaIntensity", "type": "Structure",
+    "fields": [
+      {"name": "Src", "readType": "readByte"},
+      {"name": "Dst", "readType": "readByte"}
+    ]
+  },
+  {"opcode": "0x77", "name": "movementCapabilities", "readType": "readByte"},
+  {"opcode": "0x79", "name": "translations", "type" : "Array",
+    "count": {"readType":"readUByte"},
+    "element_type" : {"readType": "read4UByte"}
+  },
+  {"opcode": "0x7B", "name": "iconHeight", "readType": "readUShort"},
+  {"opcode": "0x7D", "name": "respawnDirection", "readType": "readByte"},
+  {"opcode": "0x7F", "name": "animation_group", "readType": "readUShort"},
+  {"opcode": "0x80", "name": "movementType", "readType": "readByte"},
+  {"opcode": "0x86", "name": "ambient_sound", "readType": "readAmbientSound"},
+  {"opcode": "0x87", "name": "oldCursor", "type": "Structure",
+    "fields": [
+      {"name": "Op", "readType": "readUByte"},
+      {"name": "Cursor", "readType": "readUShort"}
+    ]
+  },
+  {"opcode": "0x88", "name": "oldCursor2", "type": "Structure",
+    "fields": [
+      {"name": "Op", "readType": "readUByte"},
+      {"name": "Cursor", "readType": "readUShort"}
+    ]
+  },
+  {"opcode": "0x89", "name": "attackCursor", "readType": "readUShort"},
+  {"opcode": "0x8A", "name": "armyIcon", "readType": "readSmart32"},
+  {"opcode": "0x8C", "name": "unknown", "readType": "readUByte"},
+  {"opcode": "0x8D", "name": "unknown", "readType": "returnTrue"},
+  {"opcode": "0x8E", "name": "mapFunction", "readType": "readUShort"},
+  {"opcode": "0x8F", "name": "unknown", "readType": "returnTrue"},
+
+  {"opcode": "0x96", "name": "members_actions", "readType": "readString", "index": 0},
+  {"opcode": "0x97", "name": "members_actions", "readType": "readString", "index": 1},
+  {"opcode": "0x98", "name": "members_actions", "readType": "readString", "index": 2},
+  {"opcode": "0x99", "name": "members_actions", "readType": "readString", "index": 3},
+  {"opcode": "0x9A", "name": "members_actions", "readType": "readString", "index": 4},
+
+  {"opcode": "0x9B", "name": "unknown", "type": "Structure",
+    "fields": [
+      {"name": "unknown_1", "readType": "readByte"},
+      {"name": "unknown_2", "readType": "readByte"},
+      {"name": "unknown_3", "readType": "readByte"},
+      {"name": "unknown_4", "readType": "readByte"}
+    ]
+  },
+  {"opcode": "0x9E", "name": "aByte3076_set_1", "readType": "returnTrue"},
+  {"opcode": "0x9F", "name": "aByte3076_set_0", "readType": "returnFalse"},
+  {"opcode": "0xA3", "name": "unknown", "readType": "readUByte"},
+  {"opcode": "0xA4", "name": "unknown", "type": "Structure",
+    "fields": [
+      {"name": "unknown_1", "readType": "readUShort"},
+      {"name": "unknown_2", "readType": "readUShort"}
+    ]
+  },
+  {"opcode": "0xA5", "name": "unknown", "readType": "readUByte"},
+  {"opcode": "0xA8", "name": "unknown", "readType": "readUByte"},
+  {"opcode": "0xA9", "name": "unknown", "readType": "returnFalse"},
+  {"opcode": "0xAA", "name": "action_cursors", "readType": "readUShort", "index": 0},
+  {"opcode": "0xAB", "name": "action_cursors", "readType": "readUShort", "index": 1},
+  {"opcode": "0xAC", "name": "action_cursors", "readType": "readUShort", "index": 2},
+  {"opcode": "0xAD", "name": "action_cursors", "readType": "readUShort", "index": 3},
+  {"opcode": "0xAE", "name": "action_cursors", "readType": "readUShort", "index": 4},
+  {"opcode": "0xAF", "name": "action_cursors", "readType": "readUShort", "index": 5},
+  {"opcode": "0xB3", "name": "unknown", "type": "Structure",
+    "fields": [
+      {"name": "unknown_1", "readType": "readSmart"},
+      {"name": "unknown_2", "readType": "readSmart"},
+      {"name": "unknown_3", "readType": "readSmart"},
+      {"name": "unknown_4", "readType": "readSmart"},
+      {"name": "unknown_5", "readType": "readSmart"},
+      {"name": "unknown_6", "readType": "readSmart"}
+    ]
+  },
+  {"opcode": "0xB4", "name": "unknown", "readType": "readUByte"},
+  {"opcode": "0xB5", "name": "unknown", "type": "Structure",
+    "fields": [
+      {"name": "unknown_1", "readType": "readUShort"},
+      {"name": "unknown_2", "readType": "readUByte"}
+    ]
+  },
+  {"opcode": "0xB6", "name": "unknown", "readType": "returnTrue"},
+  {"opcode": "0xA2", "name": "dummy_1", "readType": "returnTrue"},
+  {"opcode": "0xB2", "name": "dummy_2", "readType": "returnTrue"},
+  {"opcode": "0xA0", "name": "quests", "type": "Array",
+    "count": {"readType": "readUByte"},
+    "element_type": {"readType": "readUShort"}
+  },
+  {"opcode": "0xF9", "name": "extra", "readType": "readTable"},
+  {"opcode": "0x2C", "name": "recolor_indices", "readType": "readMaskedIndex"},
+  {"opcode": "0x2D", "name": "retexture_indices", "readType": "readMaskedIndex"},
+  {"opcode": "0x66", "name": "head_icon_data", "readType": "readBitMaskedData"},
+  {"opcode": "0x6A", "name": "morphs_1", "readType": "readMorphTable"},
+  {"opcode": "0x76", "name": "morphs_2", "readType": "readExtendedMorphTable"}
+]

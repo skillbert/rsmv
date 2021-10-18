@@ -1,0 +1,30 @@
+{
+	"name": "gloopvis",
+	"version": "0.1.0",
+	"description": "A viewer for NXT client models and materials",
+	"main": "main.js",
+	"scripts": {
+		"start": "electron --inspect ./dist/main.js",
+		"build": "gulp build",
+		"watch": "gulp watch"
+	},
+	"author": "Adam",
+	"license": "ISC",
+	"devDependencies": {
+		"@types/crc": "^3.4.0",
+		"@types/sqlite3": "^3.1.7",
+		"electron": "^8.2.4",
+		"electron-rebuild": "^1.11.0",
+		"gulp": "^4.0.2",
+		"gulp-cli": "^2.3.0",
+		"gulp-typescript": "^6.0.0-alpha.1",
+		"typescript": "^4.4.4"
+	},
+	"dependencies": {
+		"bzip2": "^0.1.1",
+		"crc": "^3.8.0",
+		"electron-titlebar": "0.0.3",
+		"lzma": "^2.3.2",
+		"sqlite3": "^4.2.0"
+	}
+}
