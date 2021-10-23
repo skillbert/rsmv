@@ -1,23 +1,11 @@
-import { crc32 } from "crc";
 import { decompress } from "./decompress";
 import * as downloader from "./downloader";
-import fs = require("fs");
-import sqlite3 = require("sqlite3");//.verbose();
+import * as fs from "fs";
+import * as sqlite3 from "sqlite3";//.verbose();
+import { CacheIndex, CacheIndexStub, unpackBufferArchive, rootIndexBufferToObject, indexBufferToObject } from "./cache";
 
 var cachedir: string;
 
-export type CacheIndex = {
-	major: number,
-	minor: number,
-	crc: number,
-	uncompressed_crc: number,
-	size: number,
-	uncompressed_size: number,
-	version: number,
-	subindexcount: number,
-	subindices: number[],
-	isNew?: boolean
-}
 
 type DatabaseInst = sqlite3.Database & {
 	statements: {
@@ -31,14 +19,8 @@ type SaveFileArguments = {
 	plural: string,
 	folder: string,
 	commitFrequency?: number,
-	bufferCallback(staticArguments: SaveFileArguments, persistent: PersistentRecord, record: number, numRecords: number, buffer: Buffer): void
-}
-
-type PersistentRecord = {
-	initialised: boolean,
-	scan: number,
-	backScan: number,
-	recordSize: number
+	fileExtension: string,
+	bufferCallback(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer): void
 }
 
 type DatabaseState = { [major: number]: { [minor: number]: { version: number, crc: number } } };
@@ -98,8 +80,8 @@ function prepareFolder(dir: string) {
 	return false;
 }
 
-function update(db_state: DatabaseState, indices: CacheIndex[]) {
-	var pile: CacheIndex[] = [];
+function findMissingIndices<T extends CacheIndexStub>(db_state: DatabaseState, indices: T[]) {
+	var pile: (T & { isNew: boolean })[] = [];
 
 	// Loop through our indices and check the database for updates
 	for (var i in indices) {
@@ -107,16 +89,15 @@ function update(db_state: DatabaseState, indices: CacheIndex[]) {
 		var row = (db_state[index.major] ? db_state[index.major] : {})[index.minor];
 
 		// If row doesn't exist, or the version or crc are incorrect, place it into the pile
-		if (row == null || (row.version != index.version || row.crc != index.crc)) {
-			index.isNew = (row == null);
-			pile.push(index);
+		if (row == null || row.version != index.version || row.crc != index.crc) {
+			pile.push({ ...index, isNew: (row == null) });
 		}
 	}
 
 	return pile;
 }
 
-async function updateRecords(index: CacheIndex, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
+async function updateRecords(index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
 	var singular = staticArguments.singular;
 	var plural = staticArguments.plural;
 	var folder = staticArguments.folder;
@@ -126,9 +107,11 @@ async function updateRecords(index: CacheIndex, db: DatabaseInst, db_state: Data
 
 	prepareFolder(folder);
 
-	var recordIndices = indexBufferToObject(index.minor, decompress(await downloader.download(index.major, index.minor, index.crc)));
+	var allRecordIndices = indexBufferToObject(index.minor, decompress(await downloader.download(index.major, index.minor, index.crc)));
 
-	recordIndices = await update(db_state, recordIndices);
+	var recordIndices = findMissingIndices(db_state, allRecordIndices);
+	//TODO remove, cap for testing
+	recordIndices = recordIndices.slice(0, 10);
 	var newRecords = 0;
 	var updatedRecords = 0;
 	var n = 0;
@@ -137,13 +120,13 @@ async function updateRecords(index: CacheIndex, db: DatabaseInst, db_state: Data
 
 		var recordIndex = recordIndices[i];
 		var buffer = decompress(await downloader.download(recordIndex.major, recordIndex.minor, recordIndex.crc));
-		var persistent: PersistentRecord = {} as any;
+		var subbuffers = unpackBufferArchive(buffer, recordIndex.subindices.length);
+		if (subbuffers.length == 1) { debugger; }
 
 		for (var j = 0; j < recordIndex.subindices.length; ++j, ++n) {
 			var recordSubindex = recordIndex.subindices[j];
 			progress(`Downloading ${singular} ${recordSubindex}`, i + (j / recordIndex.subindices.length), recordIndices.length);
-
-			staticArguments.bufferCallback(staticArguments, persistent, recordSubindex, recordIndex.subindices.length, buffer);
+			staticArguments.bufferCallback(staticArguments, recordSubindex, subbuffers[j].buffer);
 
 			if (recordIndex.isNew) newRecords++; else updatedRecords++; // Just verbose so the CLI looks professional af
 		}
@@ -162,93 +145,55 @@ async function updateRecords(index: CacheIndex, db: DatabaseInst, db_state: Data
 	await new Promise<void>((resolve, reject) => { db.run("COMMIT", () => { resolve(); }); });
 }
 
+
+function dumpBufferToFile(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer) {
+	//TODO make async?
+	fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${recordIndex}.${staticArguments.fileExtension}`, buffer);
+}
+
 const updateCallbacks = {
 	"255": {
 		"16": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "object", "plural": "objects", "folder": "objects", "commitFrequency": 1,
-				"bufferCallback": (staticArguments, persistent, record, numRecords, buffer) => {
-					if (persistent.initialised !== true) {
-						persistent.initialised = true;
-						persistent.scan = 0x0;
-						persistent.backScan = buffer.length - 0x1 - (0x4 * numRecords);
-						persistent.recordSize = 0;
-					}
-					persistent.recordSize += buffer.readInt32BE(persistent.backScan);
-					persistent.backScan += 4;
-					var output = buffer.slice(persistent.scan, persistent.scan + persistent.recordSize);
-					persistent.scan += persistent.recordSize;
-					//TODO make async?
-					fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${record}.rsobj`, output);
-				}
+				"fileExtension": "rsobj",
+				"bufferCallback": dumpBufferToFile
 			} as SaveFileArguments
 		},
 		"18": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "NPC", "plural": "NPCs", "folder": "npcs", "commitFrequency": 1,
-				"bufferCallback": (staticArguments, persistent, record, numRecords, buffer) => {
-					if (persistent.initialised !== true) {
-						persistent.scan = 0x0;
-						persistent.backScan = buffer.length - 0x1 - (0x4 * numRecords);
-						persistent.recordSize = 0;
-						persistent.initialised = true;
-					}
-					persistent.recordSize += buffer.readInt32BE(persistent.backScan);
-					persistent.backScan += 4;
-					var output = buffer.slice(persistent.scan, persistent.scan + persistent.recordSize);
-					persistent.scan += persistent.recordSize;
-					fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${record}.rsnpc`, output);
-				}
+				"fileExtension": "rsnpc",
+				"bufferCallback": dumpBufferToFile
 			} as SaveFileArguments
 		},
 		"19": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "item", "plural": "items", "folder": "items", "commitFrequency": 1,
-				"bufferCallback": (staticArguments, persistent, record, numRecords, buffer) => {
-					if (persistent.initialised !== true) {
-						persistent.scan = 0x0;
-						persistent.backScan = buffer.length - 0x1 - (0x4 * numRecords);
-						persistent.recordSize = 0;
-						persistent.initialised = true;
-					}
-					persistent.recordSize += buffer.readInt32BE(persistent.backScan);
-					persistent.backScan += 4;
-					var output = buffer.slice(persistent.scan, persistent.scan + persistent.recordSize);
-					persistent.scan += persistent.recordSize;
-					fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${record}.rsitem`, output);
-				}
+				"fileExtension": "rsitem",
+				"bufferCallback": dumpBufferToFile
 			} as SaveFileArguments
 		},
 		"26": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "material", "plural": "materials", "folder": "materials",
-				"bufferCallback": (staticArguments, persistent, record, numRecords, buffer) => {
-					if (persistent.initialised !== true) {
-						persistent.scan = 0x0;
-						persistent.backScan = buffer.length - 0x1 - (0x4 * numRecords);
-						persistent.recordSize = 0;
-						persistent.initialised = true;
-					}
-					persistent.recordSize += buffer.readInt32BE(persistent.backScan);
-					persistent.backScan += 4;
-					var output = buffer.slice(persistent.scan, persistent.scan + persistent.recordSize);
-					persistent.scan += persistent.recordSize;
-					fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${record}.jmat`, output);
-				}
+				"fileExtension": "jmat",
+				"bufferCallback": dumpBufferToFile
 			} as SaveFileArguments
 		},
 		"47": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "model", "plural": "models", "folder": "models",
-				"bufferCallback": (staticArguments, persistent, record, numRecords, buffer) => {
-					fs.writeFile(`${cachedir}/${staticArguments.folder}/${record}.ob3`, buffer, () => { });
-				}
+				"fileExtension": "ob3",
+				"bufferCallback": dumpBufferToFile
 			} as SaveFileArguments
 		},
 		"53": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "texture", "plural": "textures", "folder": "textures",
-				"bufferCallback": (staticArguments, persistent, record, numRecords, buffer) => {
+				"fileExtension": "png",
+				"bufferCallback": (staticArguments, record, buffer) => {
+					//TODO where does this buffer.slice come from? missing some header logic?
 					fs.writeFile(`${cachedir}/${staticArguments.folder}/${record}.png`, buffer.slice(0x5), () => { });
 				}
 			} as SaveFileArguments
@@ -284,34 +229,23 @@ export function run(cachedirarg: string) {
 		var metaindex = decompress(await downloader.download(255, 255));
 
 		progress("Processing index...");
-		var indices: { [key: number]: CacheIndex } = {};
-		var offset = 0x0;
-		var elements = metaindex.readUInt8(offset++);
-		for (var i = 0; i < elements; ++i, offset += 0x50) {
-			var element = metaindex.slice(offset, offset + 0x50);
-			if (crc32(element) != 2384664806) { // If index definition isn't null (all zeros)
-				indices[i] = {
-					"major": 255,
-					"minor": i,
-					"crc": element.readUInt32BE(0),
-					"version": element.readUInt32BE(0x4)
-				} as any
-			}
-		}
+		var indices = rootIndexBufferToObject(metaindex);
 
 		progress("Finding updates...");
 		for (let i in indices) {
 			if (!(i.toString() in updateCallbacks["255"])) continue;
 
-			var pile = update(db_state, [indices[i]]);
+			var pile = findMissingIndices(db_state, [indices[i]]);
 
 			for (let i = 0; i < pile.length; ++i) {
 				var index = pile[i];
 				var major = index.major.toString();
 				var minor = index.minor.toString();
-				if (major in updateCallbacks)
-					if (minor in updateCallbacks[major])
+				if (major in updateCallbacks) {
+					if (minor in updateCallbacks[major]) {
 						await updateCallbacks[major][minor].callback(index, db, db_state, updateCallbacks[major][minor].staticArguments);
+					}
+				}
 			}
 		}
 
@@ -324,48 +258,4 @@ export function run(cachedirarg: string) {
 }
 export function on(event: string, callback) {
 	events.add(event, callback);
-}
-
-export function indexBufferToObject(major: number, buffer: Buffer) {
-	var count = 0;
-	var scan = 0x6;
-	if ((buffer.readUInt8(0x6) & 0x80) == 0x80)
-		count = (buffer.readUInt32BE(scan) & 0x7FFFFFFF), scan += 4;
-	else
-		count = buffer.readUInt16BE(scan), scan += 2;
-
-	var index: CacheIndex[] = []
-	var minor = 0;
-	var biggestCount = -1;
-	for (var i = 0; i < count; ++i) {
-		minor += buffer.readUInt16BE(scan), scan += 2;
-		index[i] = { "major": major, "minor": minor } as any;
-	}
-	for (var i = 0; i < count; ++i)
-		index[i].crc = buffer.readUInt32BE(scan), scan += 4;
-	for (var i = 0; i < count; ++i)
-		index[i].uncompressed_crc = buffer.readUInt32BE(scan), scan += 4;
-	for (var i = 0; i < count; ++i) {
-		index[i].size = buffer.readUInt32BE(scan), scan += 4;
-		index[i].uncompressed_size = buffer.readUInt32BE(scan), scan += 4;
-	}
-	for (var i = 0; i < count; ++i)
-		index[i].version = buffer.readUInt32BE(scan), scan += 4;
-	for (var i = 0; i < count; ++i) {
-		index[i].subindexcount = buffer.readUInt16BE(scan), scan += 2;
-		if (index[i].subindexcount > biggestCount)
-			biggestCount = index[i].subindexcount;
-	}
-	for (var i = 0; i < count; ++i) {
-		index[i].subindices = [];
-		let subindex = index[i].minor * biggestCount;
-		for (var j = 0; j < index[i].subindexcount; ++j) {
-			subindex += buffer.readUInt16BE(scan), scan += 2;
-			index[i].subindices.push(subindex);
-		}
-	}
-	//fs.writeFileSync(`${cachedir}/test_index.json`, JSON.stringify(index, null, 4));
-	//console.log(index);
-
-	return index;
 }

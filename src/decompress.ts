@@ -17,6 +17,25 @@ export function decompress(input: Buffer) {
 	}
 }
 
+export function decompressSqlite(input: Buffer) {
+	switch (input.readUInt8(0x0)) {
+		case 0x5a:
+			return _zlibSqlite(input);
+		default:
+			throw `unknown sqlite compresstion type ${input.readUInt8(0x0).toString(16)}`
+	}
+}
+
+export function compressSqlite(input: Buffer, compression: "zlib") {
+	switch (compression) {
+		case "zlib":
+			return _zlibSqliteCompress(input);
+		default:
+			throw `unknown compression type ${compression}`;
+	}
+}
+
+
 /**
  * @param {Buffer} input The input buffer straight from the server
  */
@@ -58,10 +77,27 @@ var _zlib = function (input: Buffer) {
 	return zlib.gunzipSync(processed);
 }
 
+function _zlibSqlite(input: Buffer) {
+	//skip header bytes 5a4c4201
+	var uncompressed_size = input.readUInt32BE(0x4);
+	var zlib = require("zlib") as typeof import("zlib");
+	return zlib.inflateSync(input.slice(0x8));
+}
+function _zlibSqliteCompress(input: Buffer) {
+	const zlib = require("zlib") as typeof import("zlib");
+	let compressbytes = zlib.deflateSync(input.slice(0x8));
+
+	let result = Buffer.alloc(4 + 4 + compressbytes.byteLength);
+	result.write("5a4c4201", 0x0, "hex");
+	result.writeUInt32BE(input.byteLength, 0x4);
+	compressbytes.copy(result, 0x8);
+	return result;
+}
+
 /**
  * @param {Buffer} input The input buffer straight from the server
  */
-var _lzma = function (input:Buffer) {
+var _lzma = function (input: Buffer) {
 	var lzma = require("lzma");
 	var compressed = input.readUInt32BE(0x1);
 	var uncompressed = input.readUInt32BE(0x5);
@@ -73,7 +109,7 @@ var _lzma = function (input:Buffer) {
 
 	//TODO actually throw here? the rest of the code doesn't know what to do with 'undefined'
 	// try {
-		return Buffer.from(lzma.decompress(processed));
+	return Buffer.from(lzma.decompress(processed));
 	// } catch (e) {
 	// 	console.log(e);
 	// }

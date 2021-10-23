@@ -40,22 +40,20 @@ export function prepare(outdir: string) {
 		});
 	});
 }
-export function download(major: number, minor: number, crc: number | null = null) {
-	var attempts = 0;
-	var recurse = function (resolve: (b: Buffer) => void, reject: (e: any) => void) {
-		new Promise<Buffer>((resolveAttempt, rejectAttempt) => { writedownload(major, minor, resolveAttempt); }).then((buffer: Buffer) => {
-			if (!(buffer instanceof Buffer)) reject("Not a buffer");
+export async function download(major: number, minor: number, crc: number | null = null) {
+	for (let attempts = 0; attempts < 5; attempts++) {
+		let buffer = await new Promise<Buffer>((resolveAttempt, rejectAttempt) => { writedownload(major, minor, resolveAttempt); });
 
-			if (crc != null) {
-				let bufferCrc = crc32(buffer);
-				if (bufferCrc == crc) resolve(buffer);
-				else if (attempts++ < 5) recurse(resolve, reject);
-			} else {
-				resolve(buffer);
-			}
-		});
-	};
-	return new Promise<Buffer>((resolve, reject) => { recurse(resolve, reject); });
+		//TODO not needed?
+		if (!(buffer instanceof Buffer)) throw "Not a buffer";
+
+		let bufcrc = crc32(buffer)
+		if (crc != null && bufcrc != crc) {
+			continue;
+		}
+		return buffer;
+	}
+	throw "correct crc not downloaded after 5 attempts";
 }
 export function close() {
 	client.destroy();
