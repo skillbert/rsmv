@@ -36,7 +36,7 @@ async function run(cachedir: string, jsondir: string, replaceid: number) {
 			if (itemid == replaceid) {
 				let jsonfile = JSON.parse(await fs.readFile(path.resolve(jsondir, `${itemid}.json`), "utf-8"))
 
-				let newfile = opdecoder.encode("opcodes/items.json",jsonfile);
+				let newfile = opdecoder.encode("opcodes/items.json", jsonfile);
 				files[i] = newfile;
 				console.log("file built");
 			}
@@ -51,7 +51,7 @@ async function run(cachedir: string, jsondir: string, replaceid: number) {
 		await fs.writeFile(path.resolve(cachedir, `replace-${chunk.major}-${chunk.minor}-old.bin`), rawfile);
 		await fs.writeFile(path.resolve(cachedir, `replace-${chunk.major}-${chunk.minor}-new.bin`), newfile);
 		//debugger;
-		//await dbrun("INSERT OR REPLACE INTO cache(KEY,DATA,CRC,VERSION) VALUES(?,?,?,?)", [chunk.minor, newfile, chunk.crc, chunk.version]);
+		await dbrun("UPDATE `cache` SET `DATA`=? WHERE `KEY`=?", [newfile, chunk.minor]);
 	}
 	db.close();
 }

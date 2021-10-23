@@ -85,8 +85,7 @@ function _zlibSqlite(input: Buffer) {
 }
 function _zlibSqliteCompress(input: Buffer) {
 	const zlib = require("zlib") as typeof import("zlib");
-	let compressbytes = zlib.deflateSync(input.slice(0x8));
-
+	let compressbytes = zlib.deflateSync(input);
 	let result = Buffer.alloc(4 + 4 + compressbytes.byteLength);
 	result.write("5a4c4201", 0x0, "hex");
 	result.writeUInt32BE(input.byteLength, 0x4);
