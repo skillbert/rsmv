@@ -4,7 +4,7 @@ import * as updater from "./updater";
 import * as path from "path";
 
 /*process.on("uncaughtException", (err) => {
-	throw err;
+	throw new Error(err);
 	process.exit(1);
 });*/
 

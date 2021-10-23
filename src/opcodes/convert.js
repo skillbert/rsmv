@@ -11,7 +11,7 @@ function convertType(old) {
             for (var i = 0; i < old.fields.length; ++i) struct.push([ old.fields[i].name, convertReadType(old.fields[i].readType).read ]);
             return { read: struct };
         default:
-            throw `bugger me jim we have a stray: ${type}`;
+            throw new Error(`bugger me jim we have a stray: ${type}`);
             return null;
     }
 }
@@ -67,7 +67,7 @@ function convertReadType(type) {
         case "returnFalse":
             return { read: "bool" };
         default:
-            throw `bugger me jim we have a stray: ${type}`;
+            throw new Error(`bugger me jim we have a stray: ${type}`);
             return null;
     }
 }

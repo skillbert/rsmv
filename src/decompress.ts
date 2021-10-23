@@ -13,7 +13,7 @@ export function decompress(input: Buffer) {
 			// LZMA
 			return _lzma(input);
 		default:
-			throw "Unknown compression type (" + input.readUInt8(0x0).toString() + ")";
+			throw new Error("Unknown compression type (" + input.readUInt8(0x0).toString() + ")");
 	}
 }
 
@@ -22,7 +22,7 @@ export function decompressSqlite(input: Buffer) {
 		case 0x5a:
 			return _zlibSqlite(input);
 		default:
-			throw `unknown sqlite compresstion type ${input.readUInt8(0x0).toString(16)}`
+			throw new Error(`unknown sqlite compresstion type ${input.readUInt8(0x0).toString(16)}`)
 	}
 }
 
@@ -31,7 +31,7 @@ export function compressSqlite(input: Buffer, compression: "zlib") {
 		case "zlib":
 			return _zlibSqliteCompress(input);
 		default:
-			throw `unknown compression type ${compression}`;
+			throw new Error(`unknown compression type ${compression}`);
 	}
 }
 

@@ -67,16 +67,16 @@ export class Reader {
 				var opcode = buffer.readUInt8(buffer.scan); buffer.scan++;
 				//if (opcode == 0x0) break;
 				if (!(opcode in this.opcodes)) {
-					throw `Unsupported opcode '0x${opcode.toString(16)}' at 0x${(buffer.scan - 1).toString(16)}`;
+					throw new Error(`Unsupported opcode '0x${opcode.toString(16)}' at 0x${(buffer.scan - 1).toString(16)}`);
 				}
-				//if (opcode == 0x6a) throw `Found morphs_1`;
+				//if (opcode == 0x6a) throw new Error(`Found morphs_1`);
 				history.push(`0x${opcode.toString(16).padStart(2, "0")} (${this.opcodes[opcode].name}) at 0x${(buffer.scan - 1).toString(16).padStart(4, "0")}`);
 				output[this.opcodes[opcode].name] = this._read(buffer, this.opcodes[opcode].read);
 			}
 		} catch (e) {
 			console.log(output);
 			console.log(history);
-			throw e;
+			throw new Error(e);
 		}
 		return output;
 	}
@@ -109,11 +109,11 @@ export class Reader {
  * @param {Buffer} buffer The decompressed buffer of the item
  */
 function _readPrimitive(this: Reader, buffer: Buffer & { scan: number }, primitive: Primitive<any>) {
-	if (!("primitive" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`;
+	if (!("primitive" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`);
 	switch (primitive.primitive) {
 		case "bool":
 			let boolint = buffer.readUInt8(buffer.scan++);
-			if (boolint != 1 && boolint != 0) throw `value parsed as bool was not 0x00 or 0x01`
+			if (boolint != 1 && boolint != 0) throw new Error(`value parsed as bool was not 0x00 or 0x01`)
 			return boolint != 0;
 		case "int":
 			validateIntType(primitive);
@@ -147,18 +147,18 @@ function _readPrimitive(this: Reader, buffer: Buffer & { scan: number }, primiti
 			buffer.scan = end + 1;
 			return outputstr;
 		case "switch":
-			if (!("offset" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify an 'offset' to the switch`;
-			if (!("switch" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify a 'switch' table`;
+			if (!("offset" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify an 'offset' to the switch`);
+			if (!("switch" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify a 'switch' table`);
 			var firstByte = buffer.readUInt8(buffer.scan + primitive.offset);
-			if (!(firstByte.toString() in primitive.switch)) throw `Unexpected byte '${firstByte}' in a value typed as a switch`;
+			if (!(firstByte.toString() in primitive.switch)) throw new Error(`Unexpected byte '${firstByte}' in a value typed as a switch`);
 
 			return this._read(buffer, primitive.switch[firstByte]);
 		case "value":
-			if (!("value" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'value' variables need to specify a 'value'`;
+			if (!("value" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'value' variables need to specify a 'value'`);
 			return primitive.value;
 		default:
 			//@ts-ignore
-			throw `Unsupported primitive '${primitive.primitive}' in typedef.json`;
+			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);
 	}
 }
 
@@ -171,23 +171,23 @@ function _read(this: Reader, buffer: Buffer & { scan: number }, readAs: Composed
 		case "string":
 			return this._readPrimitive(buffer, resolveAlias(readAs, typedef));
 		case "object":
-			if (!Array.isArray(readAs)) throw `Objects are unsupported as 'read' variables due to inconsistencies in variable order across different languages: ${JSON.stringify(readAs)}`;
-			if (readAs.length == 0) throw `'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(readAs)}`;
+			if (!Array.isArray(readAs)) throw new Error(`Objects are unsupported as 'read' variables due to inconsistencies in variable order across different languages: ${JSON.stringify(readAs)}`);
+			if (readAs.length == 0) throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(readAs)}`);
 			switch (readAs[0]) {
 				case "array":
-					if (readAs.length == 1) throw `'read' variables interpretted as an array must contain items: ${JSON.stringify(readAs)}`;
+					if (readAs.length == 1) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(readAs)}`);
 					var output: any[] = [];
 					var count = this._readPrimitive(buffer, resolveAlias("variable unsigned short", typedef));//buffer.readUInt8(buffer.scan); buffer.scan++;
 					for (var i = 0; i < count; ++i) output.push(this._read(buffer, readAs[1]));
 					return output;
 				case "map":
-					if (readAs.length == 1) throw `'read' variables interpretted as a map must contain items: ${JSON.stringify(readAs)}`;
+					if (readAs.length == 1) throw new Error(`'read' variables interpretted as a map must contain items: ${JSON.stringify(readAs)}`);
 					var outputobj: Object = {}
 					var keycount = buffer.readUInt8(buffer.scan); buffer.scan++;
 					for (var i = 0; i < keycount; ++i) outputobj["$"+this._read(buffer, readAs[1])] = this._read(buffer, readAs[2]);
 					return outputobj;
 				case "struct":
-					if (readAs.length == 1) throw `'read' variables interpretted as a struct must contain items: ${JSON.stringify(readAs)}`;
+					if (readAs.length == 1) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(readAs)}`);
 					var outputobj: Object = {};
 					for (var i = 1; i < readAs.length; ++i) {
 						let [name, type] = readAs[i] as [string, ComposedChunk];
@@ -200,7 +200,7 @@ function _read(this: Reader, buffer: Buffer & { scan: number }, readAs: Composed
 					return output;
 			}
 		default:
-			throw `'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(readAs)}`;
+			throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(readAs)}`);
 	}
 }
 
@@ -208,14 +208,14 @@ function resolveAlias(typename: string, typedef: TypeDef) {
 	let newtype: Primitive<any> | string = typename;
 	for (let redirects = 0; redirects < 1024; redirects++) {
 		if (!Object.prototype.hasOwnProperty.call(typedef, newtype)) {
-			throw `Type '${typename}' not found in typedef.json`;
+			throw new Error(`Type '${typename}' not found in typedef.json`);
 		}
 		newtype = typedef[newtype];
 		if (typeof newtype != "string") {
 			return newtype;
 		}
 	}
-	throw `Couldn't resolve alias stack for '${typename}', perhaps due to an infinite loop - last known alias was '${newtype!}'`;
+	throw new Error(`Couldn't resolve alias stack for '${typename}', perhaps due to an infinite loop - last known alias was '${newtype!}'`);
 }
 function _write(this: Reader, buffer: Buffer & { scan: number }, writeAs: ComposedChunk, value: unknown) {
 	const typedef = this.typedef;
@@ -223,20 +223,20 @@ function _write(this: Reader, buffer: Buffer & { scan: number }, writeAs: Compos
 		case "string":
 			return this._writePrimitive(buffer, resolveAlias(writeAs, typedef), value);
 		case "object":
-			if (!Array.isArray(writeAs)) throw `Objects are unsupported as 'read' variables due to inconsistencies in variable order across different languages: ${JSON.stringify(writeAs)}`;
-			if (writeAs.length == 0) throw `'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(writeAs)}`;
+			if (!Array.isArray(writeAs)) throw new Error(`Objects are unsupported as 'read' variables due to inconsistencies in variable order across different languages: ${JSON.stringify(writeAs)}`);
+			if (writeAs.length == 0) throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(writeAs)}`);
 			switch (writeAs[0]) {
 				case "array":
-					if (writeAs.length == 1) throw `'read' variables interpretted as an array must contain items: ${JSON.stringify(writeAs)}`;
-					if (!Array.isArray(value)) throw `array expected`;
+					if (writeAs.length == 1) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(writeAs)}`);
+					if (!Array.isArray(value)) throw new Error(`array expected`);
 					this._writePrimitive(buffer, resolveAlias("variable unsigned short", typedef), value.length);
 					for (let val of value) {
 						this._write(buffer, writeAs[1], val);
 					}
 					break;
 				case "map":
-					if (writeAs.length == 1) throw `'read' variables interpretted as a map must contain items: ${JSON.stringify(writeAs)}`;
-					if (typeof value != "object" || !value) throw `object expected`;
+					if (writeAs.length == 1) throw new Error(`'read' variables interpretted as a map must contain items: ${JSON.stringify(writeAs)}`);
+					if (typeof value != "object" || !value) throw new Error(`object expected`);
 
 					buffer.writeUInt8(Object.keys(value).length, buffer.scan++);
 					for (let key of Object.keys(value)) {
@@ -245,16 +245,16 @@ function _write(this: Reader, buffer: Buffer & { scan: number }, writeAs: Compos
 					}
 					break;
 				case "struct":
-					if (writeAs.length == 1) throw `'read' variables interpretted as a struct must contain items: ${JSON.stringify(writeAs)}`;
-					if (typeof value != "object" || !value) throw `object expected`;
+					if (writeAs.length == 1) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(writeAs)}`);
+					if (typeof value != "object" || !value) throw new Error(`object expected`);
 					for (var i = 1; i < writeAs.length; ++i) {
 						let [name, type] = writeAs[i] as [string, ComposedChunk];
 						this._write(buffer, type, value[name]);
 					}
 					break;
 				default: // Tuple
-					if (!Array.isArray(value)) throw `array expected`;
-					if (value.length != writeAs.length) throw `wrong number of values in tuple, ${value.length} received, ${writeAs.length} expected`;
+					if (!Array.isArray(value)) throw new Error(`array expected`);
+					if (value.length != writeAs.length) throw new Error(`wrong number of values in tuple, ${value.length} received, ${writeAs.length} expected`);
 					for (var i = 0; i < writeAs.length; ++i) {
 						this._write(buffer, writeAs[i], value[i]);
 					}
@@ -262,7 +262,7 @@ function _write(this: Reader, buffer: Buffer & { scan: number }, writeAs: Compos
 			}
 			break;
 		default:
-			throw `'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(writeAs)}`;
+			throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(writeAs)}`);
 	}
 }
 
@@ -272,29 +272,29 @@ function validateIntType(primitive: PrimitiveInt) {
 	var hasBytes = "bytes" in primitive;
 	var hasVariable = "variable" in primitive;
 	var hasEndianness = "endianness" in primitive;
-	if (!(hasUnsigned && hasBytes && hasVariable && hasEndianness)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'int' variables need to specify 'unsigned', 'bytes', 'variable', and 'endianness'`;
-	if (typeof primitive.unsigned !== "boolean") throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'unsigned' must be a boolean`;
-	if (typeof primitive.bytes !== "number") throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'bytes' must be an integer`;
-	if (typeof primitive.variable !== "boolean") throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'variable' must be a boolean`;
-	if (primitive.endianness !== "big" && primitive.endianness !== "little") throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'endianness' must be "big" or "little"`;
+	if (!(hasUnsigned && hasBytes && hasVariable && hasEndianness)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'int' variables need to specify 'unsigned', 'bytes', 'variable', and 'endianness'`);
+	if (typeof primitive.unsigned !== "boolean") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'unsigned' must be a boolean`);
+	if (typeof primitive.bytes !== "number") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'bytes' must be an integer`);
+	if (typeof primitive.variable !== "boolean") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'variable' must be a boolean`);
+	if (primitive.endianness !== "big" && primitive.endianness !== "little") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'endianness' must be "big" or "little"`);
 }
 
 function validateStringType(primitive: PrimitiveString) {
 	var hasEncoding = "encoding" in primitive;
-	if (!hasEncoding) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'string' variables need to specify 'encoding'`;
-	if (typeof primitive.encoding !== "string") throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'encoding' must be a string`;
-	if (!(primitive.termination === null || typeof primitive.termination === "number")) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'termination' must be null or the string's length in bytes`;
+	if (!hasEncoding) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'string' variables need to specify 'encoding'`);
+	if (typeof primitive.encoding !== "string") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'encoding' must be a string`);
+	if (!(primitive.termination === null || typeof primitive.termination === "number")) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'termination' must be null or the string's length in bytes`);
 }
 
 function _writePrimitive(this: Reader, buffer: Buffer & { scan: number }, primitive: Primitive<any>, value: unknown) {
-	if (!("primitive" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`;
+	if (!("primitive" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`);
 	switch (primitive.primitive) {
 		case "bool":
-			if (typeof value != "boolean") throw `boolean expected`;
+			if (typeof value != "boolean") throw new Error(`boolean expected`);
 			buffer.writeUInt8(value ? 1 : 0, buffer.scan++);
 			break;
 		case "int":
-			if (typeof value != "number" || value % 1 != 0) throw `integer expected`;
+			if (typeof value != "number" || value % 1 != 0) throw new Error(`integer expected`);
 			validateIntType(primitive);
 			var unsigned = primitive.unsigned;
 			var bytes = primitive.bytes;
@@ -302,7 +302,7 @@ function _writePrimitive(this: Reader, buffer: Buffer & { scan: number }, primit
 			var endianness = primitive.endianness;
 			let output = 0;
 			if (variable) {
-				if (endianness != "big") throw `variable length int only accepts big endian`;
+				if (endianness != "big") throw new Error(`variable length int only accepts big endian`);
 				let fitshalf = true;
 				if (unsigned) {
 					if (value >= 1 << (bytes * 4 - 1)) { fitshalf = false; }
@@ -324,7 +324,7 @@ function _writePrimitive(this: Reader, buffer: Buffer & { scan: number }, primit
 			}
 			break;
 		case "string":
-			if (typeof value != "string") throw `string expected`;
+			if (typeof value != "string") throw new Error(`string expected`);
 			validateStringType(primitive);
 			var encoding = primitive.encoding;
 			var termination = primitive.termination;
@@ -336,8 +336,8 @@ function _writePrimitive(this: Reader, buffer: Buffer & { scan: number }, primit
 			buffer.scan += strbinbuf.byteLength;
 			break;
 		case "switch":
-			if (!("offset" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify an 'offset' to the switch`;
-			if (!("switch" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify a 'switch' table`;
+			if (!("offset" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify an 'offset' to the switch`);
+			if (!("switch" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'switch' variables need to specify a 'switch' table`);
 
 			let switchbyte = "";
 			let switchprim: Primitive<any> | null = null;
@@ -349,24 +349,24 @@ function _writePrimitive(this: Reader, buffer: Buffer & { scan: number }, primit
 				if (typeof value == "boolean" && opttype.primitive != "bool") { continue; }
 				if (typeof value == "string" && opttype.primitive != "string") { continue; }
 
-				if (switchprim) { throw `multiple possible switch options while writing switch type`; }
+				if (switchprim) { throw new Error(`multiple possible switch options while writing switch type`); }
 				switchprim = opttype;
 				switchbyte = optbyte;
 			}
-			if (!switchprim) throw `no compatible switch option found for value ${value}`;
+			if (!switchprim) throw new Error(`no compatible switch option found for value ${value}`);
 
 			//only currently used in [items|npcs|objects].extra which is a map with int32 keys, the first byte of that key is the switch
 			//it is the responsibility of that key to have the right flag currently
 			var firstByte = buffer.readUInt8(buffer.scan + primitive.offset);
-			if (firstByte != +switchbyte) throw `previously written switch byte did not match expected switch type while writing the value`;
+			if (firstByte != +switchbyte) throw new Error(`previously written switch byte did not match expected switch type while writing the value`);
 			this._writePrimitive(buffer, switchprim, value);
 			break;
 		case "value":
-			if (!("value" in primitive)) throw `Invalid primitive definition '${JSON.stringify(primitive)}', 'value' variables need to specify a 'value'`;
-			if (primitive.value != value) throw `expected constant ${primitive.value} was not present during write`;
+			if (!("value" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'value' variables need to specify a 'value'`);
+			if (primitive.value != value) throw new Error(`expected constant ${primitive.value} was not present during write`);
 			break;
 		default:
 			//@ts-ignore
-			throw `Unsupported primitive '${primitive.primitive}' in typedef.json`;
+			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);
 	}
 }

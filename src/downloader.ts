@@ -31,7 +31,7 @@ export function prepare(outdir: string) {
 						config[line[0]][line[1]] = line[2];
 					}
 				}
-				if (typeof config.server_version != "string") { throw "server version not found in config"; }
+				if (typeof config.server_version != "string") { throw new Error("server version not found in config"); }
 				server_version = parseInt(config.server_version);
 
 				state = new ConnectionState(client, config, resolve);
@@ -45,7 +45,7 @@ export async function download(major: number, minor: number, crc: number | null 
 		let buffer = await new Promise<Buffer>((resolveAttempt, rejectAttempt) => { writedownload(major, minor, resolveAttempt); });
 
 		//TODO not needed?
-		if (!(buffer instanceof Buffer)) throw "Not a buffer";
+		if (!(buffer instanceof Buffer)) throw new Error("Not a buffer");
 
 		let bufcrc = crc32(buffer)
 		if (crc != null && bufcrc != crc) {
@@ -53,7 +53,7 @@ export async function download(major: number, minor: number, crc: number | null 
 		}
 		return buffer;
 	}
-	throw "correct crc not downloaded after 5 attempts";
+	throw new Error("correct crc not downloaded after 5 attempts");
 }
 export function close() {
 	client.destroy();
@@ -137,7 +137,7 @@ class ConnectionState extends State<void> {
 	onConnect() {
 		process.stdout.write("\rConnecting...".padEnd(55, " "));
 		var key = Object.values(this.config.param).find(param => param.length == 32);
-		if (!key) { throw "client cache key not found in config"; }
+		if (!key) { throw new Error("client cache key not found in config"); }
 		var length = 4 + 4 + key.length + 1 + 1;
 		var major = parseInt(this.config["server_version"] as any);
 
