@@ -1,4 +1,4 @@
-import { getProjectionMatrix, Matrix4x4Utils, packedHSL2HSL } from "./utils";
+import { getProjectionMatrix, Matrix4x4Utils, packedHSL2HSL } from "../utils";
 
 //TODO very weak typing in this file
 type RenderCanvas = HTMLCanvasElement & { dataset: any, gvContext: any };

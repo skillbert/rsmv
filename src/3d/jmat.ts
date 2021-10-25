@@ -1,4 +1,4 @@
-import { Stream } from "./utils";
+import { Stream } from "../utils";
 
 //TODO stream es6 class
 function Spec_0(material: any) {

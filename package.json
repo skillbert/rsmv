@@ -13,6 +13,7 @@
 	"devDependencies": {
 		"@types/crc": "^3.4.0",
 		"@types/sqlite3": "^3.1.7",
+		"@types/three": "^0.133.1",
 		"electron": "^8.2.4",
 		"electron-rebuild": "^1.11.0",
 		"gulp": "^4.0.2",
@@ -25,6 +26,7 @@
 		"crc": "^3.8.0",
 		"electron-titlebar": "0.0.3",
 		"lzma": "^2.3.2",
-		"sqlite3": "^4.2.0"
+		"sqlite3": "^4.2.0",
+		"three": "^0.133.1"
 	}
 }

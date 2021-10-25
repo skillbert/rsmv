@@ -1,3 +1,16 @@
+export type Stream = {
+	getData(): Buffer;
+	skip(n: number): void;
+	scanloc(): number;
+	readByte(): number;
+	readUByte(): number;
+	readShort(): number;
+	readUShort(): number;
+	readUInt(): number
+	readFloat(): number;
+	readHalf(): number;
+}
+
 export function Stream(data: Buffer) {
 	// Double check the mime type
 	/*if (data[data.length - 4] != 0x4F) // O
@@ -11,10 +24,15 @@ export function Stream(data: Buffer) {
 
 	var scan = 0;
 
+	this.getData = function () {
+		return data;
+	}
 	this.eof = function () {
 		return scan >= data.length;
 	}
-
+	this.skip = function (n: number) {
+		scan += n;
+	}
 	this.scanloc = function () {
 		return scan;
 	}

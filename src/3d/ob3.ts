@@ -1,7 +1,7 @@
 // May or may not be called ob3 :shrug:
 import * as fs from "fs";
 import { JMat, JMatInternal } from "./jmat";
-import { Stream, packedHSL2HSL } from "./utils";
+import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 
 type Mesh = {
 	groupFlags: number;

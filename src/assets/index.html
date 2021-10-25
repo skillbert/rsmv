@@ -7,6 +7,7 @@
     <!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
     <style>
+		/*//TODO move this to new file*/
         :root {
             --main-bg-colour: #232323;
             --secondary-bg-colour: #282e2e;
@@ -431,45 +432,24 @@
     </div>
         </div>
     <script>
-        const electron = require("electron");
-        const fs = require("fs");
-		const path = require("path");
-        const vertexShader = fs.readFileSync(__dirname+"/shader_vertex.glsl","utf-8");
-        const fragmentShader = fs.readFileSync(__dirname+"/shader_fragment.glsl","utf-8");
-        const ipc = electron.ipcRenderer;
-
-		
-		var cachearg = process.argv.find(a=>a.match(/^cachedir=/));
-		if(!cachearg){throw new Error("url arguemnt 'cachedir' not set");}
-		var cachedir = cachearg.split("=")[1];
-
-        ipc.on("model-loaded", (event, data) => {
-            var { OB3 } = require("../ob3");
-            var gl = require("../gl");
-            var model = new OB3(cachedir);
-            model.setData(data);
-            gl.init(document.getElementById("viewer"), model, vertexShader, fragmentShader);
-        });
-
-        function requestLoadModel(modelId) {
-            ipc.send("request-load-model", modelId);
-        }
+		const viewer=require("../3d/viewer");
     </script>
     <script>
+		//TODO move this to module as well
         var container = document.getElementById("sidebar-browser-tab-data-container");
         document.getElementById("sidebar-browser-search-bar-input").value = "0";
 
         function submitSearchIds(value) {
             value = parseInt(value);
             if (true) {
-                requestLoadModel(value);
+                viewer.requestLoadModel(value);
                 const _i = value;
                 var div = document.createElement("div");
                 var span = document.createElement("span");
                 span.innerText = _i;
                 div.appendChild(span);
                 div.addEventListener("click", function() {
-                    requestLoadModel(_i);
+                    viewer.requestLoadModel(_i);
                 });
                 container.appendChild(div, 0);
             }

@@ -7,31 +7,29 @@ import * as path from "path";
 	throw new Error(err);
 	process.exit(1);
 });*/
+console.log(process.argv);
 
-
-app.allowRendererProcessReuse = true;
+app.allowRendererProcessReuse = false;//messes up fs
 
 app.whenReady().then(async () => {
-	let cachedir = path.resolve("cache");
-	//TODO not sure why we have try/catch here, it's a crash anyway
-	try {
-		var splash = await createWindow("assets/splash.html", { width: 377, height: 144, frame: false, resizable: false, webPreferences: { nodeIntegration: true } });
-	} catch (reason) {
-		console.log(reason);
-		return;
+	//skip command line arguments until we find two args that aren't flags (electron.exe and the main script)
+	//we have to do this since electron also includes flags like --inspect in argv
+	let args = process.argv.slice();
+	for (let skip = 2; skip > 0 && args.length > 0; args.shift()) {
+		if (!args[0].startsWith("-")) { skip--; }
 	}
+	let cachedir = path.resolve(args[0] ?? "cache");
+
+	var splash = await createWindow("assets/splash.html", { width: 377, height: 144, frame: false, resizable: false, webPreferences: { nodeIntegration: true } });
+
 	updater.on("update-progress", (args) => {
 		splash.webContents.send("update-progress", args);
 	});
 	await updater.run(cachedir);
 	//hide instead of close so electron doesn't shut down
 	splash.hide();
-	try {
-		var index = await createWindow(`assets/index.html`, { width: 800, height: 600, frame: false, webPreferences: { nodeIntegration: true, additionalArguments: ["cachedir=" + cachedir] } });
-	} catch (reason) {
-		console.log(reason);
-		return;
-	}
+	var index = await createWindow(`assets/index.html`, { width: 800, height: 600, frame: false, webPreferences: { nodeIntegration: true, additionalArguments: ["cachedir=" + cachedir] } });
+
 	index.webContents.openDevTools({ mode: "detach" });
 	splash.close();
 	ipcMain.on("request-load-model", (event, modelId: number) => {
