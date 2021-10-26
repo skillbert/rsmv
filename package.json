@@ -2,9 +2,10 @@
 	"name": "gloopvis",
 	"version": "0.1.0",
 	"description": "A viewer for NXT client models and materials",
-	"main": "main.js",
+	"main": "dist/main.js",
 	"scripts": {
 		"start": "electron --inspect ./dist/main.js",
+		"debug": "electron --inspect-brk ./dist/main.js",
 		"build": "gulp build",
 		"watch": "gulp watch"
 	},
@@ -26,6 +27,7 @@
 		"crc": "^3.8.0",
 		"electron-titlebar": "0.0.3",
 		"lzma": "^2.3.2",
+		"node-fetch": "^2.6.5",
 		"sqlite3": "^4.2.0",
 		"three": "^0.133.1"
 	}

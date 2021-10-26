@@ -1,7 +1,7 @@
 // May or may not be called ob3 :shrug:
-import * as fs from "fs";
 import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
+import { cacheMajors } from "../constants";
 
 type Mesh = {
 	groupFlags: number;
@@ -32,17 +32,18 @@ type Mesh = {
 
 type Texture = HTMLImageElement & {
 	isReady: boolean;
-	parent: OB3;
+	parents: OB3[];
 	id: string;//TODO actually sets id of HtmlElement and possibly messes up document.getElementById
 };
 
 export class OB3 {
-	cachedir: string;
+	getFile: (major: number, minor: number) => Promise<Buffer>;
 
 	format = 2;
 	version = 0;
 	materialGroupCount = 0;
 	materialGroups: Mesh[] = [];
+	textures: { [id: number]: Texture } = {};
 	unk1 = 0;
 	unkCount0 = 0;
 	unkCount1 = 0;
@@ -51,8 +52,8 @@ export class OB3 {
 	unk2;
 	model: any = null;
 	onfinishedloading: (() => void) | (() => void)[] = [];
-	constructor(cachedir: string) {
-		this.cachedir = cachedir;
+	constructor(getFile: (major: number, minor: number) => Promise<Buffer>) {
+		this.getFile = getFile;
 	}
 
 	setData(data: Buffer) {
@@ -80,7 +81,6 @@ export class OB3 {
 		};
 	}
 
-
 	checkReady() {
 		for (var g = 0; g < this.materialGroups.length; ++g) {
 			for (var i in this.materialGroups[g].textures) {
@@ -99,12 +99,33 @@ export class OB3 {
 		return true;
 	}
 
-	loadMaterials() {
+	loadTexture(texId: number) {
+		let tex = this.textures[texId];
+		if (!tex) {
+			tex = new Image() as any;
+			this.textures[texId] = tex;
+			tex.id = "" + texId; // Just for bookkeeping
+			tex.isReady = false;
+			tex.parents = [];
+			tex.onload = function (this: Texture) {
+				URL.revokeObjectURL(this.src);
+				this.isReady = true;
+				this.parents.forEach(p => p.checkReady());
+			};
+			this.getFile(cacheMajors.textures, texId).then(texfile => {
+				let blob = new Blob([texfile], { type: "image/png" });
+				tex.src = URL.createObjectURL(blob);
+			});
+		}
+		return tex;
+	}
+
+	async loadMaterials() {
 		for (var g = 0; g < this.materialGroups.length; ++g) {
 			if (this.materialGroups[g].materialId == 0)
 				continue;
 
-			var material = fs.readFileSync(`${this.cachedir}/materials/${this.materialGroups[g].materialId - 1}.jmat`);
+			var material = await this.getFile(cacheMajors.materials, this.materialGroups[g].materialId - 1);
 			var materialGroup = this.materialGroups[g];
 
 			if (material[0] == 0x00) {
@@ -131,16 +152,8 @@ export class OB3 {
 			for (var i in materialGroup.textures) {
 				var texId = materialGroup.textures[i];
 				if (typeof texId != "string" && typeof texId != "number") { continue; }
-				var tex: Texture = new Image() as any;
-				tex.id = "" + texId; // Just for bookkeeping
-				tex.isReady = false;
-				tex.parent = this;
-				tex.addEventListener('load', function (this: Texture) {
-					this.isReady = true;
-					this.parent.checkReady();
-				});
-				tex.src = `${this.cachedir}/textures/${texId}.png`;
-				console.log(`Loading ${texId}.png`);
+				let tex = this.loadTexture(texId);
+				tex.parents.push(this);
 				materialGroup.textures[i] = tex;
 			}
 		}

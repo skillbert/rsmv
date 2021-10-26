@@ -1,6 +1,4 @@
-import { crc32 } from "crc";
-import { decompress } from "./decompress";
-import * as sqlite3 from "sqlite3";//.verbose();
+
 
 export type SubFile = {
 	offset: number,
@@ -41,9 +39,12 @@ export function packSqliteBufferArchive(buffers: Buffer[]) {
 }
 
 export function unpackSqliteBufferArchive(buffer: Buffer, length: number) {
+	if (length == 1) {
+		return [{ buffer, offset: 0, size: buffer.byteLength }];
+	}
 	let index = 0;
 	let unknownbyte = buffer.readUInt8(index); index++;
-	console.log("unknownbyte sqlarchive",unknownbyte);
+	//console.log("unknownbyte sqlarchive", unknownbyte);
 	let fileoffset = buffer.readUInt32BE(index); index += 4;
 
 	let files: SubFile[] = [];

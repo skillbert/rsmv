@@ -3,7 +3,7 @@
 		"moduleResolution": "node",
 		"module": "commonjs",
 		"lib": [ "ESNext","DOM"],
-		"target": "ESNext",
+		"target": "ES2020",
 		"sourceMap": false,
 		"alwaysStrict": true,
 		"jsx": "react",

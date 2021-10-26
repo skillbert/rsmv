@@ -1,120 +1,161 @@
+import { CacheIndex, indexBufferToObject, unpackBufferArchive } from "./cache";
 import { crc32 } from "crc";
+import { decompress } from "./decompress";
 import * as fs from "fs";
-import * as http from "http";
 import * as net from "net";
-
-var server_version: number;
-var cachedir: string;
+import fetch from "node-fetch";
+import { CacheFileSource } from "./main";
+import { cacheMajors } from "./constants";
 
 type ClientConfig = {
 	[id: string]: string | {}
 }
 
-export function prepare(outdir: string) {
-	cachedir = outdir;
-	return new Promise<void>(resolve => {
-		http.get("http://world3.runescape.com/jav_config.ws?binaryType=4", function (response) {
-			var body = ""
-			response.on("data", data => {
-				body += data;
-			});
-			response.on("end", () => {
-				let chunks = body.toString().split(/(?:\r\n|\r|\n)/g);
+export async function downloadServerConfig() {
+	let body: string = await fetch("http://world3.runescape.com/jav_config.ws?binaryType=4").then(r => r.text());
+	let chunks = body.split(/(?:\r\n|\r|\n)/g);
 
-				var config: ClientConfig = {};
-				for (var i = 0; i < chunks.length; ++i) {
-					let line = chunks[i].split(/(?:=)/g);
-					if (line.length == 2) {
-						config[line[0]] = line[1];
-					} else if (line.length == 3) {
-						config[line[0]] = (config[line[0]] || {});
-						config[line[0]][line[1]] = line[2];
-					}
-				}
-				if (typeof config.server_version != "string") { throw new Error("server version not found in config"); }
-				server_version = parseInt(config.server_version);
-
-				state = new ConnectionState(client, config, resolve);
-				connect(config);
-			});
-		});
-	});
-}
-export async function download(major: number, minor: number, crc: number | null = null) {
-	for (let attempts = 0; attempts < 5; attempts++) {
-		let buffer = await new Promise<Buffer>((resolveAttempt, rejectAttempt) => { writedownload(major, minor, resolveAttempt); });
-
-		//TODO not needed?
-		if (!(buffer instanceof Buffer)) throw new Error("Not a buffer");
-
-		let bufcrc = crc32(buffer)
-		if (crc != null && bufcrc != crc) {
-			continue;
+	var config: ClientConfig = {};
+	for (var i = 0; i < chunks.length; ++i) {
+		let line = chunks[i].split(/(?:=)/g);
+		if (line.length == 2) {
+			config[line[0]] = line[1];
+		} else if (line.length == 3) {
+			config[line[0]] = (config[line[0]] || {});
+			config[line[0]][line[1]] = line[2];
 		}
-		return buffer;
 	}
-	throw new Error("correct crc not downloaded after 5 attempts");
-}
-export function close() {
-	client.destroy();
+	if (typeof config.server_version != "string") { throw new Error("server version not found in config"); }
+	return config;
 }
 
-var client = new net.Socket();
-var state: State<any>; // Downloader's current state, so we know where to pipe data
+// export async function download(major: number, minor: number, crc: number | null = null) {
+// 	if (!currentDownloader) { throw new Error("no downloader"); }
+// 	for (let attempts = 0; attempts < 5; attempts++) {
+// 		let buffer = await currentDownloader.downloadFile(major, minor);
 
-function writedownload(major: number, minor: number, resolve: (b: Buffer) => void) {
-	state = new DownloadState(client, resolve);
+// 		let bufcrc = crc32(buffer)
+// 		if (crc != null && bufcrc != crc) {
+// 			console.log(`downloaded crc did not match requested data, attempt ${attempts}/5`)
+// 			continue;
+// 		}
+// 		return buffer;
+// 	}
+// 	throw new Error("correct crc not downloaded after 5 attempts");
+// }
 
-	var packet = Buffer.alloc(1 + 1 + 4 + 4);
-	packet.writeUInt8(0x21, 0x0); // Request record
-	packet.writeUInt8(major, 0x1); // Index
-	packet.writeUInt32BE(minor, 0x2); // Archive
-	packet.writeUInt16BE(server_version, 0x6); // Server version
-	packet.writeUInt16BE(0x0, 0x8); // Unknown
 
-	client.write(packet);
-}
+export class Downloader implements CacheFileSource {
+	state: State<any>;
+	socket: net.Socket;
+	server_version: number;
+	queuedReqs = 0;
 
-function connect(config: ClientConfig) {
-	fs.writeFileSync(`${cachedir}/world_config.log.json`, JSON.stringify(config, undefined, 4));
-	var address = "content.runescape.com"; //config.param["8"]; <-- Position of these parameters change, but I can't find the rhyme or reason
-	var port = 43594; //config.param["9"];
+	ready: Promise<void>;
 
-	// Conntect to content.runescape.com:43594          //(or wherever Jagex points us) ((no longer relevant since we're setting it ourselves))
-	client.connect(port, address, function () {
-		state.onConnect();
-	});
+	constructor(cachedir: string, config?: Promise<ClientConfig>) {
+		if (!config) { config = downloadServerConfig(); }
+		config.then(cnf => {
+			this.server_version = parseInt(cnf["server_version"] as any);
+		})
+		this.socket = new net.Socket();
 
-	var _ticket = 0;
-	var _worker = 0;
-	client.on("data", function (data) {
-		//TODO this loop can not be exited if it ever starts in non completed state
-		//there is no way for spin locks to work like this in js
-		var ticket = _ticket++; // Take a ticket
-		while (_worker != ticket); // Wait until our ticket is called
-		// ✨⭐🎵 Semaphores With Adam 🎵⭐✨
+		fs.writeFileSync(`${cachedir}/world_config.log.json`, JSON.stringify(config, undefined, 4));
+		//comes from config but is obfuscated
+		var address = "content.runescape.com";
+		var port = 43594;
 
-		state.onData(data);
-		_worker++;
-	});
+		this.state = new ConnectionState(this.socket, config);
 
-	client.on("end", function () {
-		//state.onEnd();
-	});
+		this.socket.on("connect", () => this.state.onConnect());
+		this.socket.on("data", data => this.state.onData(data));
+		this.socket.on("close", () => {
+			this.state.onClose();
+			console.log("Connection closed");
+		});
 
-	client.on("close", function () {
-		state.onClose();
-		console.log("Connection closed");
-	});
+		this.socket.connect(port, address)
+		this.ready = this.state.promise;
+	}
 
+	async setState(statebuilder: () => State<any>) {
+		//oh no...
+		//there can be multiple active calls that hook into this promise and only one can be next
+		//we have to keep retrying untill we're the first to hook into it
+		this.queuedReqs++;
+		do {
+			var oldstate = this.state;
+			await this.state.promise;
+		} while (this.state != oldstate)
+		this.queuedReqs--;
+		this.state = statebuilder();
+	}
+
+	async downloadFile(major: number, minor: number) {
+		console.log(`download queued (${this.queuedReqs}) ${major} ${minor}`);
+		await this.setState(() => new DownloadState(this.socket));
+		console.log(`download starting ${major} ${minor}`);
+
+		//this stuff should be in downloadstate instead?
+		var packet = Buffer.alloc(1 + 1 + 4 + 4);
+		packet.writeUInt8(0x21, 0x0); // Request record
+		packet.writeUInt8(major, 0x1); // Index
+		packet.writeUInt32BE(minor, 0x2); // Archive
+		packet.writeUInt16BE(this.server_version, 0x6); // Server version
+		packet.writeUInt16BE(0x0, 0x8); // Unknown
+		this.socket.write(packet);
+
+		let res = await (this.state as DownloadState).promise;
+		console.log(`download done ${major} ${minor}`);
+		return res;
+	}
+
+
+	indexMap = new Map<number, CacheIndex[]>();
+
+
+	async getFile(major: number, minor: number, crc?: number) {
+		//TODO check crc?
+		return decompress(await this.downloadFile(major, minor));
+	}
+	async getFileArchive(major: number, minor: number, nfiles: number) {
+		return unpackBufferArchive(await this.getFile(major, minor), nfiles);
+	}
+	async getFileById(major: number, fileid: number) {
+		if (!this.indexMap.get(major)) {
+			let indexfile = await this.getFile(255, major);
+			this.indexMap.set(major, indexBufferToObject(major, indexfile));
+		}
+		let index = this.indexMap.get(major)!;
+
+		let holder = index.find(q => q.subindices.includes(fileid));
+		if (!holder) { throw new Error("file not found"); }
+		let files = await this.getFileArchive(holder.major, holder.minor, holder.subindexcount);
+		let file = files[holder.subindices.indexOf(fileid)].buffer;
+		//TODO remove this hardcoded path
+		if (major == cacheMajors.textures) {
+			return file.slice(5);
+		}
+		return file;
+	}
+
+	close() {
+		this.socket.destroy();
+	}
 }
 
 class State<T> {
 	resolve: (b: T) => void;
+	reject: (e: any) => void;
+	promise: Promise<T>;
 	read: number;
 	client: net.Socket;
 	buffer: Buffer;
 	constructor(client: net.Socket) {
+		this.promise = new Promise<T>((resolve, reject) => {
+			this.resolve = resolve;
+			this.reject = reject
+		});
 		this.client = client;
 	}
 	onConnect() { }
@@ -124,22 +165,22 @@ class State<T> {
 }
 
 class ConnectionState extends State<void> {
-	config: ClientConfig;
+	config: Promise<ClientConfig>;
 	status: number;
-	constructor(client: net.Socket, config: ClientConfig, resolve: () => void) {
+	constructor(client: net.Socket, config: Promise<ClientConfig>) {
 		super(client);
 		this.config = config;
-		this.resolve = resolve;
 		this.buffer = Buffer.alloc(1 + 108);
 		this.read = 0;
 	}
 
-	onConnect() {
-		process.stdout.write("\rConnecting...".padEnd(55, " "));
-		var key = Object.values(this.config.param).find(param => param.length == 32);
+	async onConnect() {
+		let cnf = await this.config;
+		console.log("Connecting...");
+		var key = Object.values(cnf.param).find(param => param.length == 32);
 		if (!key) { throw new Error("client cache key not found in config"); }
 		var length = 4 + 4 + key.length + 1 + 1;
-		var major = parseInt(this.config["server_version"] as any);
+		var major = parseInt(cnf["server_version"] as any);
 
 		var packet = Buffer.alloc(1 + 1 + length);
 
@@ -151,8 +192,8 @@ class ConnectionState extends State<void> {
 		packet.writeUInt8(0x0, 0xA + key.length);  //  Null termination
 		packet.writeUInt8(0x0, 0xB + key.length);  // Language code
 
-		process.stdout.write("\rHandshaking...".padEnd(55, " "));
-		client.write(packet);
+		console.log("Handshaking...");
+		this.client.write(packet);
 	}
 
 	onData(data: Buffer) {
@@ -165,8 +206,8 @@ class ConnectionState extends State<void> {
 		if (this.buffer.length <= this.read) this.onEnd();
 	}
 
-	onEnd() {
-		console.log("\rDatabase version", this.config.server_version);
+	async onEnd() {
+		console.log("\rDatabase version", (await this.config).server_version);
 
 		// Don't understand the difference
 		//client.write("\x06\x00\x00\x04\x00\x00\x03\x00\x00\x00\x00\x00"); // Taken from Cook's code
@@ -181,7 +222,7 @@ class ConnectionState extends State<void> {
 		packet.write("\x03\x00\x00\x05", 0xA);
 		packet.writeUInt32BE(major, 0xE);
 		packet.write("\x00\x00", 0x12);
-		client.write(packet);
+		this.client.write(packet);
 
 		this.resolve();
 		//fs.writeFileSync(`${cachedir}/debug/handshake.bin`, this.buffer);
@@ -192,9 +233,9 @@ class DownloadState extends State<Buffer> {
 	pre_buffer: Buffer;
 	current: { major: number, minor: number };
 	offset: number;
-	constructor(client: net.Socket, resolve: (b: Buffer) => void) {
+
+	constructor(client: net.Socket) {
 		super(client);
-		this.resolve = resolve;
 		this.pre_buffer = Buffer.alloc(1 + 4 + 1 + 4 + (4));
 		this.current = { "major": -1, "minor": -1 };
 
@@ -251,7 +292,6 @@ class DownloadState extends State<Buffer> {
 				this.onEnd();
 		}
 	}
-
 	onEnd() {
 		this.resolve(this.buffer);
 	}

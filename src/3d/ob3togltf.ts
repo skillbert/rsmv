@@ -9,6 +9,7 @@ import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { GLTFBuilder, ModelAttribute, vartypeEnum } from "./gltf";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
+import { cacheMajors } from "../constants";
 
 type Mesh = {
 	groupFlags: number;
@@ -23,7 +24,7 @@ type Mesh = {
 	positionBuffer: Int16Array;//int16
 	normalBuffer: Int8Array;
 	tangentBuffer: Int8Array;//normals as well as tangents?
-	uvBuffer: Uint16Array;
+	uvBuffer: Float32Array;
 	boneidBuffer: Uint16Array;
 
 	indexBufferCount: number;
@@ -56,7 +57,7 @@ function alignedRefOrCopy<T>(constr: ArrayBufferConstructor<T>, source: Uint8Arr
 		let aligned: Uint8Array = Uint8Array.prototype.slice.call(source, offset, offset + constr.BYTES_PER_ELEMENT * length);
 		srcbuffer = aligned.buffer;
 		offset = aligned.byteOffset;
-		console.log(`copied for alignedRefOrCopy, bytes offset: ${disalignment}, type:${constr.name}`);
+		//console.log(`copied for alignedRefOrCopy, bytes offset: ${disalignment}, type:${constr.name}`);
 	} else {
 		srcbuffer = source.buffer;
 		offset = offset + source.byteOffset;
@@ -151,7 +152,7 @@ function buildAttributeBuffer<T extends { [key: string]: AttributeSoure }>(attrs
 
 //TODO just move this to a function
 export class OB3 {
-	cachedir: string;
+	getFile: (major: number, minor: number) => Promise<Buffer>
 
 	format = 2;
 	version = 0;
@@ -166,21 +167,20 @@ export class OB3 {
 	model: Stream | null = null;
 	gltf = new GLTFBuilder();
 	onfinishedloading: (() => void) | (() => void)[] = [];
-	constructor(cachedir: string) {
-		this.cachedir = cachedir;
+	constructor(getFile: (major: number, minor: number) => Promise<Buffer>) {
+		this.getFile = (m, id) => {
+			console.log(`gltf getting ${m} ${id}`);
+			return getFile(m, id);
+		}
 	}
 
 	setData(data: Buffer) {
 		this.model = new Stream(data);
-		this.parse();
+		return this.parse();
 	}
 
 	getVersion() {
 		return this.version;
-	}
-
-	getMaterialGroups() {
-		return this.materialGroups;
 	}
 
 	getPretty() {
@@ -190,43 +190,23 @@ export class OB3 {
 			"___version": this.version,
 			"__meshCount": this.meshCount,
 			"__unkCount1": this.unk2,
-			"_particlePoolCount": this.particlePoolCount,
-			"materialGroups": this.getMaterialGroups()
+			"_particlePoolCount": this.particlePoolCount
 		};
 	}
 
 
-	checkReady() {
-		for (var g = 0; g < this.materialGroups.length; ++g) {
-			for (var i in this.materialGroups[g].textures) {
-				let tex = this.materialGroups[g].textures[i]
-				if (typeof tex != "object" || !tex.isReady)
-					return false;
-			}
-		}
-		if (typeof this.onfinishedloading == "function")
-			this.onfinishedloading();
-		else if (typeof this.onfinishedloading == "object")
-			for (var i in this.onfinishedloading)
-				this.onfinishedloading[i]();
-		else
-			console.log("WebGLoop.ob3.js: OnFinishedLoading event corrupted by an external library");
-		return true;
-	}
-
 	//need this cache to dedupe the images in the resulting model file
 	textureCache: { [id: number]: number } = {};
 
-	getTextureFile(texid: number) {
+	async getTextureFile(texid: number) {
 		if (typeof this.textureCache[texid] == "undefined") {
-			let file = fs.readFileSync(`${this.cachedir}/textures/${texid}.png`);
-			this.textureCache[texid] = this.gltf.addImage(file);
+			this.textureCache[texid] = this.gltf.addImage(await this.getFile(cacheMajors.textures, texid));
 		}
 		return this.textureCache[texid];
 	}
 
 	//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
-	parseMaterial(matid: number) {
+	async parseMaterial(matid: number) {
 		let textures: {
 			diffuse?: number,
 			specular?: number,
@@ -243,7 +223,7 @@ export class OB3 {
 		let originalMaterial: JMatInternal | null = null;
 		let environment = 5522;
 		if (matid != 0) {
-			var materialfile = fs.readFileSync(`${this.cachedir}/materials/${matid - 1}.jmat`);
+			var materialfile = await this.getFile(cacheMajors.materials, matid - 1);
 
 			if (materialfile[0] == 0x00) {
 				var mat = new JMat(materialfile).get();
@@ -271,7 +251,7 @@ export class OB3 {
 		return { textures, environment, originalMaterial, factors };
 	}
 
-	parse() {
+	async parse() {
 		if (!this.model) { throw new Error("model not set"); }
 		this.format = this.model.readByte();              // Format number
 		this.unk1 = this.model.readByte();                // Unknown, always 03?
@@ -342,7 +322,11 @@ export class OB3 {
 					group.normalBuffer = streamChunk(Int8Array, model, group.vertexCount * 3);
 					//not currently used
 					group.tangentBuffer = streamChunk(Int8Array, model, group.vertexCount * 4);
-					group.uvBuffer = streamChunk(Uint16Array, model, group.vertexCount * 2);
+					group.uvBuffer = new Float32Array(group.vertexCount * 2);
+					for (let i = 0; i < group.vertexCount * 2; i++) {
+						group.uvBuffer[i] = model.readHalf();
+					}
+					//group.uvBuffer = streamChunk(Uint16Array, model, group.vertexCount * 2);
 				}
 				if (hasBoneids) {
 					group.boneidBuffer = streamChunk(Uint16Array, model, group.vertexCount);
@@ -353,13 +337,37 @@ export class OB3 {
 
 			let attrsources: { [key: string]: AttributeSoure } = {};
 
+			let normalsrepacked = new Float32Array(group.normalBuffer.length);
+			for (let i = 0; i < group.normalBuffer.length; i += 3) {
+				let x = group.normalBuffer[i + 0];
+				let y = group.normalBuffer[i + 1];
+				let z = group.normalBuffer[i + 2];
+				//recalc instead of taking 255 because apparently its not normalized properly
+				let len = Math.hypot(x, y, z);
+				normalsrepacked[i + 0] = x / len;
+				normalsrepacked[i + 1] = y / len;
+				normalsrepacked[i + 2] = -z / len;//flip z
+			}
+			for (let i = 0; i < group.positionBuffer.length; i += 3) {
+				//TODO this changes the original file
+				group.positionBuffer[i + 2] = -group.positionBuffer[i + 2];//flip z
+			}
 
 			attrsources.pos = { newtype: "f32", vecsize: 3, source: group.positionBuffer };
-			attrsources.normals = { newtype: "i8", vecsize: 3, source: group.normalBuffer };
-			attrsources.texuvs = { newtype: "u16", vecsize: 2, source: group.uvBuffer };
+			attrsources.normals = { newtype: "f32", vecsize: 3, source: normalsrepacked };
+			attrsources.texuvs = { newtype: "f32", vecsize: 2, source: group.uvBuffer };
 
 			//highest level of detail
 			let indexbuf = group.indexBuffers[0];
+
+			//since we flipped one of our axis, we also need to flip the polygon winding order
+			for (let i = 0; i < indexbuf.length; i += 3) {
+				let tmp = indexbuf[i];
+				//TODO this changes the original file
+				indexbuf[i] = indexbuf[i + 1];
+				indexbuf[i + 1] = tmp;
+			}
+
 
 			//convert per-face attributes to per-vertex
 			if (group.colourBuffer) {
@@ -382,22 +390,6 @@ export class OB3 {
 				}
 			}
 
-			// //map flag8 to a set of random colors to visualize bone regions
-			// let colbuf = attrsources.color;
-			// if (group.flag8Buffer) {
-			// 	for (let i = 0; i < group.vertexCount; i++) {
-			// 		let flag = group.flag8Buffer[i];
-			// 		//some random chaos/hash functions to turn flags into colors
-			// 		colbuf.source[i * 4 + 0] = (19203 + flag) * 299283.31;
-			// 		colbuf.source[i * 4 + 1] = (50921 + flag) * 530197.09;
-			// 		colbuf.source[i * 4 + 2] = (43971 + flag) * 498371.17;
-			// 		colbuf.source[i * 4 + 3] = 255;
-			// 	}
-			// }
-
-
-
-
 			////////////////////// build the gltf file //////////////////
 			let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(attrsources);
 
@@ -405,9 +397,7 @@ export class OB3 {
 
 			let view = gltf.addBufferWithView(buffer, bytestride, false);
 			attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
-			attributes.normals.normalize = true;
 			attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexcount);
-			attributes.texuvs.normalize = true;
 			attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexcount);
 			if (attributes.color) {
 				attributes.color.normalize = true;
@@ -424,7 +414,7 @@ export class OB3 {
 				bufferView: viewIndex
 			});
 
-			let { textures, originalMaterial, factors } = this.parseMaterial(group.materialId);
+			let { textures, originalMaterial, factors } = await this.parseMaterial(group.materialId);
 
 			let materialdef: Material = {
 				//TODO check if diffuse has alpha as well
@@ -437,13 +427,13 @@ export class OB3 {
 				materialdef.pbrMetallicRoughness = {};
 				//TODO animated texture UV's (fire cape)
 				materialdef.pbrMetallicRoughness.baseColorTexture = {
-					index: gltf.addTexture({ sampler, source: this.getTextureFile(textures.diffuse) }),
+					index: gltf.addTexture({ sampler, source: await this.getTextureFile(textures.diffuse) }),
 				};
 				//materialdef.pbrMetallicRoughness.baseColorFactor = [factors.color, factors.color, factors.color, 1];
 				if (typeof textures.metalness != "undefined") {
 					if (textures.metalness) {
 						materialdef.pbrMetallicRoughness.metallicRoughnessTexture = {
-							index: gltf.addTexture({ sampler, source: this.getTextureFile(textures.metalness) })
+							index: gltf.addTexture({ sampler, source: await this.getTextureFile(textures.metalness) })
 						}
 					}
 					//materialdef.pbrMetallicRoughness.metallicFactor = factors.metalness;
@@ -451,7 +441,7 @@ export class OB3 {
 			}
 			if (textures.normal) {
 				materialdef.normalTexture = {
-					index: gltf.addTexture({ sampler, source: this.getTextureFile(textures.normal) })
+					index: gltf.addTexture({ sampler, source: await this.getTextureFile(textures.normal) })
 				}
 			}
 			if (textures.specular) {
@@ -471,6 +461,6 @@ export class OB3 {
 		let node = gltf.addNode({ mesh: mesh });
 		gltf.addScene({ nodes: [node] });
 		//enables use of normalized ints for a couple of attribute types
-		gltf.addExtension("KHR_mesh_quantization", true);
+		//gltf.addExtension("KHR_mesh_quantization", true);
 	}
 }

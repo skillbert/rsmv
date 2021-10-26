@@ -1,31 +1,31 @@
+//decompress data as it comes from the server
 export function decompress(input: Buffer) {
 	switch (input.readUInt8(0x0)) {
 		case 0:
-			// Uncompressed
 			return _uncompressed(input);
 		case 1:
-			// BZ2
 			return _bz2(input);
 		case 2:
-			// zlib
 			return _zlib(input);
 		case 3:
-			// LZMA
 			return _lzma(input);
 		default:
 			throw new Error("Unknown compression type (" + input.readUInt8(0x0).toString() + ")");
 	}
 }
 
+//decompress the BLOBs in the sqlite caches, this may or may not be compatible with the other decompress function
 export function decompressSqlite(input: Buffer) {
 	switch (input.readUInt8(0x0)) {
 		case 0x5a:
 			return _zlibSqlite(input);
 		default:
+			return decompress(input);
 			throw new Error(`unknown sqlite compresstion type ${input.readUInt8(0x0).toString(16)}`)
 	}
 }
 
+//compress data to use in sqlite BLOBs
 export function compressSqlite(input: Buffer, compression: "zlib") {
 	switch (compression) {
 		case "zlib":
@@ -77,6 +77,22 @@ var _zlib = function (input: Buffer) {
 	return zlib.gunzipSync(processed);
 }
 
+/**
+ * @param {Buffer} input The input buffer straight from the server
+ */
+var _lzma = function (input: Buffer) {
+	var lzma = require("lzma");
+	var compressed = input.readUInt32BE(0x1);
+	var uncompressed = input.readUInt32BE(0x5);
+	var processed = Buffer.alloc(compressed + 8);
+	input.copy(processed, 0x0, 0x9, 0xE);
+	processed.writeUInt32LE(uncompressed, 0x5);
+	processed.writeUInt32LE(0, 0x5 + 0x4);
+	input.copy(processed, 0xD, 0xE);
+	return Buffer.from(lzma.decompress(processed));
+}
+
+
 function _zlibSqlite(input: Buffer) {
 	//skip header bytes 5a4c4201
 	var uncompressed_size = input.readUInt32BE(0x4);
@@ -91,25 +107,4 @@ function _zlibSqliteCompress(input: Buffer) {
 	result.writeUInt32BE(input.byteLength, 0x4);
 	compressbytes.copy(result, 0x8);
 	return result;
-}
-
-/**
- * @param {Buffer} input The input buffer straight from the server
- */
-var _lzma = function (input: Buffer) {
-	var lzma = require("lzma");
-	var compressed = input.readUInt32BE(0x1);
-	var uncompressed = input.readUInt32BE(0x5);
-	var processed = Buffer.alloc(compressed + 8);
-	input.copy(processed, 0x0, 0x9, 0xE);
-	processed.writeUInt32LE(uncompressed, 0x5);
-	processed.writeUInt32LE(0, 0x5 + 0x4);
-	input.copy(processed, 0xD, 0xE);
-
-	//TODO actually throw here? the rest of the code doesn't know what to do with 'undefined'
-	// try {
-	return Buffer.from(lzma.decompress(processed));
-	// } catch (e) {
-	// 	console.log(e);
-	// }
 }

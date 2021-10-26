@@ -1,11 +1,11 @@
 import { decompress } from "./decompress";
-import * as downloader from "./downloader";
+import { Downloader, downloadServerConfig } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
 import { CacheIndex, CacheIndexStub, unpackBufferArchive, rootIndexBufferToObject, indexBufferToObject } from "./cache";
+import { CacheFileSource } from "main";
 
 var cachedir: string;
-
 
 type DatabaseInst = sqlite3.Database & {
 	statements: {
@@ -14,7 +14,7 @@ type DatabaseInst = sqlite3.Database & {
 	}
 }
 
-type SaveFileArguments = {
+export type SaveFileArguments = {
 	singular: string,
 	plural: string,
 	folder: string,
@@ -97,7 +97,7 @@ function findMissingIndices<T extends CacheIndexStub>(db_state: DatabaseState, i
 	return pile;
 }
 
-async function updateRecords(index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
+async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
 	var singular = staticArguments.singular;
 	var plural = staticArguments.plural;
 	var folder = staticArguments.folder;
@@ -107,7 +107,7 @@ async function updateRecords(index: CacheIndex & { isNew: boolean }, db: Databas
 
 	prepareFolder(folder);
 
-	var allRecordIndices = indexBufferToObject(index.minor, decompress(await downloader.download(index.major, index.minor, index.crc)));
+	var allRecordIndices = indexBufferToObject(index.major, await downloader.getFile(index.major, index.minor, index.crc));
 
 	var recordIndices = findMissingIndices(db_state, allRecordIndices);
 	//TODO remove, cap for testing
@@ -119,7 +119,7 @@ async function updateRecords(index: CacheIndex & { isNew: boolean }, db: Databas
 		if ((n % commitFrequency) == 0) db.run("BEGIN TRANSACTION");
 
 		var recordIndex = recordIndices[i];
-		var buffer = decompress(await downloader.download(recordIndex.major, recordIndex.minor, recordIndex.crc));
+		var buffer = decompress(await downloader.getFile(recordIndex.major, recordIndex.minor, recordIndex.crc));
 		var subbuffers = unpackBufferArchive(buffer, recordIndex.subindices.length);
 		if (subbuffers.length == 1) { debugger; }
 
@@ -151,7 +151,7 @@ function dumpBufferToFile(staticArguments: SaveFileArguments, recordIndex: numbe
 	fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${recordIndex}.${staticArguments.fileExtension}`, buffer);
 }
 
-const updateCallbacks = {
+export const updateCallbacks = {
 	"255": {
 		"16": {
 			"callback": updateRecords, "staticArguments": {
@@ -194,6 +194,7 @@ const updateCallbacks = {
 				"fileExtension": "png",
 				"bufferCallback": (staticArguments, record, buffer) => {
 					//TODO where does this buffer.slice come from? missing some header logic?
+					//i'm guessing there is an image type header (png/jpeg/etc)
 					fs.writeFile(`${cachedir}/${staticArguments.folder}/${record}.png`, buffer.slice(0x5), () => { });
 				}
 			} as SaveFileArguments
@@ -215,47 +216,69 @@ var events = {
 	}
 };
 
-export function run(cachedirarg: string) {
+export async function run(cachedirarg: string) {
 	cachedir = cachedirarg;
 	fs.mkdirSync(cachedir, { recursive: true });
-	return new Promise<void>(async (resolve, reject) => {
-		progress("Preparing database...");
-		var { db, db_state } = await prepareDatabase();
 
-		progress("Connecting to servers...");
-		await downloader.prepare(cachedir);
+	progress("Preparing database...");
+	var { db, db_state } = await prepareDatabase();
 
-		progress("Downloading index...");
-		var metaindex = decompress(await downloader.download(255, 255));
+	progress("Connecting to servers...");
+	let config = downloadServerConfig();
+	var downloader = new Downloader(cachedir, config);
+	await new Promise(d => setTimeout(d, 5000));
 
-		progress("Processing index...");
-		var indices = rootIndexBufferToObject(metaindex);
+	progress("Downloading index...");
+	var metaindex = await downloader.getFile(255, 255);
 
-		progress("Finding updates...");
-		for (let i in indices) {
-			if (!(i.toString() in updateCallbacks["255"])) continue;
+	progress("Processing index...");
+	var indices = rootIndexBufferToObject(metaindex);
 
-			var pile = findMissingIndices(db_state, [indices[i]]);
+	progress("Finding updates...");
+	for (let i in indices) {
+		if (!(i.toString() in updateCallbacks["255"])) continue;
 
-			for (let i = 0; i < pile.length; ++i) {
-				var index = pile[i];
-				var major = index.major.toString();
-				var minor = index.minor.toString();
-				if (major in updateCallbacks) {
-					if (minor in updateCallbacks[major]) {
-						await updateCallbacks[major][minor].callback(index, db, db_state, updateCallbacks[major][minor].staticArguments);
-					}
+		var pile = findMissingIndices(db_state, [indices[i]]);
+
+		for (let i = 0; i < pile.length; ++i) {
+			var index = pile[i];
+			var major = index.major.toString();
+			var minor = index.minor.toString();
+			if (major in updateCallbacks) {
+				if (minor in updateCallbacks[major]) {
+					await updateCallbacks[major][minor].callback(index, db, db_state, updateCallbacks[major][minor].staticArguments);
 				}
 			}
 		}
+	}
 
-		downloader.close();
+	downloader.close();
 
-		db.statements.insert.finalize((e) => { if (e) throw e; });
-		db.statements.update.finalize((e) => { if (e) throw e; });
-		db.close((e) => { try { if (e) throw e; } finally { resolve(); } });
-	});
+	//not sure if these are necessary
+	db.statements.insert.finalize((e) => { if (e) throw e; });
+	db.statements.update.finalize((e) => { if (e) throw e; });
+	db.close();
 }
+
 export function on(event: string, callback) {
 	events.add(event, callback);
 }
+
+export const fileSource: CacheFileSource = {
+	getFile(major, minor) {
+		throw new Error("not implemented");
+		//the original (packed) files are lost, would have to rebuild it completely
+	},
+	async getFileArchive(major, minor, nfiles) {
+		throw new Error("not implemented");
+		//the updater script already places the subfiles in seperator files
+		//would have to find out which subfile belong to which minor from the sqlite database
+	},
+	async getFileById(major, fileid) {
+		let meta = updateCallbacks[255][major].staticArguments as SaveFileArguments;
+		if (!meta) { throw new Error("this file source does not have this file major index"); }
+		let filename = `${cachedir}/${meta.folder}/${fileid}.${meta.fileExtension}`;
+		return fs.promises.readFile(filename);
+	},
+	close() { }
+};

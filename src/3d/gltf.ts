@@ -111,7 +111,7 @@ export class GLTFBuilder {
 	}
 
 
-	async convert(options?: { singlefile?: boolean, baseurl?: string, glb?: boolean, imgmimetype?: "image/png" | "image/webp" | "image/jpeg" } | undefined) {
+	async convert(options?: { singlefile?: boolean, baseurl?: string, glb?: boolean, imgmimetype?: "image/png" | "image/webp" } | undefined) {
 		let baseurl = options?.baseurl ?? "";
 		let mergebuffers = !!options?.glb;
 		let inlinedata = !!options?.singlefile;
@@ -128,6 +128,7 @@ export class GLTFBuilder {
 
 		let files: { [id: string]: ArrayBuffer } = {};
 		if (json.animations!.length == 0) { delete json.animations; }
+		if (json.skins!.length == 0) { delete json.skins; }
 		for (let i in json.images!) {
 			let img = json.images![i];
 			let imgdata = this.rawimages[i];
