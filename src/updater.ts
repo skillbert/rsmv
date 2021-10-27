@@ -1,4 +1,3 @@
-import { decompress } from "./decompress";
 import { Downloader, downloadServerConfig } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
@@ -26,6 +25,11 @@ export type SaveFileArguments = {
 	hydrateFsFile?(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer): Buffer
 }
 
+type CacheUpdateHook = {
+	callback: (downloader: Downloader, index: CacheIndexStub & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) => Promise<void>;
+	staticArguments: SaveFileArguments
+}
+
 type DatabaseState = { [major: number]: { [minor: number]: { version: number, crc: number } } };
 
 function commit(db: DatabaseInst, major: number, minor: number, version: number, crc: number, isNew?: boolean) {
@@ -33,9 +37,30 @@ function commit(db: DatabaseInst, major: number, minor: number, version: number,
 	else db.statements.update.run(version, crc, major, minor);
 }
 
+//the pogress event was causing about 50% of all cpu usage during update!!
+let progressDebounceInterval: any = null;
+let queuedProcessMsg: any = null;
 function progress(message: string, value: number | null = null, max: number | null = null) {
-	if (value !== null || max !== null) events.emit("update-progress", { "message": message, "value": value, "max": max });
-	else events.emit("update-progress", { "message": message });
+	let msg: any;
+	if (value !== null || max !== null) msg = { "message": message, "value": value, "max": max };
+	else msg = { "message": message };
+
+	if (!progressDebounceInterval) {
+		progressDebounceInterval = setInterval(progressDebounceTick, 20);
+		events.emit("update-progress", msg);
+	} else {
+		queuedProcessMsg = msg;
+	}
+}
+
+function progressDebounceTick() {
+	if (queuedProcessMsg) {
+		events.emit("update-progress", queuedProcessMsg);
+		queuedProcessMsg = null;
+	} else {
+		clearInterval(progressDebounceInterval);
+		progressDebounceInterval = 0;
+	}
 }
 
 function prepareDatabase() {
@@ -100,7 +125,7 @@ function findMissingIndices<T extends CacheIndexStub>(db_state: DatabaseState, i
 	return pile;
 }
 
-async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
+async function updateRecords(downloader: Downloader, index: CacheIndexStub & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
 	var singular = staticArguments.singular;
 	var plural = staticArguments.plural;
 	var folder = staticArguments.folder;
@@ -110,11 +135,9 @@ async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew
 
 	prepareFolder(folder);
 
-	var allRecordIndices = indexBufferToObject(index.major, await downloader.getFile(index.major, index.minor, index.crc));
-
+	var allRecordIndices = indexBufferToObject(index.minor, await downloader.getFile(index.major, index.minor, index.crc));
 	var recordIndices = findMissingIndices(db_state, allRecordIndices);
-	//TODO remove, cap for testing
-	recordIndices = recordIndices.slice(0, 10);
+
 	var newRecords = 0;
 	var updatedRecords = 0;
 	var n = 0;
@@ -122,9 +145,8 @@ async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew
 		if ((n % commitFrequency) == 0) db.run("BEGIN TRANSACTION");
 
 		var recordIndex = recordIndices[i];
-		var buffer = decompress(await downloader.getFile(recordIndex.major, recordIndex.minor, recordIndex.crc));
+		var buffer = await downloader.getFile(recordIndex.major, recordIndex.minor, recordIndex.crc);
 		var subbuffers = unpackBufferArchive(buffer, recordIndex.subindices.length);
-		if (subbuffers.length == 1) { debugger; }
 
 		for (var j = 0; j < recordIndex.subindices.length; ++j, ++n) {
 			var recordSubindex = recordIndex.subindices[j];
@@ -149,47 +171,54 @@ async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew
 }
 
 
+var aysncWriteCount = 0;
 function dumpBufferToFile(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer) {
-	//TODO make async?
-	fs.writeFileSync(`${cachedir}/${staticArguments.folder}/${recordIndex}.${staticArguments.fileExtension}`, buffer);
+	let filename = `${cachedir}/${staticArguments.folder}/${recordIndex}.${staticArguments.fileExtension}`;
+	//can actually overload node's async file writer...
+	if (aysncWriteCount < 100) {
+		aysncWriteCount++;
+		fs.promises.writeFile(filename, buffer).finally(() => aysncWriteCount--);
+	} else {
+		fs.writeFileSync(filename, buffer);
+	}
 }
 
-export const updateCallbacks = {
+export const updateCallbacks: { [major: number]: { [minor: number]: CacheUpdateHook } } = {
 	"255": {
 		"16": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "object", "plural": "objects", "folder": "objects", "commitFrequency": 1,
 				"fileExtension": "rsobj",
 				"bufferCallback": dumpBufferToFile
-			} as SaveFileArguments
+			}
 		},
 		"18": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "NPC", "plural": "NPCs", "folder": "npcs", "commitFrequency": 1,
 				"fileExtension": "rsnpc",
 				"bufferCallback": dumpBufferToFile
-			} as SaveFileArguments
+			}
 		},
 		"19": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "item", "plural": "items", "folder": "items", "commitFrequency": 1,
 				"fileExtension": "rsitem",
 				"bufferCallback": dumpBufferToFile
-			} as SaveFileArguments
+			}
 		},
 		"26": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "material", "plural": "materials", "folder": "materials",
 				"fileExtension": "jmat",
 				"bufferCallback": dumpBufferToFile
-			} as SaveFileArguments
+			}
 		},
 		"47": {
 			"callback": updateRecords, "staticArguments": {
 				"singular": "model", "plural": "models", "folder": "models",
 				"fileExtension": "ob3",
 				"bufferCallback": dumpBufferToFile
-			} as SaveFileArguments
+			}
 		},
 		"53": {
 			"callback": updateRecords, "staticArguments": {
@@ -206,7 +235,7 @@ export const updateCallbacks = {
 					let texture = ParsedTexture.fromFile([buffer]);
 					return texture.fullfile;
 				}
-			} as SaveFileArguments
+			}
 		}
 	}
 };
@@ -254,7 +283,8 @@ export async function run(cachedirarg: string) {
 			var minor = index.minor.toString();
 			if (major in updateCallbacks) {
 				if (minor in updateCallbacks[major]) {
-					await updateCallbacks[major][minor].callback(index, db, db_state, updateCallbacks[major][minor].staticArguments);
+					let hook = updateCallbacks[major][minor] as CacheUpdateHook;
+					await hook.callback(downloader, index, db, db_state, hook.staticArguments);
 				}
 			}
 		}

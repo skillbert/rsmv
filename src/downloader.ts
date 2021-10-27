@@ -202,14 +202,15 @@ class ConnectionState extends State<void> {
 	}
 
 	async onEnd() {
-		console.log("\rDatabase version", (await this.config).server_version);
+		let config = await this.config;
+		console.log("\rDatabase version", config.server_version);
 
 		// Don't understand the difference
 		//client.write("\x06\x00\x00\x04\x00\x00\x03\x00\x00\x00\x00\x00"); // Taken from Cook's code
 		//client.write("\x06\x00\x00\x04\x38\x34\x03\x00\x00\x04\x38\x34"); // Taken from a Wireshark profile
 		//client.write("\x06\x00\x00\x05\x00\x00\x03\x93\x00\x00\x03\x00\x00\x05\x00\x00\x03\x93\x00\x00"); // Taken from a Wireshark profile later on (less wrong)
 
-		var major = parseInt(this.config["server_version"] as any);
+		var major = parseInt(config["server_version"] as any);
 		var packet = Buffer.alloc(4 + 4 + 2 + 4 + 4 + 2);
 		packet.write("\x06\x00\x00\x05", 0x0);
 		packet.writeUInt32BE(major, 0x4);

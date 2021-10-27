@@ -14,13 +14,47 @@ let args = process.argv.slice();
 for (let skip = 2; skip > 0 && args.length > 0; args.shift()) {
 	if (!args[0].startsWith("-")) { skip--; }
 }
-let cachedir = path.resolve(args[0] ?? "cache");
+let cachedir = "cache";
+let mode: "localcache" | "gamecache" | "streaming" = "streaming";
+let gamecachedir = path.resolve(process.env.ProgramData!, "jagex/runescape");
+let arg: string | undefined;
+
+//npm start -- [--streaming] [--local[=filedir]] [--cache[=gamecachedir]]
+//TODO add this to ui instead
+while (arg = args.shift()) {
+	let m = arg.match(/--?(\w+)(=(.*))?/);
+	if (m) {
+		if (m[1] == "streaming") {
+			mode = "streaming";
+		}
+		if (m[1] == "local") {
+			mode = "localcache";
+			if (m[3]) { cachedir = m[3]; }
+		}
+		if (m[1] == "cache") {
+			mode = "gamecache";
+			if (m[3]) { gamecachedir = m[3]; }
+		}
+	}
+}
 
 let viewerFileSource: CacheFileSource;
 //where does the viewer get its files
-viewerFileSource = new downloader.Downloader(cachedir);
-//viewerFileSource = new GameCacheLoader(path.resolve(process.env.ProgramData!, "jagex/runescape"));
-//viewerFileSource = updater.fileSource;
+switch (mode) {
+	case "streaming":
+		viewerFileSource = new downloader.Downloader(cachedir);
+		break;
+	case "localcache":
+		viewerFileSource = updater.fileSource;
+		break;
+	case "gamecache":
+		viewerFileSource = new GameCacheLoader(gamecachedir);
+		break;
+	default:
+		throw new Error("unknown mode");
+}
+
+//expose to global for debugging
 (global as any).loader = viewerFileSource;
 
 //having reused renderen processes breaks the node fs module
@@ -58,6 +92,7 @@ ipcMain.handle("load-cache-file", async (e, major: number, fileid: number) => {
 	if (viewerFileSource instanceof downloader.Downloader) {
 		if (viewerFileSource.closed) {
 			viewerFileSource = new downloader.Downloader(cachedir);
+			(global as any).loader = viewerFileSource;
 		}
 	}
 	if (viewerFileSource instanceof GameCacheLoader) {

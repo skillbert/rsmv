@@ -62,10 +62,10 @@ export async function requestLoadModel(modelId: number | string) {
 	model.setData(modelfile);
 	gl.init(document.getElementById("viewer") as any, model, vertexShader, fragmentShader);
 
-	let gltfmodel = new OB3GLTF(cache.get);
-	gltfmodel.setData(modelfile).then(async () => {
-		let gltf = await gltfmodel.gltf.convert({ singlefile: true, glb: false, baseurl: "" });
-		await fs.promises.mkdir(`${cachedir}/gltfs`, { recursive: true });
-		await fs.promises.writeFile(`${cachedir}/gltfs/${Date.now()}.gltf`, gltf.mainfile);
-	})
+	// let gltfmodel = new OB3GLTF(cache.get);
+	// gltfmodel.setData(modelfile).then(async () => {
+	// 	let gltf = await gltfmodel.gltf.convert({ singlefile: true, glb: false, baseurl: "" });
+	// 	await fs.promises.mkdir(`${cachedir}/gltfs`, { recursive: true });
+	// 	await fs.promises.writeFile(`${cachedir}/gltfs/${Date.now()}.gltf`, gltf.mainfile);
+	// })
 }

@@ -4,6 +4,11 @@ import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 
+//TODO
+//check model 123741
+
+
+
 export type Mesh = {
 	groupFlags: number;
 	unk6: number;

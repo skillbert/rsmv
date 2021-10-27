@@ -210,7 +210,9 @@ export function init(canvas: RenderCanvas, model: OB3, vertexShaderSource: strin
 	else { model.onfinishedloading = [loadcb]; }
 
 	model.loadMaterials();
-	this.draw(canvas);
+
+	//give texture loading a small headstart so they load before first draw if they are local
+	setTimeout(() => this.draw(canvas), 200);
 
 	if (canvas.addEventListener) {
 		canvas.addEventListener("mousemove", onMouseMove);
