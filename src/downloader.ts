@@ -29,27 +29,12 @@ export async function downloadServerConfig() {
 	return config;
 }
 
-// export async function download(major: number, minor: number, crc: number | null = null) {
-// 	if (!currentDownloader) { throw new Error("no downloader"); }
-// 	for (let attempts = 0; attempts < 5; attempts++) {
-// 		let buffer = await currentDownloader.downloadFile(major, minor);
-
-// 		let bufcrc = crc32(buffer)
-// 		if (crc != null && bufcrc != crc) {
-// 			console.log(`downloaded crc did not match requested data, attempt ${attempts}/5`)
-// 			continue;
-// 		}
-// 		return buffer;
-// 	}
-// 	throw new Error("correct crc not downloaded after 5 attempts");
-// }
-
-
 export class Downloader implements CacheFileSource {
 	state: State<any>;
 	socket: net.Socket;
 	server_version: number;
 	queuedReqs = 0;
+	closed = false;
 
 	ready: Promise<void>;
 
@@ -70,6 +55,7 @@ export class Downloader implements CacheFileSource {
 		this.socket.on("connect", () => this.state.onConnect());
 		this.socket.on("data", data => this.state.onData(data));
 		this.socket.on("close", () => {
+			this.closed = true;
 			this.state.onClose();
 			console.log("Connection closed");
 		});
@@ -91,55 +77,64 @@ export class Downloader implements CacheFileSource {
 		this.state = statebuilder();
 	}
 
-	async downloadFile(major: number, minor: number) {
-		console.log(`download queued (${this.queuedReqs}) ${major} ${minor}`);
-		await this.setState(() => new DownloadState(this.socket));
-		console.log(`download starting ${major} ${minor}`);
+	async downloadFile(major: number, minor: number, crc?: number) {
+		for (let attempts = 0; attempts < 5; attempts++) {
+			//console.log(`download queued (${this.queuedReqs}) ${major} ${minor}`);
+			await this.setState(() => new DownloadState(this.socket));
+			//console.log(`download starting ${major} ${minor}`);
 
-		//this stuff should be in downloadstate instead?
-		var packet = Buffer.alloc(1 + 1 + 4 + 4);
-		packet.writeUInt8(0x21, 0x0); // Request record
-		packet.writeUInt8(major, 0x1); // Index
-		packet.writeUInt32BE(minor, 0x2); // Archive
-		packet.writeUInt16BE(this.server_version, 0x6); // Server version
-		packet.writeUInt16BE(0x0, 0x8); // Unknown
-		this.socket.write(packet);
+			//this stuff should be in downloadstate instead?
+			var packet = Buffer.alloc(1 + 1 + 4 + 4);
+			packet.writeUInt8(0x21, 0x0); // Request record
+			packet.writeUInt8(major, 0x1); // Index
+			packet.writeUInt32BE(minor, 0x2); // Archive
+			packet.writeUInt16BE(this.server_version, 0x6); // Server version
+			packet.writeUInt16BE(0x0, 0x8); // Unknown
+			this.socket.write(packet);
 
-		let res = await (this.state as DownloadState).promise;
-		console.log(`download done ${major} ${minor}`);
-		return res;
+			let res: Buffer = await this.state.promise;
+			console.log(`download done ${major} ${minor}`);
+
+			let bufcrc = crc32(res)
+			if (typeof crc != "number") {
+				console.log(`downloaded a file without crc check ${major} ${minor}`);
+			} else if (bufcrc != crc) {
+				console.log(`downloaded crc did not match requested data, attempt ${attempts}/5`)
+				continue;
+			}
+			return res;
+		}
+		throw new Error("download did not match crc after 5 attempts");
 	}
 
 
 	indexMap = new Map<number, CacheIndex[]>();
 
-
 	async getFile(major: number, minor: number, crc?: number) {
-		//TODO check crc?
-		return decompress(await this.downloadFile(major, minor));
+		return decompress(await this.downloadFile(major, minor, crc));
 	}
-	async getFileArchive(major: number, minor: number, nfiles: number) {
-		return unpackBufferArchive(await this.getFile(major, minor), nfiles);
+	async getFileArchive(meta: CacheIndex) {
+		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindexcount);
 	}
 	async getFileById(major: number, fileid: number) {
+		let index = await this.getIndexFile(major);
+		//TODO don't actually search the whole thing every time a file is needed
+		let holder = index.find(q => q.subindices.includes(fileid));
+		if (!holder) { throw new Error("file not found"); }
+		let files = await this.getFileArchive(holder);
+		let file = files[holder.subindices.indexOf(fileid)].buffer;
+		return file;
+	}
+	async getIndexFile(major: number) {
 		if (!this.indexMap.get(major)) {
 			let indexfile = await this.getFile(255, major);
 			this.indexMap.set(major, indexBufferToObject(major, indexfile));
 		}
-		let index = this.indexMap.get(major)!;
-
-		let holder = index.find(q => q.subindices.includes(fileid));
-		if (!holder) { throw new Error("file not found"); }
-		let files = await this.getFileArchive(holder.major, holder.minor, holder.subindexcount);
-		let file = files[holder.subindices.indexOf(fileid)].buffer;
-		//TODO remove this hardcoded path
-		if (major == cacheMajors.textures) {
-			return file.slice(5);
-		}
-		return file;
+		return this.indexMap.get(major)!;
 	}
 
 	close() {
+		this.closed = true;
 		this.socket.destroy();
 	}
 }

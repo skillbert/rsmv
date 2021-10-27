@@ -10,6 +10,7 @@ import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { GLTFBuilder, ModelAttribute, vartypeEnum } from "./gltf";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
+import { ParsedTexture } from "./textures";
 
 type Mesh = {
 	groupFlags: number;
@@ -200,7 +201,9 @@ export class OB3 {
 
 	async getTextureFile(texid: number) {
 		if (typeof this.textureCache[texid] == "undefined") {
-			this.textureCache[texid] = this.gltf.addImage(await this.getFile(cacheMajors.textures, texid));
+			let file = await this.getFile(cacheMajors.texturesPng, texid);
+			let parsed = new ParsedTexture(file);
+			this.textureCache[texid] = this.gltf.addImage(await parsed.convertFile("png"));
 		}
 		return this.textureCache[texid];
 	}
@@ -228,7 +231,6 @@ export class OB3 {
 			if (materialfile[0] == 0x00) {
 				var mat = new JMat(materialfile).get();
 				originalMaterial = mat;
-				console.log(mat);
 				textures.diffuse = mat.maps["diffuseId"];
 				textures.metalness = 0;
 				textures.specular = 0;
@@ -239,7 +241,6 @@ export class OB3 {
 			else if (materialfile[0] == 0x01) {
 				var mat = new JMat(materialfile).get();
 				originalMaterial = mat;
-				console.log(mat);
 				if (mat.flags.hasDiffuse)
 					textures.diffuse = mat.maps["diffuseId"];
 				if (mat.flags.hasNormal)

@@ -25,13 +25,13 @@ export async function run(outdir: string, modename: keyof typeof modes, cachedir
 		source = new downloader.Downloader(outdir);
 		var indexFiles = cache.rootIndexBufferToObject(await source.getFile(255, 255));
 		let index = indexFiles[mode.index];
-		metaindex = await source.getFile(index.major, index.minor);
+		metaindex = await source.getFile(index.major, index.minor, index.crc);
 	}
 	var recordIndices = cache.indexBufferToObject(mode.index, metaindex);
 
 	for (let recordIndex of recordIndices) {
 		if ((typeof minorindex != "number" || !isNaN(minorindex)) && recordIndex.minor != minorindex) { continue; }
-		let chunks = await source.getFileArchive(recordIndex.major, recordIndex.minor, recordIndex.subindexcount);
+		let chunks = await source.getFileArchive(recordIndex);
 		for (let i = 0; i < chunks.length; i++) {
 			let json = mode.parser(null as any, chunks[i].buffer);
 			fs.writeFileSync(`${outdir}/${mode.folder}/${recordIndex.subindices[i]}.json`, JSON.stringify(json, undefined, "\t"));

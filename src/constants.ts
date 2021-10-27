@@ -4,7 +4,11 @@ export const cacheMajors = {
 	items: 19,
 	materials: 26,
 	models: 47,
-	textures: 53,
+
+	texturesDds: 52,
+	texturesPng: 53,
+	texturesBmp: 54,
+
 
 	index: 255
 }

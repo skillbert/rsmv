@@ -2,8 +2,9 @@
 import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { cacheMajors } from "../constants";
+import { ParsedTexture } from "./textures";
 
-type Mesh = {
+export type Mesh = {
 	groupFlags: number;
 	unk6: number;
 	faceCount: number;
@@ -24,16 +25,36 @@ type Mesh = {
 	vertexCount: number;
 
 	material: JMatInternal;
-	textures: { [key: string]: number | Texture };
+	textures: { [key: string]: Texture };
 	specular: number;
 	metalness: number;
 	colour: number;
+
+	//during rendering
+	textureBufferBind: WebGLTexture | null;
+	normalMapBufferBind: WebGLTexture | null;
+	compoundMapBufferBind: WebGLTexture | null;
+	environmentMapBufferBind: WebGLTexture | null;
+
+	textureBufferLoaded?: boolean;
+	normalMapBufferLoaded?: boolean;
+	compoundMapBufferLoaded?: boolean;
+	environmentMapBufferLoaded?: boolean;
+
+	vertexBufferBind: WebGLBuffer | null;
+	normalBufferBind: WebGLBuffer | null;
+	tangentBufferBind: WebGLBuffer | null;
+	uvBufferBind: WebGLBuffer | null;
+	colourBufferBind: WebGLBuffer | null;
+	flag4BufferBind: WebGLBuffer | null;
+	flag8BufferBind: WebGLBuffer | null;
+	indexBufferBinds: WebGLBuffer[] | null;
 }
 
-type Texture = HTMLImageElement & {
-	isReady: boolean;
-	parents: OB3[];
-	id: string;//TODO actually sets id of HtmlElement and possibly messes up document.getElementById
+type Texture = {
+	texture: HTMLImageElement | ImageBitmap | null;
+	loaded: Promise<HTMLImageElement | ImageBitmap> | null;
+	id: number;
 };
 
 export class OB3 {
@@ -51,7 +72,7 @@ export class OB3 {
 	particlePoolCount;
 	unk2;
 	model: any = null;
-	onfinishedloading: (() => void) | (() => void)[] = [];
+	onfinishedloading: (() => void) | (() => void)[] | undefined = [];
 	constructor(getFile: (major: number, minor: number) => Promise<Buffer>) {
 		this.getFile = getFile;
 	}
@@ -81,14 +102,7 @@ export class OB3 {
 		};
 	}
 
-	checkReady() {
-		for (var g = 0; g < this.materialGroups.length; ++g) {
-			for (var i in this.materialGroups[g].textures) {
-				let tex = this.materialGroups[g].textures[i]
-				if (typeof tex != "object" || !tex.isReady)
-					return false;
-			}
-		}
+	loaded() {
 		if (typeof this.onfinishedloading == "function")
 			this.onfinishedloading();
 		else if (typeof this.onfinishedloading == "object")
@@ -102,20 +116,15 @@ export class OB3 {
 	loadTexture(texId: number) {
 		let tex = this.textures[texId];
 		if (!tex) {
-			tex = new Image() as any;
+			tex = {
+				id: texId,
+				loaded: this.getFile(cacheMajors.texturesPng, texId).then(texfile => {
+					let parsed = new ParsedTexture(texfile);
+					return parsed.toWebgl().then(img => tex.texture = img)
+				}),
+				texture: null,
+			}
 			this.textures[texId] = tex;
-			tex.id = "" + texId; // Just for bookkeeping
-			tex.isReady = false;
-			tex.parents = [];
-			tex.onload = function (this: Texture) {
-				URL.revokeObjectURL(this.src);
-				this.isReady = true;
-				this.parents.forEach(p => p.checkReady());
-			};
-			this.getFile(cacheMajors.textures, texId).then(texfile => {
-				let blob = new Blob([texfile], { type: "image/png" });
-				tex.src = URL.createObjectURL(blob);
-			});
 		}
 		return tex;
 	}
@@ -132,7 +141,7 @@ export class OB3 {
 				var mat = new JMat(material).get();
 				materialGroup.material = mat;
 				console.log(mat);
-				materialGroup.textures["diffuse"] = mat.maps["diffuseId"];
+				materialGroup.textures["diffuse"] = this.loadTexture(mat.maps["diffuseId"]);
 				materialGroup.specular = mat.specular;
 				materialGroup.metalness = mat.metalness;
 				materialGroup.colour = mat.colour;
@@ -142,22 +151,16 @@ export class OB3 {
 				materialGroup.material = mat;
 				console.log(mat);
 				if (mat.flags.hasDiffuse)
-					materialGroup.textures["diffuse"] = mat.maps["diffuseId"];
+					materialGroup.textures["diffuse"] = this.loadTexture(mat.maps["diffuseId"]);
 				if (mat.flags.hasNormal)
-					materialGroup.textures["normal"] = mat.maps["normalId"];
+					materialGroup.textures["normal"] = this.loadTexture(mat.maps["normalId"]);
 				if (mat.flags.hasCompound)
-					materialGroup.textures["compound"] = mat.maps["compoundId"];
+					materialGroup.textures["compound"] = this.loadTexture(mat.maps["compoundId"])
 			}
-			materialGroup.textures["environment"] = 5522;
-			for (var i in materialGroup.textures) {
-				var texId = materialGroup.textures[i];
-				if (typeof texId != "string" && typeof texId != "number") { continue; }
-				let tex = this.loadTexture(texId);
-				tex.parents.push(this);
-				materialGroup.textures[i] = tex;
-			}
+			materialGroup.textures["environment"] = this.loadTexture(5522);
 		}
-		this.checkReady();
+		let ready = Object.values(this.textures).map(t => t.loaded);
+		Promise.all(ready).then(() => this.loaded())
 	}
 
 	parse() {

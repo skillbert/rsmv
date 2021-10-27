@@ -4,6 +4,9 @@ import * as downloader from "./downloader";
 import * as gamecache from "./cache";
 import { GameCacheLoader } from "./cacheloader";
 import * as path from "path";
+import { loadDds } from "./3d/ddsimage";
+
+(global as any).dds = loadDds;
 
 //skip command line arguments until we find two args that aren't flags (electron.exe and the main script)
 //we have to do this since electron also includes flags like --inspect in argv
@@ -13,12 +16,12 @@ for (let skip = 2; skip > 0 && args.length > 0; args.shift()) {
 }
 let cachedir = path.resolve(args[0] ?? "cache");
 
+let viewerFileSource: CacheFileSource;
 //where does the viewer get its files
-//let viewerFileSource = new downloader.Downloader(cachedir);
-//in order to force reconnect from debugger console
-//(global as any).reconnect = () => viewerFileSource = new downloader.Downloader(cachedir);
-let viewerFileSource = new GameCacheLoader(path.resolve(process.env.ProgramData!, "jagex/runescape"));
-//let viewerFileSource = updater.fileSource;
+viewerFileSource = new downloader.Downloader(cachedir);
+//viewerFileSource = new GameCacheLoader(path.resolve(process.env.ProgramData!, "jagex/runescape"));
+//viewerFileSource = updater.fileSource;
+(global as any).loader = viewerFileSource;
 
 //having reused renderen processes breaks the node fs module
 //this still hasn't been fixed in electron
@@ -44,23 +47,25 @@ app.whenReady().then(async () => {
 
 
 export interface CacheFileSource {
-	getFile(major: number, minor: number): Promise<Buffer>;
-	getFileArchive(major: number, minor: number, nfiles: number): Promise<gamecache.SubFile[]>;
+	getFile(major: number, minor: number, crc?: number): Promise<Buffer>;
+	getFileArchive(index: gamecache.CacheIndex): Promise<gamecache.SubFile[]>;
 	getFileById(major: number, fileid: number): Promise<Buffer>;
 
 	close(): void;
 }
 
 ipcMain.handle("load-cache-file", async (e, major: number, fileid: number) => {
-	let filecache = await viewerFileSource.getFileById(major, fileid);
-	//weird bug when comparing the output of two different live connections
-	//file 53 5522 inserts an extra 0x00 at position 0x18ff1, no clue why
-	//several other files have similar bugs
-	//let filelive = await viewerFileSource2.getFileById(major, fileid);
-	// if (!filelive.equals(filecache)) {
-	// 	debugger;
-	// }
-	return filecache;
+	if (viewerFileSource instanceof downloader.Downloader) {
+		if (viewerFileSource.closed) {
+			viewerFileSource = new downloader.Downloader(cachedir);
+		}
+	}
+	if (viewerFileSource instanceof GameCacheLoader) {
+		//redirect png textures to dds textures
+		if (major == 53) { major = 52; }
+	}
+	let file = await viewerFileSource.getFileById(major, fileid);
+	return file;
 });
 
 async function createWindow(page: string, options: Electron.BrowserWindowConstructorOptions) {

@@ -3,7 +3,7 @@ import * as electron from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import { OB3 } from "./ob3";
-import { OB3 as OB3GLTF } from "../3d/ob3togltf";
+import { OB3 as OB3GLTF } from "./ob3togltf";
 import * as gl from "./gl";
 import { cacheMajors } from "../constants";
 
@@ -28,6 +28,7 @@ async function getFile(major: number, minor: number) {
 
 (window as any).getFile = getFile;
 
+//cache the file loads a little bit as the model loader tend to request the same texture a bunch of times
 class MiniCache {
 	sectors = new Map<number, Map<number, Promise<Buffer>>>();
 	getRaw: CacheGetter;
@@ -64,6 +65,7 @@ export async function requestLoadModel(modelId: number | string) {
 	let gltfmodel = new OB3GLTF(cache.get);
 	gltfmodel.setData(modelfile).then(async () => {
 		let gltf = await gltfmodel.gltf.convert({ singlefile: true, glb: false, baseurl: "" });
-		fs.writeFile(`${cachedir}/gltfs/${Date.now()}.gltf`, gltf.mainfile, () => { });
+		await fs.promises.mkdir(`${cachedir}/gltfs`, { recursive: true });
+		await fs.promises.writeFile(`${cachedir}/gltfs/${Date.now()}.gltf`, gltf.mainfile);
 	})
 }

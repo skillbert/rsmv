@@ -3,7 +3,8 @@ import { Downloader, downloadServerConfig } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
 import { CacheIndex, CacheIndexStub, unpackBufferArchive, rootIndexBufferToObject, indexBufferToObject } from "./cache";
-import { CacheFileSource } from "main";
+import { CacheFileSource } from "./main";
+import { ParsedTexture } from "./3d/textures";
 
 var cachedir: string;
 
@@ -20,7 +21,9 @@ export type SaveFileArguments = {
 	folder: string,
 	commitFrequency?: number,
 	fileExtension: string,
-	bufferCallback(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer): void
+	bufferCallback(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer): void,
+	//converts an fs file back to cache file format
+	hydrateFsFile?(staticArguments: SaveFileArguments, recordIndex: number, buffer: Buffer): Buffer
 }
 
 type DatabaseState = { [major: number]: { [minor: number]: { version: number, crc: number } } };
@@ -193,9 +196,15 @@ export const updateCallbacks = {
 				"singular": "texture", "plural": "textures", "folder": "textures",
 				"fileExtension": "png",
 				"bufferCallback": (staticArguments, record, buffer) => {
-					//TODO where does this buffer.slice come from? missing some header logic?
-					//i'm guessing there is an image type header (png/jpeg/etc)
-					fs.writeFile(`${cachedir}/${staticArguments.folder}/${record}.png`, buffer.slice(0x5), () => { });
+					let texture = new ParsedTexture(buffer);
+					if (texture.type != "png") { throw new Error("png image expected"); }
+					//TODO actually extract all subimgs/mipmaps
+					fs.writeFile(`${cachedir}/${staticArguments.folder}/${record}.png`, texture.imagefiles[0], () => { });
+				},
+				hydrateFsFile: (staticarguments, record, buffer) => {
+					//TODO read all subimgs/mipmaps
+					let texture = ParsedTexture.fromFile([buffer]);
+					return texture.fullfile;
 				}
 			} as SaveFileArguments
 		}
@@ -226,7 +235,6 @@ export async function run(cachedirarg: string) {
 	progress("Connecting to servers...");
 	let config = downloadServerConfig();
 	var downloader = new Downloader(cachedir, config);
-	await new Promise(d => setTimeout(d, 5000));
 
 	progress("Downloading index...");
 	var metaindex = await downloader.getFile(255, 255);
@@ -269,7 +277,7 @@ export const fileSource: CacheFileSource = {
 		throw new Error("not implemented");
 		//the original (packed) files are lost, would have to rebuild it completely
 	},
-	async getFileArchive(major, minor, nfiles) {
+	async getFileArchive(index) {
 		throw new Error("not implemented");
 		//the updater script already places the subfiles in seperator files
 		//would have to find out which subfile belong to which minor from the sqlite database
@@ -278,7 +286,11 @@ export const fileSource: CacheFileSource = {
 		let meta = updateCallbacks[255][major].staticArguments as SaveFileArguments;
 		if (!meta) { throw new Error("this file source does not have this file major index"); }
 		let filename = `${cachedir}/${meta.folder}/${fileid}.${meta.fileExtension}`;
-		return fs.promises.readFile(filename);
+		let file = await fs.promises.readFile(filename);
+		if (meta.hydrateFsFile) {
+			file = meta.hydrateFsFile(meta, fileid, file);
+		}
+		return file;
 	},
 	close() { }
 };

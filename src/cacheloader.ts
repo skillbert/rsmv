@@ -43,14 +43,17 @@ export class GameCacheLoader implements CacheFileSource {
 		return this.opentables.get(major)!;
 	}
 
-	async getFile(major: number, minor: number) {
+	async getFile(major: number, minor: number, crc?: number) {
 		let { dbget } = this.openTable(major);
-		let row = await dbget(`SELECT DATA FROM cache WHERE KEY=?`, [minor]);
+		let row = await dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
+		if (typeof crc == "number" && row.CRC != crc) {
+			console.log(`crc from cache did not match requested crc (${crc}) for ${major}.${minor}`);
+		}
 		return decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
 	}
 
-	async getFileArchive(major: number, minor: number, nfiles: number) {
-		return cache.unpackSqliteBufferArchive(await this.getFile(major, minor), nfiles);
+	async getFileArchive(index: cache.CacheIndex) {
+		return cache.unpackSqliteBufferArchive(await this.getFile(index.major, index.minor, index.crc), index.subindexcount);
 	}
 
 	async getFileById(major: number, fileid: number) {
@@ -58,12 +61,8 @@ export class GameCacheLoader implements CacheFileSource {
 
 		let holder = (await indices).find(q => q.subindices.includes(fileid));
 		if (!holder) { throw new Error("file not found"); }
-		let files = await this.getFileArchive(holder.major, holder.minor, holder.subindexcount);
+		let files = await this.getFileArchive(holder);
 		let file = files[holder.subindices.indexOf(fileid)].buffer;
-		//TODO remove this hardcoded path
-		if (major == cacheMajors.textures) {
-			return file.slice(5);
-		}
 		return file;
 	}
 
