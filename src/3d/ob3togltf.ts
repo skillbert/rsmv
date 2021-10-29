@@ -1,12 +1,5 @@
-import { GLTFLoader, GLTF } from "three/examples/jsm/loaders/GLTFLoader";
-
-
-
-
-// May or may not be called ob3 :shrug:
-import * as fs from "fs";
 import { JMat, JMatInternal } from "./jmat";
-import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
+import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder, ModelAttribute, vartypeEnum } from "./gltf";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
@@ -168,6 +161,7 @@ export class OB3 {
 	model: Stream | null = null;
 	gltf = new GLTFBuilder();
 	onfinishedloading: (() => void) | (() => void)[] = [];
+	modifications: ModelModifications = {};
 	constructor(getFile: (major: number, minor: number) => Promise<Buffer>) {
 		this.getFile = (m, id) => {
 			console.log(`gltf getting ${m} ${id}`);
@@ -175,8 +169,9 @@ export class OB3 {
 		}
 	}
 
-	setData(data: Buffer) {
+	setData(data: Buffer, modifications: ModelModifications) {
 		this.model = new Stream(data);
+		this.modifications = modifications;
 		return this.parse();
 	}
 
@@ -210,6 +205,13 @@ export class OB3 {
 
 	//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
 	async parseMaterial(matid: number) {
+		for (let repl of this.modifications.replaceMaterials ?? []) {
+			if (matid == repl[0]) {
+				matid = repl[1];
+				break;
+			}
+		}
+
 		let textures: {
 			diffuse?: number,
 			specular?: number,
@@ -225,8 +227,8 @@ export class OB3 {
 		}
 		let originalMaterial: JMatInternal | null = null;
 		let environment = 5522;
-		if (matid != 0) {
-			var materialfile = await this.getFile(cacheMajors.materials, matid - 1);
+		if (matid != -1) {
+			var materialfile = await this.getFile(cacheMajors.materials, matid);
 
 			if (materialfile[0] == 0x00) {
 				var mat = new JMat(materialfile).get();
@@ -249,6 +251,7 @@ export class OB3 {
 					textures.compound = mat.maps["compoundId"];
 			}
 		}
+
 		return { textures, environment, originalMaterial, factors };
 	}
 
@@ -284,16 +287,21 @@ export class OB3 {
 			let hasBoneids = (group.groupFlags & 0x08) != 0;
 
 			if (hasVertices) {
+				let replaces = this.modifications.replaceColors ?? [];
+				replaces.push([39834, 43220]);//TODO what is this? found it hard coded in before
 				group.colourBuffer = new Uint8Array(group.faceCount * 3);
 				for (var i = 0; i < group.faceCount; ++i) {
-					var faceColour = model.readUShort();        // Face colour
-					if (faceColour == 39834)//?
-						faceColour = 43220;
-					var colour = HSL2RGB(packedHSL2HSL(faceColour));
-					//var colour = packedHSL2HSL(faceColour);
-					for (var j = 0; j < 3; ++j) {
-						group.colourBuffer[i * 3 + j] = colour[j];
+					var faceColour = model.readUShort();
+					for (let repl of replaces) {
+						if (faceColour == repl[0]) {
+							faceColour = repl[1];
+							break;
+						}
 					}
+					var colour = HSL2RGB(packedHSL2HSL(faceColour));
+					group.colourBuffer[i * 3 + 0] = colour[0];
+					group.colourBuffer[i * 3 + 1] = colour[1];
+					group.colourBuffer[i * 3 + 2] = colour[2];
 				}
 			}
 			if (hasVertexAlpha) {
@@ -415,7 +423,7 @@ export class OB3 {
 				bufferView: viewIndex
 			});
 
-			let { textures, originalMaterial, factors } = await this.parseMaterial(group.materialId);
+			let { textures, originalMaterial, factors } = await this.parseMaterial(group.materialId - 1);
 
 			let materialdef: Material = {
 				//TODO check if diffuse has alpha as well

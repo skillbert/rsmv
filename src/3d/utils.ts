@@ -1,3 +1,9 @@
+
+export type ModelModifications = {
+	replaceColors?: [from:number, to:number][];
+	replaceMaterials?: [from:number, to:number][];
+}
+
 export type Stream = {
 	getData(): Buffer;
 	skip(n: number): void;

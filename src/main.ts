@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron/main";
 import * as updater from "./updater";
 import * as downloader from "./downloader";
 import * as gamecache from "./cache";
@@ -73,7 +73,7 @@ app.whenReady().then(async () => {
 		//hide instead of close so electron doesn't shut down
 		splash.hide();
 	}
-	var index = await createWindow(`assets/index.html`, { width: 800, height: 600, frame: false, webPreferences: { nodeIntegration: true, additionalArguments: ["cachedir=" + cachedir] } });
+	var index = await createWindow(`assets/index.html`, { width: 800, height: 600, frame: false, webPreferences: { enableRemoteModule: true, nodeIntegration: true, contextIsolation: false, additionalArguments: ["cachedir=" + cachedir] } });
 
 	index.webContents.openDevTools({ mode: "detach" });
 	splash?.close();

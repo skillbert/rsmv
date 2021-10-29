@@ -58,7 +58,7 @@ export class Reader {
 	 */
 	read(bufferin: Buffer) {
 		let buffer = bufferin as Buffer & { scan: number };
-		var output = {};
+		var output: any = {};
 		buffer.scan = 0;
 		var history: string[] = [];
 		try {
@@ -100,7 +100,7 @@ export class Reader {
 			this._write(buffer, op, obj[prop]);
 		}
 		buffer.writeUInt8(0x00, buffer.scan++);
-		
+
 		return buffer.slice(0, buffer.scan);
 	}
 }
@@ -184,7 +184,7 @@ function _read(this: Reader, buffer: Buffer & { scan: number }, readAs: Composed
 					if (readAs.length == 1) throw new Error(`'read' variables interpretted as a map must contain items: ${JSON.stringify(readAs)}`);
 					var outputobj: Object = {}
 					var keycount = buffer.readUInt8(buffer.scan); buffer.scan++;
-					for (var i = 0; i < keycount; ++i) outputobj["$"+this._read(buffer, readAs[1])] = this._read(buffer, readAs[2]);
+					for (var i = 0; i < keycount; ++i) outputobj["$" + this._read(buffer, readAs[1])] = this._read(buffer, readAs[2]);
 					return outputobj;
 				case "struct":
 					if (readAs.length == 1) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(readAs)}`);

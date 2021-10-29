@@ -6,5 +6,5 @@ import * as sqlite3 from "sqlite3"; // Not strictly necessary, but it'll already
  * @param {Buffer} buffer The decompressed buffer of the item
  */
 export function handle(db: sqlite3.Database, buffer: Buffer) {
-	return opdecoder.decode("opcodes/items.json", buffer);
+	return opdecoder.decode(__dirname + "/opcodes/items.json", buffer);
 }

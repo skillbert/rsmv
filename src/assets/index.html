@@ -2,87 +2,30 @@
 <html>
 
 <head>
-    <meta charset="UTF-8">
-    <title>RuneScape Model Viewer</title>
-    <!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
-    <script>require('electron-titlebar');</script>
-	<link rel="stylesheet" href="index.css"/>
+	<meta charset="UTF-8">
+	<title>RuneScape Model Viewer</title>
+	<!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
+	<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+	<script>require('electron-titlebar');</script>
+	<link rel="stylesheet" href="index.css" />
 </head>
 
 <body>
-    <div id="background">
-        <div style="background-color: inherit;"></div>
-        <div style="background-image: url('background.png'); filter: brightness(0.75) saturate(0.5);"></div>
-        <div style="background-color: inherit; height: 30px; filter: saturate(0.5);"></div>
-    </div>
+	<div id="background">
+		<div style="background-color: inherit;"></div>
+		<div style="background-image: url('background.png'); filter: brightness(0.75) saturate(0.5);"></div>
+		<div style="background-color: inherit; height: 30px; filter: saturate(0.5);"></div>
+	</div>
     <div id="electron-titlebar" class="drag">
-    </div>
-    <div class="top-bar">
-        <div id="top-bar-icon">RS</div>
-        <div class="top-bar-caption">RuneScape Model Viewer</div>
-    </div>
-    <div id="content">
-        <canvas id="viewer"></canvas>
-        <div id="sidebar" style="display: grid; grid-template-rows: 89fr 34fr; grid-gap: 13px; overflow: hidden;">
-            <div id="sidebar-browser" style="overflow: hidden; display: grid; grid-template-rows: max-content 1fr;">
-                <div id="sidebar-browser-tab-strip" style="display: grid; grid-template-columns: 144fr 55px 89fr 55px 89fr 55px 89fr 55px 144fr; height: 55px; padding-top: 10px; padding-bottom: 5px;">
-                    <div></div>
-                    <div class="rsmv-icon-button"><span>Items IDs</span></div>
-                    <div></div>
-                    <div class="rsmv-icon-button"><span>NPCs IDs</span></div>
-                    <div></div>
-                    <div class="rsmv-icon-button"><span>Obj/Locs IDs</span></div>
-                    <div></div>
-                    <div class="rsmv-icon-button"><span>Model IDs</span></div>
-                    <div></div>
-                </div>
-                <div id="sidebar-browser-tab" style="display: grid; grid-template-rows: max-content 1fr; overflow-y: auto;">
-                    <form id="sidebar-browser-search-bar" action="javascript: viewer.submitSearch();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
-                        <div></div>
-                        <input type="text" id="sidebar-browser-search-bar-input" value="0">
-                        <input type="submit" style="width: 25px; height: 25px" value=""class="sub-btn">
-                        <div></div>
-                    </form>
-                    <div class="result-text">
-                        <p>List of found IDs</p>
-                    </div>
-                    <div id="sidebar-browser-tab-data">
-                        <style>
-                        </style>
-                        <div id="sidebar-browser-tab-data-container" class="ids">
-                            <!--
-								<div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-								...
-							-->
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="credits">
-                <p>
-                    Interface modified by the RuneScape <br>Preservation Unit. 
-                    Original tool author unknown.
-                </p>
-                <div class="nav-jail">
-                    <form id="sidebar-browser-search-bar2" action="javascript: viewer.submitSearchminus();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
-                        <div></div>
-                        <input type="submit" style="width: 25px; height: 25px" value=""class="sub-btn-minus">
-                        <div></div>
-                    </form>
-                    <form id="sidebar-browser-search-bar1" action="javascript: viewer.submitSearchplus();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
-                        <div></div>
-                        <input type="submit" style="width: 25px; height: 25px" value=""class="sub-btn-plus">
-                        <div></div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-        </div>
-    <script>
-		const viewer=require("../viewer/viewer");
-    </script>
+	</div>
+	<div class="top-bar">
+		<div id="top-bar-icon">RS</div>
+		<div class="top-bar-caption">RuneScape Model Viewer</div>
+	</div>
+	<div id="app"></div>
+	<script>
+		const viewer = require("../viewer");
+	</script>
 </body>
 
 </html>

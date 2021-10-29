@@ -1,7 +1,7 @@
 {
 	"compilerOptions": {
 		"moduleResolution": "node",
-		"module": "commonjs",
+		"module": "CommonJS",
 		"lib": [ "ESNext","DOM"],
 		"target": "ES2020",
 		"sourceMap": false,
@@ -10,7 +10,9 @@
 		"allowJs": false,
 		"strictNullChecks": true,
 		"baseUrl": "./src",
-		"outDir": "./dist"
+		"outDir": "./dist",
+		"esModuleInterop": true,
+		"experimentalDecorators": true
 	},
 	"exclude": [ "node_modules" ],
 	"compileOnSave": false

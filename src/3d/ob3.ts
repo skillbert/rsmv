@@ -1,6 +1,6 @@
 // May or may not be called ob3 :shrug:
 import { JMat, JMatInternal } from "./jmat";
-import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
+import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 

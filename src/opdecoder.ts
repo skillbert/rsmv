@@ -8,7 +8,7 @@ import * as opcode_reader from "./opcode_reader";
 export function decode(opcodePath: string, buffer: Buffer) {
 	//TODO i wasn't aware nodejs json allowed buffers?
 	//TODO don't actually read and decode these files for every single run!
-	const typedef = JSON.parse(fs.readFileSync("opcodes/typedef.json", "utf-8"));
+	const typedef = JSON.parse(fs.readFileSync(__dirname + "/opcodes/typedef.json", "utf-8"));
 	const _opcodes = JSON.parse(fs.readFileSync(opcodePath, "utf-8"));
 	var opcodes = {}
 	for (var k in _opcodes) opcodes[parseInt(k, 16)] = _opcodes[k];
@@ -18,7 +18,7 @@ export function decode(opcodePath: string, buffer: Buffer) {
 export function encode(opcodePath: string, json: Object) {
 	//TODO i wasn't aware nodejs json allowed buffers?
 	//TODO don't actually read and decode these files for every single run!
-	const typedef = JSON.parse(fs.readFileSync("opcodes/typedef.json", "utf-8"));
+	const typedef = JSON.parse(fs.readFileSync(__dirname + "/opcodes/typedef.json", "utf-8"));
 	const _opcodes = JSON.parse(fs.readFileSync(opcodePath, "utf-8"));
 	var opcodes = {}
 	for (var k in _opcodes) opcodes[parseInt(k, 16)] = _opcodes[k];
