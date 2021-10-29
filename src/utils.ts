@@ -84,16 +84,14 @@ export function Stream(data: Buffer) {
 			exponent = data[scan++];
 		}
 		var mantissa = upper | mid | lower;
-		if (signage)
-			console.log(exponent.toString(16), mantissa.toString(16));
 		if (signage) {
+			//console.log(exponent.toString(16), mantissa.toString(16));
 			exponent = (exponent << 1) & 0xFE;
 			if ((mantissa & 0x800000) == 0x800000)
 				exponent |= 0x1;
 			mantissa &= 0x7FFFFF;
+			//console.log(exponent.toString(16), mantissa.toString(16));
 		}
-		if (signage)
-			console.log(exponent.toString(16), mantissa.toString(16));
 		return (1.0 + mantissa * Math.pow(2.0, signage ? -23.0 : -24.0)) * Math.pow(2.0, exponent - 127.0);
 	}
 

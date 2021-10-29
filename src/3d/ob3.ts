@@ -115,6 +115,17 @@ export class OB3 {
 				this.onfinishedloading[i]();
 		else
 			console.log("WebGLoop.ob3.js: OnFinishedLoading event corrupted by an external library");
+
+
+		let logged = new Set<any>();
+		for (let group of this.materialGroups) {
+			for (let tex of Object.values(group.textures)) {
+				if (logged.has(tex.texture)) { continue; }
+				if (tex.id == 5522) { continue; }
+				console.log(`loaded mat:${group.materialId}, tex: ${tex.id}, ${tex.texture?.width}x${tex.texture?.height}`, group.material);
+				logged.add(tex.texture);
+			}
+		}
 		return true;
 	}
 
@@ -145,7 +156,6 @@ export class OB3 {
 			if (material[0] == 0x00) {
 				var mat = new JMat(material).get();
 				materialGroup.material = mat;
-				console.log(mat);
 				materialGroup.textures["diffuse"] = this.loadTexture(mat.maps["diffuseId"]);
 				materialGroup.specular = mat.specular;
 				materialGroup.metalness = mat.metalness;
@@ -154,7 +164,6 @@ export class OB3 {
 			else if (material[0] == 0x01) {
 				var mat = new JMat(material).get();
 				materialGroup.material = mat;
-				console.log(mat);
 				if (mat.flags.hasDiffuse)
 					materialGroup.textures["diffuse"] = this.loadTexture(mat.maps["diffuseId"]);
 				if (mat.flags.hasNormal)
@@ -162,6 +171,7 @@ export class OB3 {
 				if (mat.flags.hasCompound)
 					materialGroup.textures["compound"] = this.loadTexture(mat.maps["compoundId"])
 			}
+			//console.log(mat);
 			materialGroup.textures["environment"] = this.loadTexture(5522);
 		}
 		let ready = Object.values(this.textures).map(t => t.loaded);

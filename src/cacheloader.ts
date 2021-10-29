@@ -48,7 +48,7 @@ export class GameCacheLoader implements CacheFileSource {
 		let row = await dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
 		if (typeof crc == "number" && row.CRC != crc) {
 			//TODO this is always off by either 1 or 2
-			console.log(`crc from cache did not match requested crc (${crc}) for ${major}.${minor}`);
+			console.log(`crc from cache (${row.CRC}) did not match requested crc (${crc}) for ${major}.${minor}`);
 		}
 		return decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
 	}
