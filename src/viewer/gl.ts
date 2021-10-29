@@ -1,5 +1,5 @@
 import { getProjectionMatrix, Matrix4x4Utils, packedHSL2HSL } from "../utils";
-import { Mesh, OB3 } from "./ob3";
+import { Mesh, OB3 } from "../3d/ob3";
 
 //TODO very weak typing in this file
 type RenderCanvas = HTMLCanvasElement & {

@@ -6,240 +6,8 @@
     <title>RuneScape Model Viewer</title>
     <!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
-    <style>
-		/*//TODO move this to new file*/
-        :root {
-            --main-bg-colour: #232323;
-            --secondary-bg-colour: #282e2e;
-            --highlight: #438ab5;
-        }
-        body {
-            margin: 0px;
-            padding: 0px;
-            overflow: hidden;
-            background-color: var(--main-bg-colour);
-            color: #aaa;
-            font-family: 'Segoe', sans-serif;
-            font-size: 12px;
-            user-select: none;
-        }
-        .sub-btn {
-            background:url("search-btn.png");
-            background-repeat: no-repeat;
-            background-color:#FBCC4A;
-            border-color:#FBCC4A;
-            padding: top 2px;
-            padding-left:2px;
-        }
-        .sub-btn-plus {
-            background:url("search-btn-plus.png");
-            background-repeat: no-repeat;
-            border: hidden;
-            padding: top 2px;
-            padding-left:2px;
-        }
-        .sub-btn-minus {
-            background:url("search-btn-minus.png");
-            background-repeat: no-repeat;
-            border: hidden;
-            padding: top 2px;
-            padding-left:2px;
-        }
-        .nav-jail {
-            display:flex;
-            margin-left:auto;
-            margin-right:auto;
-            position:relative;
-            top:-5px;
-            left:17px;
-        }
-        .result-text {
-            text-align:center;
-            padding-bottom:0px;
-            margin-bottom:0px;
-        }
-        .credits {
-            text-align:center;
-            position:relative;
-            top:30px; /* orig 70px */
-        }
-        #background {
-            position: absolute;
-            top: 0px;
-            bottom: 0px;
-            left: 0px;
-            right: 0px;
-            background-color: inherit;
-        }
-        #background > div {
-            position: absolute;
-            top: 0px;
-            bottom: 0px;
-            left: 0px;
-            right: 0px;
-        }
-        #electron-titlebar {
-            margin: 0px;
-            padding: 0px;
-            height: 30px !important;
-        }
-        #content {
-            position: absolute;
-            top: 30px;
-            bottom: 0px;
-            left: 0px;
-            right: 0px;
-            overflow: hidden;
-        }
-        .button-img-minimize, .button-img-maximize, .button-img-restore, .button-img-close {
-            filter: invert(1);
-        }
-        .top-bar {
-            position: absolute;
-            top: 0px;
-            height: 30px;
-            left: 0px;
-            right: 135px;
-            display: flex;
-            flex-direction: row;
-        }
-        #top-bar-icon  {
-            width: 30px;
-            height: 30px;
-            line-height: 30px;
-            vertical-align: middle;
-            text-align: center;
-            background-color: var(--main-bg-colour);
-        }
-        .top-bar-button {
-            -webkit-app-region: no-drag;
-            width: min-content;
-            height: 30px;
-            line-height: 30px;
-            vertical-align: middle;
-            padding-left: 8px;
-            padding-right: 8px;
-        }
-        .top-bar-button:hover {
-            background-color: rgba(196, 196, 196, 0.4);
-        }
-        .top-bar-caption {
-            flex-grow: 1;
-            height: 100%;
-            line-height: 30px;
-            text-align: center;
-            vertical-align: middle;
-        }
-
-        input[type="text"] {
-            background-color: #000000aa;
-            border: 1px solid #88888888;
-            border-radius: 3px;
-            color: #aaaaaa;
-            line-height: 21px;
-            padding-left: 10px;
-            padding-right: 10px;
-        }
-
-        input[type="text"]:focus {
-            outline-color: #1e96e0;
-        }
-
-        #content {
-            display: grid;
-            grid-template-columns: auto min-content;
-        }
-        #viewer {
-            width: 100%;
-            height: 100%;
-            grid-column-start: 1;
-            grid-column-end: span 0;
-        }
-        #sidebar {
-            background-color: var(--secondary-bg-colour);
-            min-width: calc(4 * 55px);
-            width: 31vw;
-            max-width: calc(4 * 55px + 3.5 * 55px);
-            height: 100%;
-            grid-column-start: 2;
-            grid-column-end: span 0;
-            box-shadow: 0px 0px 34px #00000033;
-        }
-
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background-color: #8397a5;
-            border-radius: 4px;
-            margin-right: 5px;
-        }
-
-        ::-webkit-scrollbar-thumb:active {
-            background-color: #438ab5;
-        }
-
-        ::-webkit-scrollbar-track {
-            background-color: #00000033;
-            border-radius: 4px;
-        }
-
-        .rsmv-icon-button {
-            position: relative;
-            vertical-align: middle;
-            text-align: center;
-            padding: 10px;
-            margin: 5px;
-            border-radius: 2px;
-            text-shadow: 0px 0px 5px #00000033;
-        }
-
-        .rsmv-icon-button:hover {
-            background-color: #438ab5;
-            color: #ffffff;
-        }
-
-        .rsmv-icon-button span {
-            position: absolute;
-            left: 0px;
-            bottom: 0px;
-            right: 0px;
-            text-align: center;
-        }
-        
-        .rsmv-button {
-            width: max-content;
-            height: max-content;
-            vertical-align: middle;
-            text-align: center;
-            padding: 10px;
-            margin: 5px;
-            border-radius: 2px;
-            text-shadow: 0px 0px 5px #00000033;
-        }
-
-        .rsmv-button.rsmv-major {
-            background-color: #1e96e0;
-            color: #ffffff;
-        }
-
-        .rsmv-button:hover {
-            background-color: #438ab5;
-            color: #ffffff;
-        }
-
-        .rsmv-button.rsmv-major:hover {
-            background-color: #1da1f2;
-            color: #ffffff;
-        }
-        
-        .rsmv-button.rsmv-minor:hover {
-            background-color: #8397a5;
-            color: #ffffff;
-        }
-    </style>
     <script>require('electron-titlebar');</script>
+	<link rel="stylesheet" href="index.css"/>
 </head>
 
 <body>
@@ -270,9 +38,9 @@
                     <div></div>
                 </div>
                 <div id="sidebar-browser-tab" style="display: grid; grid-template-rows: max-content 1fr; overflow-y: auto;">
-                    <form id="sidebar-browser-search-bar" action="javascript: submitSearch();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
+                    <form id="sidebar-browser-search-bar" action="javascript: viewer.submitSearch();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
                         <div></div>
-                        <input type="text" id="sidebar-browser-search-bar-input">
+                        <input type="text" id="sidebar-browser-search-bar-input" value="0">
                         <input type="submit" style="width: 25px; height: 25px" value=""class="sub-btn">
                         <div></div>
                     </form>
@@ -281,131 +49,12 @@
                     </div>
                     <div id="sidebar-browser-tab-data">
                         <style>
-                            #sidebar-browser-tab-data {
-                                overflow-x: hidden;
-                                overflow-y: auto;
-                                padding: 10px;
-                                margin-right: 5px;
-                            }
                         </style>
                         <div id="sidebar-browser-tab-data-container" class="ids">
-                            <style>
-                                #sidebar-browser-tab-data-container {
-                                    display: flex;
-                                    flex-direction: row;
-                                    flex-wrap: wrap;
-                                    text-align: center;
-                                }
-
-                                #sidebar-browser-tab-data-container div {
-                                    border-radius: 3px;
-                                }
-
-                                #sidebar-browser-tab-data-container div:hover {
-                                    background-color: var(--highlight);
-                                    color: #ffffff;
-                                }
-
-                                #sidebar-browser-tab-data-container div img {
-                                    object-fit: contain;
-                                    object-position: center;
-                                }
-                            </style>
-                            <style class="items">
-                                #sidebar-browser-tab-data-container.items div {
-                                    display: grid;
-                                    grid-template-columns: 34px 1fr;
-                                    height: 34px;
-                                    margin: 5px;
-                                    min-width: 144px;
-                                    padding: 5px;
-                                    width: calc(50% - 20px);
-                                }
-                                
-                                #sidebar-browser-tab-data-container.items div img {
-                                    border: 0px;
-                                    height: 34px;
-                                    width: 34px;
-                                }
-                                
-                                #sidebar-browser-tab-data-container.items div span {
-                                    height: 34px;
-                                    line-height: 34px;
-                                    margin-left: 10px;
-                                    margin-right: 10px;
-                                    overflow: hidden;
-                                    text-align: left;
-                                    text-overflow: ellipsis;
-                                    vertical-align: middle;
-                                    width: calc(100% - 20px);
-                                    white-space: nowrap;
-                                }
-                            </style>
-                            <style class="npcs">
-                                #sidebar-browser-tab-data-container.npcs div {
-                                    display: grid;
-                                    grid-template-rows: 27.5px 34px 27.5px;
-                                    width: 89px;
-                                    height: 89px;
-                                    margin: 10px;
-                                }
-                                
-                                #sidebar-browser-tab-data-container.npcs div img {
-                                    width: 34px;
-                                    height: 34px;
-                                    background-color: white;
-                                    grid-row: 2;
-                                }
-                                
-                                #sidebar-browser-tab-data-container.npcs div span {
-                                    grid-row: 3;
-                                }
-                            </style>
-                            <style class="npcs">
-                                #sidebar-browser-tab-data-container.ids div {
-                                    height: 21px;
-                                    margin: 5px;
-                                    min-width: 55px;
-                                    padding: 5px;
-                                    width: calc(25% - 40px);
-                                }
-                                
-                                #sidebar-browser-tab-data-container.ids div span {
-                                    height: 21px;
-                                    line-height: 22px;
-                                    vertical-align: middle;
-                                }
-                            </style>
-                            <!--<div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-                            <div><img src="https://runescape.wiki/images/b/b5/Dwarf_remains.png?83843"><span>Dwarf remains</span></div>
-                            <div><img src="https://runescape.wiki/images/a/a7/Toolkit.png?6991d"><span>Toolkit</span></div>
-                            <div><img src="https://runescape.wiki/images/f/fa/Cannonball.png?14c57"><span>Cannonball</span></div>
-                            <div><img src="https://runescape.wiki/images/4/42/Nulodion%27s_notes.png?303a9"><span>Nulodion's notes</span></div>
-                            <div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-                            <div><img src="https://runescape.wiki/images/b/b5/Dwarf_remains.png?83843"><span>Dwarf remains</span></div>
-                            <div><img src="https://runescape.wiki/images/a/a7/Toolkit.png?6991d"><span>Toolkit</span></div>
-                            <div><img src="https://runescape.wiki/images/f/fa/Cannonball.png?14c57"><span>Cannonball</span></div>
-                            <div><img src="https://runescape.wiki/images/4/42/Nulodion%27s_notes.png?303a9"><span>Nulodion's notes</span></div>
-                            <div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-                            <div><img src="https://runescape.wiki/images/b/b5/Dwarf_remains.png?83843"><span>Dwarf remains</span></div>
-                            <div><img src="https://runescape.wiki/images/a/a7/Toolkit.png?6991d"><span>Toolkit</span></div>
-                            <div><img src="https://runescape.wiki/images/f/fa/Cannonball.png?14c57"><span>Cannonball</span></div>
-                            <div><img src="https://runescape.wiki/images/4/42/Nulodion%27s_notes.png?303a9"><span>Nulodion's notes</span></div>
-                            <div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-                            <div><img src="https://runescape.wiki/images/b/b5/Dwarf_remains.png?83843"><span>Dwarf remains</span></div>
-                            <div><img src="https://runescape.wiki/images/a/a7/Toolkit.png?6991d"><span>Toolkit</span></div>
-                            <div><img src="https://runescape.wiki/images/f/fa/Cannonball.png?14c57"><span>Cannonball</span></div>
-                            <div><img src="https://runescape.wiki/images/4/42/Nulodion%27s_notes.png?303a9"><span>Nulodion's notes</span></div>
-                            <div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-                            <div><img src="https://runescape.wiki/images/b/b5/Dwarf_remains.png?83843"><span>Dwarf remains</span></div>
-                            <div><img src="https://runescape.wiki/images/a/a7/Toolkit.png?6991d"><span>Toolkit</span></div>
-                            <div><img src="https://runescape.wiki/images/f/fa/Cannonball.png?14c57"><span>Cannonball</span></div>
-                            <div><img src="https://runescape.wiki/images/4/42/Nulodion%27s_notes.png?303a9"><span>Nulodion's notes</span></div>
-                            <div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-                            <div><img src="https://runescape.wiki/images/b/b5/Dwarf_remains.png?83843"><span>Dwarf remains</span></div>
-                            <div><img src="https://runescape.wiki/images/a/a7/Toolkit.png?6991d"><span>Toolkit</span></div>
-                            <div><img src="https://runescape.wiki/images/f/fa/Cannonball.png?14c57"><span>Cannonball</span></div>
-                            <div><img src="https://runescape.wiki/images/4/42/Nulodion%27s_notes.png?303a9"><span>Nulodion's notes</span></div>-->
+                            <!--
+								<div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
+								...
+							-->
                         </div>
                     </div>
                 </div>
@@ -416,12 +65,12 @@
                     Original tool author unknown.
                 </p>
                 <div class="nav-jail">
-                    <form id="sidebar-browser-search-bar2" action="javascript: submitSearchminus();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
+                    <form id="sidebar-browser-search-bar2" action="javascript: viewer.submitSearchminus();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
                         <div></div>
                         <input type="submit" style="width: 25px; height: 25px" value=""class="sub-btn-minus">
                         <div></div>
                     </form>
-                    <form id="sidebar-browser-search-bar1" action="javascript: submitSearchplus();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
+                    <form id="sidebar-browser-search-bar1" action="javascript: viewer.submitSearchplus();" style="display: grid; grid-template-columns: 72fr 89fr 10px 72fr; grid-gap: 8px; text-align: center; padding: 10px;">
                         <div></div>
                         <input type="submit" style="width: 25px; height: 25px" value=""class="sub-btn-plus">
                         <div></div>
@@ -433,48 +82,6 @@
         </div>
     <script>
 		const viewer=require("../3d/viewer");
-    </script>
-    <script>
-		//TODO move this to module as well
-        var container = document.getElementById("sidebar-browser-tab-data-container");
-        document.getElementById("sidebar-browser-search-bar-input").value = "0";
-
-        function submitSearchIds(value) {
-            value = parseInt(value);
-            if (true) {
-                viewer.requestLoadModel(value);
-                const _i = value;
-                var div = document.createElement("div");
-                var span = document.createElement("span");
-                span.innerText = _i;
-                div.appendChild(span);
-                div.addEventListener("click", function() {
-                    viewer.requestLoadModel(_i);
-                });
-                container.appendChild(div, 0);
-            }
-        }
-
-        function submitSearch() {
-            var value = document.getElementById("sidebar-browser-search-bar-input").value;
-            submitSearchIds(value);
-        }
-        function submitSearchminus() {
-            var value = document.getElementById("sidebar-browser-search-bar-input").value;
-            value = parseInt(value) - 1;
-            document.getElementById("sidebar-browser-search-bar-input").value = value;
-            submitSearchIds(value);
-        }
-        function submitSearchplus() {
-            var value = document.getElementById("sidebar-browser-search-bar-input").value;
-            value = parseInt(value) + 1;
-            document.getElementById("sidebar-browser-search-bar-input").value = value;
-            submitSearchIds(value);
-        }
-        //function submitSearchtest() {
-         //   var value = document.getElementById("sidebar-browser-search-bar-input").value;
-         //   document.getElementById("sidebar-browser-search-bar-input").value = "66" + 1;
-          //  submitSearchIds(value);
     </script>
 </body>
 
