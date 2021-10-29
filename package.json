@@ -7,7 +7,8 @@
 		"start": "electron --inspect --experimental-repl-await ./dist/main.js",
 		"debug": "electron --inspect-brk ./dist/main.js",
 		"build": "gulp build",
-		"watch": "gulp watch"
+		"watch": "gulp watch",
+		"ts":"tsc --watch"
 	},
 	"author": "Adam",
 	"license": "ISC",

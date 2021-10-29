@@ -23,7 +23,7 @@ window.addEventListener("keydown", e => {
 var cachearg = process.argv.find(a => a.match(/^cachedir=/));
 if (!cachearg) { throw new Error("url arguemnt 'cachedir' not set"); }
 var cachedir = cachearg.split("=")[1];
-
+ 
 
 (window as any).getFile = getFile;
 
