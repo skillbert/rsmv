@@ -24,11 +24,11 @@ npm start
 ## Other modes
 ```sh
 #stream models directly from jagex as you browse (default)
-npm start -- --streaming
-#downloads a local copy of all model files and then run locally
-npm start -- --local[=<storage dir>]
-#run directly from runescape cache
-npm start -- --cache[=<rs cache dir>]
+npm start -- --open live
+#downloads a local copy of all model files and then run locally, creates a new folder "cache" by default
+npm start -- --open local[:<storage dir>]
+#run directly from runescape cache, uses the default rs cache location by default
+npm start -- --open cache[:<rs cache dir>]
 ```
 
 ## Jagex copyrights

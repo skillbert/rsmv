@@ -38,14 +38,13 @@ export class Downloader implements CacheFileSource {
 
 	ready: Promise<void>;
 
-	constructor(cachedir: string, config?: Promise<ClientConfig>) {
+	constructor(config?: Promise<ClientConfig>) {
 		if (!config) { config = downloadServerConfig(); }
 		config.then(cnf => {
 			this.server_version = parseInt(cnf["server_version"] as any);
 		})
 		this.socket = new net.Socket();
 
-		fs.writeFileSync(`${cachedir}/world_config.log.json`, JSON.stringify(config, undefined, 4));
 		//comes from config but is obfuscated
 		var address = "content.runescape.com";
 		var port = 43594;

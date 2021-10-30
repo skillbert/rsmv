@@ -7,6 +7,8 @@ import { handle as parseObject } from "../handler_objects";
 import { CacheFileSource } from "../main";
 import { GameCacheLoader } from "cacheloader";
 
+//TODO merge with downloadarchive.ts
+
 const modes = {
 	items: { folder: "items", index: 19, parser: parseItem },
 	npcs: { folder: "npcs", index: 18, parser: parseNpc },
@@ -22,7 +24,7 @@ export async function run(outdir: string, modename: keyof typeof modes, cachedir
 		source = new GameCacheLoader(cachedir);
 		metaindex = await (source as GameCacheLoader).getIndex(mode.index);
 	} else {
-		source = new downloader.Downloader(outdir);
+		source = new downloader.Downloader();
 		var indexFiles = cache.rootIndexBufferToObject(await source.getFile(255, 255));
 		let index = indexFiles[mode.index];
 		metaindex = await source.getFile(index.major, index.minor, index.crc);

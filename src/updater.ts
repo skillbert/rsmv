@@ -6,6 +6,7 @@ import { CacheFileSource } from "./main";
 import { ParsedTexture } from "./3d/textures";
 
 var cachedir: string;
+var progressDelay = 20;
 
 type DatabaseInst = sqlite3.Database & {
 	statements: {
@@ -46,7 +47,7 @@ function progress(message: string, value: number | null = null, max: number | nu
 	else msg = { "message": message };
 
 	if (!progressDebounceInterval) {
-		progressDebounceInterval = setInterval(progressDebounceTick, 20);
+		progressDebounceInterval = setInterval(progressDebounceTick, progressDelay);
 		events.emit("update-progress", msg);
 	} else {
 		queuedProcessMsg = msg;
@@ -254,7 +255,8 @@ var events = {
 	}
 };
 
-export async function run(cachedirarg: string) {
+export async function run(cachedirarg: string, progressDebounceDelay?: number) {
+	if (progressDebounceDelay) { progressDelay = progressDebounceDelay; }
 	cachedir = cachedirarg;
 	fs.mkdirSync(cachedir, { recursive: true });
 
@@ -263,7 +265,7 @@ export async function run(cachedirarg: string) {
 
 	progress("Connecting to servers...");
 	let config = downloadServerConfig();
-	var downloader = new Downloader(cachedir, config);
+	var downloader = new Downloader(config);
 
 	progress("Downloading index...");
 	var metaindex = await downloader.getFile(255, 255);
@@ -292,6 +294,13 @@ export async function run(cachedirarg: string) {
 
 	downloader.close();
 
+	//prevent extra progress events from firing after completion
+	if (progressDebounceInterval) {
+		clearInterval(progressDebounceInterval);
+		progressDebounceInterval = 0;
+	}
+	queuedProcessMsg = null;
+
 	//not sure if these are necessary
 	db.statements.insert.finalize((e) => { if (e) throw e; });
 	db.statements.update.finalize((e) => { if (e) throw e; });
@@ -306,6 +315,9 @@ export const fileSource: CacheFileSource = {
 	getFile(major, minor) {
 		throw new Error("not implemented");
 		//the original (packed) files are lost, would have to rebuild it completely
+	},
+	getIndexFile(major) {
+		throw new Error("not implemented");
 	},
 	async getFileArchive(index) {
 		throw new Error("not implemented");

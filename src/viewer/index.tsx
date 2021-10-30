@@ -23,17 +23,12 @@ type RenderMode = "gltf" | "ob3";
 const vertexShader = fs.readFileSync(__dirname + "/../assets/shader_vertex.glsl", "utf-8");
 const fragmentShader = fs.readFileSync(__dirname + "/../assets/shader_fragment.glsl", "utf-8");
 const ipc = electron.ipcRenderer;
-var cachedir: string;
 
 function start() {
 	window.addEventListener("keydown", e => {
 		if (e.key == "F5") { document.location.reload(); }
 		if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 	});
-
-	var cachearg = process.argv.find(a => a.match(/^cachedir=/));
-	if (!cachearg) { throw new Error("url arguemnt 'cachedir' not set"); }
-	cachedir = cachearg.split("=")[1];
 
 	ReactDOM.render(<App />, document.getElementById("app"));
 }
@@ -278,7 +273,6 @@ class GltfRenderer implements ModelSink {
 			return m.gltf.convert({ singlefile: true }).then(m => m.mainfile.buffer);
 		}));
 		this.renderModels(models);
-		//fs.writeFileSync(`${cachedir}/gltfs/model${Date.now()}.glb`, Buffer.from(models[0]));
 	}
 }
 

@@ -6,7 +6,7 @@ import { promises as fs } from "fs";
 import { handle } from "../handler_items";
 import * as opdecoder from "../opdecoder";
 
-
+//TODO move to new cli parser
 
 async function run(cachedir: string, jsondir: string, replaceid: number) {
 	const indexid = 19;

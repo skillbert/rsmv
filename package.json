@@ -31,6 +31,7 @@
 		"autobind-decorator": "^2.4.0",
 		"bzip2": "^0.1.1",
 		"classnames": "^2.3.1",
+		"cmd-ts": "^0.7.0",
 		"crc": "^3.8.0",
 		"electron-titlebar": "0.0.3",
 		"lzma": "^2.3.2",

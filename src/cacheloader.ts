@@ -67,6 +67,10 @@ export class GameCacheLoader implements CacheFileSource {
 		return file;
 	}
 
+	async getIndexFile(major: number) {
+		return this.openTable(major).indices;
+	}
+
 	async getIndex(major: number) {
 		let { dbget } = this.openTable(major);
 		let row = await dbget(`SELECT DATA FROM cache_index`, []);
