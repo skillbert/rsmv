@@ -71,5 +71,5 @@
 	"0xB5": { "name":                          "unknown_B5", "read": [ "struct", ["unknown_1", "unsigned short"], ["unknown_2", "unsigned byte"] ] },
 	"0xB6": { "name":                          "unknown_B6", "read": "true" },
 	"0xB8": { "name":                          "unknown_B8", "read": "unsigned byte" },
-	"0xF9": { "name":                               "extra", "read": [ "map", "unsigned int", "extras value" ] }
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

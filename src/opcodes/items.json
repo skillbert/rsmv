@@ -96,5 +96,5 @@
 	"0xA5": { "name":                      "neverStackable", "read": "true" },
 	"0xA7": { "name":                          "unknown_A7", "read": "true" },
 	"0xA8": { "name":                          "unknown_A8", "read": "true" },
-	"0xF9": { "name":                               "extra", "read": [ "map", "unsigned int", "extras value" ] }
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

@@ -1,18 +1,18 @@
 import * as downloader from "../downloader";
 import * as cache from "../cache";
 import * as fs from "fs";
-import { handle as parseItem } from "../handler_items";
-import { handle as parseNpc } from "../handler_npcs";
-import { handle as parseObject } from "../handler_objects";
+import { parseAchievement, parseItem, parseNpc, parseObject } from "../opdecoder";
 import { CacheFileSource } from "../main";
-import { GameCacheLoader } from "cacheloader";
+import { GameCacheLoader } from "../cacheloader";
+import { cacheMajors } from "../constants";
 
 //TODO merge with downloadarchive.ts
 
 const modes = {
-	items: { folder: "items", index: 19, parser: parseItem },
-	npcs: { folder: "npcs", index: 18, parser: parseNpc },
-	objects: { folder: "objects", index: 16, parser: parseObject },
+	items: { folder: "items", index: cacheMajors.items, parser: parseItem },
+	npcs: { folder: "npcs", index: cacheMajors.npcs, parser: parseNpc },
+	objects: { folder: "objects", index: cacheMajors.objects, parser: parseObject },
+	achievements: { folder: "achievements", index: cacheMajors.achievements, parser: parseAchievement },
 }
 
 export async function run(outdir: string, modename: keyof typeof modes, cachedir?: string, minorindex?: number) {
@@ -35,7 +35,13 @@ export async function run(outdir: string, modename: keyof typeof modes, cachedir
 		if ((typeof minorindex != "number" || !isNaN(minorindex)) && recordIndex.minor != minorindex) { continue; }
 		let chunks = await source.getFileArchive(recordIndex);
 		for (let i = 0; i < chunks.length; i++) {
-			let json = mode.parser(null as any, chunks[i].buffer);
+			try {
+				var json = mode.parser.read(chunks[i].buffer);
+			} catch (e) {
+				console.log(e);
+				process.stdin.read(1);
+				continue;
+			}
 			fs.writeFileSync(`${outdir}/${mode.folder}/${recordIndex.subindices[i]}.json`, JSON.stringify(json, undefined, "\t"));
 		}
 	}

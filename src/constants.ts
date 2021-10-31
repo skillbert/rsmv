@@ -9,6 +9,7 @@ export const cacheMajors = {
 	texturesPng: 53,
 	texturesBmp: 54,
 
+	achievements: 57,
 
 	index: 255
 }

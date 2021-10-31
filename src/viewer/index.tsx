@@ -1,7 +1,5 @@
 import * as electron from "electron";
-import { handle as decodeItem } from "../handler_items";
-import { handle as decodeNpc } from "../handler_npcs";
-import { handle as decodeObject } from "../handler_objects";
+import { parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as fs from "fs";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
@@ -46,7 +44,7 @@ async function getFile(major: number, minor: number) {
 //  submitSearchIds(value);
 
 
-class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: "gltf" | "ob3" }> {
+class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode }> {
 	renderer: ModelSink;
 	constructor(p) {
 		super(p);
@@ -204,23 +202,23 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 	let cache = new MiniCache(getFile);
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
-	let obj:object;
+	let obj: object;
 	switch (mode) {
 		case "model":
 			modelids = [+searchid];
 			break;
 		case "item":
-			let item = decodeItem(null as any, await cache.get(cacheMajors.items, +searchid));
+			let item = parseItem.read(await cache.get(cacheMajors.items, +searchid));
 			console.log(item);
 			if (!item.baseModel && item.noteTemplate) {
-				item = decodeItem(null as any, await cache.get(cacheMajors.items, item.noteTemplate));
+				item = parseItem.read(await cache.get(cacheMajors.items, item.noteTemplate));
 			}
 			if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
 			if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
 			modelids = [item.baseModel];
 			break;
 		case "npc":
-			let npc = decodeNpc(null as any, await cache.get(cacheMajors.npcs, +searchid));
+			let npc = parseNpc.read(await cache.get(cacheMajors.npcs, +searchid));
 			console.log(npc);
 			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
@@ -228,7 +226,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			console.log(npc);
 			break;
 		case "object":
-			let obj = decodeObject(null as any, await cache.get(cacheMajors.objects, +searchid));
+			let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));
 			console.log(obj);
 			if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
 			if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
