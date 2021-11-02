@@ -20,6 +20,6 @@ export type cacheindex = {
 	} & {
 		subindexcount: number,
 	} & {
-		subskips: number[],
+		subindices: number[],
 	})[],
 };

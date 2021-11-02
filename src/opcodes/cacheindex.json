@@ -2,9 +2,10 @@
 	["format","unsigned byte"],
 	["timestamp","unsigned int"],
 	["flags","unsigned byte"],
+	["$minorindex","0"],
 	["indices",["array","variable unsigned int",
 		["struct",
-			["minor","unsigned short"]
+			["minor",["accum","$minorindex","unsigned short"]]
 		],
 		["struct",
 			["crc","unsigned int"]
@@ -23,7 +24,8 @@
 			["subindexcount","variable unsigned int"]
 		],
 		["struct",
-			["subskips",["array",["ref","subindexcount"],"unsigned short"]]
+			["$subindex","0"],
+			["subindices",["array",["ref","subindexcount"],["accum","$subindex","unsigned short"]]]
 		]
 	]]
 ]

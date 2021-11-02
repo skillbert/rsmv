@@ -131,22 +131,7 @@ export function indexBufferToObject(major: number, buffer: Buffer) {
 	let readres = parseCacheIndex.read(buffer);
 	let indices = readres.indices;
 
-	//convert to what the rest expects
-	let minoracc = 0;
-	let maxSubindex = indices.reduce((a, v) => Math.max(a, v.subindexcount), 0);
-	let mappedindices = indices.map<CacheIndex>((jsonindex, i) => {
-		minoracc += jsonindex.minor;
-		let subacc = 0;//maxSubindex * i;
-		return {
-			...jsonindex,
-			major: major,
-			minor: minoracc,
-			subindices: jsonindex.subskips.map(skip => {
-				subacc += skip;
-				return subacc;
-			})
-		};
-	});
+	let mappedindices = indices.map(i => Object.assign(i, { major }));
 	return mappedindices;
 }
 
