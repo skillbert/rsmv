@@ -1,0 +1,8 @@
+["array",4096,["struct",
+	["flags","unsigned byte"],
+	["shape",["opt",["flags",0,"bitflag"],"unsigned byte"]],
+	["overlay",["opt",["flags",0,"bitflag"],"variable unsigned short"]],
+	["settings",["opt",["flags",1,"bitflag"],"unsigned byte"]],
+	["underlay",["opt",["flags",2,"bitflag"],"variable unsigned short"]],
+	["height",["opt",["flags",3,"bitflag"],"unsigned byte"]]
+]]

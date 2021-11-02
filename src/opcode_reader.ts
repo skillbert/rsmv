@@ -13,22 +13,28 @@ type PrimitiveValue<T> = {
 	primitive: "value",
 	value: T
 }
+type PrimitiveRef = {
+	primitive: "ref",
+	prop: string
+}
 type PrimitiveString = {
 	primitive: "string",
 	encoding: "latin1",
 	termination: null,
 	prebytes: number[]
 }
-type ScanBuffer = Buffer & { scan: number };
+export type ScanBuffer = Buffer & { scan: number };
 
-export type Primitive<T> = PrimitiveInt | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
+type CompareMode = "eq" | "lte" | "gte" | "bitflag";
+
+export type Primitive<T> = PrimitiveInt | PrimitiveBool | PrimitiveString | PrimitiveValue<T> | PrimitiveRef;
 export type ChunkType<T> = Primitive<T> | string;
 
 export type ComposedChunk = string
 	| ["array", ComposedChunk]
-	| ["array", string, ComposedChunk]
-	//	| ["map", string, ComposedChunk]
-	| ["opt", (number | string | [string, string | number]), ComposedChunk]
+	| ["array", string | number, ...ComposedChunk[]]
+	| ["ref", string]
+	| ["opt", (number | string | [string, string | number, CompareMode]), ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
 	| ["struct", ...any]
 //dont add tupple here since it messes up all typings as it has overlap with the first string prop
@@ -41,8 +47,10 @@ type ParserContext = Record<string, number>;
 export type ChunkParser<T> = {
 	read(buf: ScanBuffer, ctx: ParserContext): T,
 	write(buf: ScanBuffer, v: unknown): void,
+	getTypescriptType(indent: string): string,
 	condName?: string,
-	condValue?: number
+	condValue?: number,
+	condMode?: CompareMode
 }
 
 function resolveAlias(typename: string, typedef: TypeDef) {
@@ -75,31 +83,41 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 				for (let key in chunkdef) {
 					if (key.startsWith("$")) { continue; }
 					let op = chunkdef[key];
-					mappedobj[op.name] = optParser(buildParser(op.read, typedef), "opcode", parseInt(key));
+					mappedobj[op.name] = optParser(buildParser(op.read, typedef), "opcode", parseInt(key), "eq");
 				}
 				return opcodesParser(buildParser(chunkdef.$opcode ?? "unsigned byte", typedef), mappedobj);
 			} else {
 				if (chunkdef.length < 1) throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(chunkdef)}`);
 				switch (chunkdef[0]) {
+					case "ref": {
+						if (chunkdef.length < 2) throw new Error(`2 arguments exptected for proprety with type opt`);
+						return primitiveParser({ primitive: "ref", prop: chunkdef[1] });
+					}
 					case "opt": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type opt`);
 						let cond: string;
 						let valuearg = chunkdef[1];
+						let cmpmode: CompareMode = "eq";
 						if (Array.isArray(valuearg)) {
 							cond = valuearg[0];
+							cmpmode = valuearg[2] ?? "eq";
 							valuearg = valuearg[1];
 						} else {
 							cond = "opcode";
 							valuearg = chunkdef[1] as number | string;
 						}
 						if (typeof valuearg == "string") { valuearg = parseInt(valuearg) }
-						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg);
+						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg, cmpmode);
 					}
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
-						let sizetype = (chunkdef.length == 3 ? chunkdef[1] : "variable unsigned short");
-						let valuetype = (chunkdef.length == 3 ? chunkdef[2] : chunkdef[1]);
-						return arrayParser(resolveAlias(sizetype, typedef) as any, buildParser(valuetype, typedef));
+						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
+						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						let valuetype = chunkdef.slice(chunkdef.length >= 3 ? 2 : 1) as ComposedChunk[];
+						if (!Array.isArray(valuetype)) {
+							valuetype = [valuetype];
+						}
+						return arrayParser(sizetype, valuetype.map(t => buildParser(t, typedef)));
 					}
 					case "struct": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(chunkdef)}`);
@@ -151,7 +169,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 	let map = new Map<number, { key: keyof T, parser: ChunkParser<any> }>();
 	for (let key in opts) {
 		let opt = opts[key];
-		if (opt.condName != "opcode" || typeof opt.condValue != "number") { throw new Error("option in opcode set that is not conditional on 'opcode'"); }
+		if (opt.condName != "opcode" || typeof opt.condValue != "number" || opt.condMode != "eq") { throw new Error("option in opcode set that is not conditional on 'opcode'"); }
 		map.set(opt.condValue, { key: key, parser: opt });
 	}
 
@@ -182,6 +200,15 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 				parser.write(buffer, value[key]);
 			}
 			opcodetype.write(buffer, 0);
+		},
+		getTypescriptType(indent) {
+			let r = "{\n";
+			let newindent = indent + "\t";
+			for (let val of map.values()) {
+				r += newindent + val.key + "?: " + val.parser.getTypescriptType(newindent) + "\n";
+			}
+			r += indent + "}";
+			return r;
 		}
 	}
 }
@@ -226,15 +253,24 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 				// 	if (!found) { console.log(`no value found for switch property ${key} defaulting to 0`); }
 				// }
 				prop.write(buffer, propvalue);
+			} 
+		}, 
+		getTypescriptType(indent) {
+			let r = (isTuple ? "[" : "{") + "\n";
+			let newindent = indent + "\t";
+			for (let key of keys) {
+				r += newindent + (isTuple ? "" : key + ": ") + props[key].getTypescriptType(newindent) + ",\n";
 			}
+			r += indent + (isTuple ? "]" : "}");
+			return r;
 		}
 	}
 }
 
-function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number): ChunkParser<T | undefined> {
-	return {
+function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | undefined> {
+	let r: ChunkParser<T | undefined> = {
 		read(buffer, ctx) {
-			if (ctx[condvar] != condvalue) {
+			if (!checkCondition(r, ctx[condvar])) {
 				return undefined;
 			}
 			return type.read(buffer, ctx);
@@ -244,27 +280,60 @@ function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number):
 				return type.write(buffer, value);
 			}
 		},
+		getTypescriptType(indent) {
+			return type.getTypescriptType(indent) + " | undefined";
+		},
 		condName: condvar,
-		condValue: condvalue
+		condValue: condvalue,
+		condMode: compare,
+	}
+	return r;
+}
+
+function checkCondition(parser: ChunkParser<any>, v: number) {
+	switch (parser.condMode!) {
+		case "eq":
+			return v == parser.condValue!;
+		case "bitflag":
+			return (v & (1 << parser.condValue!)) != 0;
+		case "gte":
+			return v >= parser.condValue!;
+		case "lte":
+			return v <= parser.condValue!;
+		default:
+			throw new Error("unkown condition " + parser.condMode);
 	}
 }
 
-function arrayParser<T>(lengthtype: ChunkParser<number>, proptype: ChunkParser<T>): ChunkParser<T[]> {
+function arrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: ChunkParser<T>[]): ChunkParser<T[]> {
 	return {
 		read(buffer, ctx) {
 			let len = lengthtype.read(buffer, ctx);
 			let r: T[] = [];
-			for (let i = 0; i < len; i++) {
-				r.push(proptype.read(buffer, ctx));
+			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
+				let proptype = chunktypes[chunkindex]
+				for (let i = 0; i < len; i++) {
+					if (chunkindex == 0) {
+						r.push(proptype.read(buffer, ctx));
+					} else {
+						Object.assign(r[i], proptype.read(buffer, Object.create(r[i] as any)));
+					}
+				}
 			}
 			return r;
 		},
 		write(buffer, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			lengthtype.write(buffer, value.length);
-			for (let i = 0; i < value.length; i++) {
-				proptype.write(buffer, value[i]);
+			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
+				let proptype = chunktypes[chunkindex]
+				for (let i = 0; i < value.length; i++) {
+					proptype.write(buffer, value[i]);
+				}
 			}
+		},
+		getTypescriptType(indent) {
+			return `(${chunktypes.map(c => c.getTypescriptType(indent)).join(" & ")})[]`;
 		}
 	};
 }
@@ -322,6 +391,9 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				output = buffer[`write${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](value, buffer.scan, bytes);
 				buffer.scan += bytes;
 			}
+		},
+		getTypescriptType() {
+			return "number";
 		}
 	}
 }
@@ -331,10 +403,32 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 	return {
 		read(buffer) {
 			return primitive.value;
-		},
+		}, 
 		write(buffer, value) {
 			if (primitive.value != value) throw new Error(`expected constant ${primitive.value} was not present during write`);
 			//this is a nop, the existence of this field implis its value
+		},
+		getTypescriptType() {
+			if (typeof primitive.value == "number" || typeof primitive.value == "boolean") {
+				return JSON.stringify(primitive.value);
+			} else {
+				return typeof primitive.value;
+			}
+
+		}
+	}
+}
+function referenceValueParser(primitive: PrimitiveRef): ChunkParser<number> {
+	return {
+		read(buffer, ctx) {
+			return ctx[primitive.prop];
+		},
+		write(buffer, value) {
+			//need to make the struct writer grab its value from here for invisible props
+			throw new Error("write for ref not implemented");
+		},
+		getTypescriptType() {
+			return "void";
 		}
 	}
 }
@@ -371,6 +465,9 @@ function stringParser(primitive: PrimitiveString): ChunkParser<string> {
 			strbuf.copy(strbinbuf, 0, 0, Math.max(strbuf.byteLength, strbinbuf.byteLength));
 			strbinbuf.copy(buffer, buffer.scan);
 			buffer.scan += strbinbuf.byteLength;
+		},
+		getTypescriptType() {
+			return "string";
 		}
 	}
 }
@@ -384,6 +481,9 @@ function booleanParser(): ChunkParser<boolean> {
 		},
 		write(buffer, value) {
 			buffer.writeUInt8(value ? 1 : 0, buffer.scan++);
+		},
+		getTypescriptType() {
+			return "boolean";
 		}
 	}
 }
@@ -399,6 +499,8 @@ function primitiveParser(primitive: Primitive<any>): ChunkParser<any> {
 			return stringParser(primitive);
 		case "value":
 			return literalValueParser(primitive);
+		case "ref":
+			return referenceValueParser(primitive);
 		default:
 			//@ts-ignore
 			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);

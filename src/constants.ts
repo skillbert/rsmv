@@ -1,4 +1,7 @@
 export const cacheMajors = {
+	config: 2,
+	mapsquares: 5,
+
 	objects: 16,
 	npcs: 18,
 	items: 19,

@@ -8,6 +8,7 @@
 		"debug": "electron --inspect-brk ./dist/main.js",
 		"build": "gulp build",
 		"watch": "gulp watch",
+		"filetypes": "gulp filetypes",
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",
 		"ts": "tsc --watch"
 	},
@@ -21,10 +22,9 @@
 		"@types/sqlite3": "^3.1.7",
 		"@types/three": "^0.133.1",
 		"electron": "^12.2.2",
-		"electron-rebuild": "^1.11.0",
+		"electron-rebuild": "^3.2.3",
 		"gulp": "^4.0.2",
 		"gulp-cli": "^2.3.0",
-		"gulp-typescript": "^6.0.0-alpha.1",
 		"typescript": "^4.5.0-beta"
 	},
 	"dependencies": {
@@ -40,6 +40,7 @@
 		"react-dom": "^17.0.2",
 		"sharp": "^0.29.2",
 		"sqlite3": "^4.2.0",
-		"three": "^0.133.1"
+		"three": "^0.133.1",
+		"through2": "^4.0.2"
 	}
 }

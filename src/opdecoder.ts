@@ -17,7 +17,11 @@ export class FileParser<T> {
 
 	read(buffer: Buffer) {
 		let scanbuf = Object.assign(buffer, { scan: 0 });
-		return this.parser.read(scanbuf, {});
+		let res = this.parser.read(scanbuf, {});
+		if (scanbuf.scan != scanbuf.length) {
+			console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+		}
+		return res;
 	}
 
 	write(obj: T) {
@@ -30,9 +34,12 @@ export class FileParser<T> {
 		return r;
 	}
 }
+export const parseCacheIndex = new FileParser<import("../generated/cacheindex").cacheindex>(__dirname + "/opcodes/cacheindex.json");
+export const parseNpc = new FileParser<import("../generated/npcs").npcs>(__dirname + "/opcodes/npcs.json");
+export const parseItem = new FileParser<import("../generated/items").items>(__dirname + "/opcodes/items.json");
+export const parseObject = new FileParser<import("../generated/objects").objects>(__dirname + "/opcodes/objects.json");
+export const parseAchievement = new FileParser<import("../generated/achievements").achievements>(__dirname + "/opcodes/achievements.json");
+export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(__dirname + "/opcodes/mapsquare_tiles.json");
+export const parseMapsquareUnderlays = new FileParser<import("../generated/mapsquare_underlays").mapsquare_underlays>(__dirname + "/opcodes/mapsquare_underlays.json");
 
-export const parseNpc = new FileParser<any>(__dirname + "/opcodes/npcs.json");
-export const parseItem = new FileParser<any>(__dirname + "/opcodes/items.json");
-export const parseObject = new FileParser<any>(__dirname + "/opcodes/objects.json");
-export const parseAchievement = new FileParser<any>(__dirname + "/opcodes/achievements.json");
 

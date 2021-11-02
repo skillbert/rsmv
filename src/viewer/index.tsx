@@ -215,14 +215,14 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			}
 			if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
 			if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
-			modelids = [item.baseModel];
+			modelids = item.baseModel ? [item.baseModel] : [];
 			break;
 		case "npc":
 			let npc = parseNpc.read(await cache.get(cacheMajors.npcs, +searchid));
 			console.log(npc);
 			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
-			modelids = npc.models;
+			modelids = npc.models ?? [];
 			console.log(npc);
 			break;
 		case "object":
@@ -230,7 +230,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			console.log(obj);
 			if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
 			if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
-			modelids = obj.models.flatMap(m => m.values);
+			modelids = obj.models?.flatMap(m => m.values) ?? [];
 			break;
 		default:
 			throw new Error("unknown mode");

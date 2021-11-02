@@ -1,3 +1,5 @@
+import { FSWatcher } from "fs";
+import { parseCacheIndex } from "./opdecoder";
 
 
 export type SubFile = {
@@ -126,45 +128,25 @@ export function rootIndexBufferToObject(metaindex: Buffer) {
 }
 
 export function indexBufferToObject(major: number, buffer: Buffer) {
-	var count = 0;
-	var scan = 0x6;
-	if ((buffer.readUInt8(0x6) & 0x80) == 0x80)
-		count = (buffer.readUInt32BE(scan) & 0x7FFFFFFF), scan += 4;
-	else
-		count = buffer.readUInt16BE(scan), scan += 2;
+	let readres = parseCacheIndex.read(buffer);
+	let indices = readres.indices;
 
-	var index: CacheIndex[] = []
-	var minor = 0;
-	var biggestCount = -1;
-	for (var i = 0; i < count; ++i) {
-		minor += buffer.readUInt16BE(scan), scan += 2;
-		index[i] = { "major": major, "minor": minor } as any;
-	}
-	for (var i = 0; i < count; ++i)
-		index[i].crc = buffer.readUInt32BE(scan), scan += 4;
-	for (var i = 0; i < count; ++i)
-		index[i].uncompressed_crc = buffer.readUInt32BE(scan), scan += 4;
-	for (var i = 0; i < count; ++i) {
-		index[i].size = buffer.readUInt32BE(scan), scan += 4;
-		index[i].uncompressed_size = buffer.readUInt32BE(scan), scan += 4;
-	}
-	for (var i = 0; i < count; ++i)
-		index[i].version = buffer.readUInt32BE(scan), scan += 4;
-	for (var i = 0; i < count; ++i) {
-		index[i].subindexcount = buffer.readUInt16BE(scan), scan += 2;
-		if (index[i].subindexcount > biggestCount)
-			biggestCount = index[i].subindexcount;
-	}
-	for (var i = 0; i < count; ++i) {
-		index[i].subindices = [];
-		let subindex = index[i].minor * biggestCount;
-		for (var j = 0; j < index[i].subindexcount; ++j) {
-			subindex += buffer.readUInt16BE(scan), scan += 2;
-			index[i].subindices.push(subindex);
-		}
-	}
-	//fs.writeFileSync(`${cachedir}/test_index.json`, JSON.stringify(index, null, 4));
-	//console.log(index);
-
-	return index;
+	//convert to what the rest expects
+	let minoracc = 0;
+	let maxSubindex = indices.reduce((a, v) => Math.max(a, v.subindexcount), 0);
+	debugger;
+	let mappedindices = indices.map<CacheIndex>((jsonindex, i) => {
+		minoracc += jsonindex.minor;
+		let subacc = 0;//maxSubindex * i;
+		return {
+			...jsonindex,
+			major: major,
+			minor: minoracc,
+			subindices: jsonindex.subskips.map(skip => {
+				subacc += skip;
+				return subacc;
+			})
+		};
+	}); 
+	return mappedindices;
 }

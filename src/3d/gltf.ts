@@ -1,24 +1,6 @@
 //! Taken from runeapps avatar viewer server code
 //start of edits made
-const TextEncoderPolyfill = (typeof TextEncoder != "undefined" ? TextEncoder : require("util").TextEncoder) as typeof TextEncoder;
-export type vartypeEnum = 0x1400 | 0x1401 | 0x1402 | 0x1403 | 0x1404 | 0x1405 | 0x1406 | 0x140a | 0x140b;
-declare global {
-	interface ImageData {
-		//we don't actually use this one, if we did we need to import it from @alt1/base
-		toFileBytes(mimetype: string): any
-	}
-}
-
-export type ModelAttribute = {
-	byteoffset: number,
-	bytestride: number
-	gltype: vartypeEnum,
-	name: string,
-	veclength: number,
-	normalize: boolean,
-	min: number[],
-	max: number[]
-};
+import { TextEncoderPolyfill, ModelAttribute } from "./gltfutil";
 //end of edits made
 
 
@@ -56,7 +38,7 @@ export class GLTFBuilder {
 		animations: [],
 		samplers: []
 	};
-	rawviewbuffers: ArrayBuffer[] = [];
+	rawviewbuffers: ArrayBufferView[] = [];
 	rawimages: (ImageData | Uint8Array)[] = [];
 
 	addBuffer(buf: GlTf.Buffer) { return this.json.buffers!.push(buf) - 1; }
@@ -93,7 +75,7 @@ export class GLTFBuilder {
 		}
 		return this.addAccessor(r);
 	}
-	addBufferWithView(buf: ArrayBuffer, stride: number | undefined, isindices: boolean | undefined) {
+	addBufferWithView(buf: ArrayBufferView, stride: number | undefined, isindices: boolean | undefined) {
 		this.rawviewbuffers.push(buf);
 		return this.addBufferView({ buffer: -1, byteLength: buf.byteLength, byteStride: stride, byteOffset: 0, target: (isindices === undefined ? undefined : isindices ? 0x8893 : 0x8892) });
 	}
@@ -126,7 +108,7 @@ export class GLTFBuilder {
 			});
 		}
 
-		let files: { [id: string]: ArrayBuffer } = {};
+		let files: { [id: string]: ArrayBufferView } = {};
 		if (json.animations!.length == 0) { delete json.animations; }
 		if (json.skins!.length == 0) { delete json.skins; }
 		for (let i in json.images!) {
@@ -143,7 +125,7 @@ export class GLTFBuilder {
 				files[name] = imgfile;
 			}
 		}
-		var buffers: ArrayBuffer[] = [];
+		var buffers: ArrayBufferView[] = [];
 		for (let i in json.bufferViews!) {
 			let view = json.bufferViews![i];
 			let buf = this.rawviewbuffers[i];
@@ -208,7 +190,7 @@ export class GLTFBuilder {
 			uintbuf[offset / 4 | 0] = 0x004E4942;//"BIN\0" chunk
 			offset += 4;
 			for (let i = 0; i < buffers.length; i++) {
-				fullbuf.set(new Uint8Array(buffers[i]), offset);
+				fullbuf.set(new Uint8Array(buffers[i].buffer, buffers[i].byteOffset, buffers[i].byteLength), offset);
 				offset += align4bytes(buffers[i].byteLength);
 			}
 			files["model.glb"] = fullbuf;
@@ -226,7 +208,10 @@ function align4bytes(len: number) {
 	return Math.ceil(len / 4) * 4;
 }
 
-function bufferToDataUrl(buf: ArrayBuffer, mime = "application/octet-stream"): Promise<string> {
+function bufferToDataUrl(buf: ArrayBufferView, mime = "application/octet-stream"): Promise<string> {
+	if (typeof Buffer != "undefined") {
+		return Promise.resolve("data:" + mime + ";base64," + Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength).toString("base64"));
+	}
 	return new Promise((done, err) => {
 		let reader = new FileReader();
 		reader.onload = () => done(reader.result as string);

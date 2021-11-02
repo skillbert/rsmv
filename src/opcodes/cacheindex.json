@@ -1,0 +1,29 @@
+["struct",
+	["format","unsigned byte"],
+	["timestamp","unsigned int"],
+	["flags","unsigned byte"],
+	["indices",["array","variable unsigned int",
+		["struct",
+			["minor","unsigned short"]
+		],
+		["struct",
+			["crc","unsigned int"]
+		],
+		["struct",
+			["uncompressed_crc","unsigned int"]
+		],
+		["struct",
+			["size","unsigned int"],
+			["uncompressed_size","unsigned int"]
+		],
+		["struct",
+			["version","unsigned int"]
+		],
+		["struct",
+			["subindexcount","variable unsigned int"]
+		],
+		["struct",
+			["subskips",["array",["ref","subindexcount"],"unsigned short"]]
+		]
+	]]
+]

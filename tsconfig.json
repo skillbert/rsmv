@@ -11,9 +11,10 @@
 		"strictNullChecks": true,
 		"baseUrl": "./src",
 		"outDir": "./dist",
+		"rootDir": "./src",
 		"esModuleInterop": true,
 		"experimentalDecorators": true
 	},
-	"exclude": [ "node_modules" ],
+	"exclude": [ "node_modules", "./generated"],
 	"compileOnSave": false
 }
