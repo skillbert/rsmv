@@ -3,10 +3,10 @@
 // run `npm run filetypes` to rebuild
 
 export type objects = {
-	models?: ({
+	models?: {
 		type: number,
-		values: (number)[],
-	})[] | undefined
+		values: number[],
+	}[] | undefined
 	name?: string | undefined
 	width?: number | undefined
 	length?: number | undefined
@@ -26,15 +26,15 @@ export type objects = {
 	actions_3?: string | undefined
 	actions_4?: string | undefined
 	contrast?: number | undefined
-	color_replacements?: ([
+	color_replacements?: [
 		number,
 		number,
-	])[] | undefined
-	material_replacements?: ([
+	][] | undefined
+	material_replacements?: [
 		number,
 		number,
-	])[] | undefined
-	recolourPalette?: (number)[] | undefined
+	][] | undefined
+	recolourPalette?: number[] | undefined
 	unknown_2C?: number | undefined
 	unknown_2D?: number | undefined
 	mirror?: true | undefined
@@ -51,7 +51,7 @@ export type objects = {
 	unknown_4B?: number | undefined
 	morphs_1?: {
 		unk1: number,
-		unk2: (number)[],
+		unk2: number[],
 		unk3: number,
 	} | undefined
 	unknown_4E?: {
@@ -62,7 +62,7 @@ export type objects = {
 		unknown_1: number,
 		unknown_2: number,
 		unknown_3: number,
-		unknown_4: (number)[],
+		unknown_4: number[],
 	} | undefined
 	unknown_51?: number | undefined
 	unknown_52?: true | undefined
@@ -72,7 +72,7 @@ export type objects = {
 	morphs_2?: {
 		unk1: number,
 		unk2: number,
-		unk3: (number)[],
+		unk3: number[],
 		unk4: number,
 	} | undefined
 	unknown_5D?: number | undefined
@@ -93,17 +93,17 @@ export type objects = {
 	occludes_2?: false | undefined
 	unknown_68?: number | undefined
 	invertMapScene?: true | undefined
-	headModels?: ({
+	headModels?: {
 		model: number,
 		unknown_2: number,
-	})[] | undefined
+	}[] | undefined
 	mapFunction?: number | undefined
 	members_action_1?: string | undefined
 	members_action_2?: string | undefined
 	members_action_3?: string | undefined
 	members_action_4?: string | undefined
 	members_action_5?: string | undefined
-	unknown_A0?: (number)[] | undefined
+	unknown_A0?: number[] | undefined
 	unknown_A2?: number | undefined
 	unknown_A3?: {
 		unknown_1: number,
@@ -148,10 +148,9 @@ export type objects = {
 		unknown_6: number,
 	} | undefined
 	unknown_CA?: number | undefined
-	extra?: ({
-		type: number,
+	extra?: {
 		prop: number,
 		intvalue: number | undefined,
 		stringvalue: string | undefined,
-	})[] | undefined
+	}[] | undefined
 };

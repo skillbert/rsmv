@@ -1,10 +1,8 @@
-import { CacheFileSource } from "./main";
 import * as cache from "./cache";
 import { decompress, decompressSqlite } from "./decompress";
 import * as path from "path";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type * as sqlite3 from "sqlite3";
-import { cacheMajors } from "./constants";
 
 type CacheTable = {
 	db: sqlite3.Database,
@@ -13,11 +11,12 @@ type CacheTable = {
 	dbget: (q: string, params: any[]) => Promise<any>
 }
 
-export class GameCacheLoader implements CacheFileSource {
+export class GameCacheLoader extends cache.CacheFileSource {
 	cachedir: string;
 	opentables = new Map<number, CacheTable>();
 
 	constructor(cachedir: string) {
+		super();
 		this.cachedir = cachedir;
 	}
 
@@ -48,23 +47,13 @@ export class GameCacheLoader implements CacheFileSource {
 		let row = await dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
 		if (typeof crc == "number" && row.CRC != crc) {
 			//TODO this is always off by either 1 or 2
-			console.log(`crc from cache (${row.CRC}) did not match requested crc (${crc}) for ${major}.${minor}`);
+			//console.log(`crc from cache (${row.CRC}) did not match requested crc (${crc}) for ${major}.${minor}`);
 		}
 		return decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
 	}
 
 	async getFileArchive(index: cache.CacheIndex) {
 		return cache.unpackSqliteBufferArchive(await this.getFile(index.major, index.minor, index.crc), index.subindexcount);
-	}
-
-	async getFileById(major: number, fileid: number) {
-		let { indices } = this.openTable(major);
-
-		let holder = (await indices).find(q => q.subindices.includes(fileid));
-		if (!holder) { throw new Error("file not found"); }
-		let files = await this.getFileArchive(holder);
-		let file = files[holder.subindices.indexOf(fileid)].buffer;
-		return file;
 	}
 
 	async getIndexFile(major: number) {

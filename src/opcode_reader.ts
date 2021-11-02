@@ -3,7 +3,7 @@ type PrimitiveInt = {
 	primitive: "int",
 	unsigned: boolean,
 	bytes: number,
-	variable: boolean,
+	readmode: "fixed" | "smart" | "sumtail",
 	endianness: "big" | "little"
 };
 type PrimitiveBool = {
@@ -13,10 +13,6 @@ type PrimitiveValue<T> = {
 	primitive: "value",
 	value: T
 }
-type PrimitiveRef = {
-	primitive: "ref",
-	prop: string
-}
 type PrimitiveString = {
 	primitive: "string",
 	encoding: "latin1",
@@ -25,18 +21,22 @@ type PrimitiveString = {
 }
 export type ScanBuffer = Buffer & { scan: number };
 
-type CompareMode = "eq" | "lte" | "gte" | "bitflag";
+type CompareMode = "eq" | "bitflag" | "bitflagnot";
 
-export type Primitive<T> = PrimitiveInt | PrimitiveBool | PrimitiveString | PrimitiveValue<T> | PrimitiveRef;
+export type Primitive<T> = PrimitiveInt | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
 
 export type ComposedChunk = string
-	| ["array", ComposedChunk]
-	| ["array", string | number, ...ComposedChunk[]]
-	| ["ref", string]
-	| ["opt", (number | string | [string, string | number, CompareMode]), ComposedChunk]
+	| [type: "array", props: ComposedChunk]
+	//cant be labaled or typescript craps its pants
+	//| [type: "array", lengthTypeOrConst: string | number, ...chunkedprops: ComposedChunk[]]
+	| ["array", ComposedChunk | number, ...ComposedChunk[]]
+	| ["nullarray", ComposedChunk, ...ComposedChunk[]]
+	| [type: "ref", ref: string, bitrange?: [number, number]]
+	| [type: "accum", ref: string, addvalue: ComposedChunk, offset?: number]
+	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
-	| ["struct", ...any]
+	| [type: "struct", ...props: [name: string, value: any]]
 //dont add tupple here since it messes up all typings as it has overlap with the first string prop
 
 
@@ -90,8 +90,13 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 				if (chunkdef.length < 1) throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(chunkdef)}`);
 				switch (chunkdef[0]) {
 					case "ref": {
-						if (chunkdef.length < 2) throw new Error(`2 arguments exptected for proprety with type opt`);
-						return primitiveParser({ primitive: "ref", prop: chunkdef[1] });
+						if (chunkdef.length < 2) throw new Error(`2 arguments exptected for proprety with type ref`);
+						let [minbit, bitlength] = chunkdef[2] ?? [-1, -1];
+						return referenceValueParser(chunkdef[1], minbit, bitlength);
+					}
+					case "accum": {
+						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type accum`);
+						return intAccumlatorParser(chunkdef[1], buildParser(chunkdef[2], typedef), chunkdef[3] ?? 0);
 					}
 					case "opt": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type opt`);
@@ -103,12 +108,13 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 							cmpmode = valuearg[2] ?? "eq";
 							valuearg = valuearg[1];
 						} else {
-							cond = "opcode";
+							cond = "opcode";//TODO make $opcode
 							valuearg = chunkdef[1] as number | string;
 						}
 						if (typeof valuearg == "string") { valuearg = parseInt(valuearg) }
 						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg, cmpmode);
 					}
+					case "nullarray":
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
@@ -117,7 +123,12 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						if (!Array.isArray(valuetype)) {
 							valuetype = [valuetype];
 						}
-						return arrayParser(sizetype, valuetype.map(t => buildParser(t, typedef)));
+						if (chunkdef[0] == "array") {
+							return arrayParser(sizetype, valuetype.map(t => buildParser(t, typedef)));
+						} else {
+							if (valuetype.length != 1) { throw new Error("cant use chunked arrays in null terminated arrays"); }
+							return arrayNullTerminatedParser(sizetype, buildParser(valuetype[0], typedef));
+						}
 					}
 					case "struct": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(chunkdef)}`);
@@ -148,12 +159,12 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 function validateIntType(primitive: PrimitiveInt) {
 	let hasUnsigned = "unsigned" in primitive;
 	let hasBytes = "bytes" in primitive;
-	let hasVariable = "variable" in primitive;
+	let hasReadmode = "readmode" in primitive;
 	let hasEndianness = "endianness" in primitive;
-	if (!(hasUnsigned && hasBytes && hasVariable && hasEndianness)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'int' variables need to specify 'unsigned', 'bytes', 'variable', and 'endianness'`);
+	if (!(hasUnsigned && hasBytes && hasReadmode && hasEndianness)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'int' variables need to specify 'unsigned', 'bytes', 'variable', and 'endianness'`);
 	if (typeof primitive.unsigned !== "boolean") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'unsigned' must be a boolean`);
 	if (typeof primitive.bytes !== "number") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'bytes' must be an integer`);
-	if (typeof primitive.variable !== "boolean") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'variable' must be a boolean`);
+	if (["fixed", "smart", "sumtail"].indexOf(primitive.readmode) == -1) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'readmode' must be a 'fixed', 'smart' or 'sumtail'`)
 	if (primitive.endianness !== "big" && primitive.endianness !== "little") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'endianness' must be "big" or "little"`);
 }
 
@@ -175,11 +186,11 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 
 	return {
 		read(buffer, parentctx) {
-			let ctx: ParserContext = {};
+			let ctx = Object.create(parentctx);
 			let r: Partial<T> = {};
 			while (true) {
 				if (buffer.scan == buffer.length) {
-					console.log("ended reading file without 0x00 opcode");
+					console.log("ended reading opcode struct at end of file without 0x00 opcode");
 					break;
 				}
 				let opt = opcodetype.read(buffer, ctx);
@@ -221,7 +232,7 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 			let ctx: ParserContext = Object.create(parentctx);
 			for (let key of keys) {
 				let v = props[key].read(buffer, ctx);
-				if (v !== undefined) {
+				if (v !== undefined && key[0] != "$") {
 					r[key] = v;
 				}
 				if (typeof v == "number") {
@@ -234,31 +245,19 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 			if (typeof value != "object" || !value) { throw new Error("object expected"); }
 			for (let i = 0; i < keys.length; i++) {
 				let key = keys[i];
+				if (key[0] == "$") { continue; }
 				if (!(key in value)) { throw new Error(`struct has no property ${key}`); }
 				let propvalue = value[key as string];
 				let prop = props[key];
-				//TODO
-				// if (prop.isSwitchValue) {
-				// 	propvalue = 0;
-				// 	let found = false;
-				// 	for (let j = i; j < keys.length; j++) {
-				// 		let key = keys[i];
-				// 		let req = props[key].getWriteSwitchstate?.(value[key as any]);
-				// 		if (req && req.name == key) {
-				// 			propvalue = req.value;
-				// 			found = true;
-				// 			break;
-				// 		}
-				// 	}
-				// 	if (!found) { console.log(`no value found for switch property ${key} defaulting to 0`); }
-				// }
+				//TODO calculate dependent values
 				prop.write(buffer, propvalue);
-			} 
-		}, 
+			}
+		},
 		getTypescriptType(indent) {
 			let r = (isTuple ? "[" : "{") + "\n";
 			let newindent = indent + "\t";
 			for (let key of keys) {
+				if (key[0] == "$") { continue; }
 				r += newindent + (isTuple ? "" : key + ": ") + props[key].getTypescriptType(newindent) + ",\n";
 			}
 			r += indent + (isTuple ? "]" : "}");
@@ -296,10 +295,8 @@ function checkCondition(parser: ChunkParser<any>, v: number) {
 			return v == parser.condValue!;
 		case "bitflag":
 			return (v & (1 << parser.condValue!)) != 0;
-		case "gte":
-			return v >= parser.condValue!;
-		case "lte":
-			return v <= parser.condValue!;
+		case "bitflagnot":
+			return (v & (1 << parser.condValue!)) == 0;
 		default:
 			throw new Error("unkown condition " + parser.condMode);
 	}
@@ -333,21 +330,57 @@ function arrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: ChunkParser
 			}
 		},
 		getTypescriptType(indent) {
-			return `(${chunktypes.map(c => c.getTypescriptType(indent)).join(" & ")})[]`;
+			let joined = chunktypes.map(c => c.getTypescriptType(indent)).join(" & ");
+			if (chunktypes.length == 1) { return `${joined}[]`; }
+			else { return `(${joined})[]`; }
+		}
+	};
+}
+
+function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype: ChunkParser<T>): ChunkParser<T[]> {
+	return {
+		read(buffer, parentctx) {
+			let r: T[] = [];
+			let ctx = Object.create(parentctx);
+			while (true) {
+				if (buffer.scan == buffer.length) {
+					console.log("ended reading nullTerminatedArray at end of file without 0x00 opcode");
+					break;
+				}
+				let header = lengthtype.read(buffer, ctx);
+				if (header == 0) { break; }
+				ctx.$opcode = header;
+				r.push(proptype.read(buffer, ctx));
+			}
+			return r;
+		},
+		write(buffer, value) {
+			//throw new Error("not implemented");
+			if (!Array.isArray(value)) { throw new Error("array expected"); }
+			for (let prop of value) {
+				const lengthvalue = 1;//TODO get this from"prop"
+				lengthtype.write(buffer, 1);
+				proptype.write(buffer, prop);
+			}
+			lengthtype.write(buffer, 0);
+		},
+		getTypescriptType(indent) {
+			return `${proptype.getTypescriptType(indent)}[]`;
 		}
 	};
 }
 
 function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 	validateIntType(primitive);
-	return {
-		read(buffer) {
+	let parser: ChunkParser<number> = {
+		read(buffer, ctx) {
+			//TODO clean this whole thing up and remove the variable bytes mode
 			let unsigned = primitive.unsigned;
 			let bytes = primitive.bytes;
-			let variable = primitive.variable;
+			let readmode = primitive.readmode;
 			let endianness = primitive.endianness;
 			let output = 0;
-			if (variable) {
+			if (readmode == "smart" || readmode == "sumtail") {
 				let firstByte = buffer.readUInt8(buffer.scan);
 
 				let mask = 0xFF;
@@ -355,9 +388,19 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				else mask = 0x7F;
 
 				buffer[buffer.scan] &= mask;
-				if (!unsigned && (firstByte & 0x40) == 0x40) buffer[buffer.scan] |= 0x80; // If the number is signed and second-most-significant bit is 1, set the most-significant bit to 1 since it's no longer a continuation bit
+				// If the number is signed and second-most-significant bit is 1,
+				// set the most-significant bit to 1 since it's no longer a continuation bit
+				if (!unsigned && (firstByte & 0x40) == 0x40) buffer[buffer.scan] |= 0x80;
 				output = buffer[`read${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](buffer.scan, bytes); buffer.scan += bytes;
 				buffer[buffer.scan - bytes] = firstByte; // Set it back to what it was originally
+				if (readmode == "sumtail") {
+					//this is very stupid but works
+					//yay for recursion
+					let overflowchunk = (1 << (bytes * 8 - 1));//0111111.. pattern
+					if (output == overflowchunk) {
+						output += parser.read(buffer, ctx);
+					}
+				}
 			} else {
 				output = buffer[`read${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](buffer.scan, bytes); buffer.scan += bytes;
 			}
@@ -367,10 +410,10 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 			if (typeof value != "number" || value % 1 != 0) throw new Error(`integer expected`);
 			let unsigned = primitive.unsigned;
 			let bytes = primitive.bytes;
-			let variable = primitive.variable;
+			let readmode = primitive.readmode;
 			let endianness = primitive.endianness;
 			let output = 0;
-			if (variable) {
+			if (readmode == "smart") {
 				if (endianness != "big") throw new Error(`variable length int only accepts big endian`);
 				let fitshalf = true;
 				if (unsigned) {
@@ -387,6 +430,8 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				//always write as signed since bitwise operations in js cast to int32
 				buffer[`writeIntBE`](int, buffer.scan, bytes);
 				buffer.scan += bytes;
+			} else if (readmode == "sumtail") {
+				throw new Error("not implemented");
 			} else {
 				output = buffer[`write${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](value, buffer.scan, bytes);
 				buffer.scan += bytes;
@@ -396,6 +441,7 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 			return "number";
 		}
 	}
+	return parser;
 }
 
 function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
@@ -403,7 +449,7 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 	return {
 		read(buffer) {
 			return primitive.value;
-		}, 
+		},
 		write(buffer, value) {
 			if (primitive.value != value) throw new Error(`expected constant ${primitive.value} was not present during write`);
 			//this is a nop, the existence of this field implis its value
@@ -418,17 +464,48 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 		}
 	}
 }
-function referenceValueParser(primitive: PrimitiveRef): ChunkParser<number> {
+function referenceValueParser(propname: string, minbit: number, bitlength: number): ChunkParser<number> {
 	return {
 		read(buffer, ctx) {
-			return ctx[primitive.prop];
+			let v = ctx[propname];
+			if (minbit != -1) {
+				v = (v >> minbit) & ~((~0) << bitlength);
+			}
+			return v;
 		},
 		write(buffer, value) {
 			//need to make the struct writer grab its value from here for invisible props
 			throw new Error("write for ref not implemented");
 		},
 		getTypescriptType() {
-			return "void";
+			return "number";
+		}
+	}
+}
+function intAccumlatorParser(refname: string, value: ChunkParser<number>, offset: number): ChunkParser<number> {
+	return {
+		read(buffer, ctx) {
+			//TODO fix the context situation
+			let increment = value.read(buffer, ctx);
+			let newvalue = ctx[refname] + increment + offset;
+			//this is awkward, if we update prop it will end up shadowing the prop 
+			//and wont be available at the next iteration
+			let protoctx = ctx;
+			//walk the prototype chain until we find the original owner of the property
+			while (protoctx && !Object.prototype.hasOwnProperty.call(protoctx, refname)) {
+				//look away
+				protoctx = (protoctx as any).__proto__;
+			}
+			if (!protoctx) { throw new Error("accumolator variable does not exist"); }
+			protoctx[refname] = newvalue;
+			return newvalue;
+		},
+		write(buffer, value) {
+			//need to make the struct writer grab its value from here for invisible props
+			throw new Error("write for accumolator not implemented");
+		},
+		getTypescriptType() {
+			return "number";
 		}
 	}
 }
@@ -499,8 +576,6 @@ function primitiveParser(primitive: Primitive<any>): ChunkParser<any> {
 			return stringParser(primitive);
 		case "value":
 			return literalValueParser(primitive);
-		case "ref":
-			return referenceValueParser(primitive);
 		default:
 			//@ts-ignore
 			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);

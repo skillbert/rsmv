@@ -1,4 +1,4 @@
-import { FSWatcher } from "fs";
+import { cacheMajors } from "./constants";
 import { parseCacheIndex } from "./opdecoder";
 
 
@@ -134,7 +134,6 @@ export function indexBufferToObject(major: number, buffer: Buffer) {
 	//convert to what the rest expects
 	let minoracc = 0;
 	let maxSubindex = indices.reduce((a, v) => Math.max(a, v.subindexcount), 0);
-	debugger;
 	let mappedindices = indices.map<CacheIndex>((jsonindex, i) => {
 		minoracc += jsonindex.minor;
 		let subacc = 0;//maxSubindex * i;
@@ -147,6 +146,33 @@ export function indexBufferToObject(major: number, buffer: Buffer) {
 				return subacc;
 			})
 		};
-	}); 
+	});
 	return mappedindices;
+}
+
+const mappedFileIds = {
+	[cacheMajors.items]: 256,//not sure
+	[cacheMajors.npcs]: 256,//not sure
+	[cacheMajors.materials]: Infinity,
+	[cacheMajors.objects]: 256
+}
+
+export abstract class CacheFileSource {
+	abstract getFile(major: number, minor: number, crc?: number): Promise<Buffer>;
+	abstract getFileArchive(index: CacheIndex): Promise<SubFile[]>;
+	abstract getIndexFile(major: number): Promise<CacheIndex[]>;
+
+	async getFileById(major: number, fileid: number) {
+		let archsize = mappedFileIds[major] ?? 1;
+		let holderindex = Math.floor(fileid / archsize);
+		let indexfile = await this.getIndexFile(major);
+		let holder = indexfile.find(q => q.minor == holderindex);
+		if (!holder) { throw new Error(`file id ${fileid} in major ${major} has no archive`); }
+		let subindex = holder.subindices.indexOf(fileid % archsize);
+		if (subindex == -1) { throw new Error(`file id ${fileid} in major ${major} does not exist in archive`); }
+		let files = await this.getFileArchive(holder);
+		let file = files[subindex].buffer;
+		return file;
+	}
+	close() { }
 }

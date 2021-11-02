@@ -1,13 +1,17 @@
 import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
+import { CacheFileSource } from "../cache";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { AttributeSoure, buildAttributeBuffer, glTypeIds } from "./gltfutil";
-import { parseMapsquareTiles, parseMapsquareUnderlays } from "../opdecoder";
-import { CacheFileSource } from "main";
+import { parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseObject } from "../opdecoder";
 import { ScanBuffer } from "opcode_reader";
+import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
+import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
+import { mapsquare_locations } from "../../generated/mapsquare_locations";
+import { addOb3Model } from "./ob3togltf";
 
 type Tile = {
 	flags: number,
@@ -22,132 +26,172 @@ const squareHeight = 64
 const squareLevels = 4;
 const heightScale = 1 / 16;
 
-export async function mapsquareToGltf(source: CacheFileSource, startindex: number, width: number, height = 0) {
+export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }) {
 
 	let gltf = new GLTFBuilder();
 
+
+	//TODO proper erroring on nulls
+	let configunderlaymeta = await source.getIndexFile(cacheMajors.config);
+	let underarch = await source.getFileArchive(configunderlaymeta.find(q => q.minor == 1)!);
+	let underlays = underarch.map(q => parseMapsquareUnderlays.read(q.buffer));
+	let overlays = (await source.getFileArchive(configunderlaymeta.find(q => q.minor == 4)!))
+		.map(q => parseMapsquareOverlays.read(q.buffer));
+
 	let nodes: number[] = [];
-	for (let y = 0; y < height; y++) {
-		for (let x = 0; x < width; x++) {
-			let mesh = await mapsquareMesh(gltf, source, startindex + x + y * 128);
-			if (mesh != -1) {
-				nodes.push(gltf.addNode({ mesh: mesh, translation: [y * 512 * 64, 0, x * 512 * 64] }));
-			}
+	for (let squarey = rect.y; squarey < rect.y + rect.height; squarey++) {
+		for (let squarex = rect.x; squarex < rect.x + rect.width; squarex++) {
+			let squareindex = squarex + squarey * 128;
+			let meshnode = await mapsquareMesh(gltf, source, underlays, overlays, squareindex);
+			let objectsnode = await mapsquareObjects(gltf, source, squareindex);
+
+			nodes.push(gltf.addNode({ children: [meshnode, objectsnode], translation: [squarey * 512 * 64, 0, squarex * 512 * 64] }));
 		}
 	}
 
 	gltf.addScene({ nodes });
-	let model = await gltf.convert({ glb: false, singlefile: true });
+	let model = await gltf.convert({ glb: true, singlefile: true });
 	return model.mainfile;
 }
 
-async function mapsquareMesh(gltf: GLTFBuilder, source: CacheFileSource, fileminor: number) {
+
+function getTile(tiles: Tile[], underlays: mapsquare_underlays[], overlays: mapsquare_overlays[], x: number, y: number, level: number) {
+	if (x < 0 || x >= squareWidth || y < 0 || y >= squareHeight) { return undefined; }
+	let tile = tiles[level * squareWidth * squareHeight + y * squareWidth + x];
+	if (!tile) {
+		//console.log(`tile expected at ${x} ${y}`)
+		return undefined;
+	}
+	let underlayid = typeof tile.underlay == "number" ? tile.underlay : 0;
+	let overlayid = typeof tile.overlay == "number" ? tile.overlay : 0;
+	let underlay = underlays[underlayid - 1];
+	let overlay = overlays[overlayid - 1] ?? undefined;
+	return {
+		height: tile.height ?? 0,
+		underlay,
+		overlay,
+		color: overlay?.primary_colour ?? underlay?.color ?? [255, 255, 255]
+	}
+}
+
+async function mapsquareObjects(gltf: GLTFBuilder, source: CacheFileSource, squareid: number) {
 	let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
-	let selfindex = mapunderlaymeta.find(q => q.minor == fileminor)!;
+	let selfindex = mapunderlaymeta.find(q => q.minor == squareid)!;
+	let selfarchive = (await source.getFileArchive(selfindex));
+	let locationindex = selfindex.subindices.indexOf(0);
+	if (locationindex == -1) { return gltf.addNode({}); }
+	let locations = parseMapsquareLocations.read(selfarchive[locationindex].buffer).locations;
+
+	let nodes: number[] = [];
+	for (let loc of locations) {
+		let objectfile = await source.getFileById(cacheMajors.objects, loc.id);
+		let objectmeta = parseObject.read(objectfile);
+		let modelids = objectmeta.models?.flatMap(q => q.values) ?? [];
+		let modelnodes = await Promise.all(modelids.map(async m => {
+			let file = await source.getFile(cacheMajors.models, m);
+			return addOb3Model(gltf, new Stream(file), {}, source.getFileById.bind(source));
+		}));
+
+		for (let inst of loc.uses) {
+			nodes.push(gltf.addNode({
+				children: modelnodes,
+				translation: [inst.y * 512, 0, inst.x * 512],
+				//quaternions, have fun
+				rotation: [0, Math.cos((inst.rotation+3) / 4 * Math.PI), 0, Math.sin((inst.rotation+3) / 4 * Math.PI)]
+			}));
+		}
+	}
+	return gltf.addNode({ children: nodes });
+}
+
+async function mapsquareMesh(gltf: GLTFBuilder, source: CacheFileSource, underlays: mapsquare_underlays[], overlays: mapsquare_overlays[], squareid: number) {
+	let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
+	let selfindex = mapunderlaymeta.find(q => q.minor == squareid)!;
 	let selfarchive = (await source.getFileArchive(selfindex));
 	let tileindex = selfindex.subindices.indexOf(3);
+
 	if (tileindex == -1) { return -1; }
 	let tilefile = selfarchive[tileindex].buffer;
-	let configunderlaymeta = await source.getIndexFile(cacheMajors.config);
 
 
-	let offset = 0;
-	let levels: Tile[][] = [];
-	while (offset < tilefile.length - 4096) {
-		let slice: ScanBuffer = Object.assign(tilefile.slice(offset), { scan: 0 });
-		levels.push(parseMapsquareTiles.read(slice));
-		offset += slice.scan;
-	}
+	// let offset = 0;
+	// let levels: Tile[][] = [];
+	// while (offset < tilefile.length - 4096) {
+	// 	let slice: ScanBuffer = Object.assign(tilefile.slice(offset), { scan: 0 });
+	// 	levels.push(parseMapsquareTiles.read(slice));
+	// 	offset += slice.scan;
+	// }
 	let tiles: Tile[] = parseMapsquareTiles.read(tilefile);
 
-	//TODO yikes
-	let underlays = (await source.getFileArchive(configunderlaymeta.find(q => q.major == 2 && q.minor == 1)!)).map(q => parseMapsquareUnderlays.read(q.buffer));
 
-	let getTile = (x: number, y: number, level: number) => {
-		if (x < 0 || x >= squareWidth || y < 0 || y >= squareHeight) { return undefined; }
-		let tile = tiles[level * squareWidth * squareHeight + y * squareWidth + x];
-		if (!tile) {
-			//console.log(`tile expected at ${x} ${y}`)
-			return undefined;
-		}
-		let underlayid = typeof tile.underlay == "number" ? tile.underlay - 1 : 0;
-		let underlay = underlays[underlayid];
-		return {
-			height: tile.height ?? 0,
-			underlay,
-			color: underlay.color ?? [255, 255, 255]
-		}
-	}
 
 	//worst case allocs
 	//maybe move these to static scratch buffer allocs
 	let posbuffer = new Float32Array(squareWidth * squareHeight * squareLevels * 4 * 3);
 	let colorbuffer = new Uint8Array(squareWidth * squareHeight * squareLevels * 4 * 3);
 	let indexbuffer = new Uint16Array(squareWidth * squareHeight * squareLevels * 6);
+	let vertexpointerbuffer = new Uint16Array((squareWidth + 1) * (squareHeight + 1) * squareLevels);
 
 	let vertexindex = 0;
 	let indexpointer = 0;
-	debugger;
 
+	let getvertexindex = (x: number, y: number, level: number) => {
+		return -1 + vertexpointerbuffer[level * (squareWidth + 1) * (squareHeight + 1) + y * (squareWidth + 1) + x];
+	}
+	let setvertexindex = (x: number, y: number, level: number, index: number) => {
+		return vertexpointerbuffer[level * (squareWidth + 1) * (squareHeight + 1) + y * (squareWidth + 1) + x] = index + 1;
+	}
 
-	for (let level = 0; level < levels.length; level++) {
+	let writeTile = (tiles: Tile[], x: number, y: number, level: number) => {
+		let tile = getTile(tiles, underlays, overlays, x, y, level);
+		if (!tile) { return; }
+		const pospointer = vertexindex * 3;
+		const colpointer = vertexindex * 3;
+
+		posbuffer[pospointer + 0] = x * 512;
+		posbuffer[pospointer + 1] = tile.height * 512 * heightScale;
+		posbuffer[pospointer + 2] = y * 512;
+		colorbuffer[colpointer + 0] = tile.color[0];
+		colorbuffer[colpointer + 1] = tile.color[1];
+		colorbuffer[colpointer + 2] = tile.color[2];
+
+		setvertexindex(x, y, level, vertexindex);
+		vertexindex++;
+	}
+
+	for (let level = 0; level < squareLevels; level++) {
 		for (let y = 0; y < squareHeight; y++) {
 			for (let x = 0; x < squareWidth; x++) {
-				let tile00 = getTile(x, y, level);
-				let tile01 = getTile(x + 1, y, level);
-				let tile10 = getTile(x, y + 1, level);
-				let tile11 = getTile(x + 1, y + 1, level);
-				if (!tile00 || !tile01 || !tile10 || !tile11) { continue; }
+				writeTile(tiles, x, y, level);
+			}
+		}
 
-				//if we actually have 4 visible corners in our tile
-				const pospointer = vertexindex * 3;
-				// let color00, color11, color10, color01;
-				// color00 = color11 = color10 = color01 = [255, 255, 255];
+		for (let y = 0; y < squareHeight; y++) {
+			for (let x = 0; x < squareWidth; x++) {
+				let tile = getTile(tiles, underlays, overlays, x, y, level);
+				if (!tile) { continue; }
 
-				//create 4 vertices
-				//TODO reuse vertices from different tiles
-				posbuffer[pospointer + 0] = x * 512;
-				posbuffer[pospointer + 1] = (tile00.height ?? 0) * 512 * heightScale;
-				posbuffer[pospointer + 2] = y * 512;
-				colorbuffer[pospointer + 0] = tile00.color[0];
-				colorbuffer[pospointer + 1] = tile00.color[1]
-				colorbuffer[pospointer + 2] = tile00.color[2]
-
-				posbuffer[pospointer + 3] = (x + 1) * 512;
-				posbuffer[pospointer + 4] = (tile01.height ?? 0) * 512 * heightScale
-				posbuffer[pospointer + 5] = y * 512;
-				colorbuffer[pospointer + 3] = tile00.color[0];
-				colorbuffer[pospointer + 4] = tile00.color[1]
-				colorbuffer[pospointer + 5] = tile00.color[2]
-
-				posbuffer[pospointer + 6] = x * 512;
-				posbuffer[pospointer + 7] = (tile10.height ?? 0) * 512 * heightScale;
-				posbuffer[pospointer + 8] = (y + 1) * 512;
-				colorbuffer[pospointer + 6] = tile00.color[0];
-				colorbuffer[pospointer + 7] = tile00.color[1]
-				colorbuffer[pospointer + 8] = tile00.color[2]
-
-				posbuffer[pospointer + 9] = (x + 1) * 512;
-				posbuffer[pospointer + 10] = (tile11.height ?? 0) * 512 * heightScale;
-				posbuffer[pospointer + 11] = (y + 1) * 512;
-				colorbuffer[pospointer + 9] = tile00.color[0];
-				colorbuffer[pospointer + 10] = tile00.color[1]
-				colorbuffer[pospointer + 11] = tile00.color[2]
+				let i00 = getvertexindex(x, y, level);
+				let i01 = getvertexindex(x + 1, y, level);
+				let i10 = getvertexindex(x, y + 1, level);
+				let i11 = getvertexindex(x + 1, y + 1, level);
+				if (i00 == -1 || i01 == -1 || i10 == -1 || i11 == -1) { continue; }
+				//TODO tile shape
 
 				//draw 2 triangles on these vertices
-				indexbuffer[indexpointer + 0] = vertexindex + 0;
-				indexbuffer[indexpointer + 1] = vertexindex + 2;
-				indexbuffer[indexpointer + 2] = vertexindex + 1;
+				indexbuffer[indexpointer + 0] = i00;
+				indexbuffer[indexpointer + 1] = i10;
+				indexbuffer[indexpointer + 2] = i01;
 
-				indexbuffer[indexpointer + 3] = vertexindex + 1;
-				indexbuffer[indexpointer + 4] = vertexindex + 2;
-				indexbuffer[indexpointer + 5] = vertexindex + 3;
+				indexbuffer[indexpointer + 3] = i01;
+				indexbuffer[indexpointer + 4] = i10;
+				indexbuffer[indexpointer + 5] = i11;
 
-				vertexindex += 4;
 				indexpointer += 6;
 			}
 		}
 	}
+
 	let attrsources = {
 		pos: { newtype: "f32", vecsize: 3, source: posbuffer.slice(0, vertexindex * 3) } as AttributeSoure,
 		color: { newtype: "u8", vecsize: 3, source: colorbuffer.slice(0, vertexindex * 3) } as AttributeSoure
@@ -177,5 +221,5 @@ async function mapsquareMesh(gltf: GLTFBuilder, source: CacheFileSource, filemin
 			indices: indices
 		}]
 	});
-	return mesh;
+	return gltf.addNode({ mesh });
 }

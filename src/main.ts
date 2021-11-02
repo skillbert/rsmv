@@ -75,16 +75,6 @@ let cmd = command({
 	}
 });
 
-
-export interface CacheFileSource {
-	getFile(major: number, minor: number, crc?: number): Promise<Buffer>;
-	getFileArchive(index: gamecache.CacheIndex): Promise<gamecache.SubFile[]>;
-	getFileById(major: number, fileid: number): Promise<Buffer>;
-	getIndexFile(major: number): Promise<gamecache.CacheIndex[]>;
-	close(): void;
-}
-
-
 async function createWindow(page: string, options: Electron.BrowserWindowConstructorOptions) {
 	const window = new BrowserWindow(options);
 	await window.loadFile(page);

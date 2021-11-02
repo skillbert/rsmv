@@ -50,7 +50,6 @@ async function run(cachedir: string, jsondir: string, replaceid: number) {
 		console.log([chunk.minor, chunk.crc, chunk.version]);
 		await fs.writeFile(path.resolve(cachedir, `replace-${chunk.major}-${chunk.minor}-old.bin`), rawfile);
 		await fs.writeFile(path.resolve(cachedir, `replace-${chunk.major}-${chunk.minor}-new.bin`), newfile);
-		//debugger;
 		await dbrun("UPDATE `cache` SET `DATA`=? WHERE `KEY`=?", [newfile, chunk.minor]);
 	}
 	db.close();

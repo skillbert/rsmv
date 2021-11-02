@@ -1,35 +1,39 @@
 {
-    "variable unsigned long":   { "primitive": "int", "unsigned": true, "bytes": 8, "variable": true, "endianness": "big" },
-    "variable unsigned int":    { "primitive": "int", "unsigned": true, "bytes": 4, "variable": true, "endianness": "big" },
-    "variable unsigned short":  { "primitive": "int", "unsigned": true, "bytes": 2, "variable": true, "endianness": "big" },
-    "variable unsigned byte":   { "primitive": "int", "unsigned": true, "bytes": 1, "variable": true, "endianness": "big" },
+    "variable unsigned long":   { "primitive": "int", "unsigned": true, "bytes": 8, "readmode": "smart", "endianness": "big" },
+    "variable unsigned int":    { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "smart", "endianness": "big" },
+    "variable unsigned short":  { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "smart", "endianness": "big" },
+    "variable unsigned byte":   { "primitive": "int", "unsigned": true, "bytes": 1, "readmode": "smart", "endianness": "big" },
     "unsigned variable long":   "variable unsigned long",
     "unsigned variable int":    "variable unsigned int",
     "unsigned variable short":  "variable unsigned short",
     "unsigned variable byte":   "variable unsigned byte",
 
-    "variable long":    { "primitive": "int", "unsigned": false, "bytes": 8, "variable": true, "endianness": "big" },
-    "variable int":     { "primitive": "int", "unsigned": false, "bytes": 4, "variable": true, "endianness": "big" },
-    "variable short":   { "primitive": "int", "unsigned": false, "bytes": 2, "variable": true, "endianness": "big" },
-    "variable byte":    { "primitive": "int", "unsigned": false, "bytes": 1, "variable": true, "endianness": "big" },
+    "variable long":    { "primitive": "int", "unsigned": false, "bytes": 8, "readmode": "smart", "endianness": "big" },
+    "variable int":     { "primitive": "int", "unsigned": false, "bytes": 4, "readmode": "smart", "endianness": "big" },
+    "variable short":   { "primitive": "int", "unsigned": false, "bytes": 2, "readmode": "smart", "endianness": "big" },
+    "variable byte":    { "primitive": "int", "unsigned": false, "bytes": 1, "readmode": "smart", "endianness": "big" },
 
-    "unsigned long":    { "primitive": "int", "unsigned": true, "bytes": 8, "variable": false, "endianness": "big" },
-    "unsigned int":     { "primitive": "int", "unsigned": true, "bytes": 4, "variable": false, "endianness": "big" },
-    "unsigned short":   { "primitive": "int", "unsigned": true, "bytes": 2, "variable": false, "endianness": "big" },
-    "unsigned byte":    { "primitive": "int", "unsigned": true, "bytes": 1, "variable": false, "endianness": "big" },
+    "unsigned long":    { "primitive": "int", "unsigned": true, "bytes": 8, "readmode": "fixed", "endianness": "big" },
+    "unsigned int":     { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "fixed", "endianness": "big" },
+    "unsigned short":   { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "fixed", "endianness": "big" },
+    "unsigned byte":    { "primitive": "int", "unsigned": true, "bytes": 1, "readmode": "fixed", "endianness": "big" },
 
-    "long":             { "primitive": "int", "unsigned": false, "bytes": 8, "variable": false, "endianness": "big" },
-    "int":              { "primitive": "int", "unsigned": false, "bytes": 4, "variable": false, "endianness": "big" },
-    "short":            { "primitive": "int", "unsigned": false, "bytes": 2, "variable": false, "endianness": "big" },
-    "byte":             { "primitive": "int", "unsigned": false, "bytes": 1, "variable": false, "endianness": "big" },
+    "long":             { "primitive": "int", "unsigned": false, "bytes": 8, "readmode": "fixed", "endianness": "big" },
+    "int":              { "primitive": "int", "unsigned": false, "bytes": 4, "readmode": "fixed", "endianness": "big" },
+    "short":            { "primitive": "int", "unsigned": false, "bytes": 2, "readmode": "fixed", "endianness": "big" },
+    "byte":             { "primitive": "int", "unsigned": false, "bytes": 1, "readmode": "fixed", "endianness": "big" },
 
-    "unsigned tribyte": { "primitive": "int", "unsigned": true, "bytes": 3, "variable": false, "endianness": "big" },
+    "unsigned tribyte": { "primitive": "int", "unsigned": true, "bytes": 3, "readmode": "fixed", "endianness": "big" },
+	
+    "tailed unsigned short":  { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "sumtail", "endianness": "big" },
 
     "bool":             { "primitive": "bool" },
     "boolean":          "bool",
 
     "true":             { "primitive": "value", "value": true },
     "false":            { "primitive": "value", "value": false },
+    "0":                { "primitive": "value", "value": 0 },
+    "-1":               { "primitive": "value", "value": -1 },
 
     "string":           { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[] },
     "paddedstring":     { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[0] },
@@ -37,5 +41,10 @@
     "extras value":     { "primitive": "switch", "offset": -4, "switch": { "0": "unsigned int", "1": "string" } },
 
     "model":            { "primitive": "switch", "opcode": "aByte3076_set_0", "switch": { "0": "unsigned int", "1": "string" } },
-	"extrasmap":        ["array",["struct",["type","unsigned byte"],["prop","unsigned tribyte"],["intvalue",["opt",["type",0],"unsigned int"]],["stringvalue",["opt",["type",1],"string"]]]]
+	"extrasmap":        [ "array",["struct",
+		["$type","unsigned byte"],
+		["prop","unsigned tribyte"],
+		["intvalue",["opt",["$type",0],"unsigned int"]],
+		["stringvalue",["opt",["$type",1],"string"]]
+	]]
 }

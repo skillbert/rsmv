@@ -3,7 +3,7 @@ import { parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as fs from "fs";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
-import { OB3 as OB3GLTF } from "../3d/ob3togltf";
+import { ob3ModelToGltfFile } from "../3d/ob3togltf";
 import * as ob3Renderer from "./ob3render";
 import * as gltfRenderer from "./gltfrender";
 import { cacheMajors } from "../constants";
@@ -265,11 +265,7 @@ class GltfRenderer implements ModelSink {
 		this.renderModels = renderer.setModels.bind(renderer);
 	}
 	async setModels(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications) {
-		let models = await Promise.all(modelfiles.map(async file => {
-			let m = new OB3GLTF(cache.get);
-			await m.setData(file, mods);
-			return m.gltf.convert({ singlefile: true }).then(m => m.mainfile.buffer);
-		}));
+		let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(getFile, file, mods)));
 		this.renderModels(models);
 	}
 }

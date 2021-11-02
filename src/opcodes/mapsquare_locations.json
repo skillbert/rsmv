@@ -1,0 +1,29 @@
+["struct",
+	["$idcounter","-1"],
+	["locations",["nullarray","tailed unsigned short",["struct",
+		["id",["accum","$idcounter",["ref","$opcode"]]],
+		["$location","0"],
+		["uses",["nullarray","variable unsigned short",["struct",
+			["$loc",["accum","$location",["ref","$opcode"],-1]],
+			["y",["ref","$loc",[0,6]]],
+			["x",["ref","$loc",[6,6]]],
+			["plane",["ref","$loc",[12,2]]],
+			["$data","unsigned byte"],
+			["rotation",["ref","$data",[0,2]]],
+			["type",["ref","$data",[2,5]]],
+			["extra",["opt",["$data",7,"bitflag"],["struct",
+				["flags","unsigned byte"],
+				["unk_0",["opt",["flags",0,"bitflag"],["array",4,"unsigned short"]]],
+				["unk_1",["opt",["flags",1,"bitflag"],"unsigned short"]],
+				["unk_2",["opt",["flags",2,"bitflag"],"unsigned short"]],
+				["unk_3",["opt",["flags",3,"bitflag"],"unsigned short"]],
+				["unk_4",["opt",["flags",4,"bitflag"],"unsigned short"]],
+				["unk_not4",["opt",["flags",4,"bitflagnot"],["struct",
+					["unkn_5",["opt",["flags",5,"bitflag"],"unsigned short"]],
+					["unkn_6",["opt",["flags",6,"bitflag"],"unsigned short"]],
+					["unkn_7",["opt",["flags",7,"bitflag"],"unsigned short"]]
+				]]]
+			]]]
+		]]]
+	]]]
+]

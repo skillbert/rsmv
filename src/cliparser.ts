@@ -4,7 +4,7 @@ import { ArgParser } from "cmd-ts/dist/cjs/argparser";
 
 import { Type, option } from 'cmd-ts';
 import fs from 'fs';
-import { CacheFileSource } from "./main";
+import { CacheFileSource } from "./cache";
 import { Downloader } from "./downloader";
 import * as updater from "./updater";
 import { GameCacheLoader } from "./cacheloader";
@@ -44,6 +44,21 @@ const ReadCacheSource: Type<string, CacheFileSource> = {
 	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
 };
 
+const MapRectangle: Type<string, { x: number, y: number, width: number, height: number }> = {
+	async from(str) {
+		let coordsparts = str.split(/[,x:;-]/);
+		if (coordsparts.length < 2) { throw new Error("need at least x and y in area"); }
+		if (coordsparts.length == 2) { coordsparts.push("1", "1"); }
+		if (coordsparts.length == 3) { coordsparts.push(coordsparts[2]); }
+		let [x, y, width, height] = coordsparts.map(q => {
+			if (isNaN(+q)) { throw new Error("number expected") }
+			return +q;
+		});
+		return { x, y, width, height };
+	},
+	description: "A square of map coordinates as 'x,y', 'x,y,size' or 'x,y,w,h'"
+};
+
 //forces typescript to keep track of the argparser type
 function literal<T extends Record<string, ArgParser<any>>>(args: T) {
 	return args;
@@ -51,6 +66,10 @@ function literal<T extends Record<string, ArgParser<any>>>(args: T) {
 
 export var filesource = literal({
 	source: option({ long: "source", short: "o", type: ReadCacheSource })
+});
+
+export var mapareasource = literal({
+	area: option({ long: "area", short: "a", type: MapRectangle })
 });
 
 

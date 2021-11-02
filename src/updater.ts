@@ -1,8 +1,7 @@
 import { Downloader, downloadServerConfig } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
-import { CacheIndex, CacheIndexStub, unpackBufferArchive, rootIndexBufferToObject, indexBufferToObject } from "./cache";
-import { CacheFileSource } from "./main";
+import { CacheIndex, CacheFileSource, CacheIndexStub, unpackBufferArchive, rootIndexBufferToObject, indexBufferToObject } from "./cache";
 import { ParsedTexture } from "./3d/textures";
 
 var cachedir: string;
@@ -311,19 +310,23 @@ export function on(event: string, callback) {
 	events.add(event, callback);
 }
 
-export const fileSource: CacheFileSource = {
+export const fileSource = new class extends CacheFileSource {
 	getFile(major, minor) {
-		throw new Error("not implemented");
 		//the original (packed) files are lost, would have to rebuild it completely
-	},
+		throw new Error("not implemented");
+		return null as any;//return to make typescript shut up
+	}
 	getIndexFile(major) {
 		throw new Error("not implemented");
-	},
-	async getFileArchive(index) {
-		throw new Error("not implemented");
+		return null as any;
+	}
+	getFileArchive(index) {
 		//the updater script already places the subfiles in seperator files
 		//would have to find out which subfile belong to which minor from the sqlite database
-	},
+		throw new Error("not implemented");
+		return null as any;
+	}
+	//TODO not sure if this is still correct
 	async getFileById(major, fileid) {
 		let meta = updateCallbacks[255][major].staticArguments as SaveFileArguments;
 		if (!meta) { throw new Error("this file source does not have this file major index"); }
@@ -333,6 +336,5 @@ export const fileSource: CacheFileSource = {
 			file = meta.hydrateFsFile(meta, fileid, file);
 		}
 		return file;
-	},
-	close() { }
+	}
 };

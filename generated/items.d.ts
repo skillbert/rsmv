@@ -34,18 +34,18 @@ export type items = {
 	widget_actions_2?: string | undefined
 	widget_actions_3?: string | undefined
 	widget_actions_4?: string | undefined
-	color_replacements?: ([
+	color_replacements?: [
 		number,
 		number,
-	])[] | undefined
-	material_replacements?: ([
+	][] | undefined
+	material_replacements?: [
 		number,
 		number,
-	])[] | undefined
-	recolourPalette?: ([
+	][] | undefined
+	recolourPalette?: [
 		number,
 		number,
-	])[] | undefined
+	][] | undefined
 	nameColor?: number | undefined
 	recolorDstIndices?: number | undefined
 	retextureDstIndices?: number | undefined
@@ -136,10 +136,10 @@ export type items = {
 		number,
 		number,
 	] | undefined
-	quests?: ([
+	quests?: [
 		number,
 		number,
-	])[] | undefined
+	][] | undefined
 	pickSizeShift?: number | undefined
 	bindLink?: number | undefined
 	bindTemplate?: number | undefined
@@ -162,10 +162,9 @@ export type items = {
 	neverStackable?: true | undefined
 	unknown_A7?: true | undefined
 	unknown_A8?: true | undefined
-	extra?: ({
-		type: number,
+	extra?: {
 		prop: number,
 		intvalue: number | undefined,
 		stringvalue: string | undefined,
-	})[] | undefined
+	}[] | undefined
 };

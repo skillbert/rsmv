@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays } from "../opdecoder";
-import { CacheFileSource } from "main";
+import { CacheFileSource } from "../cache";
 
 type KnownType = {
 	index: number,
@@ -55,8 +55,6 @@ let cmd = command({
 		fs.mkdirSync(outdir, { recursive: true });
 		for (let index of indexfile) {
 			if (index.minor >= minorstart && index.minor < minorend) {
-				debugger;
-				let arch = await args.source.getFile(index.major, index.minor);
 				let files = await args.source.getFileArchive(index);
 				for (let fileindex of index.subindices) {
 					if (fileindex != 3) { continue; }

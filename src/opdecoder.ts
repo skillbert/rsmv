@@ -41,5 +41,7 @@ export const parseObject = new FileParser<import("../generated/objects").objects
 export const parseAchievement = new FileParser<import("../generated/achievements").achievements>(__dirname + "/opcodes/achievements.json");
 export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(__dirname + "/opcodes/mapsquare_tiles.json");
 export const parseMapsquareUnderlays = new FileParser<import("../generated/mapsquare_underlays").mapsquare_underlays>(__dirname + "/opcodes/mapsquare_underlays.json");
+export const parseMapsquareOverlays = new FileParser<import("../generated/mapsquare_overlays").mapsquare_overlays>(__dirname + "/opcodes/mapsquare_overlays.json");
+export const parseMapsquareLocations = new FileParser<import("../generated/mapsquare_locations").mapsquare_locations>(__dirname + "/opcodes/mapsquare_locations.json");
 
 

@@ -3,7 +3,7 @@
 // run `npm run filetypes` to rebuild
 
 export type npcs = {
-	models?: (number)[] | undefined
+	models?: number[] | undefined
 	name?: string | undefined
 	boundSize?: number | undefined
 	actions_0?: string | undefined
@@ -11,18 +11,18 @@ export type npcs = {
 	actions_2?: string | undefined
 	actions_3?: string | undefined
 	actions_4?: string | undefined
-	color_replacements?: ([
+	color_replacements?: [
 		number,
 		number,
-	])[] | undefined
-	material_replacements?: ([
+	][] | undefined
+	material_replacements?: [
 		number,
 		number,
-	])[] | undefined
-	recolourPalette?: (number)[] | undefined
+	][] | undefined
+	recolourPalette?: number[] | undefined
 	recolor_indices?: number | undefined
 	retexture_indices?: number | undefined
-	headModels?: (number)[] | undefined
+	headModels?: number[] | undefined
 	drawMapDot?: false | undefined
 	combat?: number | undefined
 	scaleXZ?: number | undefined
@@ -34,7 +34,7 @@ export type npcs = {
 	unknown_67?: number | undefined
 	morphs_1?: {
 		unk1: number,
-		unk2: (number)[],
+		unk2: number[],
 		unk3: number,
 	} | undefined
 	unknown_6B?: false | undefined
@@ -51,16 +51,16 @@ export type npcs = {
 	morphs_2?: {
 		unk1: number,
 		unk2: number,
-		unk3: (number)[],
+		unk3: number[],
 		unk4: number,
 	} | undefined
 	movementCapabilities?: number | undefined
-	translations?: ([
+	translations?: [
 		number,
 		number,
 		number,
 		number,
-	])[] | undefined
+	][] | undefined
 	iconHeight?: number | undefined
 	respawnDirection?: number | undefined
 	animation_group?: number | undefined
@@ -99,7 +99,7 @@ export type npcs = {
 	} | undefined
 	aByte3076_set_1?: true | undefined
 	aByte3076_set_0?: false | undefined
-	quests?: (number)[] | undefined
+	quests?: number[] | undefined
 	dummy_1?: true | undefined
 	unknown_A3?: number | undefined
 	unknown_A4?: {
@@ -131,10 +131,9 @@ export type npcs = {
 	} | undefined
 	unknown_B6?: true | undefined
 	unknown_B8?: number | undefined
-	extra?: ({
-		type: number,
+	extra?: {
 		prop: number,
 		intvalue: number | undefined,
 		stringvalue: string | undefined,
-	})[] | undefined
+	}[] | undefined
 };

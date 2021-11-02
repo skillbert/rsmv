@@ -50,7 +50,7 @@ gulp.task('filetypes', function () {
 
 
 gulp.task('assets', function () {
-	return gulp.src([assetsglob], { base: "src", since: gulp.lastRun("assets") })
+	return gulp.src([assetsglob, opcodesglob], { base: "src", since: gulp.lastRun("assets") })
 		.pipe(gulp.dest(outdir))
 })
 

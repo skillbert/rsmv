@@ -1,11 +1,9 @@
-import { CacheIndex, indexBufferToObject, unpackBufferArchive } from "./cache";
+import { CacheIndex, indexBufferToObject, unpackBufferArchive, CacheFileSource } from "./cache";
 import { crc32 } from "crc";
 import { decompress } from "./decompress";
 import * as fs from "fs";
 import * as net from "net";
 import fetch from "node-fetch";
-import { CacheFileSource } from "./main";
-import { cacheMajors } from "./constants";
 
 type ClientConfig = {
 	[id: string]: string | {}
@@ -29,7 +27,7 @@ export async function downloadServerConfig() {
 	return config;
 }
 
-export class Downloader implements CacheFileSource {
+export class Downloader extends CacheFileSource {
 	state: State<any>;
 	socket: net.Socket;
 	server_version: number;
@@ -39,6 +37,7 @@ export class Downloader implements CacheFileSource {
 	ready: Promise<void>;
 
 	constructor(config?: Promise<ClientConfig>) {
+		super();
 		if (!config) { config = downloadServerConfig(); }
 		config.then(cnf => {
 			this.server_version = parseInt(cnf["server_version"] as any);
@@ -114,15 +113,6 @@ export class Downloader implements CacheFileSource {
 	}
 	async getFileArchive(meta: CacheIndex) {
 		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindexcount);
-	}
-	async getFileById(major: number, fileid: number) {
-		let index = await this.getIndexFile(major);
-		//TODO don't actually search the whole thing every time a file is needed
-		let holder = index.find(q => q.subindices.includes(fileid));
-		if (!holder) { throw new Error("file not found"); }
-		let files = await this.getFileArchive(holder);
-		let file = files[holder.subindices.indexOf(fileid)].buffer;
-		return file;
 	}
 	async getIndexFile(major: number) {
 		if (!this.indexMap.get(major)) {
