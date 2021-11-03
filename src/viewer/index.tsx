@@ -44,7 +44,7 @@ async function getFile(major: number, minor: number) {
 //  submitSearchIds(value);
 
 
-class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode }> {
+class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, jsontext: string }> {
 	renderer: ModelSink;
 	constructor(p) {
 		super(p);
@@ -53,14 +53,16 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 			mode: "model",
 			search: "0",
 			cnvRefresh: 0,
-			rendermode: "gltf"
+			rendermode: "gltf",
+			jsontext: ""
 		};
 	}
 
 	@boundMethod
 	submitSearchIds(value: string) {
 		this.setState({ hist: [...this.state.hist.slice(-19), value] });
-		requestLoadModel(value, this.state.mode, this.renderer!);
+		requestLoadModel(value, this.state.mode, this.renderer!)
+			.then(str => this.setState({ jsontext: str }))
 	}
 
 	@boundMethod
@@ -133,39 +135,36 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 								<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn" />
 								<div></div>
 							</form>
-							<div className="result-text">
-								<p>List of found IDs</p>
+							<div className="nav-jail">
+								<form className="sidebar-browser-search-bar" onSubmit={this.submitSearchminus} >
+									<div></div>
+									<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn-minus" />
+									<div></div>
+								</form>
+								<form className="sidebar-browser-search-bar" onSubmit={this.submitSearchplus} >
+									<div></div>
+									<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn-plus" />
+									<div></div>
+								</form>
 							</div>
+							<pre style={{ textAlign: "left", userSelect: "text" }}>{this.state.jsontext}</pre>
 							<div id="sidebar-browser-tab-data">
 								<style>
 								</style>
 								<div id="sidebar-browser-tab-data-container" className="ids">
 									{this.state.hist.map((name, i) => <div key={i} onClick={e => this.submitSearchIds(name)}><span>{name}</span></div>)}
-									{
-										//	<div><img src="https://runescape.wiki/images/7/7c/Rune_platebody.png?7147a"><span>Rune platebody +4</span></div>
-										//	...
-									}
 								</div>
+							</div>
+							<div className="result-text">
+								<p>List of found IDs</p>
 							</div>
 						</div>
 					</div>
 					<div className="credits">
 						<p>
 							Interface modified by the RuneScape <br />Preservation Unit.
-						Original tool author unknown.
-					</p>
-						<div className="nav-jail">
-							<form className="sidebar-browser-search-bar" onSubmit={this.submitSearchminus} >
-								<div></div>
-								<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn-minus" />
-								<div></div>
-							</form>
-							<form className="sidebar-browser-search-bar" onSubmit={this.submitSearchplus} >
-								<div></div>
-								<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn-plus" />
-								<div></div>
-							</form>
-						</div>
+							Original tool author unknown.
+						</p>
 					</div>
 				</div>
 			</div >
@@ -202,7 +201,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 	let cache = new MiniCache(getFile);
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
-	let obj: object;
+	let metatext = "";
 	switch (mode) {
 		case "model":
 			modelids = [+searchid];
@@ -210,6 +209,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 		case "item":
 			let item = parseItem.read(await cache.get(cacheMajors.items, +searchid));
 			console.log(item);
+			metatext = JSON.stringify(item, undefined, 2);
 			if (!item.baseModel && item.noteTemplate) {
 				item = parseItem.read(await cache.get(cacheMajors.items, item.noteTemplate));
 			}
@@ -220,6 +220,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 		case "npc":
 			let npc = parseNpc.read(await cache.get(cacheMajors.npcs, +searchid));
 			console.log(npc);
+			metatext = JSON.stringify(npc, undefined, 2);
 			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 			modelids = npc.models ?? [];
@@ -228,6 +229,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 		case "object":
 			let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));
 			console.log(obj);
+			metatext = JSON.stringify(obj, undefined, 2);
 			if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
 			if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
 			modelids = obj.models?.flatMap(m => m.values) ?? [];
@@ -238,6 +240,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 
 	let models = await Promise.all(modelids.map(id => cache.get(cacheMajors.models, id)));
 	renderer.setModels(models, cache, mods);
+	return metatext;
 }
 
 interface ModelSink {
@@ -266,7 +269,7 @@ class GltfRenderer implements ModelSink {
 	}
 	async setModels(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications) {
 		let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(getFile, file, mods)));
-		this.renderModels(models);
+		this.renderModels(models.map(m => m.buffer));
 	}
 }
 

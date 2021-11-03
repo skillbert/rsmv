@@ -57,7 +57,6 @@ let cmd = command({
 			if (index.minor >= minorstart && index.minor < minorend) {
 				let files = await args.source.getFileArchive(index);
 				for (let fileindex of index.subindices) {
-					if (fileindex != 3) { continue; }
 					let filename = path.resolve(outdir, `${index.minor}${index.subindexcount == 1 ? "" : "-" + fileindex}.${args.decode}`);
 					let file = files[fileindex].buffer;
 					if (args.decode == "bin") {

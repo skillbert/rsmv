@@ -1,4 +1,4 @@
-["array",4096,["struct",
+["array",16384,["struct",
 	["flags","unsigned byte"],
 	["shape",["opt",["flags",0,"bitflag"],"unsigned byte"]],
 	["overlay",["opt",["flags",0,"bitflag"],"variable unsigned short"]],

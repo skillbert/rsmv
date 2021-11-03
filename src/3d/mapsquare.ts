@@ -1,7 +1,7 @@
 import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
-import { CacheFileSource } from "../cache";
+import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
@@ -11,7 +11,7 @@ import { ScanBuffer } from "opcode_reader";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
-import { addOb3Model } from "./ob3togltf";
+import { addOb3Model, GLTFSceneCache } from "./ob3togltf";
 
 type Tile = {
 	flags: number,
@@ -21,6 +21,15 @@ type Tile = {
 	height?: number
 }
 
+type ChunkData = {
+	tiles: Tile[],
+	underlays: mapsquare_underlays[],
+	overlays: mapsquare_overlays[],
+	archive: SubFile[],
+	cacheIndex: CacheIndex
+}
+
+const tiledimensions = 512;
 const squareWidth = 64;
 const squareHeight = 64
 const squareLevels = 4;
@@ -28,7 +37,7 @@ const heightScale = 1 / 16;
 
 export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }) {
 
-	let gltf = new GLTFBuilder();
+	let scene = new GLTFSceneCache(source.getFileById.bind(source));
 
 
 	//TODO proper erroring on nulls
@@ -42,88 +51,109 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 	for (let squarey = rect.y; squarey < rect.y + rect.height; squarey++) {
 		for (let squarex = rect.x; squarex < rect.x + rect.width; squarex++) {
 			let squareindex = squarex + squarey * 128;
-			let meshnode = await mapsquareMesh(gltf, source, underlays, overlays, squareindex);
-			let objectsnode = await mapsquareObjects(gltf, source, squareindex);
+			let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
+			let selfindex = mapunderlaymeta.find(q => q.minor == squareindex)!;
+			let selfarchive = (await source.getFileArchive(selfindex));
+			let tileindex = selfindex.subindices.indexOf(3);
 
-			nodes.push(gltf.addNode({ children: [meshnode, objectsnode], translation: [squarey * 512 * 64, 0, squarex * 512 * 64] }));
+			if (tileindex == -1) { continue; }
+			let tilefile = selfarchive[tileindex].buffer;
+			let tiles = parseMapsquareTiles.read(tilefile)
+			let chunk: ChunkData = { tiles, underlays, overlays, cacheIndex: selfindex, archive: selfarchive };
+			let meshnode = await mapsquareMesh(scene, chunk);
+			let objectsnode = await mapsquareObjects(scene, chunk);
+
+			nodes.push(scene.gltf.addNode({
+				children: [meshnode, objectsnode],
+				translation: [
+					squarex * tiledimensions * squareWidth,
+					0,
+					squarey * tiledimensions * squareHeight
+				]
+			}));
 		}
 	}
-
-	gltf.addScene({ nodes });
-	let model = await gltf.convert({ glb: true, singlefile: true });
+	let rootnode = scene.gltf.addNode({ children: nodes, scale: [1, 1, -1] });
+	scene.gltf.addScene({ nodes: [rootnode] });
+	let model = await scene.gltf.convert({ glb: true, singlefile: true });
 	return model.mainfile;
 }
 
 
-function getTile(tiles: Tile[], underlays: mapsquare_underlays[], overlays: mapsquare_overlays[], x: number, y: number, level: number) {
-	if (x < 0 || x >= squareWidth || y < 0 || y >= squareHeight) { return undefined; }
-	let tile = tiles[level * squareWidth * squareHeight + y * squareWidth + x];
+function getTile(chunk: ChunkData, x: number, z: number, level: number) {
+	if (x < 0 || x >= squareWidth || z < 0 || z >= squareHeight) { return undefined; }
+	let tile = chunk.tiles[level * squareWidth * squareHeight + x * squareHeight + z];
 	if (!tile) {
 		//console.log(`tile expected at ${x} ${y}`)
 		return undefined;
 	}
 	let underlayid = typeof tile.underlay == "number" ? tile.underlay : 0;
 	let overlayid = typeof tile.overlay == "number" ? tile.overlay : 0;
-	let underlay = underlays[underlayid - 1];
-	let overlay = overlays[overlayid - 1] ?? undefined;
+	let underlay = chunk.underlays[underlayid - 1];
+	let overlay = chunk.overlays[overlayid - 1] ?? undefined;
 	return {
-		height: tile.height ?? 0,
+		x: x * tiledimensions,
+		y: (tile.height ?? 0) * heightScale * tiledimensions,
+		z: z * tiledimensions,
 		underlay,
 		overlay,
 		color: overlay?.primary_colour ?? underlay?.color ?? [255, 255, 255]
 	}
 }
 
-async function mapsquareObjects(gltf: GLTFBuilder, source: CacheFileSource, squareid: number) {
-	let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
-	let selfindex = mapunderlaymeta.find(q => q.minor == squareid)!;
-	let selfarchive = (await source.getFileArchive(selfindex));
-	let locationindex = selfindex.subindices.indexOf(0);
-	if (locationindex == -1) { return gltf.addNode({}); }
-	let locations = parseMapsquareLocations.read(selfarchive[locationindex].buffer).locations;
+async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData) {
+	let locationindex = chunk.cacheIndex.subindices.indexOf(0);
+	if (locationindex == -1) { return scene.gltf.addNode({}); }
+	let locations = parseMapsquareLocations.read(chunk.archive[locationindex].buffer).locations;
 
 	let nodes: number[] = [];
 	for (let loc of locations) {
-		let objectfile = await source.getFileById(cacheMajors.objects, loc.id);
+		let objectfile = await scene.getFileById(cacheMajors.objects, loc.id);
 		let objectmeta = parseObject.read(objectfile);
-		let modelids = objectmeta.models?.flatMap(q => q.values) ?? [];
-		let modelnodes = await Promise.all(modelids.map(async m => {
-			let file = await source.getFile(cacheMajors.models, m);
-			return addOb3Model(gltf, new Stream(file), {}, source.getFileById.bind(source));
+		//TODO yikes
+		//rework the whole model loading strategy
+		//make the model loader reserve a mesh slot and return immediately with the 
+		//reserved id and add a promise to the queue
+		let modelids = objectmeta.models?.flatMap(q => q.values.map(v => ({ type: q.type, value: v }))) ?? [];
+		let meshes = await Promise.all(modelids.map(async m => {
+			let file = await scene.getFileById(cacheMajors.models, m.value);
+			return { type: m.type, mesh: await addOb3Model(scene, new Stream(file), {}, scene.getFileById) };
 		}));
 
+
 		for (let inst of loc.uses) {
-			nodes.push(gltf.addNode({
-				children: modelnodes,
-				translation: [inst.y * 512, 0, inst.x * 512],
-				//quaternions, have fun
-				rotation: [0, Math.cos((inst.rotation+3) / 4 * Math.PI), 0, Math.sin((inst.rotation+3) / 4 * Math.PI)]
+			console.log("object", inst.x, inst.y, inst.rotation, JSON.stringify(inst.extra), loc.id,);
+			let tile = getTile(chunk, inst.x, inst.y, inst.plane);
+			if (!tile) {
+				//TODO is this even possible?
+				console.log("object without tile");
+				continue;
+			}
+
+			//models have their center in the middle, but they always rotate such that their southwest corner
+			//corresponds to the southwest corner of the tile
+			let dx = (objectmeta.width ?? 1) / 2 * tiledimensions;
+			let dz = (objectmeta.length ?? 1) / 2 * tiledimensions;
+			let rotation = (-inst.rotation + 2) / 4 * Math.PI * 2;
+			let flipoffset = (inst.rotation % 2) == 1;
+
+			nodes.push(scene.gltf.addNode({
+				children: meshes.filter(m => m.type == inst.type).map(mesh => scene.gltf.addNode({ mesh: mesh.mesh })),
+				translation: [
+					tile.x + (!flipoffset ? dx : dz),
+					tile.y,
+					tile.z + (!flipoffset ? dz : dx)
+				],
+				scale: [1, 1, (objectmeta.mirror ? -1 : 1)],
+				//quaternions, even more fun
+				rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)]
 			}));
 		}
 	}
-	return gltf.addNode({ children: nodes });
+	return scene.gltf.addNode({ children: nodes });
 }
 
-async function mapsquareMesh(gltf: GLTFBuilder, source: CacheFileSource, underlays: mapsquare_underlays[], overlays: mapsquare_overlays[], squareid: number) {
-	let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
-	let selfindex = mapunderlaymeta.find(q => q.minor == squareid)!;
-	let selfarchive = (await source.getFileArchive(selfindex));
-	let tileindex = selfindex.subindices.indexOf(3);
-
-	if (tileindex == -1) { return -1; }
-	let tilefile = selfarchive[tileindex].buffer;
-
-
-	// let offset = 0;
-	// let levels: Tile[][] = [];
-	// while (offset < tilefile.length - 4096) {
-	// 	let slice: ScanBuffer = Object.assign(tilefile.slice(offset), { scan: 0 });
-	// 	levels.push(parseMapsquareTiles.read(slice));
-	// 	offset += slice.scan;
-	// }
-	let tiles: Tile[] = parseMapsquareTiles.read(tilefile);
-
-
+async function mapsquareMesh(scene: GLTFSceneCache, chunk: ChunkData) {
 
 	//worst case allocs
 	//maybe move these to static scratch buffer allocs
@@ -135,40 +165,40 @@ async function mapsquareMesh(gltf: GLTFBuilder, source: CacheFileSource, underla
 	let vertexindex = 0;
 	let indexpointer = 0;
 
-	let getvertexindex = (x: number, y: number, level: number) => {
-		return -1 + vertexpointerbuffer[level * (squareWidth + 1) * (squareHeight + 1) + y * (squareWidth + 1) + x];
+	let getvertexindex = (x: number, z: number, level: number) => {
+		return -1 + vertexpointerbuffer[level * (squareWidth + 1) * (squareHeight + 1) + z * (squareWidth + 1) + x];
 	}
-	let setvertexindex = (x: number, y: number, level: number, index: number) => {
-		return vertexpointerbuffer[level * (squareWidth + 1) * (squareHeight + 1) + y * (squareWidth + 1) + x] = index + 1;
+	let setvertexindex = (x: number, z: number, level: number, index: number) => {
+		return vertexpointerbuffer[level * (squareWidth + 1) * (squareHeight + 1) + z * (squareWidth + 1) + x] = index + 1;
 	}
 
-	let writeTile = (tiles: Tile[], x: number, y: number, level: number) => {
-		let tile = getTile(tiles, underlays, overlays, x, y, level);
+	let writeTile = (x: number, z: number, level: number) => {
+		let tile = getTile(chunk, x, z, level);
 		if (!tile) { return; }
 		const pospointer = vertexindex * 3;
 		const colpointer = vertexindex * 3;
 
-		posbuffer[pospointer + 0] = x * 512;
-		posbuffer[pospointer + 1] = tile.height * 512 * heightScale;
-		posbuffer[pospointer + 2] = y * 512;
+		posbuffer[pospointer + 0] = tile.x;
+		posbuffer[pospointer + 1] = tile.y;
+		posbuffer[pospointer + 2] = tile.z;
 		colorbuffer[colpointer + 0] = tile.color[0];
 		colorbuffer[colpointer + 1] = tile.color[1];
 		colorbuffer[colpointer + 2] = tile.color[2];
 
-		setvertexindex(x, y, level, vertexindex);
+		setvertexindex(x, z, level, vertexindex);
 		vertexindex++;
 	}
 
-	for (let level = 0; level < squareLevels; level++) {
+	for (let level = 0; level < 1; level++) {
 		for (let y = 0; y < squareHeight; y++) {
 			for (let x = 0; x < squareWidth; x++) {
-				writeTile(tiles, x, y, level);
+				writeTile(x, y, level);
 			}
 		}
 
 		for (let y = 0; y < squareHeight; y++) {
 			for (let x = 0; x < squareWidth; x++) {
-				let tile = getTile(tiles, underlays, overlays, x, y, level);
+				let tile = getTile(chunk, x, y, level);
 				if (!tile) { continue; }
 
 				let i00 = getvertexindex(x, y, level);
@@ -201,6 +231,7 @@ async function mapsquareMesh(gltf: GLTFBuilder, source: CacheFileSource, underla
 
 	let attrs: MeshPrimitive["attributes"] = {};
 
+	let gltf = scene.gltf;
 	let view = gltf.addBufferWithView(buffer, bytestride, false);
 	attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
 	attributes.color.normalize = true;

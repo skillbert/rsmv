@@ -23,6 +23,12 @@
     "short":            { "primitive": "int", "unsigned": false, "bytes": 2, "readmode": "fixed", "endianness": "big" },
     "byte":             { "primitive": "int", "unsigned": false, "bytes": 1, "readmode": "fixed", "endianness": "big" },
 
+	"ubyte":            "unsigned byte",
+	"ushort":           "unsigned short",
+	"uint":             "unsigned int",
+	"varushort":        "variable unsigned short",
+	"varuint":          "variable unsigned int",
+
     "unsigned tribyte": { "primitive": "int", "unsigned": true, "bytes": 3, "readmode": "fixed", "endianness": "big" },
 	
     "tailed unsigned short":  { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "sumtail", "endianness": "big" },

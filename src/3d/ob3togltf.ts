@@ -6,61 +6,36 @@ import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 
-type Mesh = {
-	groupFlags: number;
-	unk6: number;
-	faceCount: number;
-	materialId: number;
+type FileGetter = (major: number, minor: number) => Promise<Buffer>;
 
-	colourBuffer: Uint8Array;//per face
-	alphaBuffer: Uint8Array;//per face
-	flag4Buffer: Uint16Array;//per face, could be a float16 actually but we don't care atm
-	indexBuffers: Uint16Array[];//different index buffers for different levels of detail
-	positionBuffer: Int16Array;//int16
-	normalBuffer: Int8Array;
-	tangentBuffer: Int8Array;//normals as well as tangents?
-	uvBuffer: Float32Array;
-	boneidBuffer: Uint16Array;
+//a wrapper around gltfbuilder that ensures that resouces are correctly shared
+export class GLTFSceneCache {
+	getFileById: FileGetter;
+	textureCache = new Map<number, number>();
+	materialCache = new Map<number, number>();
+	gltf = new GLTFBuilder();
 
-	indexBufferCount: number;
-	vertexCount: number;
-
-	material: JMatInternal;
-	specular: number;
-	metalness: number;
-	colour: number;
-}
-
-export async function ob3ModelToGltfFile(getFile: (major: number, minor: number) => Promise<Buffer>, model: Buffer, mods: ModelModifications) {
-	let gltf = new GLTFBuilder();
-	let stream = new Stream(model);
-	let node = await addOb3Model(gltf, stream, mods, getFile);
-	gltf.addScene({ nodes: [node] })
-	let result = await gltf.convert({ singlefile: true, glb: true });
-	return result.mainfile;
-}
-
-export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modifications: ModelModifications, getFile: (major: number, minor: number) => Promise<Buffer>) {
-	//need this cache to dedupe the images in the resulting model file
-	let textureCache: { [id: number]: number } = {};
-
-	let getTextureFile = async (texid: number) => {
-		if (typeof textureCache[texid] == "undefined") {
-			let file = await getFile(cacheMajors.texturesDds, texid);
-			let parsed = new ParsedTexture(file);
-			textureCache[texid] = gltf.addImage(await parsed.convertFile("png"));
-		}
-		return textureCache[texid];
+	constructor(getfilebyid: FileGetter) {
+		this.getFileById = getfilebyid;
 	}
 
+	async getTextureFile(texid: number) {
+		let cached = this.textureCache.get(texid);
+		if (cached) { return cached; }
+
+		let file = await this.getFileById(cacheMajors.texturesDds, texid);
+		let parsed = new ParsedTexture(file);
+		let texnode = this.gltf.addImage(await parsed.convertFile("png"));
+		this.textureCache.set(texid, texnode);
+		return texnode;
+	}
 	//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
-	let parseMaterial = async (matid: number) => {
-		for (let repl of modifications.replaceMaterials ?? []) {
-			if (matid == repl[0]) {
-				matid = repl[1];
-				break;
-			}
-		}
+	async getMaterial(matid: number, hasVertexAlpha: boolean) {
+		//create a seperate material if we have alpha
+		//TODO the material should have this data, not the mesh
+		let matcacheid = matid | (hasVertexAlpha ? 0x800000 : 0);
+		let cached = this.materialCache.get(matcacheid);
+		if (cached) { return cached; }
 
 		let textures: {
 			diffuse?: number,
@@ -76,9 +51,8 @@ export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modification
 			color: 1
 		}
 		let originalMaterial: JMatInternal | null = null;
-		let environment = 5522;
 		if (matid != -1) {
-			var materialfile = await getFile(cacheMajors.materials, matid);
+			var materialfile = await this.getFileById(cacheMajors.materials, matid);
 
 			if (materialfile[0] == 0x00) {
 				var mat = new JMat(materialfile).get();
@@ -102,8 +76,60 @@ export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modification
 			}
 		}
 
-		return { textures, environment, originalMaterial, factors };
+		//===== do the gltf stuff =====
+
+		let materialdef: Material = {
+			//TODO check if diffuse has alpha as well
+			alphaMode: hasVertexAlpha ? "BLEND" : "OPAQUE"
+		}
+
+		let sampler = this.gltf.addSampler({});//TODO wrapS wrapT from material flags
+
+		if (textures.diffuse) {
+			materialdef.pbrMetallicRoughness = {};
+			//TODO animated texture UV's (fire cape)
+			materialdef.pbrMetallicRoughness.baseColorTexture = {
+				index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.diffuse) }),
+			};
+			//materialdef.pbrMetallicRoughness.baseColorFactor = [factors.color, factors.color, factors.color, 1];
+			if (typeof textures.metalness != "undefined") {
+				if (textures.metalness) {
+					materialdef.pbrMetallicRoughness.metallicRoughnessTexture = {
+						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.metalness) })
+					}
+				}
+				//materialdef.pbrMetallicRoughness.metallicFactor = factors.metalness;
+			}
+		}
+		if (textures.normal) {
+			materialdef.normalTexture = {
+				index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.normal) })
+			}
+		}
+		if (textures.specular) {
+			//TODO not directly supported in gltf
+		}
+		let materialnode = this.gltf.addMaterial(materialdef);
+		this.materialCache.set(matcacheid, materialnode);
+		return materialnode;
 	}
+}
+
+export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mods: ModelModifications) {
+	let scene = new GLTFSceneCache(getFile);
+	let stream = new Stream(model);
+	let mesh = await addOb3Model(scene, stream, mods, getFile);
+	//flip z to go from right-handed to left handed
+	let rootnode = scene.gltf.addNode({ mesh, scale: [1, 1, -1] });
+	scene.gltf.addScene({ nodes: [rootnode] });
+	let result = await scene.gltf.convert({ singlefile: true, glb: false });
+	console.log("gltf", scene.gltf.json);
+	return result.mainfile;
+}
+
+export async function addOb3Model(scenecache: GLTFSceneCache, model: Stream, modifications: ModelModifications, getFile: (major: number, minor: number) => Promise<Buffer>) {
+
+	let gltf = scenecache.gltf;
 
 	let format = model.readByte();
 	let unk1 = model.readByte(); //always 03?
@@ -112,29 +138,36 @@ export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modification
 	let unkCount0 = model.readUByte();
 	let unkCount1 = model.readUByte();
 	let unkCount2 = model.readUShort();
+	//console.log(unkCount0,unkCount1,unkCount2,unk1)
 
 	let prims: MeshPrimitive[] = [];
 
 	for (var n = 0; n < meshCount; ++n) {
-		var group: Mesh = {} as any;
 		// Flag 0x10 is currently used, but doesn't appear to change the structure or data in any way
-		group.groupFlags = model.readUInt();
+		let groupFlags = model.readUInt();
 
 		// Unknown, probably pertains to materials transparency maybe?
-		group.unk6 = model.readUByte();
-		group.materialId = model.readUShort();
-		group.faceCount = model.readUShort();
+		let unk6 = model.readUByte();
+		let materialArgument = model.readUShort();
+		let faceCount = model.readUShort();
 
-		let hasVertices = (group.groupFlags & 0x01) != 0;
-		let hasVertexAlpha = (group.groupFlags & 0x02) != 0;
-		let hasFlag4 = (group.groupFlags & 0x04) != 0;
-		let hasBoneids = (group.groupFlags & 0x08) != 0;
+		let hasVertices = (groupFlags & 0x01) != 0;
+		let hasVertexAlpha = (groupFlags & 0x02) != 0;
+		let hasFlag4 = (groupFlags & 0x04) != 0;
+		let hasBoneids = (groupFlags & 0x08) != 0;
+
+		let colourBuffer: Uint8Array | null = null;
+		let alphaBuffer: Uint8Array | null = null;
+		let positionBuffer: Int16Array | null = null;
+		let normalBuffer: Int8Array | null = null;
+		let uvBuffer: Float32Array | null = null;
+		let boneidBuffer: Uint16Array | null = null;
 
 		if (hasVertices) {
 			let replaces = modifications.replaceColors ?? [];
 			replaces.push([39834, 43220]);//TODO what is this? found it hard coded in before
-			group.colourBuffer = new Uint8Array(group.faceCount * 3);
-			for (var i = 0; i < group.faceCount; ++i) {
+			colourBuffer = new Uint8Array(faceCount * 3);
+			for (var i = 0; i < faceCount; ++i) {
 				var faceColour = model.readUShort();
 				for (let repl of replaces) {
 					if (faceColour == repl[0]) {
@@ -143,97 +176,93 @@ export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modification
 					}
 				}
 				var colour = HSL2RGB(packedHSL2HSL(faceColour));
-				group.colourBuffer[i * 3 + 0] = colour[0];
-				group.colourBuffer[i * 3 + 1] = colour[1];
-				group.colourBuffer[i * 3 + 2] = colour[2];
+				colourBuffer[i * 3 + 0] = colour[0];
+				colourBuffer[i * 3 + 1] = colour[1];
+				colourBuffer[i * 3 + 2] = colour[2];
 			}
 		}
 		if (hasVertexAlpha) {
-			group.alphaBuffer = streamChunk(Uint8Array, model, group.faceCount);
+			alphaBuffer = streamChunk(Uint8Array, model, faceCount);
 		}
 
 		//(Unknown, flag 0x04)
 		if (hasFlag4) {
 			//apparently these are actually encoded as float16, but we aren't using them anyway
-			group.flag4Buffer = streamChunk(Uint16Array, model, group.faceCount);
+			let flag4Buffer = streamChunk(Uint16Array, model, faceCount);
 		}
 
-		group.indexBufferCount = model.readUByte();
-		group.indexBuffers = [];
-		for (var i = 0; i < group.indexBufferCount; ++i) {
+		let indexBufferCount = model.readUByte();
+		let indexBuffers: Uint16Array[] = [];
+		for (var i = 0; i < indexBufferCount; ++i) {
 			var indexCount = model.readUShort();
-			group.indexBuffers.push(streamChunk(Uint16Array, model, indexCount));
+			indexBuffers.push(streamChunk(Uint16Array, model, indexCount));
 		}
 
 		//not sure what happens without these flags
+		let vertexCount = 0;
 		if (hasVertices || hasBoneids) {
-			group.vertexCount = model.readUShort();
+			vertexCount = model.readUShort();
 			if (hasVertices) {
-				//TODO flip sign of z since we are in the [wrong]-handed coordinate system
-				group.positionBuffer = streamChunk(Int16Array, model, group.vertexCount * 3);
-				//TODO flip sign of z since we are in the [wrong]-handed coordinate system
-				group.normalBuffer = streamChunk(Int8Array, model, group.vertexCount * 3);
+				positionBuffer = streamChunk(Int16Array, model, vertexCount * 3);
+				normalBuffer = streamChunk(Int8Array, model, vertexCount * 3);
 				//not currently used
-				group.tangentBuffer = streamChunk(Int8Array, model, group.vertexCount * 4);
-				group.uvBuffer = new Float32Array(group.vertexCount * 2);
-				for (let i = 0; i < group.vertexCount * 2; i++) {
-					group.uvBuffer[i] = model.readHalf();
+				let tangentBuffer = streamChunk(Int8Array, model, vertexCount * 4);
+				uvBuffer = new Float32Array(vertexCount * 2);
+				for (let i = 0; i < vertexCount * 2; i++) {
+					uvBuffer[i] = model.readHalf();
 				}
 				//group.uvBuffer = streamChunk(Uint16Array, model, group.vertexCount * 2);
 			}
 			if (hasBoneids) {
-				group.boneidBuffer = streamChunk(Uint16Array, model, group.vertexCount);
+				//TODO there can't be more than ~50 bones in the engine, what happens to the extra byte?
+				boneidBuffer = streamChunk(Uint16Array, model, vertexCount);
 			}
 		}
 
+		if (!positionBuffer) {
+			console.log("skipped mesh without position buffer")
+			continue;
+		}
+
+		//highest level of detail only
+		let indexbuf = indexBuffers[0];
+
 		let attrsources: Record<string, AttributeSoure> = {};
+		attrsources.pos = { newtype: "f32", vecsize: 3, source: positionBuffer };
 
-		let normalsrepacked = new Float32Array(group.normalBuffer.length);
-		for (let i = 0; i < group.normalBuffer.length; i += 3) {
-			let x = group.normalBuffer[i + 0];
-			let y = group.normalBuffer[i + 1];
-			let z = group.normalBuffer[i + 2];
-			//recalc instead of taking 255 because apparently its not normalized properly
-			let len = Math.hypot(x, y, z);
-			normalsrepacked[i + 0] = x / len;
-			normalsrepacked[i + 1] = y / len;
-			normalsrepacked[i + 2] = -z / len;//flip z
-		}
-		for (let i = 0; i < group.positionBuffer.length; i += 3) {
-			//TODO this changes the original file
-			group.positionBuffer[i + 2] = -group.positionBuffer[i + 2];//flip z
+		if (uvBuffer) {
+			attrsources.texuvs = { newtype: "f32", vecsize: 2, source: uvBuffer };
 		}
 
-		attrsources.pos = { newtype: "f32", vecsize: 3, source: group.positionBuffer };
-		attrsources.normals = { newtype: "f32", vecsize: 3, source: normalsrepacked };
-		attrsources.texuvs = { newtype: "f32", vecsize: 2, source: group.uvBuffer };
-
-		//highest level of detail
-		let indexbuf = group.indexBuffers[0];
-
-		//since we flipped one of our axis, we also need to flip the polygon winding order
-		for (let i = 0; i < indexbuf.length; i += 3) {
-			let tmp = indexbuf[i];
-			//TODO this changes the original file
-			indexbuf[i] = indexbuf[i + 1];
-			indexbuf[i + 1] = tmp;
+		if (normalBuffer) {
+			let normalsrepacked = new Float32Array(normalBuffer.length);
+			for (let i = 0; i < normalBuffer.length; i += 3) {
+				let x = normalBuffer[i + 0];
+				let y = normalBuffer[i + 1];
+				let z = normalBuffer[i + 2];
+				//recalc instead of taking 255 because apparently its not normalized properly
+				let len = Math.hypot(x, y, z);
+				normalsrepacked[i + 0] = x / len;
+				normalsrepacked[i + 1] = y / len;
+				normalsrepacked[i + 2] = z / len;
+			}
+			attrsources.normals = { newtype: "f32", vecsize: 3, source: normalsrepacked };
 		}
-
 
 		//convert per-face attributes to per-vertex
-		if (group.colourBuffer) {
-			let vertexcolor = new Uint8Array(group.vertexCount * 4);
+		if (colourBuffer) {
+			let vertexcolor = new Uint8Array(vertexCount * 4);
 			attrsources.color = { newtype: "u8", vecsize: 4, source: vertexcolor };
 			//copy this face color to all vertices on the face
-			for (let i = 0; i < group.faceCount; i++) {
+			for (let i = 0; i < faceCount; i++) {
 				//iterate triangle vertices
 				for (let j = 0; j < 3; j++) {
 					let index = indexbuf[i * 3 + j] * 4;
-					vertexcolor[index + 0] = group.colourBuffer[i * 3 + 0];
-					vertexcolor[index + 1] = group.colourBuffer[i * 3 + 1];
-					vertexcolor[index + 2] = group.colourBuffer[i * 3 + 2];
-					if (group.alphaBuffer) {
-						vertexcolor[index + 3] = group.alphaBuffer[i];
+					vertexcolor[index + 0] = colourBuffer[i * 3 + 0];
+					vertexcolor[index + 1] = colourBuffer[i * 3 + 1];
+					vertexcolor[index + 2] = colourBuffer[i * 3 + 2];
+					if (alphaBuffer) {
+						vertexcolor[index + 3] = alphaBuffer[i];
 					} else {
 						vertexcolor[index + 3] = 255;
 					}
@@ -242,17 +271,21 @@ export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modification
 		}
 
 		////////////////////// build the gltf file //////////////////
-		let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(attrsources);
+		let { buffer, attributes, bytestride } = buildAttributeBuffer(attrsources);
 
 		let attrs: MeshPrimitive["attributes"] = {};
 
 		let view = gltf.addBufferWithView(buffer, bytestride, false);
-		attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
-		attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexcount);
-		attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexcount);
+		attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexCount);
+		if (attributes.normal) {
+			attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexCount);
+		}
+		if (attributes.texuvs) {
+			attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexCount);
+		}
 		if (attributes.color) {
 			attributes.color.normalize = true;
-			attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexcount);
+			attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexCount);
 		}
 
 		let primitive = indexbuf;
@@ -265,51 +298,22 @@ export async function addOb3Model(gltf: GLTFBuilder, model: Stream, modification
 			bufferView: viewIndex
 		});
 
-		let { textures, originalMaterial, factors } = await parseMaterial(group.materialId - 1);
-
-		let materialdef: Material = {
-			//TODO check if diffuse has alpha as well
-			alphaMode: hasVertexAlpha ? "BLEND" : "OPAQUE"
-		}
-
-		let sampler = gltf.addSampler({});//TODO wrapS wrapT from material flags
-
-		if (textures.diffuse) {
-			materialdef.pbrMetallicRoughness = {};
-			//TODO animated texture UV's (fire cape)
-			materialdef.pbrMetallicRoughness.baseColorTexture = {
-				index: gltf.addTexture({ sampler, source: await getTextureFile(textures.diffuse) }),
-			};
-			//materialdef.pbrMetallicRoughness.baseColorFactor = [factors.color, factors.color, factors.color, 1];
-			if (typeof textures.metalness != "undefined") {
-				if (textures.metalness) {
-					materialdef.pbrMetallicRoughness.metallicRoughnessTexture = {
-						index: gltf.addTexture({ sampler, source: await getTextureFile(textures.metalness) })
-					}
-				}
-				//materialdef.pbrMetallicRoughness.metallicFactor = factors.metalness;
-			}
-		}
-		if (textures.normal) {
-			materialdef.normalTexture = {
-				index: gltf.addTexture({ sampler, source: await getTextureFile(textures.normal) })
-			}
-		}
-		if (textures.specular) {
-			//TODO not directly supported in gltf
+		let materialNode: number | undefined = undefined;
+		if (materialArgument != 0) {
+			let materialId = materialArgument - 1;
+			let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
+			materialNode = await scenecache.getMaterial(replacedmaterial ?? materialId, hasVertexAlpha);
 		}
 
 		prims.push({
 			attributes: attrs,
 			indices: indices,
-			material: gltf.addMaterial(materialdef)
+			material: materialNode
 		});
 	}
 
-	let mesh = gltf.addMesh({
-		primitives: prims,
-	});
+	let mesh = gltf.addMesh({ primitives: prims });
 	//enables use of normalized ints for a couple of attribute types
 	//gltf.addExtension("KHR_mesh_quantization", true);
-	return gltf.addNode({ mesh });
+	return mesh;//gltf.addNode({ mesh });
 }
