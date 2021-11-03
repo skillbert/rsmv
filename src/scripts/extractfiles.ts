@@ -56,8 +56,8 @@ let cmd = command({
 		for (let index of indexfile) {
 			if (index.minor >= minorstart && index.minor < minorend) {
 				let files = await args.source.getFileArchive(index);
-				for (let fileindex of index.subindices) {
-					let filename = path.resolve(outdir, `${index.minor}${index.subindexcount == 1 ? "" : "-" + fileindex}.${args.decode}`);
+				for (let fileindex in index.subindices) {
+					let filename = path.resolve(outdir, `${index.minor}${index.subindexcount == 1 ? "" : "-" + index.subindices[fileindex]}.${args.decode}`);
 					let file = files[fileindex].buffer;
 					if (args.decode == "bin") {
 						fs.writeFileSync(filename, file);

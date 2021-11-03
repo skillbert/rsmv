@@ -33,7 +33,7 @@ export type ComposedChunk = string
 	| ["array", ComposedChunk | number, ...ComposedChunk[]]
 	| ["nullarray", ComposedChunk, ...ComposedChunk[]]
 	| [type: "ref", ref: string, bitrange?: [number, number]]
-	| [type: "accum", ref: string, addvalue: ComposedChunk, offset?: number]
+	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
 	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
 	| [type: "struct", ...props: [name: string, value: any]]
@@ -96,7 +96,7 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					}
 					case "accum": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type accum`);
-						return intAccumlatorParser(chunkdef[1], buildParser(chunkdef[2], typedef), chunkdef[3] ?? 0);
+						return intAccumlatorParser(chunkdef[1], buildParser(chunkdef[2], typedef), chunkdef[3] ?? "add");
 					}
 					case "opt": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type opt`);
@@ -396,7 +396,7 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				if (readmode == "sumtail") {
 					//this is very stupid but works
 					//yay for recursion
-					let overflowchunk = (1 << (bytes * 8 - 1));//0111111.. pattern
+					let overflowchunk = ~(~1 << (bytes * 8 - 2));//0111111.. pattern
 					if (output == overflowchunk) {
 						output += parser.read(buffer, ctx);
 					}
@@ -482,12 +482,20 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 		}
 	}
 }
-function intAccumlatorParser(refname: string, value: ChunkParser<number>, offset: number): ChunkParser<number> {
+function intAccumlatorParser(refname: string, value: ChunkParser<number | undefined>, mode: "add" | "add-1" | "hold"): ChunkParser<number> {
 	return {
 		read(buffer, ctx) {
 			//TODO fix the context situation
 			let increment = value.read(buffer, ctx);
-			let newvalue = ctx[refname] + increment + offset;
+			let newvalue: number;
+			if (mode == "add" || mode == "add-1") {
+				newvalue = ctx[refname] + (increment ?? 0) + (mode == "add-1" ? -1 : 0);
+			}
+			else if (mode == "hold") {
+				newvalue = increment ?? ctx[refname] ?? 0;
+			} else {
+				throw new Error("unknown accumolator mode");
+			}
 			//this is awkward, if we update prop it will end up shadowing the prop 
 			//and wont be available at the next iteration
 			let protoctx = ctx;

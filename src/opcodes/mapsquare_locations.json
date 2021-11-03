@@ -4,7 +4,7 @@
 		["id",["accum","$idcounter",["ref","$opcode"]]],
 		["$location","0"],
 		["uses",["nullarray","variable unsigned short",["struct",
-			["$loc",["accum","$location",["ref","$opcode"],-1]],
+			["$loc",["accum","$location",["ref","$opcode"],"add-1"]],
 			["y",["ref","$loc",[0,6]]],
 			["x",["ref","$loc",[6,6]]],
 			["plane",["ref","$loc",[12,2]]],

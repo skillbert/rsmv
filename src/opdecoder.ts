@@ -20,6 +20,10 @@ export class FileParser<T> {
 		let res = this.parser.read(scanbuf, {});
 		if (scanbuf.scan != scanbuf.length) {
 			console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+			let name = `cache/bonusbytes-${Date.now()}.bin`;
+			//TODO remove this
+			console.log(`extra bytes saved as ${name}`);
+			fs.writeFileSync(name, scanbuf.slice(scanbuf.scan));
 		}
 		return res;
 	}
@@ -40,6 +44,7 @@ export const parseItem = new FileParser<import("../generated/items").items>(__di
 export const parseObject = new FileParser<import("../generated/objects").objects>(__dirname + "/opcodes/objects.json");
 export const parseAchievement = new FileParser<import("../generated/achievements").achievements>(__dirname + "/opcodes/achievements.json");
 export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(__dirname + "/opcodes/mapsquare_tiles.json");
+export const parseMapsquareWaterTiles = new FileParser<import("../generated/mapsquare_watertiles").mapsquare_watertiles>(__dirname + "/opcodes/mapsquare_watertiles.json");
 export const parseMapsquareUnderlays = new FileParser<import("../generated/mapsquare_underlays").mapsquare_underlays>(__dirname + "/opcodes/mapsquare_underlays.json");
 export const parseMapsquareOverlays = new FileParser<import("../generated/mapsquare_overlays").mapsquare_overlays>(__dirname + "/opcodes/mapsquare_overlays.json");
 export const parseMapsquareLocations = new FileParser<import("../generated/mapsquare_locations").mapsquare_locations>(__dirname + "/opcodes/mapsquare_locations.json");
