@@ -18,7 +18,7 @@ let cmd = command({
 	},
 	handler: async (args) => {
 		let file = await mapsquareToGltf(args.source, args.area);
-		fs.writeFileSync(args.save + "/" + Date.now() + ".gltf", file);
+		fs.writeFileSync(args.save + "/" + Date.now() + ".glb", file);
 	}
 });
 

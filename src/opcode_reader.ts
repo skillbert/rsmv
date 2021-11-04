@@ -155,7 +155,6 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 	}
 }
 
-//TODO validate these at startup instead of during decode/encode?
 function validateIntType(primitive: PrimitiveInt) {
 	let hasUnsigned = "unsigned" in primitive;
 	let hasBytes = "bytes" in primitive;
