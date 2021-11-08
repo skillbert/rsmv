@@ -7,7 +7,7 @@ import type * as sqlite3 from "sqlite3";
 type CacheTable = {
 	db: sqlite3.Database,
 	ready: Promise<void>,
-	indices: Promise<cache.CacheIndex[]>,
+	indices: Promise<cache.CacheIndexFile>,
 	dbget: (q: string, params: any[]) => Promise<any>
 }
 
@@ -36,7 +36,8 @@ export class GameCacheLoader extends cache.CacheFileSource {
 			}
 			let indices = dbget(`SELECT DATA FROM cache_index`, []).then(row => {
 				return cache.indexBufferToObject(major, decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength)));
-			})
+			});
+
 			this.opentables.set(major, { db, ready, dbget, indices });
 		}
 		return this.opentables.get(major)!;

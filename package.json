@@ -6,7 +6,7 @@
 	"scripts": {
 		"start": "electron --inspect --experimental-repl-await ./dist/main.js",
 		"debug": "electron --inspect-brk ./dist/main.js",
-		"build": "gulp build",
+		"build": "gulp",
 		"watch": "gulp watch",
 		"filetypes": "gulp filetypes",
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",

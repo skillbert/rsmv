@@ -134,7 +134,7 @@ export type objects = {
 	action_cursors_3?: number | undefined
 	action_cursors_4?: number | undefined
 	action_cursors_5?: number | undefined
-	unknown_C4?: number | undefined
+	tileMorph?: number | undefined
 	unknown_C5?: number | undefined
 	dummy_c6?: true | undefined
 	dummy_c7?: true | undefined

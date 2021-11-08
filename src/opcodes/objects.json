@@ -87,7 +87,7 @@
 	"0xC1": { "name":                    "action_cursors_3", "read": "unsigned short" },
 	"0xC2": { "name":                    "action_cursors_4", "read": "unsigned short" },
 	"0xC3": { "name":                    "action_cursors_5", "read": "unsigned short" },
-	"0xC4": { "name":                          "unknown_C4", "read": "unsigned byte" },
+	"0xC4": { "name":                           "tileMorph", "read": "unsigned byte" },
 	"0xC5": { "name":                          "unknown_C5", "read": "unsigned byte" },
 	"0xC6": { "name":                            "dummy_c6", "read": "true" },
 	"0xC7": { "name":                            "dummy_c7", "read": "true" },

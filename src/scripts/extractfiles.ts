@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays } from "../opdecoder";
-import { CacheFileSource } from "../cache";
+import { achiveToFileId, CacheFileSource } from "../cache";
 
 type KnownType = {
 	index: number,
@@ -28,7 +28,7 @@ let cmd = command({
 		major: option({ long: "major", type: string }),
 		minor: option({ long: "minor", type: string, defaultValue: () => "all" }),
 		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-		decode: option({ long: "format", short: "t", type: oneOf(["json", "bin", "gltf"]), defaultValue: () => "bin" as any })
+		decode: option({ long: "format", short: "t", type: oneOf(["json", "batchjson", "bin", "gltf"]), defaultValue: () => "bin" as any })
 	},
 	handler: async (args) => {
 		let major = isNaN(+args.major) ? cacheMajors[args.major] : +args.major;
@@ -54,23 +54,38 @@ let cmd = command({
 		let outdir = path.resolve(args.save)
 		fs.mkdirSync(outdir, { recursive: true });
 		for (let index of indexfile) {
+			if (!index) { continue; }
 			if (index.minor >= minorstart && index.minor < minorend) {
 				let files = await args.source.getFileArchive(index);
+				let batchedoutput: string[] = [];
 				for (let fileindex in index.subindices) {
 					let filename = path.resolve(outdir, `${index.minor}${index.subindexcount == 1 ? "" : "-" + index.subindices[fileindex]}.${args.decode}`);
 					let file = files[fileindex].buffer;
 					if (args.decode == "bin") {
 						fs.writeFileSync(filename, file);
-					} else if (args.decode == "json") {
+						console.log(filename, files[fileindex].size);
+					} else if (args.decode == "json" || args.decode == "batchjson") {
 						if (!decoder?.parser) { throw new Error(); }
 						let json = decoder.parser.read(file);
-						fs.writeFileSync(filename, JSON.stringify(json), "utf-8");
+						if (args.decode == "json") {
+							fs.writeFileSync(filename, JSON.stringify(json, undefined, "  "), "utf-8");
+							console.log(filename, files[fileindex].size);
+						} else {
+							json.$subfile = index.subindices[fileindex];
+							json.$fileid = achiveToFileId(index.major, index.minor, index.subindices[fileindex]);
+							batchedoutput.push(JSON.stringify(json, undefined, "  "));
+						}
 					} else if (args.decode == "gltf") {
 						if (!decoder?.gltf) { throw new Error(); }
 						let buf = await decoder.gltf(file, args.source);
 						fs.writeFileSync(filename, buf);
+						console.log(filename, files[fileindex].size);
 					}
-					console.log(filename, files[fileindex].size);
+				}
+				if (args.decode == "batchjson" && batchedoutput.length != 0) {
+					let filename = path.resolve(outdir, `${index.minor}-batch.json`);
+					fs.writeFileSync(filename, "[\n\n" + batchedoutput.join(",\n\n") + "\n\n]\n", "utf-8");
+					console.log(filename, "batch", batchedoutput.length);
 				}
 			}
 		}

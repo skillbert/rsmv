@@ -71,7 +71,7 @@ let cmd = command({
 				contextIsolation: false,
 			}
 		});
-		index.webContents.openDevTools({ mode: "detach" });
+		//index.webContents.openDevTools({ mode: "detach" });
 	}
 });
 

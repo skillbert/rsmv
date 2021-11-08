@@ -21,8 +21,6 @@ export class FileParser<T> {
 		if (scanbuf.scan != scanbuf.length) {
 			console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 			let name = `cache/bonusbytes-${Date.now()}.bin`;
-			//TODO remove this
-			console.log(`extra bytes saved as ${name}`);
 			fs.writeFileSync(name, scanbuf.slice(scanbuf.scan));
 		}
 		return res;

@@ -13,9 +13,11 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
+import { mapsquareToGltf } from "../3d/mapsquare";
+import { GameCacheLoader } from "../cacheloader";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
-type LookupMode = "model" | "item" | "npc" | "object";
+type LookupMode = "model" | "item" | "npc" | "object" | "map";
 type RenderMode = "gltf" | "ob3";
 
 const vertexShader = fs.readFileSync(__dirname + "/../assets/shader_vertex.glsl", "utf-8");
@@ -38,31 +40,39 @@ async function getFile(major: number, minor: number) {
 	return Buffer.from(buffarray.buffer, buffarray.byteOffset, buffarray.byteLength);
 }
 
+//TODO remove this hack
+const hackyCacheFileSource = new GameCacheLoader(path.resolve(process.env.ProgramData!, "jagex/runescape"));
+
 //function submitSearchtest() {
 //   var value = document.getElementById("sidebar-browser-search-bar-input").value;
 //   document.getElementById("sidebar-browser-search-bar-input").value = "66" + 1;
 //  submitSearchIds(value);
 
 
-class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, jsontext: string }> {
+class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, viewerState: ModelViewerState }> {
 	renderer: ModelSink;
 	constructor(p) {
 		super(p);
 		this.state = {
 			hist: [],
 			mode: "model",
-			search: "0",
+			search: localStorage.rsmv_lastsearch ?? "0",
 			cnvRefresh: 0,
 			rendermode: "gltf",
-			jsontext: ""
+			viewerState: { meta: "", toggles: {} }
 		};
 	}
 
 	@boundMethod
 	submitSearchIds(value: string) {
+		localStorage.rsmv_lastsearch = value;
 		this.setState({ hist: [...this.state.hist.slice(-19), value] });
-		requestLoadModel(value, this.state.mode, this.renderer!)
-			.then(str => this.setState({ jsontext: str }))
+		requestLoadModel(value, this.state.mode, this.renderer!);
+	}
+
+	@boundMethod
+	viewerStateChanged(state: ModelViewerState) {
+		this.setState({ viewerState: state });
 	}
 
 	@boundMethod
@@ -89,10 +99,10 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			if (this.state.rendermode == "gltf") {
-				this.renderer = new GltfRenderer(cnv);
+				this.renderer = new gltfRenderer.GltfRenderer(cnv, this.viewerStateChanged);
 			}
 			if (this.state.rendermode == "ob3") {
-				this.renderer = new Ob3Renderer(cnv);
+				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);
 			}
 		}
 	}
@@ -119,6 +129,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setState({ mode: "object" })}><span>Obj/Locs IDs</span></div>
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setState({ mode: "model" })}><span>Model IDs</span></div>
+							<div></div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setState({ mode: "map" })}><span>Map</span></div>
 							<div></div>
 						</div>
 						<div className="sidebar-browser-tab-strip">
@@ -147,7 +159,17 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 									<div></div>
 								</form>
 							</div>
-							<pre style={{ textAlign: "left", userSelect: "text" }}>{this.state.jsontext}</pre>
+							<pre style={{ textAlign: "left", userSelect: "text" }}>
+								{this.state.viewerState.meta}
+							</pre>
+							{Object.entries(this.state.viewerState.toggles).map(([name, value]) => (
+								<div key={name}>
+									<label>
+										<input type="checkbox" checked={value} onChange={e => this.renderer.setValue!(name, !value)} />
+										{name}
+									</label>
+								</div>
+							))}
 							<div id="sidebar-browser-tab-data">
 								<style>
 								</style>
@@ -173,7 +195,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 }
 
 //cache the file loads a little bit as the model loader tend to request the same texture a bunch of times
-class MiniCache {
+export class MiniCache {
 	sectors = new Map<number, Map<number, Promise<Buffer>>>();
 	getRaw: CacheGetter;
 	get: CacheGetter;
@@ -201,6 +223,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 	let cache = new MiniCache(getFile);
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
+	let models: Buffer[] = [];
 	let metatext = "";
 	switch (mode) {
 		case "model":
@@ -234,42 +257,48 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
 			modelids = obj.models?.flatMap(m => m.values) ?? [];
 			break;
+		case "map":
+			let [x, y, width, height] = searchid.split(/[,\.\/:;]/).map(n => +n);
+			width = width ?? 1;
+			height = height ?? width;
+			let file = await mapsquareToGltf(hackyCacheFileSource, { x, y, width, height }, { centered: true });
+			renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
+			break;
 		default:
 			throw new Error("unknown mode");
 	}
 
-	let models = await Promise.all(modelids.map(id => cache.get(cacheMajors.models, id)));
-	renderer.setModels(models, cache, mods);
-	return metatext;
+	if (modelids.length != 0) {
+		models.push(...await Promise.all(modelids.map(id => cache.get(cacheMajors.models, id))));
+		renderer.setOb3Models(models, cache, mods, metatext);
+	}
 }
 
-interface ModelSink {
-	setModels: (models: Buffer[], cache: MiniCache, mods: ModelModifications) => void
+export type ModelViewerState = {
+	meta: string,
+	toggles: Record<string, boolean>
+}
+
+export interface ModelSink {
+	setOb3Models: (models: Buffer[], cache: MiniCache, mods: ModelModifications, meta: string) => void
+	setGltfModels?: (models: Buffer[]) => void,
+	setValue?: (key: string, value: boolean) => void
 };
 class Ob3Renderer implements ModelSink {
 	cnv: any;
-	constructor(cnv: HTMLCanvasElement) {
+	metacb: (meta: ModelViewerState) => void;
+	constructor(cnv: HTMLCanvasElement, metacb: (meta: ModelViewerState) => void) {
 		this.cnv = cnv;
+		this.metacb = metacb;
 	}
-	setModels(modelfiles: Buffer[], cache: MiniCache) {
+	setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, meta: string) {
 		let models = modelfiles.map(file => {
 			let m = new OB3(cache.get);
 			m.setData(file);
+			this.metacb({ meta, toggles: {} });
 			return m;
 		});
 		ob3Renderer.init(this.cnv, models, vertexShader, fragmentShader);
-	}
-}
-
-class GltfRenderer implements ModelSink {
-	renderModels: (gltfs: ArrayBuffer[]) => void
-	constructor(cnv: HTMLCanvasElement) {
-		let renderer = gltfRenderer.init(cnv);
-		this.renderModels = renderer.setModels.bind(renderer);
-	}
-	async setModels(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications) {
-		let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(getFile, file, mods)));
-		this.renderModels(models.map(m => m.buffer));
 	}
 }
 

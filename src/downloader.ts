@@ -1,4 +1,4 @@
-import { CacheIndex, indexBufferToObject, unpackBufferArchive, CacheFileSource } from "./cache";
+import { CacheIndex, indexBufferToObject, unpackBufferArchive, CacheFileSource, CacheIndexFile } from "./cache";
 import { crc32 } from "crc";
 import { decompress } from "./decompress";
 import * as fs from "fs";
@@ -106,7 +106,7 @@ export class Downloader extends CacheFileSource {
 	}
 
 
-	indexMap = new Map<number, CacheIndex[]>();
+	indexMap = new Map<number, CacheIndexFile>();
 
 	async getFile(major: number, minor: number, crc?: number) {
 		return decompress(await this.downloadFile(major, minor, crc));
@@ -117,7 +117,8 @@ export class Downloader extends CacheFileSource {
 	async getIndexFile(major: number) {
 		if (!this.indexMap.get(major)) {
 			let indexfile = await this.getFile(255, major);
-			this.indexMap.set(major, indexBufferToObject(major, indexfile));
+			let decoded = indexBufferToObject(major, indexfile);
+			this.indexMap.set(major, decoded);
 		}
 		return this.indexMap.get(major)!;
 	}

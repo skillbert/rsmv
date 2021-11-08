@@ -68,14 +68,15 @@ export type AttributeSoure = {
 	newtype: keyof typeof glTypeIds;
 }
 
-export function buildAttributeBuffer<T extends { [key: string]: AttributeSoure }>(attrsources: T) {
+export function buildAttributeBuffer<T extends { [key: string]: AttributeSoure | undefined }>(attrsources: T) {
 	let format: { [key in keyof T]: { offset: number, stride: number, source: AttributeSoure } } = {} as any;
-	let attributes: { [key in keyof T]: ModelAttribute } = {} as any;
+	let attributes: { [key in keyof T]: T[key] extends undefined ? never : ModelAttribute } = {} as any;
 	let offset = 0;
 	let totalalign = 4;
 	let vertexcount = -1;
 	for (let name in attrsources) {
-		let attr = attrsources[name];
+		let attr = attrsources[name] as AttributeSoure | undefined;
+		if (!attr) { continue; }
 		let type = glTypeIds[attr.newtype];
 		let align = Math.max(4, type.constr.BYTES_PER_ELEMENT);
 		totalalign = Math.max(totalalign, align);
@@ -121,7 +122,7 @@ export function buildAttributeBuffer<T extends { [key: string]: AttributeSoure }
 			name,
 			normalize: false,
 			veclength: attr.source.vecsize,
-		}
+		} as ModelAttribute as any;//this cast is dumb, but typescript doesn't follow
 		//attr.buffer = buffer;
 	}
 

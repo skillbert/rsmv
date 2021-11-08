@@ -23,6 +23,8 @@ export type CacheIndex = CacheIndexStub & {
 	subindices: number[]
 }
 
+export type CacheIndexFile = CacheIndex[];
+
 export function packSqliteBufferArchive(buffers: Buffer[]) {
 	if (buffers.length == 1) { return buffers[0]; }
 	let datasize = buffers.reduce((a, v) => a + v.byteLength, 0);;
@@ -130,9 +132,11 @@ export function rootIndexBufferToObject(metaindex: Buffer) {
 export function indexBufferToObject(major: number, buffer: Buffer) {
 	let readres = parseCacheIndex.read(buffer);
 	let indices = readres.indices;
-
-	let mappedindices = indices.map(i => Object.assign(i, { major }));
-	return mappedindices;
+	let linear: CacheIndex[] = [];
+	for (let entry of indices) {
+		linear[entry.minor] = Object.assign(entry, { major });
+	}
+	return linear;
 }
 
 const mappedFileIds = {
@@ -142,18 +146,28 @@ const mappedFileIds = {
 	[cacheMajors.objects]: 256
 }
 
+export function fileIdToArchiveminor(major: number, fileid: number) {
+	let archsize = mappedFileIds[major] ?? 1;
+	let holderindex = Math.floor(fileid / archsize);
+	return { minor: holderindex, major, subindex: fileid % archsize };
+}
+export function achiveToFileId(major: number, minor: number, subfile: number) {
+	let archsize = mappedFileIds[major] ?? 1;
+	return minor * archsize + subfile;
+}
+
 export abstract class CacheFileSource {
 	abstract getFile(major: number, minor: number, crc?: number): Promise<Buffer>;
 	abstract getFileArchive(index: CacheIndex): Promise<SubFile[]>;
-	abstract getIndexFile(major: number): Promise<CacheIndex[]>;
+	abstract getIndexFile(major: number): Promise<CacheIndexFile>;
 
 	async getFileById(major: number, fileid: number) {
-		let archsize = mappedFileIds[major] ?? 1;
-		let holderindex = Math.floor(fileid / archsize);
+		let holderindex = fileIdToArchiveminor(major, fileid);
 		let indexfile = await this.getIndexFile(major);
-		let holder = indexfile.find(q => q.minor == holderindex);
+		//TODO cache these in a map or something
+		let holder = indexfile[holderindex.minor];
 		if (!holder) { throw new Error(`file id ${fileid} in major ${major} has no archive`); }
-		let subindex = holder.subindices.indexOf(fileid % archsize);
+		let subindex = holder.subindices.indexOf(holderindex.subindex);
 		if (subindex == -1) { throw new Error(`file id ${fileid} in major ${major} does not exist in archive`); }
 		let files = await this.getFileArchive(holder);
 		let file = files[subindex].buffer;
@@ -161,3 +175,27 @@ export abstract class CacheFileSource {
 	}
 	close() { }
 }
+
+// export class MemoryCachedFileSource {
+// 	sectors = new Map<number, Map<number, Promise<Buffer>>>();
+// 	getRaw: CacheGetter;
+// 	get: CacheGetter;
+// 	constructor(getRaw: CacheGetter) {
+// 		this.getRaw = getRaw;
+
+// 		//use assignment instead of class method so the "this" argument is bound
+// 		this.get = async (major: number, fileid: number) => {
+// 			let sector = this.sectors.get(major);
+// 			if (!sector) {
+// 				sector = new Map();
+// 				this.sectors.set(major, sector);
+// 			}
+// 			let file = sector.get(fileid);
+// 			if (!file) {
+// 				file = this.getRaw(major, fileid);
+// 				sector.set(fileid, file)
+// 			}
+// 			return file;
+// 		}
+// 	}
+// }

@@ -118,18 +118,28 @@ export class GLTFSceneCache {
 export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mods: ModelModifications) {
 	let scene = new GLTFSceneCache(getFile);
 	let stream = new Stream(model);
-	let mesh = await addOb3Model(scene, stream, mods, getFile);
+	let mesh = await addOb3Model(scene, parseOb3Model(stream, mods));
 	//flip z to go from right-handed to left handed
-	let rootnode = scene.gltf.addNode({ mesh, scale: [1, 1, -1] });
+	let rootnode = scene.gltf.addNode({ mesh: mesh.mesh, scale: [1, 1, -1] });
 	scene.gltf.addScene({ nodes: [rootnode] });
 	let result = await scene.gltf.convert({ singlefile: true, glb: false });
 	console.log("gltf", scene.gltf.json);
 	return result.mainfile;
 }
 
-export async function addOb3Model(scenecache: GLTFSceneCache, model: Stream, modifications: ModelModifications, getFile: (major: number, minor: number) => Promise<Buffer>) {
+export type ModelMeshData = {
+	indices: Uint16Array,
+	materialId: number,
+	hasVertexAlpha: boolean,
+	attributes: {
+		pos: AttributeSoure,
+		normals?: AttributeSoure,
+		color?: AttributeSoure,
+		texuvs?: AttributeSoure
+	}
+}
 
-	let gltf = scenecache.gltf;
+export function parseOb3Model(model: Stream, modifications: ModelModifications) {
 
 	let format = model.readByte();
 	let unk1 = model.readByte(); //always 03?
@@ -140,7 +150,7 @@ export async function addOb3Model(scenecache: GLTFSceneCache, model: Stream, mod
 	let unkCount2 = model.readUShort();
 	//console.log(unkCount0,unkCount1,unkCount2,unk1)
 
-	let prims: MeshPrimitive[] = [];
+	let meshes: ModelMeshData[] = [];
 
 	for (var n = 0; n < meshCount; ++n) {
 		// Flag 0x10 is currently used, but doesn't appear to change the structure or data in any way
@@ -224,14 +234,33 @@ export async function addOb3Model(scenecache: GLTFSceneCache, model: Stream, mod
 			continue;
 		}
 
+
+		//TODO somehow this doesn't always work
+		let materialId = materialArgument - 1
+		if (materialId != -1) {
+			let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
+			if (typeof replacedmaterial != "undefined") {
+				materialId = replacedmaterial;
+			}
+		}
+
 		//highest level of detail only
 		let indexbuf = indexBuffers[0];
 
-		let attrsources: Record<string, AttributeSoure> = {};
-		attrsources.pos = { newtype: "f32", vecsize: 3, source: positionBuffer };
+
+
+		let meshdata: ModelMeshData = {
+			indices: indexbuf,
+			materialId,
+			hasVertexAlpha,
+			attributes: {
+				pos: { newtype: "f32", vecsize: 3, source: positionBuffer }
+			}
+		};
+		meshes.push(meshdata);
 
 		if (uvBuffer) {
-			attrsources.texuvs = { newtype: "f32", vecsize: 2, source: uvBuffer };
+			meshdata.attributes.texuvs = { newtype: "f32", vecsize: 2, source: uvBuffer };
 		}
 
 		if (normalBuffer) {
@@ -246,13 +275,13 @@ export async function addOb3Model(scenecache: GLTFSceneCache, model: Stream, mod
 				normalsrepacked[i + 1] = y / len;
 				normalsrepacked[i + 2] = z / len;
 			}
-			attrsources.normals = { newtype: "f32", vecsize: 3, source: normalsrepacked };
+			meshdata.attributes.normals = { newtype: "f32", vecsize: 3, source: normalsrepacked };
 		}
 
 		//convert per-face attributes to per-vertex
 		if (colourBuffer) {
 			let vertexcolor = new Uint8Array(vertexCount * 4);
-			attrsources.color = { newtype: "u8", vecsize: 4, source: vertexcolor };
+			meshdata.attributes.color = { newtype: "u8", vecsize: 4, source: vertexcolor };
 			//copy this face color to all vertices on the face
 			for (let i = 0; i < faceCount; i++) {
 				//iterate triangle vertices
@@ -269,51 +298,70 @@ export async function addOb3Model(scenecache: GLTFSceneCache, model: Stream, mod
 				}
 			}
 		}
+		//TODO proper toggle for this or remove
+		//visualize bone ids
+		// materialArgument = 0;
+		// let vertexcolor = new Uint8Array(vertexCount * 4);
+		// attrsources.color = { newtype: "u8", vecsize: 4, source: vertexcolor };
+		// for (let i = 0; i < vertexCount; i++) {
+		// 	let index = i * 4;
+		// 	let boneid = boneidBuffer ? boneidBuffer[i] : 0;
+		// 	vertexcolor[index + 0] = (73 + boneid * 9323) % 256;
+		// 	vertexcolor[index + 1] = (171 + boneid * 1071) % 256;
+		// 	vertexcolor[index + 2] = (23 + boneid * 98537) % 256;
+		// 	vertexcolor[index + 3] = 255;
+		// }
+	}
+	return meshes;
+}
 
-		////////////////////// build the gltf file //////////////////
-		let { buffer, attributes, bytestride } = buildAttributeBuffer(attrsources);
+
+export async function addOb3Model(scenecache: GLTFSceneCache, meshes: ModelMeshData[]) {
+	let gltf = scenecache.gltf;
+	let maxy = 0;
+	let primitives: MeshPrimitive[] = [];
+
+	for (let meshdata of meshes) {
+		let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(meshdata.attributes);
 
 		let attrs: MeshPrimitive["attributes"] = {};
 
 		let view = gltf.addBufferWithView(buffer, bytestride, false);
-		attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexCount);
-		if (attributes.normal) {
-			attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexCount);
+		attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
+		if (attributes.normals) {
+			attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexcount);
 		}
 		if (attributes.texuvs) {
-			attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexCount);
+			attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexcount);
 		}
 		if (attributes.color) {
 			attributes.color.normalize = true;
-			attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexCount);
+			attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexcount);
 		}
 
-		let primitive = indexbuf;
-		let viewIndex = gltf.addBufferWithView(primitive, undefined, true);
+		let viewIndex = gltf.addBufferWithView(meshdata.indices, undefined, true);
 
 		let indices = gltf.addAccessor({
 			componentType: glTypeIds.u16.gltype,
-			count: primitive.length,
+			count: meshdata.indices.length,
 			type: "SCALAR",
 			bufferView: viewIndex
 		});
 
 		let materialNode: number | undefined = undefined;
-		if (materialArgument != 0) {
-			let materialId = materialArgument - 1;
-			let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
-			materialNode = await scenecache.getMaterial(replacedmaterial ?? materialId, hasVertexAlpha);
+		if (meshdata.materialId != -1) {
+			materialNode = await scenecache.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
 		}
 
-		prims.push({
+		primitives.push({
 			attributes: attrs,
 			indices: indices,
 			material: materialNode
 		});
+		maxy = Math.max(maxy, attributes.pos.max[1]);
 	}
-
-	let mesh = gltf.addMesh({ primitives: prims });
+	let mesh = gltf.addMesh({ primitives });
 	//enables use of normalized ints for a couple of attribute types
 	//gltf.addExtension("KHR_mesh_quantization", true);
-	return mesh;//gltf.addNode({ mesh });
+	return { mesh, maxy };//gltf.addNode({ mesh });
 }
