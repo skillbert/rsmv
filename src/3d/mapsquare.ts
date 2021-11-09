@@ -538,7 +538,7 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 			// if(loc.id<63151-10||loc.id>63151+10){continue}
 			// if (inst.x > 2 || inst.y < 17 || inst.y > 20) { continue }
 			// if (inst.x != 3347 % 64 || inst.y != 3085 % 64) { continue; }
-			if (loc.id > 63002 - 100 && loc.id < 63002 + 100) { continue; }//TODO unhide dominion tower
+			//if (loc.id > 63002 - 100 && loc.id < 63002 + 100) { continue; }//TODO unhide dominion tower
 
 			let sizex = (objectmeta.width ?? 1);
 			let sizez = (objectmeta.length ?? 1);
@@ -570,11 +570,13 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 				mirror: !!objectmeta.mirror,
 				level: inst.plane,
 				callingtile,
+				locationInstance: inst
 			} as ModelExtras;
 
 			//TODO find out the meaning of this
-			let followfloor = objectmeta.tileMorph == 1;
+			//TODO thse are definitely wrong
 			let linkabove = ((objectmeta.tileMorph ?? 0) & 2) != 0;
+			let followfloor = ((objectmeta.tileMorph ?? 0) & 1) != 0 || linkabove;
 			if ((followfloor || linkabove) && (sizex > 1 || sizez > 1)) {
 				let tilemorphs: TileMorph[] = [];
 				for (let dz = 0; dz < sizez; dz++) {
@@ -599,19 +601,22 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 				// box = transformMesh(box, morph);
 				// children.push(scene.gltf.addNode({ mesh: (await addOb3Model(scene, [box])).mesh }))
 				for (let ch of meshes) {
+					if (ch.type != inst.type) { continue; }
 					let morphmesh = ch.modeldata.map(m => transformMesh(m, morph));
 					let mesh = await addOb3Model(scene, morphmesh);
 					children.push(scene.gltf.addNode({ mesh: mesh.mesh }));
 				}
-				nodes.push(scene.gltf.addNode({
-					children,
-					translation: [
-						(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
-						0,//TODO give it a logical y again
-						(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
-					],
-					extras,
-				}));
+				if (children.length != 0) {
+					nodes.push(scene.gltf.addNode({
+						children,
+						translation: [
+							(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
+							0,//TODO give it a logical y again
+							(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
+						],
+						extras,
+					}));
+				}
 			} else {
 				let placement = grid.getObjectPlacement(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane, linkabove, maxy, inst.rotation, !!objectmeta.mirror);
 				if (!placement) {
@@ -621,6 +626,7 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 				let children: number[] = [];
 				for (let ch of meshes) {
 					//TODO dedupe this
+					if (ch.type != inst.type) { continue; }
 					let mesh = await addOb3Model(scene, ch.modeldata);
 					children.push(scene.gltf.addNode({ mesh: mesh.mesh }));
 				}
@@ -629,21 +635,23 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 				let rotation = (-inst.rotation + 2) / 4 * Math.PI * 2;
 				let modely = placement.constant;
 				placement.constant = 0;
-				nodes.push(scene.gltf.addNode({
-					children,
-					translation: [
-						(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
-						modely,
-						(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
-					],
-					scale: [1, 1, (objectmeta.mirror ? -1 : 1)],
-					//quaternions, have fun
-					rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)],
-					extensions: {
-						RA_nodes_floortransform: (followfloor ? placement : undefined)
-					},
-					extras,
-				}));
+				if (children.length != 0) {
+					nodes.push(scene.gltf.addNode({
+						children,
+						translation: [
+							(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
+							modely,
+							(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
+						],
+						scale: [1, 1, (objectmeta.mirror ? -1 : 1)],
+						//quaternions, have fun
+						rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)],
+						extensions: {
+							RA_nodes_floortransform: (followfloor ? placement : undefined)
+						},
+						extras,
+					}));
+				}
 			}
 		}
 	}
