@@ -48,22 +48,37 @@ gulp.task('filetypes', function () {
 		.pipe(gulp.dest(generateddir));
 });
 
-
 gulp.task('assets', function () {
 	return gulp.src([assetsglob, opcodesglob], { base: "src", since: gulp.lastRun("assets") })
 		.pipe(gulp.dest(outdir))
-})
+});
 
-gulp.task('default', gulp.parallel(/*'typescript', */'assets', 'filetypes'));
+gulp.task('nontypescript', gulp.parallel('assets', 'filetypes'));
 
-gulp.task('watch', function () {
+gulp.task('default', gulp.series(
+	gulp.task("nontypescript"),
+	function typescript(cb) { runTypescript(false, cb); }
+));
+
+function runTypescript(watch, donecb) {
 	//https://stackoverflow.com/questions/17516772/using-nodejss-spawn-causes-unknown-option-and-error-spawn-enoent-err/17537559#17537559
 	var npm = (process.platform === "win32" ? "npm.cmd" : "npm");
-	const ts = child_process.spawn(npm, ['run', 'ts']);
+	var args = ["run", "ts"];
+	if (watch) { args.push("--", "--watch"); }
+	const ts = child_process.spawn(npm, args);
 	//this basically hijacks the console window but i don't care about gulp anymore
 	ts.stdout.on('data', function (data) { process.stdout.write(data); });
 	ts.stderr.on('data', function (data) { process.stderr.write(data); });
-	ts.on('exit', function (code) { console.log("tsc stopped"); });
+	ts.on('exit', function (code) {
+		console.log("tsc stopped", code);
+		if (donecb) {
+			donecb(code);
+		}
+	});
+}
 
-	return gulp.watch([assetsglob, opcodesglob], { ignoreInitial: false }, gulp.task('default'));
+gulp.task('watch', function () {
+	runTypescript(true);
+
+	return gulp.watch([assetsglob, opcodesglob], { ignoreInitial: false }, gulp.task('nontypescript'),);
 });
