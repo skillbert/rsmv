@@ -1,6 +1,13 @@
+
+import * as fs from "fs";
+// //TODO remove
+// let oldcreateobjecturl = URL.createObjectURL.bind(URL);
+// URL.createObjectURL = (a: Blob) => {
+// 	a.arrayBuffer().then(buf => fs.writeFileSync("cache/blobs/" + Math.random() + ".png", Buffer.from(buf)));
+// 	return oldcreateobjecturl(a);
+// }
 import * as electron from "electron";
 import { parseItem, parseNpc, parseObject } from "../opdecoder";
-import * as fs from "fs";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
 import { ob3ModelToGltfFile } from "../3d/ob3togltf";

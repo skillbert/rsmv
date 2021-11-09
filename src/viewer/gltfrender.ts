@@ -200,20 +200,22 @@ export class GltfRenderer implements ModelSink {
 		combined.scale.setScalar(1 / 512);
 		(window as any).scene = this.scene;
 
-		this.uistate = { meta: metastr, toggles: Object.create(null) };
+		let toggles: string[] = [];
 
 		//use faster materials
 		newmodels.forEach(model => model.scene.traverse(node => {
 			node.matrixAutoUpdate = false;
 			if (node.userData.modelgroup) {
-				this.uistate.toggles[node.userData.modelgroup] = node.userData.modeltype != "floorhidden";
+				toggles.push(node.userData.modelgroup);
 			}
 			node.updateMatrix();
 			if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
 				let transform: any = null;
+				let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
 				let parent: THREE.Object3D | null = node;
 				let iswireframe = false;
 				let modelgroup = "";
+				//TODO this data should be on the mesh it concerns instead of a parent
 				while (parent) {
 					if (parent.userData.modeltype == "floorhidden") {
 						iswireframe = true;
@@ -228,26 +230,62 @@ export class GltfRenderer implements ModelSink {
 				}
 				node.visible = !iswireframe;//TODO bad logic
 				let mat = new THREE.MeshPhongMaterial({ wireframe: iswireframe });
-				if (transform/* &&  (window as any).dotransform*/) {
+				if (transform || floortex) {
 					mat.customProgramCacheKey = () => "transformed";
 					mat.onBeforeCompile = (shader, renderer) => {
-						let q = transform!.quadratic;
-						shader.uniforms.RA_nodes_matrix_linear = { value: transform!.linear };
-						shader.uniforms.RA_nodes_matrix_quadratic = { value: [0, q[0], q[2], 0, 0, q[1], 0, 0, 0] };
-						shader.uniforms.RA_nodes_matrix_cubic = { value: transform!.cubic };
-						// shader.uniforms.RA_nodes_matrix_linear = { value: [1, 1, 0, 0, 1, 0, 0, 0, 1] };
-						//  shader.uniforms.RA_nodes_matrix_quadratic = { value: [0, 0, 0, 0, 0, 0, 0, 0, 0] };
-						shader.vertexShader =
-							`uniform vec3 RA_nodes_matrix_linear;\n`
-							+ `uniform mat3 RA_nodes_matrix_quadratic;\n`
-							+ `uniform float RA_nodes_matrix_cubic;\n`
-							+ shader.vertexShader.replace("#include <project_vertex>",
-								`transformed.y =`
-								+ ` + dot(RA_nodes_matrix_linear, transformed)`
-								+ ` + dot(transformed,RA_nodes_matrix_quadratic * transformed)`
-								+ ` + RA_nodes_matrix_cubic*transformed.x*transformed.y*transformed.z;\n`
-								+ `#include <project_vertex>\n`)
-
+						if (transform) {
+							let q = transform!.quadratic;
+							shader.uniforms.RA_nodes_matrix_linear = { value: transform!.linear };
+							shader.uniforms.RA_nodes_matrix_quadratic = { value: [0, q[0], q[2], 0, 0, q[1], 0, 0, 0] };
+							shader.uniforms.RA_nodes_matrix_cubic = { value: transform!.cubic };
+							shader.vertexShader =
+								`uniform vec3 RA_nodes_matrix_linear;\n`
+								+ `uniform mat3 RA_nodes_matrix_quadratic;\n`
+								+ `uniform float RA_nodes_matrix_cubic;\n`
+								+ shader.vertexShader.replace("#include <project_vertex>",
+									`transformed.y =`
+									+ ` + dot(RA_nodes_matrix_linear, transformed)`
+									+ ` + dot(transformed,RA_nodes_matrix_quadratic * transformed)`
+									+ ` + RA_nodes_matrix_cubic*transformed.x*transformed.y*transformed.z;\n`
+									+ `#include <project_vertex>\n`);
+						}
+						if (floortex) {
+							shader.vertexShader =
+								`#ifdef USE_MAP\n`
+								+ `attribute vec4 _ra_floortex_uv01;\n`
+								+ `attribute vec4 _ra_floortex_uv23;\n`
+								+ `attribute vec4 _ra_floortex_weights;\n`
+								+ `varying vec4 v_ra_floortex_01;\n`
+								+ `varying vec4 v_ra_floortex_23;\n`
+								+ `varying vec4 v_ra_floortex_weights;\n`
+								+ `#endif\n`
+								+ shader.vertexShader.replace("#include <uv_vertex>",
+									`#ifdef USE_MAP\n`
+									+ `v_ra_floortex_01 = _ra_floortex_uv01;\n`
+									+ `v_ra_floortex_23 = _ra_floortex_uv23;\n`
+									+ `v_ra_floortex_weights = _ra_floortex_weights;\n`
+									+ `#endif\n`
+									+ "#include <uv_vertex>"
+								);
+							shader.fragmentShader =
+								`#ifdef USE_MAP\n`
+								+ `varying vec4 v_ra_floortex_01;\n`
+								+ `varying vec4 v_ra_floortex_23;\n`
+								+ `varying vec4 v_ra_floortex_weights;\n`
+								+ `#endif\n`
+								+ shader.fragmentShader.replace("#include <map_fragment>",
+									`#ifdef USE_MAP\n`
+									+ `vec4 texelColor = \n`
+									+ `   texture2D( map, v_ra_floortex_01.rg ) * v_ra_floortex_weights.r\n`
+									+ ` + texture2D( map, v_ra_floortex_01.ba ) * v_ra_floortex_weights.g\n`
+									+ ` + texture2D( map, v_ra_floortex_23.rg ) * v_ra_floortex_weights.b\n`
+									+ ` + texture2D( map, v_ra_floortex_23.ba ) * v_ra_floortex_weights.a;\n`
+									//TODO is this needed?
+									+ `texelColor = mapTexelToLinear( mix(vec4(1.0),texelColor,dot(vec4(1),v_ra_floortex_weights)) );\n`
+									+ `#endif\n`
+									+ `diffuseColor *= texelColor;\n`
+								);
+						}
 					}
 				}
 				mat.map = node.material.map;
@@ -281,6 +319,11 @@ export class GltfRenderer implements ModelSink {
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
 		this.floormesh.visible = box.min.y > -1;
 		this.scene.add(this.modelnode);
+
+		this.uistate = { meta: metastr, toggles: Object.create(null) };
+		toggles.sort((a, b) => a.localeCompare(b)).forEach(q => {
+			this.uistate.toggles[q] = !q.match(/floorhidden/);
+		});
 
 		this.forceFrame();
 		this.stateChangeCallback(this.uistate);

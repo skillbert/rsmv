@@ -97,19 +97,33 @@ export class ParsedTexture {
 		return img.toBuffer();
 	}
 
-	//create a texture for use in webgl (only use this in a browser context liek electron)
+	async toImageData(subimg = 0) {
+		//TODO polyfill imagedata in nodejs, just need {width,height,data}
+		if (this.type == "bmpmips") {
+			let width = this.imagefiles[subimg].readUInt32BE(0);
+			let height = this.imagefiles[subimg].readUInt32BE(4);
+			//TODO slice off 32px of anti-bleeding border around the image
+			return new ImageData(new Uint8ClampedArray(this.imagefiles[subimg].buffer, this.imagefiles[subimg].byteOffset + 8), width, height);
+		} else if (this.type == "png") {
+			let img = sharp(this.imagefiles[subimg]);
+			let decoded = await img.raw().toBuffer({ resolveWithObject: true });
+			let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
+			return new ImageData(pixbuf, decoded.info.width, decoded.info.height);
+		} else if (this.type == "dds") {
+			let imgdata = loadDds(this.imagefiles[subimg]);
+			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
+			return new ImageData(pixbuf, imgdata.width, imgdata.height);
+		} else {
+			throw new Error("unknown format");
+		}
+	}
+
+	//create a texture for use in webgl (only use this in a browser context like electron)
 	async toWebgl(subimg = 0) {
 		if (this.cachedDrawables[subimg]) {
 			return this.cachedDrawables[subimg]!;
 		}
-
-		if (this.type == "bmpmips") {
-			let width = this.imagefiles[subimg].readUInt32BE(0);
-			let height = this.imagefiles[subimg].readUInt32BE(4);
-			let img = new ImageData(new Uint8ClampedArray(this.imagefiles[subimg].buffer, this.imagefiles[subimg].byteOffset + 8), width, height);
-			//TODO slice off 32px of anti-bleeding border around the image
-			this.cachedDrawables[subimg] = createImageBitmap(img);
-		} else if (this.type == "png") {
+		if (this.type == "png") {
 			this.cachedDrawables[subimg] = new Promise((resolve, reject) => {
 				let img = new Image();
 				img.onload = () => {
@@ -120,12 +134,10 @@ export class ParsedTexture {
 				let blob = new Blob([this.imagefiles[subimg]], { type: "image/png" });
 				img.src = URL.createObjectURL(blob);
 			})
-		} else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg]);
-			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-			this.cachedDrawables[subimg] = createImageBitmap(new ImageData(pixbuf, imgdata.width, imgdata.height));
+		} else {
+			let img = this.toImageData(subimg);
+			this.cachedDrawables[subimg] = img.then(i => createImageBitmap(i));
 		}
 		return this.cachedDrawables[subimg]!;
 	}
-
 }

@@ -8,11 +8,13 @@ import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuff
 
 type FileGetter = (major: number, minor: number) => Promise<Buffer>;
 
+
+
 //a wrapper around gltfbuilder that ensures that resouces are correctly shared
 export class GLTFSceneCache {
 	getFileById: FileGetter;
 	textureCache = new Map<number, number>();
-	materialCache = new Map<number, number>();
+	gltfMaterialCache = new Map<number, Promise<number>>();
 	gltf = new GLTFBuilder();
 
 	constructor(getfilebyid: FileGetter) {
@@ -29,14 +31,9 @@ export class GLTFSceneCache {
 		this.textureCache.set(texid, texnode);
 		return texnode;
 	}
+	
 	//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
-	async getMaterial(matid: number, hasVertexAlpha: boolean) {
-		//create a seperate material if we have alpha
-		//TODO the material should have this data, not the mesh
-		let matcacheid = matid | (hasVertexAlpha ? 0x800000 : 0);
-		let cached = this.materialCache.get(matcacheid);
-		if (cached) { return cached; }
-
+	async getMaterialData(matid: number) {
 		let textures: {
 			diffuse?: number,
 			specular?: number,
@@ -75,43 +72,54 @@ export class GLTFSceneCache {
 					textures.compound = mat.maps["compoundId"];
 			}
 		}
+		return { textures };
+	}
 
-		//===== do the gltf stuff =====
+	async getGlTfMaterial(matid: number, hasVertexAlpha: boolean) {
+		//create a seperate material if we have alpha
+		//TODO the material should have this data, not the mesh
+		let matcacheid = matid | (hasVertexAlpha ? 0x800000 : 0);
+		let cached = this.gltfMaterialCache.get(matcacheid);
+		if (!cached) {
+			cached = (async () => {
+				let { textures } = await this.getMaterialData(matid);
 
-		let materialdef: Material = {
-			//TODO check if diffuse has alpha as well
-			alphaMode: hasVertexAlpha ? "BLEND" : "OPAQUE"
-		}
+				let materialdef: Material = {
+					//TODO check if diffuse has alpha as well
+					alphaMode: hasVertexAlpha ? "BLEND" : "OPAQUE"
+				}
 
-		let sampler = this.gltf.addSampler({});//TODO wrapS wrapT from material flags
+				let sampler = this.gltf.addSampler({});//TODO wrapS wrapT from material flags
 
-		if (textures.diffuse) {
-			materialdef.pbrMetallicRoughness = {};
-			//TODO animated texture UV's (fire cape)
-			materialdef.pbrMetallicRoughness.baseColorTexture = {
-				index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.diffuse) }),
-			};
-			//materialdef.pbrMetallicRoughness.baseColorFactor = [factors.color, factors.color, factors.color, 1];
-			if (typeof textures.metalness != "undefined") {
-				if (textures.metalness) {
-					materialdef.pbrMetallicRoughness.metallicRoughnessTexture = {
-						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.metalness) })
+				if (textures.diffuse) {
+					materialdef.pbrMetallicRoughness = {};
+					//TODO animated texture UV's (fire cape)
+					materialdef.pbrMetallicRoughness.baseColorTexture = {
+						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.diffuse) }),
+					};
+					//materialdef.pbrMetallicRoughness.baseColorFactor = [factors.color, factors.color, factors.color, 1];
+					if (typeof textures.metalness != "undefined") {
+						if (textures.metalness) {
+							materialdef.pbrMetallicRoughness.metallicRoughnessTexture = {
+								index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.metalness) })
+							}
+						}
+						//materialdef.pbrMetallicRoughness.metallicFactor = factors.metalness;
 					}
 				}
-				//materialdef.pbrMetallicRoughness.metallicFactor = factors.metalness;
-			}
+				if (textures.normal) {
+					materialdef.normalTexture = {
+						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.normal) })
+					}
+				}
+				if (textures.specular) {
+					//TODO not directly supported in gltf
+				}
+				return this.gltf.addMaterial(materialdef);
+			})();
+			this.gltfMaterialCache.set(matcacheid, cached);
 		}
-		if (textures.normal) {
-			materialdef.normalTexture = {
-				index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.normal) })
-			}
-		}
-		if (textures.specular) {
-			//TODO not directly supported in gltf
-		}
-		let materialnode = this.gltf.addMaterial(materialdef);
-		this.materialCache.set(matcacheid, materialnode);
-		return materialnode;
+		return cached;
 	}
 }
 
@@ -350,7 +358,7 @@ export async function addOb3Model(scenecache: GLTFSceneCache, meshes: ModelMeshD
 
 		let materialNode: number | undefined = undefined;
 		if (meshdata.materialId != -1) {
-			materialNode = await scenecache.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
+			materialNode = await scenecache.getGlTfMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
 		}
 
 		primitives.push({

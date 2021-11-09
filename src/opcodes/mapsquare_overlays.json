@@ -1,6 +1,6 @@
 {
 	"0x01": { "name":                      "primary_colour", "read": ["array",3,"unsigned byte"] },
-	"0x03": { "name":                        "unknown_0x03", "read": "unsigned short" },
+	"0x03": { "name":                            "material", "read": "unsigned short" },
 	"0x05": { "name":                        "unknown_0x05", "read": "true" },
 	"0x07": { "name":                    "secondary_colour", "read": ["array",3,"unsigned byte"] },
 	"0x08": { "name":                        "unknown_0x08", "read": "true" },

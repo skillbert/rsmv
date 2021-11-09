@@ -14,6 +14,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { addOb3Model, parseOb3Model, GLTFSceneCache, ModelMeshData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
+import sharp from "sharp";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -55,6 +56,9 @@ export type ModelExtras = {
 
 type TileProps = {
 	raw: mapsquare_tiles[number],
+	raw01: mapsquare_tiles[number] | undefined,
+	raw10: mapsquare_tiles[number] | undefined,
+	raw11: mapsquare_tiles[number] | undefined,
 	x: number,
 	y: number,
 	z: number,
@@ -384,6 +388,10 @@ class TileGrid {
 					currenttile.y01 = xnext?.y ?? currenttile.y;
 					currenttile.y10 = znext?.y ?? currenttile.y;
 					currenttile.y11 = xznext?.y ?? currenttile.y;
+
+					currenttile.raw01 = xnext?.raw;
+					currenttile.raw10 = znext?.raw;
+					currenttile.raw11 = xznext?.raw;
 				}
 			}
 		}
@@ -421,8 +429,11 @@ class TileGrid {
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
 					//let newindex = this.levelstep * level + (z + chunk.zoffset - this.zoffset) * this.zstep + (x + chunk.xoffset - this.xoffset) * this.xstep
 					let y = height * tiledimensions * heightScale;
-					this.tiles[newindex] = {
+					let parsedTile: TileProps = {
 						raw: tile,
+						raw01: undefined,
+						raw10: undefined,
+						raw11: undefined,
 						x: tilex,
 						y: y,
 						z: tilez,
@@ -432,6 +443,7 @@ class TileGrid {
 						blendedR: 0, blendedG: 0, blendedB: 0,
 						normalX: 0, normalZ: 0
 					}
+					this.tiles[newindex] = parsedTile;
 					tileindex += squareWidth * squareHeight;
 				}
 			}
@@ -509,6 +521,67 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 	scene.gltf.addScene({ nodes: [rootnode] });
 	let model = await scene.gltf.convert({ glb: true, singlefile: true });
 	return model.mainfile;
+}
+
+function copyImageData(target: ImageData, src: ImageData, x: number, y: number) {
+	const targetStride = 4 * target.width;
+	const srcStride = 4 * src.width;
+	const targetdata = target.data;
+	const srcdata = src.data;
+	for (let dy = 0; dy < src.height; dy++) {
+		for (let dx = 0; dx < src.width; dx++) {
+			let isrc = dx * 4 + dy * srcStride;
+			let itarget = (dx + x) * 4 + (dy + y) * targetStride;
+			targetdata[itarget + 0] = srcdata[isrc + 0];
+			targetdata[itarget + 1] = srcdata[isrc + 1];
+			targetdata[itarget + 2] = srcdata[isrc + 2];
+			targetdata[itarget + 3] = srcdata[isrc + 3];
+		}
+	}
+}
+
+type TileMaterialWeight = { weightx: number, weightz: number, texdivisor: number, alloc: SimpleTexturePackerAlloc };
+
+type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, img: ImageData }
+
+class SimpleTexturePacker {
+	size: number;
+	allocs: SimpleTexturePackerAlloc[] = [];
+	allocx = 0;
+	allocy = 0;
+	allocLineHeight = 0;
+	constructor(size: number) {
+		this.size = size;
+	}
+
+	addTexture(img: ImageData) {
+		if (this.allocx + img.width > this.size) {
+			this.allocx = 0;
+			this.allocy += this.allocLineHeight;
+			this.allocLineHeight = 0;
+		}
+		this.allocLineHeight = Math.max(this.allocLineHeight, img.height);
+		if (this.allocy + this.allocLineHeight > this.size) {
+			throw new Error("atlas is full");
+		}
+		let alloc: SimpleTexturePackerAlloc = {
+			u: this.allocx / this.size, v: this.allocy / this.size,
+			usize: img.width / this.size, vsize: img.height / this.size,
+			x: this.allocx, y: this.allocy,
+			img
+		};
+		this.allocs.push(alloc);
+		this.allocx += img.width;
+		return alloc;
+	}
+	async convert() {
+		let atlas = new ImageData(this.size, this.size);
+		console.log(this.allocs);
+		for (let alloc of this.allocs) {
+			copyImageData(atlas, alloc.img, alloc.x, alloc.y);
+		}
+		return atlas;
+	}
 }
 
 async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: TileGrid) {
@@ -664,16 +737,20 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: ChunkData, level: number, showhidden: boolean) {
 	const maxtiles = squareWidth * squareHeight * squareLevels;
 	const maxVerticesPerTile = 8;
-	const vertexstride = 4 * 3 + 4 * 3 + 4;//3x float32 pos, 3x uint8 pos, aligned
+	const vertexstride = 4 * 3 + 4 * 3 + 4 + 8 * 4;//3x float32 pos, 3x uint8 pos, aligned
 	//overalloce worst case scenario
 	let vertexbuffer = new ArrayBuffer(maxtiles * vertexstride * maxVerticesPerTile);
 	let indexbuffer = new Uint16Array(maxtiles * maxVerticesPerTile);
 	let posbuffer = new Float32Array(vertexbuffer, 0);//offset 0, size 12 bytes
 	let normalbuffer = new Float32Array(vertexbuffer, 12);//offset 12, size 12 bytes
 	let colorbuffer = new Uint8Array(vertexbuffer, 24);//offset 24, size 4 bytes
+	let texweightbuffer = new Uint8Array(vertexbuffer, 28);//4 bytes
+	let texuvbuffer = new Uint16Array(vertexbuffer, 32);//16 bytes [u,v][4]
 	const posstride = vertexstride / 4 | 0;//position indices to skip per vertex (cast to int32)
 	const normalstride = vertexstride / 4 | 0;//normal indices to skip per vertex (cast to int32)
 	const colorstride = vertexstride | 0;//color indices to skip per vertex (cast to int32)
+	const texweightstride = vertexstride | 0;
+	const textuvstride = vertexstride / 2 | 0;
 
 	let vertexindex = 0;
 	let indexpointer = 0;
@@ -681,12 +758,15 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 	const modelx = chunk.xoffset * tiledimensions;
 	const modelz = chunk.zoffset * tiledimensions;
 
+
 	let minx = Infinity, miny = Infinity, minz = Infinity;
 	let maxx = -Infinity, maxy = -Infinity, maxz = -Infinity;
-	const writeVertex = (tile: TileProps, color: number[]) => {
+	const writeVertex = (origintile: TileProps, tile: TileProps, color: number[], mats: TileMaterialWeight[]) => {
 		const pospointer = vertexindex * posstride;
 		const normalpointer = vertexindex * normalstride;
 		const colpointer = vertexindex * colorstride;
+		const texweightpointer = vertexindex * texweightstride;
+		const texuvpointer = vertexindex * textuvstride;
 
 		const x = tile.x - modelx;
 		const z = tile.z - modelz;
@@ -701,21 +781,45 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 		colorbuffer[colpointer + 0] = color[0];
 		colorbuffer[colpointer + 1] = color[1];
 		colorbuffer[colpointer + 2] = color[2];
+
+		const weightx = (tile.x - origintile.x) / tiledimensions;
+		const weightz = (tile.z - origintile.z) / tiledimensions;
+		let total = 0;
+		for (let i = 0; i < mats.length; i++) {
+			const mat = mats[i];
+			const texdata = mat.alloc;
+			let dx = Math.abs(weightx - mat.weightx);
+			let dz = Math.abs(weightz - mat.weightz);
+			let weight = 1 - dx - dz + dx * dz;
+			let ubase = origintile.x % mat.texdivisor;
+			let vbase = origintile.z % mat.texdivisor;
+			//const defaulttexsize = 256;//TODO where is this coming from?
+			const maxuv = 0xffff;
+			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + tile.x - origintile.x) / tiledimensions) * maxuv;
+			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + tile.z - origintile.z) / tiledimensions) * maxuv;
+			texweightbuffer[texweightpointer + i] = weight * 255;
+			total += weight;
+		}
+		if (Math.abs(total - 1) > 0.01 && mats.length > 0) {
+			debugger;//TODO remove
+		}
+
 		return vertexindex++;
 	}
 
+	const atlas = new SimpleTexturePacker(2048);
+	const materialMap = new Map<number, SimpleTexturePackerAlloc>();
+	const whiteTexture = new ImageData(32, 32);
+	for (let i = 0; i < whiteTexture.data.length; i++) { whiteTexture.data[i] = 255; }
+	materialMap.set(0, atlas.addTexture(whiteTexture));
+
 	for (let z = 0; z < squareHeight; z++) {
 		for (let x = 0; x < squareWidth; x++) {
-			let tile = chunk.tiles[x * squareWidth + z + level * squareWidth * squareHeight];//TODO are these flipped?
-			if ((level == 0 || level == 1) && x < 15 && z < 15) {
+			let tile = grid.getTile(chunk.xoffset + x, chunk.zoffset + z, level);
+			//let tile = chunk.tiles[x * squareWidth + z + level * squareWidth * squareHeight];//TODO are these flipped?
 
-				// console.log(x, z, {
-				// 	tile,
-				// 	overlay: chunk.overlays[typeof tile.overlay == "number" ? tile.overlay - 1 : 0],
-				// 	underlay: chunk.overlays[typeof tile.underlay == "number" ? tile.underlay - 1 : 0]
-				// });
-			}
 			if (!tile) { continue; }
+			let rawtile = tile.raw;
 
 			//we have 8 possible vertices along the corners and halfway on the edges of the tile
 			//select these vertices to draw the tile shape
@@ -724,10 +828,10 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 			let overlay: number[] = [];
 			let underlay: number[] = []
 
-			if (typeof tile.shape == "undefined") {
+			if (typeof rawtile.shape == "undefined") {
 				underlay.push(0, 2, 4, 6);
 			} else {
-				let shape = tile.shape;
+				let shape = rawtile.shape;
 				let rotation = shape % 4;
 				shape -= rotation;
 				if (shape == 0) {
@@ -776,7 +880,7 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 					let b = getSubTile(i == 9 ? 5 : (i + 1) % 8);
 					if (!a || !b) { return undefined }
 					let r: TileProps = {
-						raw: a.raw,
+						raw: a.raw, raw01: a.raw01, raw10: a.raw10, raw11: a.raw11,
 						x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2,
 						y01: 0, y10: 0, y11: 0,
 						visible: a.visible && b.visible,
@@ -791,18 +895,42 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 				return grid.getTile(chunk.xoffset + x + dx, chunk.zoffset + z + dz, level);
 			}
 
+			//TODO un-async this if at all possible (currenty forces 16k tasks/stack switches)
+			let getuvweight = async (matid: number) => {
+				if (!materialMap.has(matid)) {
+					let mat = await scene.getMaterialData(matid - 1);
+					if (mat.textures.diffuse) {
+						let img = await scene.getFileById(cacheMajors.texturesDds, mat.textures.diffuse)
+							.then(buf => new ParsedTexture(buf).toImageData());
+						materialMap.set(matid, atlas.addTexture(img));
+					}
+				}
+				return materialMap.get(matid)!;
+			}
+
 			if (overlay.length != 0) {
-				let overlaytype = chunk.overlays[typeof tile.overlay == "number" ? tile.overlay - 1 : 0];
+				let overlaytype = chunk.overlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
 				let color = overlaytype.primary_colour ?? [255, 0, 255];
 				let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
 				if (isvisible || showhidden) {
 					let firstvertex = -1;
 					let lastvertex = -1;
+
+					let alloc = await getuvweight(overlaytype.material ?? 0)
+					//TODO get rid of these awaits
+					let texuvs: TileMaterialWeight[] = [
+						//TODO texdivisor
+						{ weightx: 0, weightz: 0, alloc: alloc, texdivisor: 256 },
+						{ weightx: 1, weightz: 0, alloc: alloc, texdivisor: 256 },
+						{ weightx: 0, weightz: 1, alloc: alloc, texdivisor: 256 },
+						{ weightx: 1, weightz: 1, alloc: alloc, texdivisor: 256 },
+					];
+
 					for (let i = 0; i < overlay.length; i++) {
 						let vertex = getSubTile(overlay[i]);
 						if (!vertex) { continue; }
 
-						let vertexptr = writeVertex(vertex, color);
+						let vertexptr = writeVertex(tile, vertex, color, texuvs);
 						if (firstvertex == -1) { firstvertex = vertexptr; continue; }
 						if (lastvertex == -1) { lastvertex = vertexptr; continue; }
 
@@ -816,12 +944,23 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 			if (underlay.length != 0) {
 				let firstvertex = -1;
 				let lastvertex = -1;
+
+				let underlay00 = chunk.underlays[rawtile.underlay ?? 0];
+				let underlay01 = chunk.underlays[tile.raw01?.underlay ?? 0];
+				let underlay10 = chunk.underlays[tile.raw10?.underlay ?? 0];
+				let underlay11 = chunk.underlays[tile.raw11?.underlay ?? 0];
+				//TODO get rid of these awaits
+				let texuvs: TileMaterialWeight[] = [
+					{ weightx: 0, weightz: 0, alloc: await getuvweight(underlay00.material ?? 0), texdivisor: underlay00.possibly_texuv_divisor ?? 256 },
+					{ weightx: 1, weightz: 0, alloc: await getuvweight(underlay01.material ?? 0), texdivisor: underlay01.possibly_texuv_divisor ?? 256 },
+					{ weightx: 0, weightz: 1, alloc: await getuvweight(underlay10.material ?? 0), texdivisor: underlay10.possibly_texuv_divisor ?? 256 },
+					{ weightx: 1, weightz: 1, alloc: await getuvweight(underlay11.material ?? 0), texdivisor: underlay11.possibly_texuv_divisor ?? 256 },
+				];
 				for (let i = 0; i < underlay.length; i++) {
 					let vertex = getSubTile(underlay[i]);
 					if (!vertex || (!vertex.visible && !showhidden)) { continue; }
 
-
-					let vertexptr = writeVertex(vertex, [vertex.blendedR, vertex.blendedG, vertex.blendedB]);
+					let vertexptr = writeVertex(tile, vertex, [vertex.blendedR, vertex.blendedG, vertex.blendedB], texuvs);
 					if (firstvertex == -1) { firstvertex = vertexptr; continue; }
 					if (lastvertex == -1) { lastvertex = vertexptr; continue; }
 
@@ -839,38 +978,32 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 	//TODO either ref or copy all the buffers
 	let gltf = scene.gltf;
 	let view = gltf.addBufferWithView(new Uint8Array(vertexbuffer, 0, vertexindex * vertexstride), vertexstride, false);
-	attrs.POSITION = gltf.addAttributeAccessor({
-		byteoffset: posbuffer.byteOffset,
-		bytestride: vertexstride,
-		gltype: glTypeIds.f32.gltype,
-		max: [maxx, maxy, maxz],
-		min: [minx, miny, minz],
-		name: "position",
-		normalize: false,
-		veclength: 3
-	}, view, vertexindex);
-	attrs.NORMAL = gltf.addAttributeAccessor({
-		byteoffset: normalbuffer.byteOffset,
-		bytestride: vertexstride,
-		gltype: glTypeIds.f32.gltype,
-		max: undefined as any,
-		min: undefined as any,
-		name: "normals",
-		normalize: false,
-		veclength: 3
-	}, view, vertexindex);
-	attrs.COLOR_0 = gltf.addAttributeAccessor({
-		byteoffset: colorbuffer.byteOffset,
-		bytestride: vertexstride,
-		gltype: glTypeIds.u8.gltype,
-		max: undefined as any,
-		min: undefined as any,
-		name: "color",
-		normalize: true,
-		veclength: 3
-	}, view, vertexindex);
-	let viewIndex = gltf.addBufferWithView(indexbuffer.slice(0, indexpointer), undefined, true);
+	let addAccessor = (name: string, buf: ArrayBufferView, normalize: boolean, veclength: number, eloffset = 0, max?: number[] | undefined, min?: number[] | undefined) => {
+		let type = Object.values(glTypeIds).find(q => buf instanceof q.constr)!;
+		return gltf.addAttributeAccessor({
+			byteoffset: buf.byteOffset + eloffset * type.constr.BYTES_PER_ELEMENT,
+			bytestride: vertexstride,
+			max: max!,
+			min: min!,
+			gltype: type.gltype,
+			name,
+			normalize,
+			veclength
+		}, view, vertexindex);
+	}
+	attrs.POSITION = addAccessor("position", posbuffer, false, 3, 0, [maxx, maxy, maxz], [minx, miny, minz]);
+	attrs.NORMAL = addAccessor("normals", normalbuffer, false, 3);
+	attrs.COLOR_0 = addAccessor("color", colorbuffer, true, 3)
+	attrs._RA_FLOORTEX_UV01 = addAccessor("texuv_01", texuvbuffer, true, 4, 0);
+	attrs._RA_FLOORTEX_UV23 = addAccessor("texuv_23", texuvbuffer, true, 4, 4);
+	attrs._RA_FLOORTEX_WEIGHTS = addAccessor("texuv_weights", texweightbuffer, true, 4);
 
+	let atlasimg = await atlas.convert();
+	let img = sharp(Buffer.from(atlasimg.data.buffer), { raw: { width: atlasimg.width, height: atlasimg.height, channels: 4 } });
+	let atlasfile = await img.png().toBuffer({ resolveWithObject: false });
+
+	let tex = gltf.addImageWithTexture(atlasfile);
+	let viewIndex = gltf.addBufferWithView(indexbuffer.slice(0, indexpointer), undefined, true);
 	let indices = gltf.addAccessor({
 		componentType: glTypeIds.u16.gltype,
 		count: indexpointer,
@@ -880,8 +1013,11 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 
 	let floormaterial = gltf.addMaterial({
 		alphaMode: "MASK",
-		alphaCutoff: 0.9
-	})
+		alphaCutoff: 0.9,
+		pbrMetallicRoughness: {
+			baseColorTexture: { index: tex }
+		}
+	});
 
 	let mesh = gltf.addMesh({
 		primitives: [{
@@ -897,8 +1033,12 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 		mapsquarez: chunk.mapsquarez,
 		level: level
 	} as ModelExtras;
+	gltf.addExtension("RA_FLOORTEX", false);
 	return gltf.addNode({
 		mesh,
+		extensions: {
+			RA_FLOORTEX: { tex }
+		},
 		extras: extra
 	});
 }

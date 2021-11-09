@@ -4,8 +4,8 @@
 
 export type mapsquare_underlays = {
 	color?: number[] | undefined
+	material?: number | undefined
 	possibly_texuv_divisor?: number | undefined
-	probably_material?: number | undefined
 	unknown_0x04?: true | undefined
 	unknown_0x05?: true | undefined
 };
