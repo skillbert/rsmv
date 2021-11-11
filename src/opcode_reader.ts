@@ -395,7 +395,7 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				if (readmode == "sumtail") {
 					//this is very stupid but works
 					//yay for recursion
-					let overflowchunk = ~(~1 << (bytes * 8 - 2));//0111111.. pattern
+					let overflowchunk = ~(~1 << (primitive.bytes * 8 - 2));//0111111.. pattern
 					if (output == overflowchunk) {
 						output += parser.read(buffer, ctx);
 					}
