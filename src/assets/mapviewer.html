@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title>Map viewer</title>
+	<!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
+	<!--<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />-->
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A==" crossorigin="" />
+	<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js" integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA==" crossorigin=""></script>
+	<style>
+		body {
+			position: absolute;
+			height: 100%;
+			width: 100%;
+			padding: 0;
+			margin: 0;
+		}
+
+		#map {
+			height: 100%;
+			width: 100%;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="map"></div>
+	<script>
+
+		var mapsizex = 100;
+		var mapsizez = 200;
+
+		var chunksize = 64;
+		var pixperchunk = 64;//2048;
+
+		function mapcoord(x, z) {
+			return { x: x * chunksize * pixperchunk, y: (mapsizez - z) * chunksize * pixperchunk };
+		}
+
+		// var pos = mapcoord(45, 51);
+		// var mymap = L.map('map').setView([pos.x, pos.y], 0);
+		// L.tileLayer('../../cache/map/{z}/{x}-{y}.png', {
+		// 	attribution: 'Skillerbertus',
+		// 	maxZoom: 3,
+		// 	tileSize: 64,
+		// 	maxNativeZoom: 8,
+		// 	zoomOffset: 0,
+		// 	minZoom: -4,
+		// 	crs: L.CRS.Simple
+		// }).addTo(mymap);
+
+		// var SimpleInvert = L.Util.extend({}, L.CRS.Simple, {
+		// 	transformation: L.transformation(1, 0, 1, 0)
+		// });
+
+		let crs = L.CRS.Simple;
+		crs.transformation = L.transformation(1, 0, 1, 0);
+
+		var mymap = L.map('map', {
+			minZoom: 0,
+			maxZoom: 12,
+			crs: crs// SimpleInvert//L.CRS.Simple
+			// maxBounds: [[0, 0], [chunksize * pixperchunk * 100, chunksize * pixperchunk * 200]]
+		});
+		L.tileLayer('../../cache/map/{z}/{x}-{y}.png', {
+			attribution: 'Skillbert',
+			tileSize: 512,
+			maxNativeZoom: 10,
+			minNativeZoom: 0
+		}).addTo(mymap);
+		mymap.setView([290, 90], 7);
+	</script>
+</body>
+
+</html>

@@ -11,6 +11,11 @@ import { command } from "cmd-ts";
 //this still hasn't been fixed in electron
 app.allowRendererProcessReuse = false;
 
+//don't use browser behavoir of blocking gpu access after a opengl crash
+app.disableDomainBlockingFor3DAPIs();
+//don't give up after 3 crashes! keep trying!
+app.commandLine.appendSwitch('--disable-gpu-process-crash-limit');
+
 //show a nice loading window while updating our local cache
 let loadingwnd: BrowserWindow | null = null;
 argparser.setLoadingIndicator({

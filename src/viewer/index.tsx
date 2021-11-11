@@ -10,9 +10,8 @@ import * as electron from "electron";
 import { parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
-import { ob3ModelToGltfFile } from "../3d/ob3togltf";
 import * as ob3Renderer from "./ob3render";
-import * as gltfRenderer from "./gltfrender";
+import { GltfRenderer } from "./gltfrender";
 import { cacheMajors } from "../constants";
 import * as React from "react";
 import { useState, useRef, useEffect } from "react";
@@ -41,6 +40,7 @@ function start() {
 }
 
 (window as any).getFile = getFile;
+(window as any).fs = fs;
 
 async function getFile(major: number, minor: number) {
 	let buffarray: Uint8Array = await ipc.invoke("load-cache-file", major, minor);
@@ -49,12 +49,6 @@ async function getFile(major: number, minor: number) {
 
 //TODO remove this hack
 const hackyCacheFileSource = new GameCacheLoader(path.resolve(process.env.ProgramData!, "jagex/runescape"));
-
-//function submitSearchtest() {
-//   var value = document.getElementById("sidebar-browser-search-bar-input").value;
-//   document.getElementById("sidebar-browser-search-bar-input").value = "66" + 1;
-//  submitSearchIds(value);
-
 
 class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, viewerState: ModelViewerState }> {
 	renderer: ModelSink;
@@ -106,7 +100,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			if (this.state.rendermode == "gltf") {
-				this.renderer = new gltfRenderer.GltfRenderer(cnv, this.viewerStateChanged);
+				this.renderer = new GltfRenderer(cnv, this.viewerStateChanged);
 			}
 			if (this.state.rendermode == "ob3") {
 				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);
@@ -268,7 +262,8 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			let [x, y, width, height] = searchid.split(/[,\.\/:;]/).map(n => +n);
 			width = width ?? 1;
 			height = height ?? width;
-			let file = await mapsquareToGltf(hackyCacheFileSource, { x, y, width, height }, { centered: true });
+			//TODO enable centered again
+			let file = await mapsquareToGltf(hackyCacheFileSource, { x, y, width, height }, { centered: false, invisibleLayers: true });
 			renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
 			break;
 		default:

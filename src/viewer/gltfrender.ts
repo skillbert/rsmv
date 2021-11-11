@@ -17,6 +17,7 @@ import { ob3ModelToGltfFile } from '../3d/ob3togltf';
 import { ModelModifications } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+import * as fs from "fs";
 
 import { ModelViewerState, ModelSink, MiniCache } from "./index";
 
@@ -27,18 +28,21 @@ export class GltfRenderer implements ModelSink {
 	stateChangeCallback: (newstate: ModelViewerState) => void;
 	uistate: ModelViewerState = { meta: "", toggles: {} };
 	scene: THREE.Scene;
-	camera: THREE.PerspectiveCamera;
+	camera: THREE.Camera | THREE.PerspectiveCamera;
 	selectedmodels: THREE.Object3D[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group | null = null;
 	floormesh: THREE.Mesh;
 	queuedFrameId = 0;
 	automaticFrames = false;
+	framePromise: Promise<any> | null = null;
+	framePromiseResolve: (() => void) | null = null;
 
 	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void) {
+		(window as any).render = this;//TODO remove
 		this.canvas = canvas;
 		this.stateChangeCallback = stateChangeCallback;
-		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 		const renderer = this.renderer;
 		canvas.onclick = this.click;
 
@@ -148,24 +152,50 @@ export class GltfRenderer implements ModelSink {
 	@boundMethod
 	render() {
 		this.queuedFrameId = 0;
-		if (this.resizeRendererToDisplaySize()) {
+		if (this.camera instanceof THREE.PerspectiveCamera && this.resizeRendererToDisplaySize()) {
 			const canvas = this.renderer.domElement;
 			this.camera.aspect = canvas.clientWidth / canvas.clientHeight;
 			this.camera.updateProjectionMatrix();
 		}
 
-		this.renderer.render(this.scene, this.camera);
+		let actualrender = () => {
+			if (this.renderer.getContext().isContextLost()) {
+				throw new Error("actualrender while context is lost");
+			}
+			this.renderer.render(this.scene, this.camera);
+			this.framePromiseResolve?.();
+			this.framePromise = null;
+			this.framePromiseResolve = null;
+			promcb?.();
 
-		if (this.automaticFrames) {
-			this.forceFrame();
+			if (this.automaticFrames) {
+				this.forceFrame();
+			}
+		}
+		// if (Math.random() > 0.5) { this.renderer.forceContextLoss(); }
+
+		let promcb: (() => void) | null = null;
+		if (this.renderer.getContext().isContextLost()) {
+			console.log("frame stalled since context is lost");
+			return new Promise<void>(resolve => {
+				promcb = resolve;
+				this.renderer.domElement.addEventListener("webglcontextrestored", () => {
+					console.log("context restored");
+					actualrender();
+				}, { once: true });
+			})
+		} else {
+			return actualrender();
 		}
 	}
 
 	@boundMethod
 	forceFrame() {
 		if (!this.queuedFrameId) {
+			this.framePromise = new Promise<void>(resolve => this.framePromiseResolve = resolve);
 			this.queuedFrameId = requestAnimationFrame(this.render);
 		}
+		return this.framePromise;
 	}
 
 	setValue(prop: string, value: boolean) {
@@ -185,28 +215,56 @@ export class GltfRenderer implements ModelSink {
 
 	async setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, metastr: string) {
 		let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
-		this.setModels(models.map(m => m.buffer), metastr);
+		this.setModels(models, metastr);
 	}
 	setGltfModels(gltffiles: Buffer[]) {
-		this.setModels(gltffiles.map(m => m.buffer));
+		return this.setModels(gltffiles);
 	}
 
-	async setModels(models: ArrayBuffer[], metastr = "") {
+	async takePicture(x: number, z: number, size: number, framesize = 2048) {
+		let scale = 2 / size;
+		let cam = new THREE.Camera();
+		cam.projectionMatrix.elements = [
+			scale, scale / 5, 0, -x * scale - 1,
+			0, scale / 2, -scale, -z * scale - 1,
+			0, -0.001, 0, 0,
+			0, 0, 0, 1
+		];
+		this.renderer.setSize(framesize, framesize);
+		cam.projectionMatrix.transpose();
+		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+		this.camera = cam;
+		await this.render();
+		let img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
+		if (!img) { throw new Error("capture failed"); }
+		return new Uint8Array(await img.arrayBuffer());
+	}
+
+	async parseGltfFile(modelfile: Uint8Array) {
+
+		//Threejs expects a raw memory slice (ArrayBuffer), however most nodejs api's use a view into
+		//such slice (TypedArray). some node modules go as far as reusing these and combining the raw buffers
+		//and returning only a correct view into a large slice if this is the case we have to copy it to a new
+		//slice to guarantee no other junk is in the same slice
+		let modelbuffer: ArrayBuffer;
+		if (modelfile.byteOffset != 0 || modelfile.byteLength != modelfile.buffer.byteLength) {
+			modelbuffer = Uint8Array.prototype.slice.call(modelfile).buffer;
+		} else {
+			modelbuffer = modelfile.buffer;
+		}
+
 		const loader = new GLTFLoader();
 
-		let combined = new THREE.Group();
-		let newmodels = await Promise.all<GLTF>(models.map(m => new Promise((d, e) => loader.parse(m, "", d, e))));
-		newmodels.forEach(m => combined.add(m.scene));
-		combined.scale.setScalar(1 / 512);
-		(window as any).scene = this.scene;
+		let model = await new Promise<GLTF>((d, e) => loader.parse(modelbuffer, "", d, e));
 
-		let toggles: string[] = [];
+		let groupnames = new Set<string>();
 
 		//use faster materials
-		newmodels.forEach(model => model.scene.traverse(node => {
+		let rootnode = model.scene;
+		rootnode.traverse(node => {
 			node.matrixAutoUpdate = false;
 			if (node.userData.modelgroup) {
-				toggles.push(node.userData.modelgroup);
+				groupnames.add(node.userData.modelgroup);
 			}
 			node.updateMatrix();
 			if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
@@ -214,14 +272,10 @@ export class GltfRenderer implements ModelSink {
 				let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
 				let parent: THREE.Object3D | null = node;
 				let iswireframe = false;
-				let modelgroup = "";
 				//TODO this data should be on the mesh it concerns instead of a parent
 				while (parent) {
 					if (parent.userData.modeltype == "floorhidden") {
 						iswireframe = true;
-					}
-					if (parent.userData.modelgroup) {
-						modelgroup = parent.userData.modelgroup;
 					}
 					if (parent.userData.gltfExtensions?.RA_nodes_floortransform) {
 						transform = parent.userData.gltfExtensions.RA_nodes_floortransform;
@@ -297,8 +351,20 @@ export class GltfRenderer implements ModelSink {
 				mat.flatShading = true;
 				node.material = mat;
 			}
-		}));
+		});
+		return { rootnode, groupnames };
+	}
 
+	async setModels(modelfiles: Uint8Array[], metastr = "") {
+		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));
+		let combined = new THREE.Group();
+		let groups = new Set<string>();
+		newmodels.forEach(m => {
+			combined.add(m.rootnode)
+			m.groupnames.forEach(g => groups.add(g));
+		});
+		combined.scale.setScalar(1 / 512);
+		(window as any).scene = this.scene;
 		// compute the box that contains all the stuff
 		// from root and below
 		const box = new THREE.Box3().setFromObject(combined);
@@ -321,7 +387,7 @@ export class GltfRenderer implements ModelSink {
 		this.scene.add(this.modelnode);
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
-		toggles.sort((a, b) => a.localeCompare(b)).forEach(q => {
+		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 			this.uistate.toggles[q] = !q.match(/floorhidden/);
 		});
 

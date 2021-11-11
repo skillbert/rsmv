@@ -14,6 +14,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { addOb3Model, parseOb3Model, GLTFSceneCache, ModelMeshData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
+import * as fs from "fs";
 import sharp from "sharp";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
@@ -451,7 +452,7 @@ class TileGrid {
 	}
 }
 
-export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: { centered?: boolean }) {
+export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean }) {
 
 	let scene = new GLTFSceneCache(source.getFileById.bind(source));
 
@@ -466,18 +467,27 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 
 	let originx = (opts?.centered ? (rect.x + rect.width / 2) * tiledimensions * squareWidth : 0);
 	let originz = (opts?.centered ? (rect.y + rect.height / 2) * tiledimensions * squareHeight : 0);
-	let grid = new TileGrid(rect.x, rect.y, rect.width, rect.height);
+
+	let chunkfloorpadding = (opts?.padfloor ? 1 : 0);
+	let grid = new TileGrid(rect.x, rect.y, rect.width + chunkfloorpadding, rect.height + chunkfloorpadding);
 	let chunks: ChunkData[] = [];
-	for (let z = 0; z < rect.height; z++) {
-		for (let x = 0; x < rect.width; x++) {
+	for (let z = 0; z < rect.height + chunkfloorpadding; z++) {
+		for (let x = 0; x < rect.width + chunkfloorpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.y + z) * worldStride;
 			let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
+			if (!selfindex) {
+				console.log(`skipping mapsquare ${rect.x + x} ${rect.y + z} as it does not exist`);
+				continue;
+			}
 			let selfarchive = (await source.getFileArchive(selfindex));
 			let tileindex = selfindex.subindices.indexOf(3);
 			let tileindexwater = selfindex.subindices.indexOf(4);
 
-			if (tileindex == -1) { continue; }
+			if (tileindex == -1) {
+				console.log(`skipping mapsquare ${rect.x + x} ${rect.y + z} as it has no tiles`);
+				continue;
+			}
 			let tilefile = selfarchive[tileindex].buffer;
 			//let watertilefile = selfarchive[tileindexwater]?.buffer;
 			//let watertiles = parseMapsquareWaterTiles.read(watertilefile);
@@ -489,8 +499,12 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 				mapsquarez: rect.y + z,
 				tiles, underlays, overlays, cacheIndex: selfindex, archive: selfarchive
 			};
-			chunks.push(chunk);
 			grid.addMapsquare(chunk);
+
+			//only ad the actual ones we need to the queue
+			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.width) { continue; }
+			if (chunk.mapsquarez < rect.y || chunk.mapsquarez >= rect.y + rect.height) { continue; }
+			chunks.push(chunk);
 		}
 	}
 
@@ -502,9 +516,11 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 			let meshnode = await mapsquareMesh(scene, grid, chunk, level, false);
 			if (meshnode != -1) { squarenodes.push(meshnode); };
 		}
-		for (let level = 0; level < squareLevels; level++) {
-			let hiddennode = await mapsquareMesh(scene, grid, chunk, level, true);
-			if (hiddennode != -1) { squarenodes.push(hiddennode); }
+		if (opts?.invisibleLayers) {
+			for (let level = 0; level < squareLevels; level++) {
+				let hiddennode = await mapsquareMesh(scene, grid, chunk, level, true);
+				if (hiddennode != -1) { squarenodes.push(hiddennode); }
+			}
 		}
 		let objectsnode = await mapsquareObjects(scene, chunk, grid);
 		squarenodes.push(objectsnode);
@@ -523,15 +539,17 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 	return model.mainfile;
 }
 
-function copyImageData(target: ImageData, src: ImageData, x: number, y: number) {
-	const targetStride = 4 * target.width;
+function copyImageData(dest: ImageData, src: ImageData, destx: number, desty: number, srcx = 0, srcy = 0, width?: number, height?: number) {
+	const targetStride = 4 * dest.width;
 	const srcStride = 4 * src.width;
-	const targetdata = target.data;
+	const targetdata = dest.data;
 	const srcdata = src.data;
-	for (let dy = 0; dy < src.height; dy++) {
-		for (let dx = 0; dx < src.width; dx++) {
-			let isrc = dx * 4 + dy * srcStride;
-			let itarget = (dx + x) * 4 + (dy + y) * targetStride;
+	if (typeof width == "undefined") { width = src.width; }
+	if (typeof height == "undefined") { height = src.height; }
+	for (let dy = 0; dy < height; dy++) {
+		for (let dx = 0; dx < width; dx++) {
+			let isrc = (dx + srcx) * 4 + (dy + srcy) * srcStride;
+			let itarget = (dx + destx) * 4 + (dy + desty) * targetStride;
 			targetdata[itarget + 0] = srcdata[isrc + 0];
 			targetdata[itarget + 1] = srcdata[isrc + 1];
 			targetdata[itarget + 2] = srcdata[isrc + 2];
@@ -540,11 +558,12 @@ function copyImageData(target: ImageData, src: ImageData, x: number, y: number) 
 	}
 }
 
-type TileMaterialWeight = { weightx: number, weightz: number, texdivisor: number, alloc: SimpleTexturePackerAlloc };
+type TileMaterialWeight = { weightx: number, weightz: number, alloc: SimpleTexturePackerAlloc };
 
 type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, img: ImageData }
 
 class SimpleTexturePacker {
+	padsize = 16;
 	size: number;
 	allocs: SimpleTexturePackerAlloc[] = [];
 	allocx = 0;
@@ -555,30 +574,49 @@ class SimpleTexturePacker {
 	}
 
 	addTexture(img: ImageData) {
-		if (this.allocx + img.width > this.size) {
+		let sizex = img.width + 2 * this.padsize;
+		let sizey = img.height + 2 * this.padsize;
+		if (this.allocx + sizex > this.size) {
 			this.allocx = 0;
 			this.allocy += this.allocLineHeight;
 			this.allocLineHeight = 0;
 		}
-		this.allocLineHeight = Math.max(this.allocLineHeight, img.height);
+		this.allocLineHeight = Math.max(this.allocLineHeight, sizey);
 		if (this.allocy + this.allocLineHeight > this.size) {
 			throw new Error("atlas is full");
 		}
 		let alloc: SimpleTexturePackerAlloc = {
-			u: this.allocx / this.size, v: this.allocy / this.size,
+			u: (this.allocx + this.padsize) / this.size, v: (this.allocy + this.padsize) / this.size,
 			usize: img.width / this.size, vsize: img.height / this.size,
-			x: this.allocx, y: this.allocy,
+			x: this.allocx + this.padsize, y: this.allocy + this.padsize,
 			img
 		};
 		this.allocs.push(alloc);
-		this.allocx += img.width;
+		this.allocx += sizex;
 		return alloc;
 	}
 	async convert() {
 		let atlas = new ImageData(this.size, this.size);
-		console.log(this.allocs);
+		console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
 		for (let alloc of this.allocs) {
-			copyImageData(atlas, alloc.img, alloc.x, alloc.y);
+			const x0 = alloc.x - this.padsize;
+			const x1 = alloc.x;
+			const x2 = alloc.x + alloc.img.width;
+			const y0 = alloc.y - this.padsize;
+			const y1 = alloc.y;
+			const y2 = alloc.y + alloc.img.height;
+			//YIKES
+			copyImageData(atlas, alloc.img, x0, y0, alloc.img.width - this.padsize, alloc.img.height - this.padsize, this.padsize, this.padsize);
+			copyImageData(atlas, alloc.img, x1, y0, 0, alloc.img.height - this.padsize, alloc.img.width, this.padsize);
+			copyImageData(atlas, alloc.img, x2, y0, 0, alloc.img.height - this.padsize, this.padsize, this.padsize);
+
+			copyImageData(atlas, alloc.img, x0, y1, alloc.img.width - this.padsize, 0, this.padsize, alloc.img.height);
+			copyImageData(atlas, alloc.img, x1, y1, 0, 0, alloc.img.width, alloc.img.height);
+			copyImageData(atlas, alloc.img, x2, y1, 0, 0, this.padsize, alloc.img.height);
+
+			copyImageData(atlas, alloc.img, x0, y2, alloc.img.width - this.padsize, 0, this.padsize, this.padsize);
+			copyImageData(atlas, alloc.img, x1, y2, 0, 0, alloc.img.width, this.padsize);
+			copyImageData(atlas, alloc.img, x2, y2, 0, 0, this.padsize, this.padsize);
 		}
 		return atlas;
 	}
@@ -729,7 +767,6 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 		}
 	}
 
-	//TODO move this flag
 	scene.gltf.addExtension("RA_nodes_floortransform", false);
 	return scene.gltf.addNode({ children: nodes });
 }
@@ -784,38 +821,44 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 
 		const weightx = (tile.x - origintile.x) / tiledimensions;
 		const weightz = (tile.z - origintile.z) / tiledimensions;
-		let total = 0;
+		// let corners: any[] = [];
 		for (let i = 0; i < mats.length; i++) {
 			const mat = mats[i];
 			const texdata = mat.alloc;
 			let dx = Math.abs(weightx - mat.weightx);
 			let dz = Math.abs(weightz - mat.weightz);
 			let weight = 1 - dx - dz + dx * dz;
-			let ubase = origintile.x % mat.texdivisor;
-			let vbase = origintile.z % mat.texdivisor;
-			//const defaulttexsize = 256;//TODO where is this coming from?
-			const maxuv = 0xffff;
-			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + tile.x - origintile.x) / tiledimensions) * maxuv;
-			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + tile.z - origintile.z) / tiledimensions) * maxuv;
+			let gridsize = mat.alloc.img.width * 4;//TODO is the 4 a constant?
+			let ubase = origintile.x % gridsize;
+			let vbase = origintile.z % gridsize;
+			const maxuv = 0x10000;
+			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + tile.x - origintile.x) / gridsize) * maxuv;
+			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + tile.z - origintile.z) / gridsize) * maxuv;
 			texweightbuffer[texweightpointer + i] = weight * 255;
-			total += weight;
+			// corners.push({
+			// 	u: texuvbuffer[texuvpointer + 2 * i + 0] / maxuv,
+			// 	v: texuvbuffer[texuvpointer + 2 * i + 1] / maxuv,
+			// 	weight: texweightbuffer[texweightpointer + i] / 255
+			// })
 		}
-		if (Math.abs(total - 1) > 0.01 && mats.length > 0) {
-			debugger;//TODO remove
-		}
+		// console.log(corners);
 
 		return vertexindex++;
 	}
 
-	const atlas = new SimpleTexturePacker(2048);
+	const atlas = new SimpleTexturePacker(level == 0 ? 4096 : 2048);
 	const materialMap = new Map<number, SimpleTexturePackerAlloc>();
-	const whiteTexture = new ImageData(32, 32);
-	for (let i = 0; i < whiteTexture.data.length; i++) { whiteTexture.data[i] = 255; }
-	materialMap.set(0, atlas.addTexture(whiteTexture));
+	// const whiteTexture = new ImageData(32, 32);
+	// for (let i = 0; i < whiteTexture.data.length; i++) { whiteTexture.data[i] = 255; }
+	// materialMap.set(0, atlas.addTexture(whiteTexture));
 
 	for (let z = 0; z < squareHeight; z++) {
 		for (let x = 0; x < squareWidth; x++) {
+
+			// if (x < 6 || x > 12 || z < 50 || z > 52) { continue; }
+
 			let tile = grid.getTile(chunk.xoffset + x, chunk.zoffset + z, level);
+			// console.log(tile);
 			//let tile = chunk.tiles[x * squareWidth + z + level * squareWidth * squareHeight];//TODO are these flipped?
 
 			if (!tile) { continue; }
@@ -898,7 +941,7 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 			//TODO un-async this if at all possible (currenty forces 16k tasks/stack switches)
 			let getuvweight = async (matid: number) => {
 				if (!materialMap.has(matid)) {
-					let mat = await scene.getMaterialData(matid - 1);
+					let mat = await scene.getMaterialData(matid);
 					if (mat.textures.diffuse) {
 						let img = await scene.getFileById(cacheMajors.texturesDds, mat.textures.diffuse)
 							.then(buf => new ParsedTexture(buf).toImageData());
@@ -918,13 +961,17 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 
 					let alloc = await getuvweight(overlaytype.material ?? 0)
 					//TODO get rid of these awaits
-					let texuvs: TileMaterialWeight[] = [
-						//TODO texdivisor
-						{ weightx: 0, weightz: 0, alloc: alloc, texdivisor: 256 },
-						{ weightx: 1, weightz: 0, alloc: alloc, texdivisor: 256 },
-						{ weightx: 0, weightz: 1, alloc: alloc, texdivisor: 256 },
-						{ weightx: 1, weightz: 1, alloc: alloc, texdivisor: 256 },
-					];
+					let texuvs: TileMaterialWeight[];
+					if (showhidden) {
+						texuvs = [];
+					} else {
+						texuvs = [
+							{ weightx: 0, weightz: 0, alloc: alloc },
+							{ weightx: 1, weightz: 0, alloc: alloc },
+							{ weightx: 0, weightz: 1, alloc: alloc },
+							{ weightx: 1, weightz: 1, alloc: alloc },
+						];
+					}
 
 					for (let i = 0; i < overlay.length; i++) {
 						let vertex = getSubTile(overlay[i]);
@@ -945,17 +992,22 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 				let firstvertex = -1;
 				let lastvertex = -1;
 
-				let underlay00 = chunk.underlays[rawtile.underlay ?? 0];
-				let underlay01 = chunk.underlays[tile.raw01?.underlay ?? 0];
-				let underlay10 = chunk.underlays[tile.raw10?.underlay ?? 0];
-				let underlay11 = chunk.underlays[tile.raw11?.underlay ?? 0];
+				let underlay00 = chunk.underlays[typeof rawtile.underlay != "undefined" ? rawtile.underlay - 1 : 0];
+				let underlay01 = chunk.underlays[typeof tile.raw01?.underlay != "undefined" ? tile.raw01.underlay - 1 : 0];
+				let underlay10 = chunk.underlays[typeof tile.raw10?.underlay != "undefined" ? tile.raw10.underlay - 1 : 0];
+				let underlay11 = chunk.underlays[typeof tile.raw11?.underlay != "undefined" ? tile.raw11.underlay - 1 : 0];
 				//TODO get rid of these awaits
-				let texuvs: TileMaterialWeight[] = [
-					{ weightx: 0, weightz: 0, alloc: await getuvweight(underlay00.material ?? 0), texdivisor: underlay00.possibly_texuv_divisor ?? 256 },
-					{ weightx: 1, weightz: 0, alloc: await getuvweight(underlay01.material ?? 0), texdivisor: underlay01.possibly_texuv_divisor ?? 256 },
-					{ weightx: 0, weightz: 1, alloc: await getuvweight(underlay10.material ?? 0), texdivisor: underlay10.possibly_texuv_divisor ?? 256 },
-					{ weightx: 1, weightz: 1, alloc: await getuvweight(underlay11.material ?? 0), texdivisor: underlay11.possibly_texuv_divisor ?? 256 },
-				];
+				let texuvs: TileMaterialWeight[];
+				if (showhidden) {
+					texuvs = [];
+				} else {
+					texuvs = [
+						{ weightx: 0, weightz: 0, alloc: await getuvweight(underlay00.material ?? 0) },
+						{ weightx: 1, weightz: 0, alloc: await getuvweight(underlay01.material ?? 0) },
+						{ weightx: 0, weightz: 1, alloc: await getuvweight(underlay10.material ?? 0) },
+						{ weightx: 1, weightz: 1, alloc: await getuvweight(underlay11.material ?? 0) },
+					];
+				}
 				for (let i = 0; i < underlay.length; i++) {
 					let vertex = getSubTile(underlay[i]);
 					if (!vertex || (!vertex.visible && !showhidden)) { continue; }
@@ -998,11 +1050,16 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 	attrs._RA_FLOORTEX_UV23 = addAccessor("texuv_23", texuvbuffer, true, 4, 4);
 	attrs._RA_FLOORTEX_WEIGHTS = addAccessor("texuv_weights", texweightbuffer, true, 4);
 
-	let atlasimg = await atlas.convert();
-	let img = sharp(Buffer.from(atlasimg.data.buffer), { raw: { width: atlasimg.width, height: atlasimg.height, channels: 4 } });
-	let atlasfile = await img.png().toBuffer({ resolveWithObject: false });
-
-	let tex = gltf.addImageWithTexture(atlasfile);
+	let floortex = -1;
+	if (!showhidden) {
+		let atlasimg = await atlas.convert();
+		let img = sharp(Buffer.from(atlasimg.data.buffer), { raw: { width: atlasimg.width, height: atlasimg.height, channels: 4 } });
+		let atlasfile = await img.png().toBuffer({ resolveWithObject: false });
+		floortex = gltf.addImageWithTexture(atlasfile);
+		gltf.addExtension("RA_FLOORTEX", false);
+		//TODO remove
+		fs.writeFileSync("cache/blobs/" + Date.now() + ".png", atlasfile);
+	}
 	let viewIndex = gltf.addBufferWithView(indexbuffer.slice(0, indexpointer), undefined, true);
 	let indices = gltf.addAccessor({
 		componentType: glTypeIds.u16.gltype,
@@ -1014,9 +1071,9 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 	let floormaterial = gltf.addMaterial({
 		alphaMode: "MASK",
 		alphaCutoff: 0.9,
-		pbrMetallicRoughness: {
-			baseColorTexture: { index: tex }
-		}
+		pbrMetallicRoughness: (floortex != -1 ? {
+			baseColorTexture: { index: floortex }
+		} : undefined)
 	});
 
 	let mesh = gltf.addMesh({
@@ -1033,12 +1090,9 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 		mapsquarez: chunk.mapsquarez,
 		level: level
 	} as ModelExtras;
-	gltf.addExtension("RA_FLOORTEX", false);
 	return gltf.addNode({
 		mesh,
-		extensions: {
-			RA_FLOORTEX: { tex }
-		},
+		extensions: (floortex != -1 ? { RA_FLOORTEX: true } : undefined),
 		extras: extra
 	});
 }
