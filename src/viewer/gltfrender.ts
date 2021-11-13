@@ -37,6 +37,7 @@ export class GltfRenderer implements ModelSink {
 	automaticFrames = false;
 	framePromise: Promise<any> | null = null;
 	framePromiseResolve: (() => void) | null = null;
+	contextLossCount = 0;
 
 	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void) {
 		(window as any).render = this;//TODO remove
@@ -44,6 +45,7 @@ export class GltfRenderer implements ModelSink {
 		this.stateChangeCallback = stateChangeCallback;
 		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 		const renderer = this.renderer;
+		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
 		canvas.onclick = this.click;
 
 
@@ -158,35 +160,45 @@ export class GltfRenderer implements ModelSink {
 			this.camera.updateProjectionMatrix();
 		}
 
-		let actualrender = () => {
+		let actualrender = (trycount: number) => {
 			if (this.renderer.getContext().isContextLost()) {
-				throw new Error("actualrender while context is lost");
+				console.log("tried render with lost context");
+				return queuerender(trycount + 1);
 			}
+
+			let prerenderlosses = this.contextLossCount;
 			this.renderer.render(this.scene, this.camera);
+
+			if (this.renderer.getContext().isContextLost()) {
+				console.log("lost context during render");
+				return queuerender(trycount + 1);
+			} else if (prerenderlosses != this.contextLossCount) {
+				console.log("lost and regained context during render");
+				return queuerender(trycount + 1);
+			}
 			this.framePromiseResolve?.();
 			this.framePromise = null;
 			this.framePromiseResolve = null;
-			promcb?.();
 
 			if (this.automaticFrames) {
 				this.forceFrame();
 			}
+			return true;
 		}
-		// if (Math.random() > 0.5) { this.renderer.forceContextLoss(); }
 
-		let promcb: (() => void) | null = null;
-		if (this.renderer.getContext().isContextLost()) {
+		let queuerender = (trycount: number) => {
+			if (trycount > 5) { throw new Error("too many retries to render: " + trycount) }
 			console.log("frame stalled since context is lost");
-			return new Promise<void>(resolve => {
-				promcb = resolve;
+			return new Promise<boolean>(resolve => {
 				this.renderer.domElement.addEventListener("webglcontextrestored", () => {
 					console.log("context restored");
-					actualrender();
+					//make sure three handles the event before we retry
+					setTimeout(() => resolve(actualrender(trycount + 1)), 1);
 				}, { once: true });
 			})
-		} else {
-			return actualrender();
 		}
+
+		return actualrender(0);
 	}
 
 	@boundMethod
