@@ -81,7 +81,6 @@ var _zlib = function (input: Buffer) {
  * @param {Buffer} input The input buffer straight from the server
  */
 var _lzma = function (input: Buffer) {
-	var lzma = require("lzma");
 	var compressed = input.readUInt32BE(0x1);
 	var uncompressed = input.readUInt32BE(0x5);
 	var processed = Buffer.alloc(compressed + 8);
@@ -89,7 +88,10 @@ var _lzma = function (input: Buffer) {
 	processed.writeUInt32LE(uncompressed, 0x5);
 	processed.writeUInt32LE(0, 0x5 + 0x4);
 	input.copy(processed, 0xD, 0xE);
-	return Buffer.from(lzma.decompress(processed));
+	// var lzma = require("lzma");
+	// return Buffer.from(lzma.decompress(processed));
+	var lzma = require("lzma-native").LZMA();
+	return lzma.decompress(processed);
 }
 
 
