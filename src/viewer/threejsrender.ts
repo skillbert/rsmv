@@ -22,7 +22,7 @@ import * as fs from "fs";
 import { ModelViewerState, ModelSink, MiniCache } from "./index";
 
 
-export class GltfRenderer implements ModelSink {
+export class ThreeJsRenderer implements ModelSink {
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
 	stateChangeCallback: (newstate: ModelViewerState) => void;
@@ -227,10 +227,11 @@ export class GltfRenderer implements ModelSink {
 
 	async setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, metastr: string) {
 		let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
-		this.setModels(models, metastr);
+		return this.setGltfModels(models);
 	}
-	setGltfModels(gltffiles: Buffer[]) {
-		return this.setModels(gltffiles);
+	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
+		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));
+		this.setModels(newmodels.map(q => q.rootnode), newmodels.flatMap(q => [...q.groupnames]), metastr);
 	}
 
 	async takePicture(x: number, z: number, size: number, framesize = 2048) {
@@ -280,7 +281,6 @@ export class GltfRenderer implements ModelSink {
 			}
 			node.updateMatrix();
 			if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
-				let transform: any = null;
 				let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
 				let parent: THREE.Object3D | null = node;
 				let iswireframe = false;
@@ -289,32 +289,13 @@ export class GltfRenderer implements ModelSink {
 					if (parent.userData.modeltype == "floorhidden") {
 						iswireframe = true;
 					}
-					if (parent.userData.gltfExtensions?.RA_nodes_floortransform) {
-						transform = parent.userData.gltfExtensions.RA_nodes_floortransform;
-					}
 					parent = parent.parent;
 				}
 				node.visible = !iswireframe;//TODO bad logic
 				let mat = new THREE.MeshPhongMaterial({ wireframe: iswireframe });
-				if (transform || floortex) {
+				if (floortex) {
 					mat.customProgramCacheKey = () => "transformed";
 					mat.onBeforeCompile = (shader, renderer) => {
-						if (transform) {
-							let q = transform!.quadratic;
-							shader.uniforms.RA_nodes_matrix_linear = { value: transform!.linear };
-							shader.uniforms.RA_nodes_matrix_quadratic = { value: [0, q[0], q[2], 0, 0, q[1], 0, 0, 0] };
-							shader.uniforms.RA_nodes_matrix_cubic = { value: transform!.cubic };
-							shader.vertexShader =
-								`uniform vec3 RA_nodes_matrix_linear;\n`
-								+ `uniform mat3 RA_nodes_matrix_quadratic;\n`
-								+ `uniform float RA_nodes_matrix_cubic;\n`
-								+ shader.vertexShader.replace("#include <project_vertex>",
-									`transformed.y =`
-									+ ` + dot(RA_nodes_matrix_linear, transformed)`
-									+ ` + dot(transformed,RA_nodes_matrix_quadratic * transformed)`
-									+ ` + RA_nodes_matrix_cubic*transformed.x*transformed.y*transformed.z;\n`
-									+ `#include <project_vertex>\n`);
-						}
 						if (floortex) {
 							shader.vertexShader =
 								`#ifdef USE_MAP\n`
@@ -367,14 +348,10 @@ export class GltfRenderer implements ModelSink {
 		return { rootnode, groupnames };
 	}
 
-	async setModels(modelfiles: Uint8Array[], metastr = "") {
-		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));
+	async setModels(models: THREE.Group[], groupnames: string[], metastr = "") {
 		let combined = new THREE.Group();
-		let groups = new Set<string>();
-		newmodels.forEach(m => {
-			combined.add(m.rootnode)
-			m.groupnames.forEach(g => groups.add(g));
-		});
+		let groups = new Set<string>(groupnames);
+		models.forEach(m => combined.add(m));
 		combined.scale.setScalar(1 / 512);
 		(window as any).scene = this.scene;
 		// compute the box that contains all the stuff

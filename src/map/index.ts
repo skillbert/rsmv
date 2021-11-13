@@ -70,9 +70,8 @@ export class MapRenderer {
 		}
 		obsolete.sort((a, b) => a.id - b.id);
 		let removed = obsolete.slice(this.maxunused);
-		removed.forEach(q => console.log("removing", q.x, q.z));
+		// removed.forEach(q => console.log("removing", q.x, q.z));
 		this.squares = this.squares.filter(sq => !removed.includes(sq));
-		console.log("scene elements", this.renderer.scene.children.length);
 	}
 }
 
@@ -88,7 +87,7 @@ export async function downloadMap(x0 = 0, z0 = 0) {
 			for (let retry = 0; retry <= maxretries; retry++) {
 				try {
 					await renderMapsquare(x, z, 1, zscan, maprender);
-					progress++;
+					progress += 4;
 					if (progress % 16 == 0) {
 						generateMips();
 					}
@@ -120,13 +119,13 @@ export async function renderMapsquare(x: number, z: number, bundlex: number, bun
 	let loadsquaremodel = async (x: number, z: number) => {
 		let filename = `cache/mapchunks/${x}-${z}.glb`;
 		if (!fs.existsSync(filename)) {
-			console.log("generating", x, z);
+			// console.log("generating", x, z);
 			let file = await downloadMapsquare(x, z);
 			fs.writeFileSync(filename, file);
 			return file;
 		}
 		try {
-			console.log("loading", x, z);
+			// console.log("loading", x, z);
 			return fs.readFileSync(filename);
 		} catch (e) {
 			console.log("nulled", x, z);
@@ -139,9 +138,17 @@ export async function renderMapsquare(x: number, z: number, bundlex: number, bun
 			let filename = `cache/mapchunkimgs2/${x + dx}-${z + dz}.png`;
 			if (fs.existsSync(filename)) { continue; }
 			await renderer.setArea(x + dx - 1, z + dz - 1, 2, 2, loadsquaremodel);
-			let img = await renderer.renderer.takePicture((x + dx) * 64 - 32, (z + dz) * 64 - 32, 64, 2048);
-			console.log("imaged", x + dx, z + dz);
-			fs.writeFileSync(filename, img);
+			for (let retry = 0; retry <= 2; retry++) {
+				let img = await renderer.renderer.takePicture((x + dx) * 64 - 32, (z + dz) * 64 - 32, 64, 2048);
+				//need to check this after the image because it can be lost during the image and three wont know
+				if (renderer.renderer.renderer.getContext().isContextLost()) {
+					console.log("image failed retrying", x + dx, z + dz);
+					continue;
+				}
+				console.log("imaged", x + dx, z + dz);
+				fs.writeFileSync(filename, img);
+				break;
+			}
 		}
 	}
 }

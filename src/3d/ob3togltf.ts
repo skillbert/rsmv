@@ -31,7 +31,7 @@ export class GLTFSceneCache {
 		this.textureCache.set(texid, texnode);
 		return texnode;
 	}
-	
+
 	//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
 	async getMaterialData(matid: number) {
 		let textures: {
@@ -128,11 +128,16 @@ export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mod
 	let stream = new Stream(model);
 	let mesh = await addOb3Model(scene, parseOb3Model(stream, mods));
 	//flip z to go from right-handed to left handed
-	let rootnode = scene.gltf.addNode({ mesh: mesh.mesh, scale: [1, 1, -1] });
+	let rootnode = scene.gltf.addNode({ mesh: mesh, scale: [1, 1, -1] });
 	scene.gltf.addScene({ nodes: [rootnode] });
 	let result = await scene.gltf.convert({ singlefile: true, glb: false });
 	console.log("gltf", scene.gltf.json);
 	return result.mainfile;
+}
+
+export type ModelData = {
+	maxy: number,
+	meshes: ModelMeshData[]
 }
 
 export type ModelMeshData = {
@@ -158,6 +163,7 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 	let unkCount2 = model.readUShort();
 	//console.log(unkCount0,unkCount1,unkCount2,unk1)
 
+	let maxy = 0;
 	let meshes: ModelMeshData[] = [];
 
 	for (var n = 0; n < meshCount; ++n) {
@@ -251,11 +257,14 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 				materialId = replacedmaterial;
 			}
 		}
+		for (let i = 0; i < positionBuffer.length; i += 3) {
+			if (positionBuffer[i + 1] > maxy) {
+				maxy = positionBuffer[i + 1];
+			}
+		}
 
 		//highest level of detail only
 		let indexbuf = indexBuffers[0];
-
-
 
 		let meshdata: ModelMeshData = {
 			indices: indexbuf,
@@ -305,6 +314,7 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 					}
 				}
 			}
+
 		}
 		//TODO proper toggle for this or remove
 		//visualize bone ids
@@ -320,16 +330,16 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 		// 	vertexcolor[index + 3] = 255;
 		// }
 	}
-	return meshes;
+	let r: ModelData = { maxy, meshes };
+	return r;
 }
 
 
-export async function addOb3Model(scenecache: GLTFSceneCache, meshes: ModelMeshData[]) {
+export async function addOb3Model(scenecache: GLTFSceneCache, model: ModelData) {
 	let gltf = scenecache.gltf;
-	let maxy = 0;
 	let primitives: MeshPrimitive[] = [];
 
-	for (let meshdata of meshes) {
+	for (let meshdata of model.meshes) {
 		let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(meshdata.attributes);
 
 		let attrs: MeshPrimitive["attributes"] = {};
@@ -366,10 +376,9 @@ export async function addOb3Model(scenecache: GLTFSceneCache, meshes: ModelMeshD
 			indices: indices,
 			material: materialNode
 		});
-		maxy = Math.max(maxy, attributes.pos.max[1]);
 	}
 	let mesh = gltf.addMesh({ primitives });
 	//enables use of normalized ints for a couple of attribute types
 	//gltf.addExtension("KHR_mesh_quantization", true);
-	return { mesh, maxy };//gltf.addNode({ mesh });
+	return mesh;//gltf.addNode({ mesh });
 }

@@ -10,14 +10,14 @@ export type objects = {
 	name?: string | undefined
 	width?: number | undefined
 	length?: number | undefined
-	unknown_11?: false | undefined
-	dummy_12?: true | undefined
+	unknown_11?: true | undefined
+	unknown_12?: true | undefined
 	unknown_13?: number | undefined
 	unknown_15?: true | undefined
 	unknown_16?: true | undefined
 	occludes_1?: false | undefined
 	unknown_18?: number | undefined
-	unknown_1B?: false | undefined
+	unknown_1B?: true | undefined
 	unknown_1C?: number | undefined
 	ambient?: number | undefined
 	actions_0?: string | undefined
@@ -66,8 +66,8 @@ export type objects = {
 	} | undefined
 	unknown_51?: number | undefined
 	unknown_52?: true | undefined
-	unknown_58?: false | undefined
-	unknown_59?: false | undefined
+	unknown_58?: true | undefined
+	unknown_59?: true | undefined
 	isMembers?: true | undefined
 	morphs_2?: {
 		unk1: number,
@@ -134,7 +134,7 @@ export type objects = {
 	action_cursors_3?: number | undefined
 	action_cursors_4?: number | undefined
 	action_cursors_5?: number | undefined
-	tileMorph?: number | undefined
+	unknown_C4?: number | undefined
 	unknown_C5?: number | undefined
 	dummy_c6?: true | undefined
 	dummy_c7?: true | undefined

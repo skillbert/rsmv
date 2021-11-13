@@ -11,7 +11,7 @@ import { parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
 import * as ob3Renderer from "./ob3render";
-import { GltfRenderer } from "./gltfrender";
+import { ThreeJsRenderer } from "./threejsrender";
 import { cacheMajors } from "../constants";
 import * as React from "react";
 import { useState, useRef, useEffect } from "react";
@@ -100,7 +100,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			if (this.state.rendermode == "gltf") {
-				this.renderer = new GltfRenderer(cnv, this.viewerStateChanged);
+				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged);
 			}
 			if (this.state.rendermode == "ob3") {
 				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);

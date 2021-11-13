@@ -11,7 +11,7 @@ import { ScanBuffer } from "opcode_reader";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
-import { addOb3Model, parseOb3Model, GLTFSceneCache, ModelMeshData } from "./ob3togltf";
+import { addOb3Model, parseOb3Model, GLTFSceneCache, ModelMeshData, ModelData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import * as fs from "fs";
@@ -93,7 +93,9 @@ type FloorMorph = {
 	mirror: boolean,
 	width: number,
 	length: number,
-	tiles: TileMorph[]
+	tiles: TileMorph[] | undefined,
+	scaleModelHeight: boolean,
+	scaleModelHeightOffset: number
 }
 
 function boxMesh(width: number, length: number, height: number) {
@@ -157,7 +159,7 @@ function boxMesh(width: number, length: number, height: number) {
 	return res;
 }
 
-export function transformMesh(mesh: ModelMeshData, morph: FloorMorph) {
+export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheight: number) {
 	let q00: number, q01: number, q10: number, q11: number;
 	if (morph.rotation % 2 == 1) {
 		q00 = 0; q01 = 1;
@@ -181,6 +183,10 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph) {
 	if (mesh.attributes.pos.vecsize != 3 || mesh.attributes.pos.newtype != "f32") {
 		throw new Error("unexpected mesh pos type during model transform");
 	}
+
+	let yscale = (morph.scaleModelHeight ? 1 / (modelheight + morph.scaleModelHeightOffset) : 1);
+
+	const tiles = morph.tiles;
 	let newpos = new Float32Array(pos.length);
 	for (let i = 0; i < pos.length; i += 3) {
 		let x = pos[i + 0];
@@ -188,16 +194,19 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph) {
 		let z = pos[i + 2];
 		let newx = x * q00 + z * q01;
 		let newz = x * q10 + z * q11;
-		let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(newx / tiledimensions + roundoffsetx)));
-		let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(newz / tiledimensions + roundoffsetz)));
-		let tile = morph.tiles[tilex + tilez * xsize];
-		let dx = newx + (-tilex + roundoffsetx - 0.5) * tiledimensions;
-		let dy = y;
-		let dz = newz + (-tilez + roundoffsetz - 0.5) * tiledimensions;
-		let newy = tile.constant// + y
-			+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
-			+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
-			+ tile.cubic * dx * dy * dz
+		let newy = y;
+		if (tiles) {
+			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(newx / tiledimensions + roundoffsetx)));
+			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(newz / tiledimensions + roundoffsetz)));
+			let tile = tiles[tilex + tilez * xsize];
+			let dx = newx + (-tilex + roundoffsetx - 0.5) * tiledimensions;
+			let dy = y * yscale;
+			let dz = newz + (-tilez + roundoffsetz - 0.5) * tiledimensions;
+			newy = tile.constant
+				+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
+				+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
+				+ tile.cubic * dx * dy * dz
+		}
 		newpos[i + 0] = newx;
 		newpos[i + 1] = newy;
 		newpos[i + 2] = newz;
@@ -216,7 +225,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph) {
 		}
 	}
 
-	return {
+	let r: ModelMeshData = {
 		materialId: mesh.materialId,
 		hasVertexAlpha: mesh.hasVertexAlpha,
 		indices,
@@ -228,7 +237,8 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph) {
 				vecsize: 3
 			}
 		}
-	} as ModelMeshData
+	}
+	return r;
 }
 
 class TileGrid {
@@ -240,7 +250,7 @@ class TileGrid {
 	//position of this grid measured in tiles
 	xoffset: number;
 	zoffset: number;
-	//perpeties of the southwest corner of each tile
+	//properties of the southwest corner of each tile
 	tiles: TileProps[];
 	//array indices offset per move in each direction
 	xstep: number;
@@ -258,14 +268,7 @@ class TileGrid {
 		this.levelstep = this.zstep * gridheight * squareHeight;
 		this.tiles = [];
 	}
-	getObjectPlacement(x: number, z: number, plane: number, linkabove: boolean, modelheight: number, rotation: number, mirror: boolean) {
-		//TODO can actually get rid fo the y01 thing again if we're doing 4 lookups anyway
-		// let originx = (x+xsize/2)*tiledimensions;
-		// let originz = (z+zsize/2)*tiledimensions;
-		// x+=Math.floor((xsize-1)/2);xsize=1;
-		// z+=Math.floor((zsize-1)/2);zsize=1;
-		//if(x==3130 && z==3520 && plane==0){			debugger;		}
-
+	getObjectPlacement(x: number, z: number, plane: number, linkabove: boolean, rotation: number, mirror: boolean) {
 		let tile = this.getTile(x, z, plane);
 		if (!tile) {
 			console.log("could not find all corner tiles of object");
@@ -278,6 +281,7 @@ class TileGrid {
 		let dydz = (tile.y10 / 2 + tile.y11 / 2 - originy) / xdist;
 		let dydxz = (tile.y11 - originy - dydx * xdist - dydz * zdist) / xdist / zdist;
 
+		//TODO rotation and mirror should be handled in the transform instead
 		if ((rotation % 2 == 1) != mirror) { dydxz = -dydxz; }
 		if (rotation == 1) { [dydx, dydz] = [-dydz, dydx]; }
 		if (rotation == 2) { [dydx, dydz] = [-dydx, -dydz]; }
@@ -289,38 +293,13 @@ class TileGrid {
 		let dydxyz = 0;
 		let dydy = 1;
 
-
-		//TODO remove
-		// let test = (dx: number, dy: number, dz: number) => originy
-		// 	+ dydx * dx + dydy * dy + dydz * dz
-		// 	+ dydxy * dx * dy + dydyz * dy * dz + dydxz * dz * dx
-		// 	+ dydxyz * dx * dy * dz;
-
-		// let d = 0;
-		// d += Math.abs(test(-256, 0, -256) - tile.y);
-		// d += Math.abs(test(256, 0, -256) - tile.y01);
-		// d += Math.abs(test(-256, 0, 256) - tile.y10);
-		// d += Math.abs(test(256, 0, 256) - tile.y11);
-		// if (d > 1) { debugger; }
-
 		if (linkabove) {
-			//TODO remove
-			const baseheight = modelheight;
-			let roof = this.getObjectPlacement(x, z, plane + 1, false, 0, rotation, mirror);
+			let roof = this.getObjectPlacement(x, z, plane + 1, false, rotation, mirror);
 			if (roof) {
-				dydy = (roof.constant - originy) / baseheight;
-				dydxy = (roof.linear[0] - dydx) / baseheight;
-				dydyz = (roof.linear[2] - dydz) / baseheight;
-				dydxyz = (roof.quadratic[2] - dydxz) / baseheight;
-
-				//TODO remove
-				// let rtile = this.getTile(x, z, plane + 1)!;
-				// let d = 0;
-				// d += Math.abs(test(-256, modelheight, -256) - rtile.y);
-				// d += Math.abs(test(256, modelheight, -256) - rtile.y01);
-				// d += Math.abs(test(-256, modelheight, 256) - rtile.y10);
-				// d += Math.abs(test(256, modelheight, 256) - rtile.y11);
-				// if (d > 1) { debugger; }
+				dydy = (roof.constant - originy);
+				dydxy = (roof.linear[0] - dydx);
+				dydyz = (roof.linear[2] - dydz);
+				dydxyz = (roof.quadratic[2] - dydxz);
 			}
 
 		}
@@ -337,7 +316,7 @@ class TileGrid {
 			...deformation,
 			tile,//TODO remove
 			roof: (linkabove ? this.getTile(x, z, plane) : undefined),
-			modelheight
+			// modelheight
 		}
 	}
 	getTile(x: number, z: number, level: number) {
@@ -501,7 +480,7 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 			};
 			grid.addMapsquare(chunk);
 
-			//only ad the actual ones we need to the queue
+			//only add the actual ones we need to the queue
 			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.width) { continue; }
 			if (chunk.mapsquarez < rect.y || chunk.mapsquarez >= rect.y + rect.height) { continue; }
 			chunks.push(chunk);
@@ -536,6 +515,7 @@ export async function mapsquareToGltf(source: CacheFileSource, rect: { x: number
 	let rootnode = scene.gltf.addNode({ children: nodes, scale: [1, 1, -1] });
 	scene.gltf.addScene({ nodes: [rootnode] });
 	let model = await scene.gltf.convert({ glb: true, singlefile: true });
+	fs.writeFileSync("model.glb", model.mainfile);
 	return model.mainfile;
 }
 
@@ -629,21 +609,17 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 
 	let rootx = chunk.xoffset * tiledimensions;
 	let rootz = chunk.zoffset * tiledimensions;
-	let nodes: number[] = [];
+
+	let models: {
+		modelid: number,
+		morph: FloorMorph,
+		position: [number, number, number],
+		extras: ModelExtras
+	}[] = [];
+
 	for (let loc of locations) {
 		let objectfile = await scene.getFileById(cacheMajors.objects, loc.id);
 		let objectmeta = parseObject.read(objectfile);
-		//TODO yikes
-		//rework the whole model loading strategy
-		//make the model loader reserve a mesh slot and return immediately with the 
-		//reserved id and add a promise to the queue
-		let modelids = objectmeta.models?.flatMap(q => q.values.map(v => ({ type: q.type, value: v }))) ?? [];
-		var meshes = await Promise.all(modelids.map(async m => {
-			let file = await scene.getFileById(cacheMajors.models, m.value);
-			let modeldata = parseOb3Model(new Stream(file), {});
-			let mesh = await addOb3Model(scene, modeldata);
-			return { type: m.type, mesh: mesh.mesh, maxy: mesh.maxy, modeldata };
-		}));
 
 		instloop: for (let inst of loc.uses) {
 			// if(loc.id<63151-10||loc.id>63151+10){continue}
@@ -653,14 +629,6 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 
 			let sizex = (objectmeta.width ?? 1);
 			let sizez = (objectmeta.length ?? 1);
-
-			let maxy = 0;
-			let visiblemeshes = 0;
-			for (let mesh of meshes) {
-				if (mesh.type != inst.type) { continue; }
-				maxy = Math.max(maxy, mesh.maxy);
-				visiblemeshes++;
-			}
 
 			let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
 
@@ -684,15 +652,26 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 				locationInstance: inst
 			} as ModelExtras;
 
+			let modely: number;
+
 			//TODO find out the meaning of this
 			//TODO thse are definitely wrong
-			let linkabove = ((objectmeta.tileMorph ?? 0) & 2) != 0;
-			let followfloor = ((objectmeta.tileMorph ?? 0) & 1) != 0 || linkabove;
-			if ((followfloor || linkabove) && (sizex > 1 || sizez > 1)) {
+			let linkabove = typeof objectmeta.unknown_5F != "undefined"; //((objectmeta.tileMorph ?? 0) & 2) != 0;
+			let followfloor = linkabove || !!objectmeta.unknown_15; //((objectmeta.tileMorph ?? 0) & 1) != 0 || linkabove;
+			let morph: FloorMorph = {
+				width: objectmeta.width ?? 1,
+				length: objectmeta.length ?? 1,
+				mirror: !!objectmeta.mirror,
+				rotation: inst.rotation,
+				tiles: undefined,
+				scaleModelHeight: false,
+				scaleModelHeightOffset: 0
+			};
+			if (followfloor || linkabove) {
 				let tilemorphs: TileMorph[] = [];
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
-						let pl = grid.getObjectPlacement(chunk.xoffset + inst.x + dx, chunk.zoffset + inst.y + dz, inst.plane, linkabove, maxy, 0, false)
+						let pl = grid.getObjectPlacement(chunk.xoffset + inst.x + dx, chunk.zoffset + inst.y + dz, inst.plane, linkabove, 0, false)
 						if (!pl) {
 							console.log("could not find multitile placement")
 							continue instloop;
@@ -700,74 +679,79 @@ async function mapsquareObjects(scene: GLTFSceneCache, chunk: ChunkData, grid: T
 						tilemorphs.push(pl);
 					}
 				}
-				let morph: FloorMorph = {
-					width: objectmeta.width ?? 1,
-					length: objectmeta.length ?? 1,
-					mirror: !!objectmeta.mirror,
-					rotation: inst.rotation,
-					tiles: tilemorphs
-				};
-				let children: number[] = [];
-				// let box = boxMesh(morph.width * tiledimensions, morph.length * tiledimensions, maxy);
-				// box = transformMesh(box, morph);
-				// children.push(scene.gltf.addNode({ mesh: (await addOb3Model(scene, [box])).mesh }))
-				for (let ch of meshes) {
-					if (ch.type != inst.type) { continue; }
-					let morphmesh = ch.modeldata.map(m => transformMesh(m, morph));
-					let mesh = await addOb3Model(scene, morphmesh);
-					children.push(scene.gltf.addNode({ mesh: mesh.mesh }));
+				if (linkabove) {
+					morph.scaleModelHeight = true;
+					morph.scaleModelHeightOffset = objectmeta.unknown_5F ?? 0;
 				}
-				if (children.length != 0) {
-					nodes.push(scene.gltf.addNode({
-						children,
-						translation: [
-							(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
-							0,//TODO give it a logical y again
-							(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
-						],
-						extras,
-					}));
-				}
+				morph.tiles = tilemorphs;
+				modely = 0//TODO give it a logical y again
 			} else {
-				let placement = grid.getObjectPlacement(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane, linkabove, maxy, inst.rotation, !!objectmeta.mirror);
+				let placement = grid.getObjectPlacement(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane, linkabove, inst.rotation, !!objectmeta.mirror);
 				if (!placement) {
 					console.log("couldnt find object placement at", inst.x, inst.y);
 					continue;
 				}
-				let children: number[] = [];
-				for (let ch of meshes) {
-					//TODO dedupe this
-					if (ch.type != inst.type) { continue; }
-					let mesh = await addOb3Model(scene, ch.modeldata);
-					children.push(scene.gltf.addNode({ mesh: mesh.mesh }));
-				}
-				//0-3 rotation for 0-270 degrees
-				//i messed up something with the quaternion, but this transform worked..
-				let rotation = (-inst.rotation + 2) / 4 * Math.PI * 2;
-				let modely = placement.constant;
-				placement.constant = 0;
-				if (children.length != 0) {
-					nodes.push(scene.gltf.addNode({
-						children,
-						translation: [
+				modely = placement.constant;
+			}
+
+			for (let ch of objectmeta.models ?? []) {
+				if (ch.type != inst.type) { continue; }
+				for (let modelid of ch.values) {
+					models.push({
+						extras,
+						modelid,
+						morph,
+						position: [
 							(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
 							modely,
 							(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
-						],
-						scale: [1, 1, (objectmeta.mirror ? -1 : 1)],
-						//quaternions, have fun
-						rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)],
-						extensions: {
-							RA_nodes_floortransform: (followfloor ? placement : undefined)
-						},
-						extras,
-					}));
+						]
+					});
 				}
 			}
 		}
 	}
 
-	scene.gltf.addExtension("RA_nodes_floortransform", false);
+	let modelcache = new Map<number, { modeldata: ModelData, gltfmesh: number }>();
+	let nodes: number[] = [];
+
+	for (let obj of models) {
+		let model = modelcache.get(obj.modelid);
+		if (!model) {
+			let file = await scene.getFileById(cacheMajors.models, obj.modelid);
+			let modeldata = parseOb3Model(new Stream(file), {});
+			model = { modeldata, gltfmesh: -1 };
+			modelcache.set(obj.modelid, model);
+		}
+
+		if (obj.morph.tiles) {
+			//generate morphed model
+			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
+			let mesh = await addOb3Model(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
+			nodes.push(scene.gltf.addNode({
+				mesh: mesh,
+				translation: obj.position,
+				extras: obj.extras,
+			}));
+		} else {
+			//cache and reuse the model if it only has afine transforms
+			if (model.gltfmesh == -1) {
+				model.gltfmesh = await addOb3Model(scene, model.modeldata);
+			}
+			//0-3 rotation for 0-270 degrees
+			//i messed up something with the quaternion, but this transform worked..
+			let rotation = (-obj.morph.rotation + 2) / 4 * Math.PI * 2;
+			nodes.push(scene.gltf.addNode({
+				mesh: model.gltfmesh,
+				translation: obj.position,
+				scale: [1, 1, (obj.morph.mirror ? -1 : 1)],
+				//quaternions, have fun
+				rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)],
+				extras: obj.extras,
+			}));
+		}
+	}
+
 	return scene.gltf.addNode({ children: nodes });
 }
 
@@ -1092,7 +1076,7 @@ async function mapsquareMesh(scene: GLTFSceneCache, grid: TileGrid, chunk: Chunk
 	} as ModelExtras;
 	return gltf.addNode({
 		mesh,
-		extensions: (floortex != -1 ? { RA_FLOORTEX: true } : undefined),
+		extensions: (floortex != -1 ? { RA_FLOORTEX: {} } : undefined),
 		extras: extra
 	});
 }
