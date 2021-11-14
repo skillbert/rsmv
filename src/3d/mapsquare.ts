@@ -30,6 +30,9 @@ const worldStride = 128;
 
 const { tileshapes, defaulttileshape } = generateTileShapes();
 
+//TODO use material -1 instead?
+const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255] };
+
 type FloorvertexInfo = {
 	subvertex: number,
 	nextx: boolean,
@@ -41,6 +44,11 @@ type TileShape = {
 	underlay: FloorvertexInfo[],
 	overlay: FloorvertexInfo[],
 };
+
+type TileVertex = {
+	material: number,
+	color: number[]
+}
 
 type ChunkData = {
 	xoffset: number,
@@ -83,17 +91,14 @@ type TileProps = {
 	y11: number,
 	shape: TileShape,
 	visible: boolean,
-	underlayR: number,
-	underlayG: number,
-	underlayB: number,
-	blendedR: number,
-	blendedG: number,
-	blendedB: number,
 	normalX: number,
 	normalZ: number,
 	bleedsOverlayMaterial: boolean,
-	//0 botleft,1 botmid,2 leftmid,3 midmid,4 overlay
-	materials: number[]
+	//0 botleft,1 botmid,2 leftmid,3 midmid
+	vertexprops: TileVertex[],
+	overlayprops: TileVertex,
+	originalUnderlayColor: number[],
+	underlayprops: TileVertex
 }
 
 //how much each component adds to the y coord of the vertex
@@ -439,15 +444,14 @@ class TileGrid {
 							for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
 								let tile = this.getTile(x + dx, z + dz, level);
 								if (!tile || !tile.visible) { continue; }
-								r += tile.underlayR;
-								g += tile.underlayG;
-								b += tile.underlayB;
+								let col = tile.underlayprops.color;
+								r += col[0];
+								g += col[1];
+								b += col[2];
 								count++;
 							}
 						}
-						currenttile.blendedR = r / count;
-						currenttile.blendedG = g / count;
-						currenttile.blendedB = b / count;
+						currenttile.underlayprops.color = [r / count, g / count, b / count];
 					}
 					//normals
 					let dydx = 0;
@@ -472,7 +476,15 @@ class TileGrid {
 					currenttile.next01 = xnext;
 					currenttile.next10 = znext;
 					currenttile.next11 = xznext;
+				}
+			}
+		}
 
+		for (let z = this.zoffset; z < this.zoffset + this.height; z++) {
+			for (let x = this.xoffset; x < this.xoffset + this.width; x++) {
+				for (let level = 0; level < squareLevels; level++) {
+					let currenttile = this.getTile(x, z, level);
+					if (!currenttile) { continue; }
 					//bleed overlay materials
 					if (currenttile.bleedsOverlayMaterial) {
 						for (let vertex of currenttile.shape.overlay) {
@@ -481,7 +493,7 @@ class TileGrid {
 							else if (vertex.nextx) { node = node.next01; }
 							else if (vertex.nextz) { node = node.next10; }
 							if (node) {
-								node.materials[vertex.subvertex] = currenttile.materials[4];
+								node.vertexprops[vertex.subvertex] = currenttile.overlayprops;
 							}
 						}
 					}
@@ -497,8 +509,9 @@ class TileGrid {
 				for (let dx = 0; dx < xsize; dx++) {
 					let tile = this.getTile(x + dx, z + dz, level);
 					if (!tile) { continue; }
-					mats.add(tile.materials[3]);//unchanged underlay
-					mats.add(tile.materials[4]);//overlay
+					//TODO skip 0/-1 values?
+					mats.add(tile.underlayprops.material ?? 0);
+					mats.add(tile.overlayprops.material ?? 0);
 				}
 			}
 		}
@@ -522,32 +535,22 @@ class TileGrid {
 						//TODO this is an arbitrary guess
 						height += 32;
 					}
-					let color = [255, 0, 255];
 					let visible = false;
 					let shape = (typeof tile.shape == "undefined" ? defaulttileshape : tileshapes[tile.shape]);
 					let bleedsOverlayMaterial = false;
-					let materials = [0, 0, 0, 0, 0];
+					let underlayprop = defaultVertexProp;
+					let overlayprop = defaultVertexProp;
 					if (typeof tile.underlay != "undefined") {
 						//TODO bound checks
 						let underlay = chunk.underlays[tile.underlay - 1];
-						if (underlay?.color) {
-							color = underlay.color;
-							if (color[0] != 255 || color[1] != 0 || color[2] != 255) {
-								visible = true;
-							}
+						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
+							visible = true;
 						}
-						if (underlay.material) {
-							materials[0] = underlay.material;
-							materials[1] = underlay.material;//TODO should this be material-1?
-							materials[2] = underlay.material;
-							materials[3] = underlay.material;
-						}
+						underlayprop = { material: underlay.material ?? 0, color: underlay.color ?? [255, 0, 255] };
 					}
 					if (typeof tile.overlay != "undefined") {
 						let overlay = chunk.overlays[tile.overlay - 1];
-						if (typeof overlay.material != "undefined") {
-							materials[4] = overlay.material;
-						}
+						overlayprop = { material: overlay.material ?? 0, color: overlay.primary_colour ?? [255, 0, 255] };
 						bleedsOverlayMaterial = !!overlay.unknown_0x0C;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
@@ -564,11 +567,12 @@ class TileGrid {
 						y01: y, y10: y, y11: y,
 						shape,
 						visible,
-						underlayR: color[0], underlayG: color[1], underlayB: color[2],
-						blendedR: 0, blendedG: 0, blendedB: 0,
 						normalX: 0, normalZ: 0,
 						bleedsOverlayMaterial,
-						materials
+						vertexprops: [underlayprop, underlayprop, underlayprop, underlayprop],
+						underlayprops: underlayprop,
+						overlayprops: overlayprop,
+						originalUnderlayColor: underlayprop.color
 					}
 					this.tiles[newindex] = parsedTile;
 					tileindex += squareWidth * squareHeight;
@@ -1039,21 +1043,20 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 				let color = overlaytype.primary_colour ?? [255, 0, 255];
 				let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
 				if (isvisible || showhidden) {
-					//TODO force use all mat[4] if the overlay doesn't use bleeding
-					let mats = shape.overlay.map(vertex => {
-						let matid = -1;
-						if (!overlaytype.unknown_0x0C) { matid = tile!.materials[4]; }
+					let props = shape.overlay.map(vertex => {
+						if (!overlaytype.unknown_0x0C) { return tile!.overlayprops; }
 						else {
 							let node: TileProps | undefined = tile;
 							if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
 							else if (vertex.nextx) { node = tile!.next01; }
 							else if (vertex.nextz) { node = tile!.next10; }
-							if (node) {
-								matid = node.materials[vertex.subvertex];
-							}
+							if (node) { return node.vertexprops[vertex.subvertex]; }
 						}
-						if (matid != -1) {
-							let mat = materials.get(matid);
+						return defaultVertexProp;
+					});
+					let mats = props.map(prop => {
+						if (prop && prop.material != -1) {
+							let mat = materials.get(prop.material);
 							if (mat?.textures.diffuse) {
 								return atlas.map.get(mat.textures.diffuse);
 							}
@@ -1067,37 +1070,30 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 						//TODO continue with white instead
 						if (!mat0 || !mat1 || !mat2) { continue; }
 
+						let submats = [mat0, mat1, mat2];
 						let v0 = shape.overlay[0];
 						let v1 = shape.overlay[i - 1];
 						let v2 = shape.overlay[i];
 
-						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, color, [mat0, mat1, mat2], 0);
-						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, color, [mat0, mat1, mat2], 1);
-						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, color, [mat0, mat1, mat2], 2);
+						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, props[0].color, submats, 0);
+						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, props[i - 1].color, submats, 1);
+						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, props[i].color, submats, 2);
 					}
 				}
 			}
 			if (shape.underlay.length != 0) {
-				let colors: number[][] = [];
 				if (tile.next01 && tile.next10 && tile.next11) {
-					for (let vertex of shape.underlay) {
-						let wx0 = 1 - vertex.subx;
-						let wx1 = vertex.subx;
-						let wz0 = 1 - vertex.subz;
-						let wz1 = vertex.subz;
-						//mix neighbouring vertex colors
-						let r = tile.blendedR * wx0 * wz0 + tile.next01.blendedR * wx1 * wz0 + tile.next10.blendedR * wx0 * wz1 + tile.next11.blendedR * wx1 * wz1;
-						let g = tile.blendedG * wx0 * wz0 + tile.next01.blendedG * wx1 * wz0 + tile.next10.blendedG * wx0 * wz1 + tile.next11.blendedG * wx1 * wz1;
-						let b = tile.blendedB * wx0 * wz0 + tile.next01.blendedB * wx1 * wz0 + tile.next10.blendedB * wx0 * wz1 + tile.next11.blendedB * wx1 * wz1;
-						colors.push([r, g, b]);
-					}
-					let mats = shape.underlay.map(vertex => {
+					let props = shape.underlay.map(vertex => {
 						let node: TileProps | undefined = tile;
 						if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
 						else if (vertex.nextx) { node = tile!.next01; }
 						else if (vertex.nextz) { node = tile!.next10; }
-						if (node) {
-							let mat = materials.get(node.materials[vertex.subvertex]);
+						if (node) { return node.vertexprops[vertex.subvertex]; }
+						return defaultVertexProp;
+					});
+					let mats = props.map(prop => {
+						if (prop && prop.material != -1) {
+							let mat = materials.get(prop.material);
 							if (mat?.textures.diffuse) {
 								return atlas.map.get(mat.textures.diffuse);
 							}
@@ -1110,14 +1106,15 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 						let mat2 = mats[i];
 						//TODO continue with white instead
 						if (!mat0 || !mat1 || !mat2) { continue; }
+						let submats = [mat0, mat1, mat2];
 
 						let v0 = shape.underlay[0];
 						let v1 = shape.underlay[i - 1];
 						let v2 = shape.underlay[i];
 
-						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, colors[i - 2], [mat0, mat1, mat2], 0);
-						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, colors[i - 1], [mat0, mat1, mat2], 1);
-						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, colors[i], [mat0, mat1, mat2], 2);
+						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, props[0].color, submats, 0);
+						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, props[i - 1].color, submats, 1);
+						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, props[i].color, submats, 2);
 					}
 				}
 			}
