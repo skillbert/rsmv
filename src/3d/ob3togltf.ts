@@ -6,7 +6,7 @@ import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 
-type FileGetter = (major: number, minor: number) => Promise<Buffer>;
+export type FileGetter = (major: number, minor: number) => Promise<Buffer>;
 
 
 
@@ -32,49 +32,6 @@ export class GLTFSceneCache {
 		return texnode;
 	}
 
-	//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
-	async getMaterialData(matid: number) {
-		let textures: {
-			diffuse?: number,
-			specular?: number,
-			metalness?: number,
-			color?: number,
-			normal?: number,
-			compound?: number
-		} = {};
-		let factors = {
-			metalness: 1,
-			specular: 1,
-			color: 1
-		}
-		let originalMaterial: JMatInternal | null = null;
-		if (matid != -1) {
-			var materialfile = await this.getFileById(cacheMajors.materials, matid);
-
-			if (materialfile[0] == 0x00) {
-				var mat = new JMat(materialfile).get();
-				originalMaterial = mat;
-				textures.diffuse = mat.maps["diffuseId"];
-				textures.metalness = 0;
-				textures.specular = 0;
-				factors.specular = mat.specular / 255;
-				factors.metalness = mat.metalness / 255;
-				factors.color = mat.colour / 255;
-			}
-			else if (materialfile[0] == 0x01) {
-				var mat = new JMat(materialfile).get();
-				originalMaterial = mat;
-				if (mat.flags.hasDiffuse)
-					textures.diffuse = mat.maps["diffuseId"];
-				if (mat.flags.hasNormal)
-					textures.normal = mat.maps["normalId"];
-				if (mat.flags.hasCompound)
-					textures.compound = mat.maps["compoundId"];
-			}
-		}
-		return { textures };
-	}
-
 	async getGlTfMaterial(matid: number, hasVertexAlpha: boolean) {
 		//create a seperate material if we have alpha
 		//TODO the material should have this data, not the mesh
@@ -82,7 +39,7 @@ export class GLTFSceneCache {
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let { textures } = await this.getMaterialData(matid);
+				let { textures } = await getMaterialData(this.getFileById, matid);
 
 				let materialdef: Material = {
 					//TODO check if diffuse has alpha as well
@@ -121,6 +78,54 @@ export class GLTFSceneCache {
 		}
 		return cached;
 	}
+}
+
+export type MaterialData = {
+	textures: {
+		diffuse?: number,
+		specular?: number,
+		metalness?: number,
+		color?: number,
+		normal?: number,
+		compound?: number
+	}
+}
+//this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
+export async function getMaterialData(getFile: FileGetter, matid: number) {
+	let material: MaterialData = {
+		textures: {}
+	};
+	let factors = {
+		metalness: 1,
+		specular: 1,
+		color: 1
+	}
+	let originalMaterial: JMatInternal | null = null;
+	if (matid != -1) {
+		var materialfile = await getFile(cacheMajors.materials, matid);
+
+		if (materialfile[0] == 0x00) {
+			var mat = new JMat(materialfile).get();
+			originalMaterial = mat;
+			material.textures.diffuse = mat.maps["diffuseId"];
+			material.textures.metalness = 0;
+			material.textures.specular = 0;
+			factors.specular = mat.specular / 255;
+			factors.metalness = mat.metalness / 255;
+			factors.color = mat.colour / 255;
+		}
+		else if (materialfile[0] == 0x01) {
+			var mat = new JMat(materialfile).get();
+			originalMaterial = mat;
+			if (mat.flags.hasDiffuse)
+				material.textures.diffuse = mat.maps["diffuseId"];
+			if (mat.flags.hasNormal)
+				material.textures.normal = mat.maps["normalId"];
+			if (mat.flags.hasCompound)
+				material.textures.compound = mat.maps["compoundId"];
+		}
+	}
+	return material;
 }
 
 export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mods: ModelModifications) {

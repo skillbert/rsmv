@@ -3,11 +3,13 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays } from "../opdecoder";
 import { achiveToFileId, CacheFileSource } from "../cache";
 
 type KnownType = {
 	index: number,
+	subfile?: number,
+	minor?: number,
 	parser: FileParser<any>,
 	gltf?: (b: Buffer, source: CacheFileSource) => Promise<Uint8Array>
 }
@@ -18,7 +20,10 @@ const decoders: Record<string, KnownType> = {
 	objects: { index: cacheMajors.objects, parser: parseObject },
 	achievements: { index: cacheMajors.achievements, parser: parseAchievement },
 	mapsquares: { index: cacheMajors.mapsquares, parser: parseMapsquareTiles },
-	mapunderlays: { index: cacheMajors.config, parser: parseMapsquareUnderlays }
+	mapunderlays: { index: cacheMajors.config, parser: parseMapsquareUnderlays },
+	maptiles: { index: cacheMajors.mapsquares, subfile: 3, parser: parseMapsquareTiles },
+	overlays: { index: cacheMajors.config, minor: 4, parser: parseMapsquareOverlays },
+	underlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareOverlays }
 }
 
 let cmd = command({
@@ -28,7 +33,8 @@ let cmd = command({
 		major: option({ long: "major", type: string }),
 		minor: option({ long: "minor", type: string, defaultValue: () => "all" }),
 		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-		decode: option({ long: "format", short: "t", type: oneOf(["json", "batchjson", "bin", "gltf"]), defaultValue: () => "bin" as any })
+		decode: option({ long: "format", short: "t", type: oneOf(["json", "batchjson", "bin", "gltf"]), defaultValue: () => "bin" as any }),
+		subfile: option({ long: "subfile", short: "a", type: number, defaultValue: () => -1 })
 	},
 	handler: async (args) => {
 		let major = isNaN(+args.major) ? cacheMajors[args.major] : +args.major;
@@ -48,7 +54,11 @@ let cmd = command({
 		}
 
 		let indexfile = await args.source.getIndexFile(major);
-		let decoder = (args.decode ? Object.values(decoders).find(q => q.index == major) : undefined);
+		let decoder = (args.decode ? Object.values(decoders).find(q =>
+			q.index == major
+			&& (typeof q.minor == "undefined" || q.minor == minorstart)
+			&& (typeof q.subfile == "undefined" || q.subfile == args.subfile)
+		) : undefined);
 		if (args.decode != "bin" && !decoder) { throw new Error("no decoder known for this cache major"); }
 
 		let outdir = path.resolve(args.save)
@@ -59,6 +69,7 @@ let cmd = command({
 				let files = await args.source.getFileArchive(index);
 				let batchedoutput: string[] = [];
 				for (let fileindex in index.subindices) {
+					if (args.subfile != -1 && index.subindices[fileindex] != args.subfile) { continue; }
 					let filename = path.resolve(outdir, `${index.minor}${index.subindexcount == 1 ? "" : "-" + index.subindices[fileindex]}.${args.decode}`);
 					let file = files[fileindex].buffer;
 					if (args.decode == "bin") {

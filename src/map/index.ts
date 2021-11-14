@@ -1,6 +1,6 @@
 
-import { GltfRenderer } from "../viewer/gltfrender";
-import { mapsquareToGltf } from "../3d/mapsquare";
+import { ThreeJsRenderer } from "../viewer/threejsrender";
+import { mapsquareToGltf, parseMapsquare } from "../3d/mapsquare";
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
@@ -12,12 +12,12 @@ const hackyCacheFileSource = new GameCacheLoader(path.resolve(process.env.Progra
 type MaprenderSquare = { prom: Promise<THREE.Group | null>, x: number, z: number, id: number, used: boolean };
 
 export class MapRenderer {
-	renderer: GltfRenderer;
+	renderer: ThreeJsRenderer;
 	maxunused = 6;
 	idcounter = 1;
 	squares: MaprenderSquare[] = [];
 	constructor(cnv: HTMLCanvasElement) {
-		this.renderer = new GltfRenderer(cnv, () => { });
+		this.renderer = new ThreeJsRenderer(cnv, () => { });
 	}
 
 	//TODO move to util file
@@ -106,7 +106,8 @@ export async function downloadMap(x0 = 0, z0 = 0) {
 
 export async function downloadMapsquare(x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
-	let file = await mapsquareToGltf(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, { centered: false, padfloor: true });
+	let square = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, { centered: true, invisibleLayers: true });
+	let file = await mapsquareToGltf(hackyCacheFileSource, square);
 	console.log(`completed mapsquare ${x} ${z}`);
 	return file;
 }

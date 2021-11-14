@@ -88,10 +88,10 @@ var _lzma = function (input: Buffer) {
 	processed.writeUInt32LE(uncompressed, 0x5);
 	processed.writeUInt32LE(0, 0x5 + 0x4);
 	input.copy(processed, 0xD, 0xE);
-	// var lzma = require("lzma");
-	// return Buffer.from(lzma.decompress(processed));
-	var lzma = require("lzma-native").LZMA();
-	return lzma.decompress(processed);
+	var lzma = require("lzma");
+	return Buffer.from(lzma.decompress(processed));
+	// var lzma = require("lzma-native").LZMA();
+	// return lzma.decompress(processed);
 }
 
 

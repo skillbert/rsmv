@@ -52,8 +52,6 @@ body {
 }
 .credits {
 	text-align: center;
-	position: relative;
-	top: 30px; /* orig 70px */
 }
 #background {
 	position: absolute;
@@ -157,16 +155,16 @@ input[type="text"]:focus {
 }
 #sidebar {
 	background-color: var(--secondary-bg-colour);
-	min-width: calc(4 * 55px);
+	min-width: calc(5 * 55px);
 	width: 31vw;
-	max-width: calc(4 * 55px + 3.5 * 55px);
+	max-width: calc(5 * 55px + 3.5 * 55px);
 	height: 100%;
 	grid-column-start: 2;
 	grid-column-end: span 0;
 	box-shadow: 0px 0px 34px #00000033;
 
 	display: grid;
-	grid-template-rows: 89fr 34fr;
+	grid-template-rows: 89fr min-content;
 	grid-gap: 13px;
 	overflow: hidden;
 }
@@ -250,11 +248,11 @@ input[type="text"]:focus {
 #sidebar-browser {
 	overflow: hidden;
 	display: grid;
-	grid-template-rows: max-content 1fr;
+	grid-template-rows: min-content min-content max-content;
 }
 #sidebar-browser-tab {
 	display: grid;
-	grid-template-rows: max-content 1fr;
+	grid-template-rows: min-content min-content 1fr;
 	overflow-y: auto;
 }
 .sidebar-browser-search-bar {

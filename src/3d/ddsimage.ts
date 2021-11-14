@@ -67,7 +67,7 @@ function dataword(src: Uint8Array, offset: number) {
 function dxtdata(targetdata: Uint8Array, targetstride: number, source: Uint8Array, sourcewidth: number, subx: number, suby: number, width: number, height: number, isDxt5: boolean) {
 	const bytesperblock = isDxt5 ? 16 : 8;
 	const coloroffset = isDxt5 ? 8 : 0;
-
+	//TODO subx is bugged in here somewhere and shifting in the wrong direction
 	//prealloc these so we don't do it in a hot loop
 	const r = new Uint8Array(4);
 	const g = new Uint8Array(4);

@@ -14,6 +14,7 @@ const OrbitControls = (THREE as any).OrbitControls as typeof import('three/examp
 const RGBELoader = (THREE as any).RGBELoader as typeof import('three/examples/jsm/loaders/RGBELoader.js').RGBELoader;
 
 import { ob3ModelToGltfFile } from '../3d/ob3togltf';
+import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode } from '../3d/ob3tothree';
 import { ModelModifications } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
@@ -38,10 +39,12 @@ export class ThreeJsRenderer implements ModelSink {
 	framePromise: Promise<any> | null = null;
 	framePromiseResolve: (() => void) | null = null;
 	contextLossCount = 0;
+	unpackOb3WithGltf: boolean;
 
-	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void) {
+	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void, unpackOb3WithGltf = false) {
 		(window as any).render = this;//TODO remove
 		this.canvas = canvas;
+		this.unpackOb3WithGltf = unpackOb3WithGltf;
 		this.stateChangeCallback = stateChangeCallback;
 		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 		const renderer = this.renderer;
@@ -127,7 +130,7 @@ export class ThreeJsRenderer implements ModelSink {
 
 		// move the camera to a position distance units way from the center
 		// in whatever direction the camera was from the center already
-		camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
+		// camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
 
 		// pick some near and far values for the frustum that
 		// will contain the box.
@@ -226,8 +229,14 @@ export class ThreeJsRenderer implements ModelSink {
 	}
 
 	async setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, metastr: string) {
-		let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
-		return this.setGltfModels(models);
+		if (this.unpackOb3WithGltf) {
+			let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
+			return this.setGltfModels(models, metastr);
+		} else {
+			return this.setModels(
+				await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods))),
+				[], metastr);
+		}
 	}
 	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
 		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));
@@ -294,46 +303,7 @@ export class ThreeJsRenderer implements ModelSink {
 				node.visible = !iswireframe;//TODO bad logic
 				let mat = new THREE.MeshPhongMaterial({ wireframe: iswireframe });
 				if (floortex) {
-					mat.customProgramCacheKey = () => "transformed";
-					mat.onBeforeCompile = (shader, renderer) => {
-						if (floortex) {
-							shader.vertexShader =
-								`#ifdef USE_MAP\n`
-								+ `attribute vec4 _ra_floortex_uv01;\n`
-								+ `attribute vec4 _ra_floortex_uv23;\n`
-								+ `attribute vec4 _ra_floortex_weights;\n`
-								+ `varying vec4 v_ra_floortex_01;\n`
-								+ `varying vec4 v_ra_floortex_23;\n`
-								+ `varying vec4 v_ra_floortex_weights;\n`
-								+ `#endif\n`
-								+ shader.vertexShader.replace("#include <uv_vertex>",
-									`#ifdef USE_MAP\n`
-									+ `v_ra_floortex_01 = _ra_floortex_uv01;\n`
-									+ `v_ra_floortex_23 = _ra_floortex_uv23;\n`
-									+ `v_ra_floortex_weights = _ra_floortex_weights;\n`
-									+ `#endif\n`
-									+ "#include <uv_vertex>"
-								);
-							shader.fragmentShader =
-								`#ifdef USE_MAP\n`
-								+ `varying vec4 v_ra_floortex_01;\n`
-								+ `varying vec4 v_ra_floortex_23;\n`
-								+ `varying vec4 v_ra_floortex_weights;\n`
-								+ `#endif\n`
-								+ shader.fragmentShader.replace("#include <map_fragment>",
-									`#ifdef USE_MAP\n`
-									+ `vec4 texelColor = \n`
-									+ `   texture2D( map, v_ra_floortex_01.rg ) * v_ra_floortex_weights.r\n`
-									+ ` + texture2D( map, v_ra_floortex_01.ba ) * v_ra_floortex_weights.g\n`
-									+ ` + texture2D( map, v_ra_floortex_23.rg ) * v_ra_floortex_weights.b\n`
-									+ ` + texture2D( map, v_ra_floortex_23.ba ) * v_ra_floortex_weights.a;\n`
-									//TODO is this needed?
-									+ `texelColor = mapTexelToLinear( mix(vec4(1.0),texelColor,dot(vec4(1),v_ra_floortex_weights)) );\n`
-									+ `#endif\n`
-									+ `diffuseColor *= texelColor;\n`
-								);
-						}
-					}
+					augmentThreeJsFloorMaterial(mat);
 				}
 				mat.map = node.material.map;
 				mat.vertexColors = node.material.vertexColors;
@@ -348,7 +318,7 @@ export class ThreeJsRenderer implements ModelSink {
 		return { rootnode, groupnames };
 	}
 
-	async setModels(models: THREE.Group[], groupnames: string[], metastr = "") {
+	async setModels(models: THREE.Object3D[], groupnames: string[], metastr = "") {
 		let combined = new THREE.Group();
 		let groups = new Set<string>(groupnames);
 		models.forEach(m => combined.add(m));
@@ -364,7 +334,7 @@ export class ThreeJsRenderer implements ModelSink {
 		//frameArea(boxSize * 0.5, boxSize, boxCenter, camera);
 
 		// update the Trackball controls to handle the new size
-		this.controls.maxDistance = boxSize * 10;
+		this.controls.maxDistance = boxSize * 10 + 10;
 		this.controls.target.copy(boxCenter);
 		this.controls.update();
 

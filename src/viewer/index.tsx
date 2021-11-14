@@ -19,12 +19,12 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareToGltf } from "../3d/mapsquare";
+import { mapsquareToGltf, parseMapsquare } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
 type LookupMode = "model" | "item" | "npc" | "object" | "map";
-type RenderMode = "gltf" | "ob3";
+type RenderMode = "gltf" | "ob3" | "three";
 
 const vertexShader = fs.readFileSync(__dirname + "/../assets/shader_vertex.glsl", "utf-8");
 const fragmentShader = fs.readFileSync(__dirname + "/../assets/shader_fragment.glsl", "utf-8");
@@ -59,7 +59,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 			mode: "model",
 			search: localStorage.rsmv_lastsearch ?? "0",
 			cnvRefresh: 0,
-			rendermode: "gltf",
+			rendermode: "three",
 			viewerState: { meta: "", toggles: {} }
 		};
 	}
@@ -67,7 +67,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	@boundMethod
 	submitSearchIds(value: string) {
 		localStorage.rsmv_lastsearch = value;
-		this.setState({ hist: [...this.state.hist.slice(-19), value] });
+		this.setState({ hist: [...this.state.hist.slice(-4), value] });
 		requestLoadModel(value, this.state.mode, this.renderer!);
 	}
 
@@ -100,6 +100,9 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			if (this.state.rendermode == "gltf") {
+				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged, true);
+			}
+			if (this.state.rendermode == "three") {
 				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged);
 			}
 			if (this.state.rendermode == "ob3") {
@@ -109,7 +112,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	}
 
 	@boundMethod
-	setRenderer(mode: "gltf" | "ob3") {
+	setRenderer(mode: RenderMode) {
 		this.setState({ cnvRefresh: this.state.cnvRefresh + 1, rendermode: mode });
 	}
 
@@ -136,6 +139,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 						</div>
 						<div className="sidebar-browser-tab-strip">
 							<div></div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "three" })} onClick={() => this.setRenderer("three")}><span>Three</span></div>
+							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "gltf" })} onClick={() => this.setRenderer("gltf")}><span>GLTF</span></div>
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "ob3" })} onClick={() => this.setRenderer("ob3")}><span>OB3</span></div>
@@ -160,9 +165,11 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 									<div></div>
 								</form>
 							</div>
-							<pre style={{ textAlign: "left", userSelect: "text" }}>
-								{this.state.viewerState.meta}
-							</pre>
+							<div style={{ overflowY: "auto" }}>
+								<pre style={{ textAlign: "left", userSelect: "text" }}>
+									{this.state.viewerState.meta}
+								</pre>
+							</div>
 							{Object.entries(this.state.viewerState.toggles).map(([name, value]) => (
 								<div key={name}>
 									<label>
@@ -263,7 +270,8 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			width = width ?? 1;
 			height = height ?? width;
 			//TODO enable centered again
-			let file = await mapsquareToGltf(hackyCacheFileSource, { x, y, width, height }, { centered: false, invisibleLayers: true });
+			let square = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, { centered: true, invisibleLayers: true });
+			let file = await mapsquareToGltf(hackyCacheFileSource, square);
 			renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
 			break;
 		default:
