@@ -40,8 +40,8 @@ export function loadDds(filedata: Buffer, paddingsize = -1, forceOpaque = true) 
 	let innerwidth = width - paddingsize * 2;
 	let innerheight = height - paddingsize * 2;
 	let data = Buffer.alloc(innerwidth * innerheight * 4);
-	dxtdata(data, innerwidth * 4, filedata, width, paddingsize, paddingsize, innerwidth, innerheight, isDxt5);
-	
+	dxtdata(data, innerwidth * 4, filedata.slice(offset), width, paddingsize, paddingsize, innerwidth, innerheight, isDxt5);
+
 	//opaque textures are stored with random data in their [a] channel, this causes many
 	//problem for different render pipelines
 	//TODO find the material flag that enables transparency
@@ -67,7 +67,6 @@ function dataword(src: Uint8Array, offset: number) {
 function dxtdata(targetdata: Uint8Array, targetstride: number, source: Uint8Array, sourcewidth: number, subx: number, suby: number, width: number, height: number, isDxt5: boolean) {
 	const bytesperblock = isDxt5 ? 16 : 8;
 	const coloroffset = isDxt5 ? 8 : 0;
-	//TODO subx is bugged in here somewhere and shifting in the wrong direction
 	//prealloc these so we don't do it in a hot loop
 	const r = new Uint8Array(4);
 	const g = new Uint8Array(4);
