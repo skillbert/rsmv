@@ -1,11 +1,5 @@
 
 import * as fs from "fs";
-// //TODO remove
-// let oldcreateobjecturl = URL.createObjectURL.bind(URL);
-// URL.createObjectURL = (a: Blob) => {
-// 	a.arrayBuffer().then(buf => fs.writeFileSync("cache/blobs/" + Math.random() + ".png", Buffer.from(buf)));
-// 	return oldcreateobjecturl(a);
-// }
 import * as electron from "electron";
 import { parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as path from "path";
@@ -19,7 +13,7 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareToGltf, parseMapsquare } from "../3d/mapsquare";
+import { mapsquareToGltf, mapsquareToThree, parseMapsquare } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
@@ -67,7 +61,9 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	@boundMethod
 	submitSearchIds(value: string) {
 		localStorage.rsmv_lastsearch = value;
-		this.setState({ hist: [...this.state.hist.slice(-4), value] });
+		if (!this.state.hist.includes(value)) {
+			this.setState({ hist: [...this.state.hist.slice(-4), value] });
+		}
 		requestLoadModel(value, this.state.mode, this.renderer!);
 	}
 
@@ -271,8 +267,10 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			height = height ?? width;
 			//TODO enable centered again
 			let square = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, { centered: true, invisibleLayers: true });
-			let file = await mapsquareToGltf(hackyCacheFileSource, square);
-			renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
+			// let file = await mapsquareToGltf(hackyCacheFileSource, square);
+			// renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
+			let scene = await mapsquareToThree(hackyCacheFileSource, square);
+			renderer.setModels?.([scene], [], "");
 			break;
 		default:
 			throw new Error("unknown mode");
@@ -292,6 +290,7 @@ export type ModelViewerState = {
 export interface ModelSink {
 	setOb3Models: (models: Buffer[], cache: MiniCache, mods: ModelModifications, meta: string) => void
 	setGltfModels?: (models: Buffer[]) => void,
+	setModels?: (models: THREE.Object3D[], groupnames: string[], metastr?: string) => void,
 	setValue?: (key: string, value: boolean) => void
 };
 class Ob3Renderer implements ModelSink {

@@ -25,51 +25,34 @@
 </head>
 
 <body>
-	<div id="map"></div>
+	<div id="map" style="background: black;"></div>
 	<script>
 
 		var mapsizex = 100;
 		var mapsizez = 200;
 
 		var chunksize = 64;
-		var pixperchunk = 64;//2048;
+		var lowestmip = 10;
+		var pxpertile = 32;
 
-		function mapcoord(x, z) {
-			return { x: x * chunksize * pixperchunk, y: (mapsizez - z) * chunksize * pixperchunk };
-		}
+		var mip0pxpertile = pxpertile / (1 << lowestmip);
 
-		// var pos = mapcoord(45, 51);
-		// var mymap = L.map('map').setView([pos.x, pos.y], 0);
-		// L.tileLayer('../../cache/map/{z}/{x}-{y}.png', {
-		// 	attribution: 'Skillerbertus',
-		// 	maxZoom: 3,
-		// 	tileSize: 64,
-		// 	maxNativeZoom: 8,
-		// 	zoomOffset: 0,
-		// 	minZoom: -4,
-		// 	crs: L.CRS.Simple
-		// }).addTo(mymap);
-
-		// var SimpleInvert = L.Util.extend({}, L.CRS.Simple, {
-		// 	transformation: L.transformation(1, 0, 1, 0)
-		// });
-
-		let crs = L.CRS.Simple;
-		crs.transformation = L.transformation(1, 0, 1, 0);
+		var crs = L.CRS.Simple;
+		crs.transformation = L.transformation(mip0pxpertile, 0, -mip0pxpertile, mip0pxpertile * mapsizez * chunksize);
 
 		var mymap = L.map('map', {
 			minZoom: 0,
 			maxZoom: 12,
-			crs: crs// SimpleInvert//L.CRS.Simple
-			// maxBounds: [[0, 0], [chunksize * pixperchunk * 100, chunksize * pixperchunk * 200]]
+			crs: crs,
+			//maxBounds: [[0, 0], [mapsizez * chunksize * mip0pxpertile, mapsizex * chunksize * mip0pxpertile]]
 		});
-		L.tileLayer('../../cache/map/{z}/{x}-{y}.png', {
+		L.tileLayer('../../cache/map3/{z}/{x}-{y}.png', {
 			attribution: 'Skillbert',
 			tileSize: 512,
 			maxNativeZoom: 10,
 			minNativeZoom: 0
 		}).addTo(mymap);
-		mymap.setView([290, 90], 7);
+		mymap.setView([3200, 3000],4);
 	</script>
 </body>
 

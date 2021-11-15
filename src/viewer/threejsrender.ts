@@ -36,9 +36,8 @@ export class ThreeJsRenderer implements ModelSink {
 	floormesh: THREE.Mesh;
 	queuedFrameId = 0;
 	automaticFrames = false;
-	framePromise: Promise<any> | null = null;
-	framePromiseResolve: (() => void) | null = null;
 	contextLossCount = 0;
+	contextLossCountLastRender = 0;
 	unpackOb3WithGltf: boolean;
 
 	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void, unpackOb3WithGltf = false) {
@@ -54,7 +53,7 @@ export class ThreeJsRenderer implements ModelSink {
 
 		const fov = 45;
 		const aspect = 2;  // the canvas default
-		const near = 0.1;
+		const near = 0.1;//TODO revert to 0.1-100
 		const far = 1000;
 		const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
 		camera.position.set(0, 10, 20);
@@ -134,8 +133,8 @@ export class ThreeJsRenderer implements ModelSink {
 
 		// pick some near and far values for the frustum that
 		// will contain the box.
-		camera.near = boxSize / 100;
-		camera.far = boxSize * 100;
+		// camera.near = boxSize / 100;
+		// camera.far = boxSize * 100;
 
 		camera.updateProjectionMatrix();
 
@@ -154,8 +153,49 @@ export class ThreeJsRenderer implements ModelSink {
 		return needResize;
 	}
 
+
+	@boundMethod
+	async guaranteeRender() {
+		let waitContext = () => {
+			if (!this.renderer.getContext().isContextLost()) {
+				return;
+			}
+			console.log("frame stalled since context is lost");
+			return new Promise<boolean>(resolve => {
+				this.renderer.domElement.addEventListener("webglcontextrestored", () => {
+					console.log("context restored");
+					//make sure three.js handles the event before we retry
+					setTimeout(resolve, 1);
+				}, { once: true });
+			})
+		}
+
+		let success = false;
+		for (let retry = 0; retry < 5; retry++) {
+			await waitContext();
+			//it seems like the first render after a context loss is always failed, force 2 renders this way
+			let prerenderlosses = this.contextLossCountLastRender;
+			this.render();
+			await new Promise(d => setTimeout(d, 1));
+
+			if (this.renderer.getContext().isContextLost()) {
+				console.log("lost context during render");
+				continue;
+			} else if (prerenderlosses != this.contextLossCount) {
+				console.log("lost and regained context during render");
+				continue;
+			}
+			success = true;
+			break;
+		}
+		if (!success) {
+			throw new Error("Failed to render frame after 5 retries");
+		}
+	}
+
 	@boundMethod
 	render() {
+		cancelAnimationFrame(this.queuedFrameId);
 		this.queuedFrameId = 0;
 		if (this.camera instanceof THREE.PerspectiveCamera && this.resizeRendererToDisplaySize()) {
 			const canvas = this.renderer.domElement;
@@ -163,54 +203,19 @@ export class ThreeJsRenderer implements ModelSink {
 			this.camera.updateProjectionMatrix();
 		}
 
-		let actualrender = (trycount: number) => {
-			if (this.renderer.getContext().isContextLost()) {
-				console.log("tried render with lost context");
-				return queuerender(trycount + 1);
-			}
+		this.renderer.render(this.scene, this.camera);
+		this.contextLossCountLastRender = this.contextLossCount;
 
-			let prerenderlosses = this.contextLossCount;
-			this.renderer.render(this.scene, this.camera);
-
-			if (this.renderer.getContext().isContextLost()) {
-				console.log("lost context during render");
-				return queuerender(trycount + 1);
-			} else if (prerenderlosses != this.contextLossCount) {
-				console.log("lost and regained context during render");
-				return queuerender(trycount + 1);
-			}
-			this.framePromiseResolve?.();
-			this.framePromise = null;
-			this.framePromiseResolve = null;
-
-			if (this.automaticFrames) {
-				this.forceFrame();
-			}
-			return true;
+		if (this.automaticFrames) {
+			this.forceFrame();
 		}
-
-		let queuerender = (trycount: number) => {
-			if (trycount > 5) { throw new Error("too many retries to render: " + trycount) }
-			console.log("frame stalled since context is lost");
-			return new Promise<boolean>(resolve => {
-				this.renderer.domElement.addEventListener("webglcontextrestored", () => {
-					console.log("context restored");
-					//make sure three handles the event before we retry
-					setTimeout(() => resolve(actualrender(trycount + 1)), 1);
-				}, { once: true });
-			})
-		}
-
-		return actualrender(0);
 	}
 
 	@boundMethod
 	forceFrame() {
 		if (!this.queuedFrameId) {
-			this.framePromise = new Promise<void>(resolve => this.framePromiseResolve = resolve);
 			this.queuedFrameId = requestAnimationFrame(this.render);
 		}
-		return this.framePromise;
 	}
 
 	setValue(prop: string, value: boolean) {
@@ -243,8 +248,8 @@ export class ThreeJsRenderer implements ModelSink {
 		this.setModels(newmodels.map(q => q.rootnode), newmodels.flatMap(q => [...q.groupnames]), metastr);
 	}
 
-	async takePicture(x: number, z: number, size: number, framesize = 2048) {
-		let scale = 2 / size;
+	async takePicture(x: number, z: number, ntiles: number, framesize = 2048) {
+		let scale = 2 / ntiles;
 		let cam = new THREE.Camera();
 		cam.projectionMatrix.elements = [
 			scale, scale / 5, 0, -x * scale - 1,
@@ -256,8 +261,17 @@ export class ThreeJsRenderer implements ModelSink {
 		cam.projectionMatrix.transpose();
 		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
 		this.camera = cam;
-		await this.render();
-		let img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
+		let img: Blob | null = null;
+		for (let retry = 0; retry < 5; retry++) {
+			await this.guaranteeRender();
+			img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
+			if (this.contextLossCountLastRender != this.contextLossCount) {
+				console.log("context loss during capture");
+				img = null;
+				continue;
+			}
+			break;
+		}
 		if (!img) { throw new Error("capture failed"); }
 		return new Uint8Array(await img.arrayBuffer());
 	}
@@ -334,7 +348,7 @@ export class ThreeJsRenderer implements ModelSink {
 		//frameArea(boxSize * 0.5, boxSize, boxCenter, camera);
 
 		// update the Trackball controls to handle the new size
-		this.controls.maxDistance = boxSize * 10 + 10;
+		this.controls.maxDistance = Math.min(500, boxSize * 10 + 10);
 		this.controls.target.copy(boxCenter);
 		this.controls.update();
 
@@ -370,7 +384,7 @@ export class ThreeJsRenderer implements ModelSink {
 			while (obj && obj.userData?.modeltype != "location") {
 				obj = obj.parent;
 			}
-			if (obj) { console.log(obj, obj.userData); }
+			if (obj) { console.log(obj.userData.locationid, obj.userData, [obj]); }
 			//(obj as any).material.color.set(0xff0000);
 		}
 

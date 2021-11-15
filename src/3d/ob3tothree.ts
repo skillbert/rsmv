@@ -90,12 +90,16 @@ export class ThreejsSceneCache {
 
 				let mat = new THREE.MeshPhongMaterial();
 				mat.transparent = hasVertexAlpha;
-
 				if (textures.diffuse) {
 					mat.map = await this.getTextureFile(textures.diffuse);
+					mat.map.wrapS = THREE.RepeatWrapping;
+					mat.map.wrapT = THREE.RepeatWrapping;
+					mat.map.encoding = THREE.sRGBEncoding;
 				}
 				if (textures.normal) {
 					mat.normalMap = await this.getTextureFile(textures.normal);
+					mat.normalMap.wrapS = THREE.RepeatWrapping;
+					mat.normalMap.wrapT = THREE.RepeatWrapping;
 				}
 				mat.vertexColors = true;
 				mat.shininess = 0;
@@ -112,15 +116,15 @@ export class ThreejsSceneCache {
 export async function ob3ModelToThreejsNode(getFile: FileGetter, model: Buffer, mods: ModelModifications) {
 	let scene = new ThreejsSceneCache(getFile);
 	let stream = new Stream(model);
-	let mesh = await addOb3Model(scene, parseOb3Model(stream, mods));
+	let mesh = await ob3ModelToThree(scene, parseOb3Model(stream, mods));
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
 	return mesh;
 }
 
 
-export async function addOb3Model(scene: ThreejsSceneCache, model: ModelData) {
-	let rootnode = new THREE.Object3D();
+export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData) {
+	let rootnode = new THREE.Group();
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
 		let geo = new THREE.BufferGeometry();
@@ -134,6 +138,7 @@ export async function addOb3Model(scene: ThreejsSceneCache, model: ModelData) {
 		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
 
 		let mesh = new THREE.Mesh(geo, mat);
+		//mesh.scale.multiplyScalar(1/512);
 
 		rootnode.add(mesh);
 	}

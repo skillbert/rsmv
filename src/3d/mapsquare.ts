@@ -16,7 +16,8 @@ import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import * as fs from "fs";
 import sharp from "sharp";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache } from "./ob3tothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
+import type { Object3D } from "three";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -591,7 +592,7 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 	let overlays = (await source.getFileArchive(configunderlaymeta[4]))
 		.map(q => parseMapsquareOverlays.read(q.buffer));
 
-
+	//TODO implement this again
 	let originx = (opts?.centered ? (rect.x + rect.width / 2) * tiledimensions * squareWidth : 0);
 	let originz = (opts?.centered ? (rect.y + rect.height / 2) * tiledimensions * squareHeight : 0);
 
@@ -691,7 +692,6 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 }
 
 export async function mapsquareToGltf(source: CacheFileSource, chunks: typeof parseMapsquare extends (...args: any[]) => Promise<infer Q> ? Q : never) {
-
 	let scene = new GLTFSceneCache(source.getFileById.bind(source));
 	let nodes: number[] = [];
 
@@ -712,8 +712,27 @@ export async function mapsquareToGltf(source: CacheFileSource, chunks: typeof pa
 	let rootnode = scene.gltf.addNode({ children: nodes, scale: [1, 1, -1] });
 	scene.gltf.addScene({ nodes: [rootnode] });
 	let model = await scene.gltf.convert({ glb: true, singlefile: true });
-	fs.writeFileSync("model.glb", model.mainfile);
 	return model.mainfile;
+}
+
+export async function mapsquareToThree(source: CacheFileSource, chunks: typeof parseMapsquare extends (...args: any[]) => Promise<infer Q> ? Q : never) {
+	let scene = new ThreejsSceneCache(source.getFileById.bind(source));
+	let root = new THREE.Group();
+
+	for (let chunk of chunks) {
+		let node = new THREE.Group();
+		node.matrixAutoUpdate = false;
+		node.position.set(chunk.chunk.xoffset * tiledimensions, 0, chunk.chunk.zoffset * tiledimensions);
+		node.updateMatrix();
+		//TODO fix hidden floors tag
+		node.add(... (await Promise.all(chunk.floors.filter(f => !f.showhidden).map(f => floorToThree(scene, f)))).filter(q => q) as any);
+		node.add(await mapSquareLocationsToThree(scene, chunk.models));
+		root.add(node);
+	}
+
+	// root.scale.set(1 / tiledimensions, 1 / tiledimensions, -1 / tiledimensions);
+	root.scale.set(1, 1, -1);
+	return root;
 }
 
 function copyImageData(dest: ImageData, src: ImageData, destx: number, desty: number, srcx = 0, srcy = 0, width?: number, height?: number) {
@@ -805,6 +824,11 @@ type MapsquareLocation = {
 	modelid: number,
 	morph: FloorMorph,
 	position: [number, number, number],
+	posttransform?: {
+		scale?: [number, number, number],
+		translate?: [number, number, number],
+		rotateY?: number
+	},
 	extras: ModelExtras
 }
 
@@ -821,6 +845,26 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 	for (let loc of locations) {
 		let objectfile = await source.getFileById(cacheMajors.objects, loc.id);
 		let objectmeta = parseObject.read(objectfile);
+
+		let posttransform: MapsquareLocation["posttransform"] = undefined;
+		if (objectmeta.translateX || objectmeta.translateY || objectmeta.translateZ) {
+			posttransform ||= {};
+			const translatefactor = 4;//no clue why but seems right
+			posttransform.translate = [
+				(objectmeta.translateX ?? 0) * translatefactor,
+				(objectmeta.translateY ?? 0) * translatefactor,
+				(objectmeta.translateZ ?? 0) * translatefactor
+			];
+		}
+		if (objectmeta.scaleX || objectmeta.scaleY || objectmeta.scaleZ) {
+			posttransform ||= {};
+			const scalefactor = 1 / 128;//estimated fit was 127.5 ...
+			posttransform.scale = [
+				(objectmeta.scaleX ?? 128) * scalefactor,
+				(objectmeta.scaleY ?? 128) * scalefactor,
+				(objectmeta.scaleZ ?? 128) * scalefactor
+			];
+		}
 
 		instloop: for (let inst of loc.uses) {
 			// if(loc.id<63151-10||loc.id>63151+10){continue}
@@ -887,12 +931,14 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				morph.tiles = tilemorphs;
 				modely = 0//TODO give it a logical y again
 			} else {
-				let placement = grid.getObjectPlacement(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane, linkabove, inst.rotation, !!objectmeta.mirror);
-				if (!placement) {
-					console.log("couldnt find object placement at", inst.x, inst.y);
-					continue;
-				}
-				modely = placement.constant;
+				let y00 = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane)!.y;
+				let y01 = grid.getTile(inst.x + chunk.xoffset + sizex - 1, inst.y + chunk.zoffset, inst.plane)?.y01 ?? y00;
+				let y10 = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset + sizez - 1, inst.plane)?.y10 ?? y00;
+				let y11 = grid.getTile(inst.x + chunk.xoffset + sizex - 1, inst.y + chunk.zoffset + sizez - 1, inst.plane)?.y11 ?? y00;
+
+				//TODO there it probably more logic and a flag that toggles between average and min
+
+				modely = (sizex > 1 || sizez > 1 ? Math.min(y00, y01, y10, y11) : (y00 + y01 + y10 + y11) / 4);
 			}
 
 			for (let ch of objectmeta.models ?? []) {
@@ -902,6 +948,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 						extras,
 						modelid,
 						morph,
+						posttransform,
 						position: [
 							(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
 							modely,
@@ -957,6 +1004,63 @@ async function mapSquareLocationsToGltf(scene: GLTFSceneCache, models: Mapsquare
 	}
 
 	return scene.gltf.addNode({ children: nodes });
+}
+async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: MapsquareLocation[]) {
+	let modelcache = new Map<number, { modeldata: ModelData, instancemesh: THREE.Object3D | undefined }>();
+	let nodes: THREE.Object3D[] = [];
+
+	for (let obj of models) {
+		let model = modelcache.get(obj.modelid);
+		if (!model) {
+			let file = await scene.getFileById(cacheMajors.models, obj.modelid);
+			let modeldata = parseOb3Model(new Stream(file), {});
+			model = { modeldata, instancemesh: undefined };
+			modelcache.set(obj.modelid, model);
+		}
+
+		let node: Object3D;
+
+		if (obj.morph.tiles) {
+			//generate morphed model
+			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
+			node = await ob3ModelToThree(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
+			node.position.set(...obj.position);
+		} else {
+			//cache and reuse the model if it only has afine transforms
+			if (!model.instancemesh) {
+				model.instancemesh = await ob3ModelToThree(scene, model.modeldata);
+			}
+			node = model.instancemesh.clone(true);
+			node.rotation.set(0, obj.morph.rotation / 4 * 2 * Math.PI, 0);
+			if (obj.morph.mirror) {
+				node.scale.multiply(new THREE.Vector3(1, 1, -1));
+			}
+		}
+		node.userData = obj.extras;
+		node.position.set(...obj.position);
+		node.userData = obj.extras;
+		if (obj.posttransform) {
+			if (obj.posttransform.translate) {
+				let tr = obj.posttransform.translate;
+				//no clue why it is -y and +x +z
+				node.position.add(new THREE.Vector3(tr[0], -tr[1], tr[2]));
+				node.updateMatrix();
+			}
+			if (obj.posttransform.scale) {
+				node.scale.multiply(new THREE.Vector3(...obj.posttransform.scale));
+				node.updateMatrix();
+			}
+			if (obj.posttransform.rotateY) {
+				node.rotateY(obj.posttransform.rotateY);
+			}
+		}
+		node.matrixAutoUpdate = false;
+		node.updateMatrix();
+		nodes.push(node);
+	}
+	let root = new THREE.Group();
+	root.add(...nodes);
+	return root;
 }
 
 async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, materials: Map<number, MaterialData>, atlas: SimpleTexturePacker, showhidden: boolean) {
@@ -1121,6 +1225,14 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		}
 	}
 
+	let extra: ModelExtras = {
+		modelgroup: (showhidden ? "floorhidden" : "floor") + level,
+		modeltype: (showhidden ? "floorhidden" : "floor"),
+		mapsquarex: chunk.mapsquarex,
+		mapsquarez: chunk.mapsquarez,
+		level: level
+	};
+
 	return {
 		chunk,
 		level,
@@ -1141,14 +1253,18 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 
 		posmax: [maxx, maxy, maxz],
 		posmin: [minx, miny, minz],
+
+		extra
 	}
 }
 
 type FloorMeshData = typeof mapsquareMesh extends (...args: any[]) => Promise<infer Q> ? Q : never;
 
-function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData, isWireframe: boolean) {
-	let buf = new THREE.InterleavedBuffer(floor.buffer, floor.vertexstride);
+function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
+	if (floor.nvertices == 0) { return undefined; }
 	let makeAttribute = (attr: FloorMeshData["pos"]) => {
+		//TODO typing sucks here
+		let buf = new THREE.InterleavedBuffer(attr.src as any, floor.vertexstride / (attr.src as any).BYTES_PER_ELEMENT);
 		return new THREE.InterleavedBufferAttribute(buf, attr.vecsize, attr.offset, attr.normalized);
 	}
 	let geo = new THREE.BufferGeometry();
@@ -1159,14 +1275,20 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData, isWirefram
 	geo.setAttribute("_ra_floortex_uv23", makeAttribute(floor._RA_FLOORTEX_UV23));
 	geo.setAttribute("_ra_floortex_weights", makeAttribute(floor._RA_FLOORTEX_WEIGHTS));
 	let mat = new THREE.MeshPhongMaterial({ shininess: 0 });
-	if (!isWireframe) {
+	mat.vertexColors = true;
+	if (!floor.showhidden) {
 		augmentThreeJsFloorMaterial(mat);
 		let img = floor.atlas.convert();
 		mat.map = new THREE.DataTexture(img.data, img.width, img.height, THREE.RGBAFormat);
+		mat.map.minFilter = THREE.NearestMipMapLinearFilter;
+		mat.map.generateMipmaps = true;
+		mat.map.encoding = THREE.sRGBEncoding;
 	} else {
 		mat.wireframe = true;
 	}
-	return new THREE.Mesh(geo, mat);
+	let model = new THREE.Mesh(geo, mat);
+	model.userData = floor.extra;
+	return model;
 }
 
 async function floorToGltf(scene: GLTFSceneCache, floor: FloorMeshData) {
@@ -1203,8 +1325,6 @@ async function floorToGltf(scene: GLTFSceneCache, floor: FloorMeshData) {
 		let atlasfile = await img.png().toBuffer({ resolveWithObject: false });
 		floortex = gltf.addImageWithTexture(atlasfile);
 		gltf.addExtension("RA_FLOORTEX", false);
-		//TODO remove
-		fs.writeFileSync("cache/blobs/" + Date.now() + ".png", atlasfile);
 	}
 	let viewIndex = gltf.addBufferWithView(floor.indices, undefined, true);
 	let indices = gltf.addAccessor({
@@ -1229,16 +1349,9 @@ async function floorToGltf(scene: GLTFSceneCache, floor: FloorMeshData) {
 			material: floormaterial,
 		}]
 	});
-	let extra = {
-		modelgroup: (floor.showhidden ? "floorhidden" : "floor") + floor.level,
-		modeltype: (floor.showhidden ? "floorhidden" : "floor"),
-		mapsquarex: floor.chunk.mapsquarex,
-		mapsquarez: floor.chunk.mapsquarez,
-		level: floor.level
-	} as ModelExtras;
 	return gltf.addNode({
 		mesh,
 		extensions: (floortex != -1 ? { RA_FLOORTEX: {} } : undefined),
-		extras: extra
+		extras: floor.extra
 	});
 }
