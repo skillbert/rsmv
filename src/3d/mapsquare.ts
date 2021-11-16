@@ -203,7 +203,6 @@ function generateTileShapes() {
 	return { tileshapes, defaulttileshape };
 }
 
-
 function boxMesh(width: number, length: number, height: number) {
 	const steps = 20;
 	const ysteps = 5;
@@ -583,7 +582,10 @@ class TileGrid {
 	}
 }
 
-export async function parseMapsquare(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean }) {
+export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean };
+type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], chunk: ChunkData };
+
+export async function parseMapsquare(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: ParsemapOpts) {
 
 	//TODO proper erroring on nulls
 	let configunderlaymeta = await source.getIndexFile(cacheMajors.config);
@@ -637,8 +639,11 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 	}
 
 	grid.blendUnderlays();
+	return { grid, chunks };
+}
 
-	let squareDatas: { floors: FloorMeshData[], models: MapsquareLocation[], chunk: ChunkData }[] = [];
+export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, chunks: ChunkData[], opts?: ParsemapOpts) {
+	let squareDatas: ChunkModelData[] = [];
 
 	for (let chunk of chunks) {
 		let floors: FloorMeshData[] = [];
@@ -691,7 +696,7 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 	return squareDatas;
 }
 
-export async function mapsquareToGltf(source: CacheFileSource, chunks: typeof parseMapsquare extends (...args: any[]) => Promise<infer Q> ? Q : never) {
+export async function mapsquareToGltf(source: CacheFileSource, chunks: ChunkModelData[]) {
 	let scene = new GLTFSceneCache(source.getFileById.bind(source));
 	let nodes: number[] = [];
 
@@ -715,7 +720,7 @@ export async function mapsquareToGltf(source: CacheFileSource, chunks: typeof pa
 	return model.mainfile;
 }
 
-export async function mapsquareToThree(source: CacheFileSource, chunks: typeof parseMapsquare extends (...args: any[]) => Promise<infer Q> ? Q : never) {
+export async function mapsquareToThree(source: CacheFileSource, chunks: ChunkModelData[]) {
 	let scene = new ThreejsSceneCache(source.getFileById.bind(source));
 	let root = new THREE.Group();
 

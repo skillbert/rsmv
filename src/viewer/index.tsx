@@ -13,7 +13,7 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareToGltf, mapsquareToThree, parseMapsquare } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToGltf, mapsquareToThree, parseMapsquare } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
@@ -266,10 +266,12 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			width = width ?? 1;
 			height = height ?? width;
 			//TODO enable centered again
-			let square = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, { centered: true, invisibleLayers: true });
+			let opts = { centered: true, invisibleLayers: true };
+			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, opts);
+			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);
 			// renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
-			let scene = await mapsquareToThree(hackyCacheFileSource, square);
+			let scene = await mapsquareToThree(hackyCacheFileSource, modeldata);
 			renderer.setModels?.([scene], [], "");
 			break;
 		default:

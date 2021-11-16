@@ -27,6 +27,8 @@
 <body>
 	<div id="map" style="background: black;"></div>
 	<script>
+		var chunkoffsetx = 16;
+		var chunkoffsetz = 48;
 
 		var mapsizex = 100;
 		var mapsizez = 200;
@@ -38,7 +40,10 @@
 		var mip0pxpertile = pxpertile / (1 << lowestmip);
 
 		var crs = L.CRS.Simple;
-		crs.transformation = L.transformation(mip0pxpertile, 0, -mip0pxpertile, mip0pxpertile * mapsizez * chunksize);
+		crs.transformation = L.transformation(
+			mip0pxpertile, chunkoffsetx * mip0pxpertile,
+			-mip0pxpertile, (mapsizez * chunksize + chunkoffsetz) * mip0pxpertile
+		);
 
 		var mymap = L.map('map', {
 			minZoom: 0,
@@ -46,13 +51,14 @@
 			crs: crs,
 			//maxBounds: [[0, 0], [mapsizez * chunksize * mip0pxpertile, mapsizex * chunksize * mip0pxpertile]]
 		});
+		mymap.on("click",e=>console.log(e.latlng));
 		L.tileLayer('../../cache/map3/{z}/{x}-{y}.png', {
 			attribution: 'Skillbert',
 			tileSize: 512,
 			maxNativeZoom: 10,
 			minNativeZoom: 0
 		}).addTo(mymap);
-		mymap.setView([3200, 3000],4);
+		mymap.setView([3200, 3000], 4);
 	</script>
 </body>
 

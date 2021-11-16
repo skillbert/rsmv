@@ -1,11 +1,12 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { mapsquareToGltf, mapsquareToThree, parseMapsquare } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToGltf, mapsquareToThree, parseMapsquare, ParsemapOpts } from "../3d/mapsquare";
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
 import { GameCacheLoader } from "../cacheloader";
 import * as electron from "electron";
+
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -148,7 +149,7 @@ export async function downloadMap(x0 = 0, z0 = 0) {
 					progress += await renderMapsquare(x, z, 1, zscan, maprender);
 					if (progress >= 16) {
 						progress = 0;
-						generateMips();
+						//generateMips();
 					}
 					break;
 				} catch (e) {
@@ -160,21 +161,26 @@ export async function downloadMap(x0 = 0, z0 = 0) {
 			}
 		}
 	}
+	generateMips();
 	console.log(errs);
 }
 
 export async function downloadMapsquare(x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
-	let square = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, { centered: false, padfloor: true, invisibleLayers: false });
-	let file = await mapsquareToGltf(hackyCacheFileSource, square);
+	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false };
+	let { chunks, grid } = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, opts);
+	let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
+	let file = await mapsquareToGltf(hackyCacheFileSource, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
 	return file;
 }
 
 export async function downloadMapsquareThree(x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
-	let square = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, { centered: false, padfloor: true, invisibleLayers: false });
-	let file = await mapsquareToThree(hackyCacheFileSource, square);
+	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false };
+	let { chunks, grid } = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, opts);
+	let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
+	let file = await mapsquareToThree(hackyCacheFileSource, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
 	return file;
 }
@@ -226,6 +232,30 @@ export async function renderMapsquare(x: number, z: number, bundlex: number, bun
 	return nimages;
 }
 
+function trickleTasks(name: string, parallel: number, tasks: (() => Promise<any>)[]) {
+	console.log(`starting ${name}, ${tasks.length} tasks`);
+	return new Promise<void>(done => {
+		let index = 0;
+		let running = 0;
+		let run = () => {
+			if (index < tasks.length) {
+				tasks[index++]().finally(run);
+				if (index % 100 == 0) { console.log(`${name} progress ${index}/${tasks.length}`); }
+			} else {
+				running--;
+				if (running <= 0) {
+					console.log(`completed ${name}`);
+					done();
+				}
+			}
+		}
+		for (let i = 0; i < parallel; i++) {
+			running++;
+			run();
+		}
+	})
+}
+
 export async function generateMips() {
 	const targetsize = 512;
 	const inputsize = 2048;
@@ -263,7 +293,7 @@ export async function generateMips() {
 	}
 
 	console.log("starting with x files", files.length);
-	let tasks: Promise<any>[] = [];
+	let tasks: (() => Promise<any>)[] = [];
 	for (let file of files) {
 		let m = file.match(/(\/|^)(\d+)-(\d+)\./);
 		if (!m) {
@@ -283,7 +313,7 @@ export async function generateMips() {
 			let muliplier = 1 << zoom;
 			for (let suby = 0; suby * size < inputsize; suby++) {
 				for (let subx = 0; subx * size < inputsize; subx++) {
-					tasks.push(
+					tasks.push(() =>
 						sharp(`${srcdir}/${file}`)
 							.extract({ left: subx * size, top: suby * size, width: size, height: size })
 							.resize(targetsize, targetsize)
@@ -294,11 +324,10 @@ export async function generateMips() {
 			}
 		}
 	}
-	await Promise.all(tasks);
+	await trickleTasks("sub image mipmaps ", 4, tasks);
 
 	for (let zoom = defaultzoom - 1; zoom >= 0; zoom--) {
 		let currentqueue = queue;
-		console.log("zoom level", zoom, "queue", currentqueue.size);
 		queue = new Set();
 		tasks = [];
 		for (let chunk of currentqueue) {
@@ -321,7 +350,7 @@ export async function generateMips() {
 
 
 			tasks.push(
-				sharp({ create: { channels: 4, width: targetsize * 2, height: targetsize * 2, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+				() => sharp({ create: { channels: 4, width: targetsize * 2, height: targetsize * 2, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
 					.composite(overlays)
 					.raw()
 					.toBuffer({ resolveWithObject: true })//need to render to force resize after composite
@@ -330,12 +359,10 @@ export async function generateMips() {
 							.resize(targetsize, targetsize)
 							.webp({ lossless: true })
 							.toFile(outpath(zoom, x, y))
-					).then(() =>
-						console.log("combine", zoom, x, y)
 					)
 			);
 		}
 
-		await Promise.all(tasks);
+		await trickleTasks(`zoomed mipmaps level ${zoom}`, 4, tasks);
 	}
 }

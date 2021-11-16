@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron/main";
+import { app, BrowserWindow, ipcMain, powerSaveBlocker } from "electron/main";
 import * as updater from "./updater";
 import * as downloader from "./downloader";
 import * as gamecache from "./cache";
@@ -15,6 +15,16 @@ app.allowRendererProcessReuse = false;
 app.disableDomainBlockingFor3DAPIs();
 //don't give up after 3 crashes! keep trying!
 app.commandLine.appendSwitch('--disable-gpu-process-crash-limit');
+//prevent electron from nerfing performance when the window isn't visible
+//TODO should probably toggle only when rendering the map
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+
+//prevents comptuer from sleeping
+//TODO properly toggle this only when render is running
+const id = powerSaveBlocker.start("prevent-app-suspension");
+//powerSaveBlocker.stop(id)
 
 //show a nice loading window while updating our local cache
 let loadingwnd: BrowserWindow | null = null;
@@ -23,7 +33,11 @@ argparser.setLoadingIndicator({
 	start: async () => {
 		loadingwnd = await createWindow("assets/splash.html", {
 			width: 377, height: 144, frame: false, resizable: false,
-			webPreferences: { nodeIntegration: true }
+			webPreferences: {
+				nodeIntegration: true,
+				//TODO also make this depend on if we are rendering the map or not
+				backgroundThrottling: false
+			},
 		});
 		//TODO add a way to stop the updating process by closing the window
 		//can currently only be stopped by canceling from the command line
