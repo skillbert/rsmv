@@ -47,7 +47,7 @@ export function loadDds(filedata: Buffer, paddingsize = -1, forceOpaque = true) 
 	//TODO find the material flag that enables transparency
 	if (forceOpaque) {
 		for (let i = 0; i < data.length; i += 4) {
-			data[i + 3] = 255;
+			data[i + 3] = 255;//TODO make this depend on material flags
 		}
 	}
 	return { data, width: innerwidth, height: innerheight };

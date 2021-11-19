@@ -1,4 +1,4 @@
-import { Stream } from "./utils";
+import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
 
 //TODO stream es6 class
 function Spec_0(material: any) {
@@ -14,6 +14,7 @@ function Spec_0(material: any) {
 	if ((this.flags & 0x02) == 0x02 || (this.flags & 0x08) == 0x08)
 		this.maps["normalId"] = material.readUInt(true);
 
+	//3=skybox
 	this.unk3 = material.readUInt();
 
 	this.flags2 = material.readUByte();
@@ -31,31 +32,34 @@ function Spec_0(material: any) {
 		if ((this.flags & 0x01) == 0x01)
 			this.unkA = material.readUByte();
 
-		this.unkB = material.readUByte();
+		//0=opaque, 1=binary with cutoff, 2=full
+		this.alphaMode = material.readUByte();
 		if (this.unkB == 1)
-			this.unkC = material.readUByte();
+			this.unkC_maybe_alpha_cutoff = material.readUByte();
 
-		this.unkD = material.readUByte();
-		if (this.unkD == 1 || this.unkD == 2)
-			this.unkE = material.readUShort(true);
-		else if (this.unkD == 3) {
-			this.unkE = material.readUShort(true);
-			this.unkF = material.readUShort(true);
+		this.hasTexAnim = material.readUByte();
+		if (this.hasTexAnim & 1) {
+			this.uvTexAnimU = material.readShort(true);
+		}
+		if (this.hasTexAnim & 2) {
+			this.uvTexAnimV = material.readShort(true);
 		}
 
 		this.unk10 = material.readUByte();
 
 		if (this.unk10 == 1) {
 			this.unk11 = "";
-			for (var i = 0; i < 11; ++i) {
+			for (var i = 0; i < 10; ++i) {
 				var val = material.readUByte().toString(16);
 				if (val.length == 1)
 					val = "0" + val;
 				this.unk11 += val;
 			}
+			this.probably_forceOpaque = material.readUByte();
 			this.specular = material.readUByte();
 			this.metalness = material.readUByte();
-			this.colour = material.readUShort(true);
+			this.colourInt = material.readUShort(true);
+			this.colour = HSL2RGB(packedHSL2HSL(this.colourInt));
 			return;
 		}
 		else if (this.unk10 == 0)
@@ -147,7 +151,8 @@ export type JMatInternal = {
 	specular: number,
 	metalness: number,
 	colour: number,
-//}|{
+	alphaMode: number,
+	//}|{
 	flags: {
 		hasDiffuse: boolean,
 		hasNormal: boolean,

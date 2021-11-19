@@ -21,12 +21,12 @@ export class GLTFSceneCache {
 		this.getFileById = getfilebyid;
 	}
 
-	async getTextureFile(texid: number) {
+	async getTextureFile(texid: number, allowAlpha) {
 		let cached = this.textureCache.get(texid);
 		if (cached) { return cached; }
 
 		let file = await this.getFileById(cacheMajors.texturesDds, texid);
-		let parsed = new ParsedTexture(file);
+		let parsed = new ParsedTexture(file, allowAlpha);
 		let texnode = this.gltf.addImage(await parsed.convertFile("png"));
 		this.textureCache.set(texid, texnode);
 		return texnode;
@@ -39,7 +39,7 @@ export class GLTFSceneCache {
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let { textures } = await getMaterialData(this.getFileById, matid);
+				let { textures, alphamode } = await getMaterialData(this.getFileById, matid);
 
 				let materialdef: Material = {
 					//TODO check if diffuse has alpha as well
@@ -52,13 +52,13 @@ export class GLTFSceneCache {
 					materialdef.pbrMetallicRoughness = {};
 					//TODO animated texture UV's (fire cape)
 					materialdef.pbrMetallicRoughness.baseColorTexture = {
-						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.diffuse) }),
+						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.diffuse, alphamode != "opaque") }),
 					};
 					//materialdef.pbrMetallicRoughness.baseColorFactor = [factors.color, factors.color, factors.color, 1];
 					if (typeof textures.metalness != "undefined") {
 						if (textures.metalness) {
 							materialdef.pbrMetallicRoughness.metallicRoughnessTexture = {
-								index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.metalness) })
+								index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.metalness, false) })
 							}
 						}
 						//materialdef.pbrMetallicRoughness.metallicFactor = factors.metalness;
@@ -66,7 +66,7 @@ export class GLTFSceneCache {
 				}
 				if (textures.normal) {
 					materialdef.normalTexture = {
-						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.normal) })
+						index: this.gltf.addTexture({ sampler, source: await this.getTextureFile(textures.normal, false) })
 					}
 				}
 				if (textures.specular) {
@@ -88,13 +88,18 @@ export type MaterialData = {
 		color?: number,
 		normal?: number,
 		compound?: number
-	}
+	},
+	alphamode: "opaque" | "cutoff" | "blend"
+	raw: any
 }
 //this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
 export async function getMaterialData(getFile: FileGetter, matid: number) {
 	let material: MaterialData = {
-		textures: {}
+		textures: {},
+		alphamode: "opaque",
+		raw: undefined
 	};
+	//TODO unused atm
 	let factors = {
 		metalness: 1,
 		specular: 1,
@@ -106,6 +111,7 @@ export async function getMaterialData(getFile: FileGetter, matid: number) {
 
 		if (materialfile[0] == 0x00) {
 			var mat = new JMat(materialfile).get();
+			material.raw = mat;
 			originalMaterial = mat;
 			material.textures.diffuse = mat.maps["diffuseId"];
 			material.textures.metalness = 0;
@@ -113,9 +119,11 @@ export async function getMaterialData(getFile: FileGetter, matid: number) {
 			factors.specular = mat.specular / 255;
 			factors.metalness = mat.metalness / 255;
 			factors.color = mat.colour / 255;
+			material.alphamode = mat.alphaMode == 0 ? "opaque" : mat.alphaMode == 1 ? "cutoff" : "blend";
 		}
 		else if (materialfile[0] == 0x01) {
 			var mat = new JMat(materialfile).get();
+			material.raw = mat;
 			originalMaterial = mat;
 			if (mat.flags.hasDiffuse)
 				material.textures.diffuse = mat.maps["diffuseId"];

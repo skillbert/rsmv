@@ -11,7 +11,7 @@ export type mapsquare_overlays = {
 	unknown_0x09?: number | undefined
 	unknown_0x0A?: true | undefined
 	unknown_0x0B?: number | undefined
-	unknown_0x0C?: true | undefined
+	bleedToUnderlay?: true | undefined
 	tertiary_colour?: number[] | undefined
 	unknown_0x0E?: number | undefined
 	unknown_0x10?: number | undefined

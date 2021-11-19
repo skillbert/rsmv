@@ -384,7 +384,12 @@ export class ThreeJsRenderer implements ModelSink {
 			while (obj && obj.userData?.modeltype != "location") {
 				obj = obj.parent;
 			}
-			if (obj) { console.log(obj.userData.locationid, obj.userData, [obj]); }
+			if (obj) {
+				console.log(obj.userData.locationid, obj.userData, [obj]);
+				this.uistate.meta = JSON.stringify(obj.userData, undefined, "\t");
+				this.stateChangeCallback(this.uistate);
+				break;
+			}
 			//(obj as any).material.color.set(0xff0000);
 		}
 

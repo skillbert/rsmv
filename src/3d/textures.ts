@@ -5,13 +5,15 @@ import { loadDds } from "./ddsimage";
 export class ParsedTexture {
 	fullfile: Buffer;
 	imagefiles: Buffer[];
+	allowAlpha: boolean
 	type: "png" | "dds" | "bmpmips";
 	mipmaps: number;
 	cachedDrawables: (Promise<HTMLImageElement | ImageBitmap> | null)[];
 	bmpWidth = -1;
 	bmpHeight = -1;
 
-	constructor(texture: Buffer) {
+	constructor(texture: Buffer, allowAlpha: boolean) {
+		this.allowAlpha = allowAlpha;
 		this.mipmaps = texture.readUInt8(0x0);
 		this.fullfile = texture;
 		this.imagefiles = [];
@@ -62,7 +64,7 @@ export class ParsedTexture {
 		}
 		//theoretically the concat approach can save a zero-ing pass
 		let fullfile = Buffer.concat(chunks);
-		return new ParsedTexture(fullfile);
+		return new ParsedTexture(fullfile, false);//TODO still get alpha somehow
 	}
 
 	async convertFile(type: "png" | "webp", subimg = 0) {
@@ -79,7 +81,7 @@ export class ParsedTexture {
 			})
 		}
 		else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg]);
+			let imgdata = loadDds(this.imagefiles[subimg], undefined, !this.allowAlpha);
 			img = sharp(imgdata.data, {
 				raw: {
 					width: imgdata.width,
@@ -110,7 +112,7 @@ export class ParsedTexture {
 			let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
 			return new ImageData(pixbuf, decoded.info.width, decoded.info.height);
 		} else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg]);
+			let imgdata = loadDds(this.imagefiles[subimg], undefined, !this.allowAlpha);
 			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
 			return new ImageData(pixbuf, imgdata.width, imgdata.height);
 		} else {

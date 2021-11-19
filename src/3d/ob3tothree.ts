@@ -25,15 +25,18 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 			+ `attribute vec4 _ra_floortex_uv01;\n`
 			+ `attribute vec4 _ra_floortex_uv23;\n`
 			+ `attribute vec4 _ra_floortex_weights;\n`
+			+ `attribute vec4 _ra_floortex_usescolor;\n`
 			+ `varying vec4 v_ra_floortex_01;\n`
 			+ `varying vec4 v_ra_floortex_23;\n`
 			+ `varying vec4 v_ra_floortex_weights;\n`
+			+ `varying vec4 v_ra_floortex_usescolor;\n`
 			+ `#endif\n`
 			+ shader.vertexShader.replace("#include <uv_vertex>",
 				`#ifdef USE_MAP\n`
 				+ `v_ra_floortex_01 = _ra_floortex_uv01;\n`
 				+ `v_ra_floortex_23 = _ra_floortex_uv23;\n`
 				+ `v_ra_floortex_weights = _ra_floortex_weights;\n`
+				+ `v_ra_floortex_usescolor = _ra_floortex_usescolor;\n`
 				+ `#endif\n`
 				+ "#include <uv_vertex>"
 			);
@@ -42,19 +45,23 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 			+ `varying vec4 v_ra_floortex_01;\n`
 			+ `varying vec4 v_ra_floortex_23;\n`
 			+ `varying vec4 v_ra_floortex_weights;\n`
+			+ `varying vec4 v_ra_floortex_usescolor;\n`
 			+ `#endif\n`
-			+ shader.fragmentShader.replace("#include <map_fragment>",
-				`#ifdef USE_MAP\n`
-				+ `vec4 texelColor = \n`
-				+ `   texture2D( map, v_ra_floortex_01.rg ) * v_ra_floortex_weights.r\n`
-				+ ` + texture2D( map, v_ra_floortex_01.ba ) * v_ra_floortex_weights.g\n`
-				+ ` + texture2D( map, v_ra_floortex_23.rg ) * v_ra_floortex_weights.b\n`
-				+ ` + texture2D( map, v_ra_floortex_23.ba ) * v_ra_floortex_weights.a;\n`
-				//TODO is this needed?
-				+ `texelColor = mapTexelToLinear( mix(vec4(1.0),texelColor,dot(vec4(1),v_ra_floortex_weights)) );\n`
-				+ `#endif\n`
-				+ `diffuseColor *= texelColor;\n`
-			);
+			+ shader.fragmentShader
+				.replace("#include <color_fragment>", "")
+				.replace("#include <map_fragment>",
+					`#include <color_fragment>\n`
+					+ `#ifdef USE_MAP\n`
+					+ `vec4 texelColor = \n`
+					+ `   texture2D( map, v_ra_floortex_01.rg ) * v_ra_floortex_weights.r * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.r)\n`
+					+ ` + texture2D( map, v_ra_floortex_01.ba ) * v_ra_floortex_weights.g * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.g)\n`
+					+ ` + texture2D( map, v_ra_floortex_23.rg ) * v_ra_floortex_weights.b * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.b)\n`
+					+ ` + texture2D( map, v_ra_floortex_23.ba ) * v_ra_floortex_weights.a * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.a);\n`
+					//TODO is this needed?
+					+ `texelColor = mapTexelToLinear( mix( diffuseColor,texelColor,dot(vec4(1.0),v_ra_floortex_weights)) );\n`
+					+ `#endif\n`
+					+ `diffuseColor = texelColor;\n`
+				);
 	}
 }
 
@@ -68,12 +75,12 @@ export class ThreejsSceneCache {
 		this.getFileById = getfilebyid;
 	}
 
-	async getTextureFile(texid: number) {
+	async getTextureFile(texid: number, allowAlpha: boolean) {
 		let cached = this.textureCache.get(texid);
 		if (cached) { return cached; }
 
 		let file = await this.getFileById(cacheMajors.texturesDds, texid);
-		let parsed = new ParsedTexture(file);
+		let parsed = new ParsedTexture(file, allowAlpha);
 		//TODO can also directly load dxt texture here!
 		let texture = new THREE.CanvasTexture(await parsed.toWebgl());
 		this.textureCache.set(texid, texture);
@@ -86,18 +93,20 @@ export class ThreejsSceneCache {
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let { textures } = await getMaterialData(this.getFileById, matid);
+				let { textures, alphamode } = await getMaterialData(this.getFileById, matid);
 
 				let mat = new THREE.MeshPhongMaterial();
 				mat.transparent = hasVertexAlpha;
 				if (textures.diffuse) {
-					mat.map = await this.getTextureFile(textures.diffuse);
+					mat.map = await this.getTextureFile(textures.diffuse, alphamode != "opaque");
 					mat.map.wrapS = THREE.RepeatWrapping;
 					mat.map.wrapT = THREE.RepeatWrapping;
 					mat.map.encoding = THREE.sRGBEncoding;
+					mat.transparent = hasVertexAlpha || alphamode == "blend" || alphamode == "cutoff";
+					mat.alphaTest = (alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
 				}
 				if (textures.normal) {
-					mat.normalMap = await this.getTextureFile(textures.normal);
+					mat.normalMap = await this.getTextureFile(textures.normal, false);
 					mat.normalMap.wrapS = THREE.RepeatWrapping;
 					mat.normalMap.wrapT = THREE.RepeatWrapping;
 				}

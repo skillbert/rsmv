@@ -13,10 +13,10 @@ export type objects = {
 	unknown_11?: true | undefined
 	unknown_12?: true | undefined
 	unknown_13?: number | undefined
-	unknown_15?: true | undefined
+	probably_morphFloor?: true | undefined
 	unknown_16?: true | undefined
 	occludes_1?: false | undefined
-	unknown_18?: number | undefined
+	probably_animation?: number | undefined
 	unknown_1B?: true | undefined
 	unknown_1C?: number | undefined
 	ambient?: number | undefined
@@ -77,7 +77,7 @@ export type objects = {
 	} | undefined
 	unknown_5D?: number | undefined
 	unknown_5E?: true | undefined
-	unknown_5F?: number | undefined
+	probably_morphCeilingOffset?: number | undefined
 	unknown_61?: true | undefined
 	unknown_62?: true | undefined
 	dummy_63?: {

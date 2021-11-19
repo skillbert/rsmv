@@ -31,8 +31,8 @@ const worldStride = 128;
 
 const { tileshapes, defaulttileshape } = generateTileShapes();
 
-//TODO use material -1 instead?
-const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255] };
+const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
+(window as any).defaultVertexProp = defaultVertexProp;
 
 type FloorvertexInfo = {
 	subvertex: number,
@@ -48,7 +48,8 @@ type TileShape = {
 
 type TileVertex = {
 	material: number,
-	color: number[]
+	color: number[],
+	usesColor: boolean
 }
 
 type ChunkData = {
@@ -437,20 +438,23 @@ class TileGrid {
 				for (let level = 0; level < squareLevels; level++) {
 					let currenttile = this.getTile(x, z, level);
 					if (!currenttile) { continue; }
-					if (currenttile.visible) {
-						let r = 0, g = 0, b = 0;
-						let count = 0;
-						for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
-							for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
-								let tile = this.getTile(x + dx, z + dz, level);
-								if (!tile || !tile.visible) { continue; }
-								let col = tile.underlayprops.color;
-								r += col[0];
-								g += col[1];
-								b += col[2];
-								count++;
-							}
+					let r = 0, g = 0, b = 0;
+					let count = 0;
+					for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
+						for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
+							let tile = this.getTile(x + dx, z + dz, level);
+							if (!tile || !tile.visible) { continue; }
+							let col = tile.underlayprops.color;
+							r += col[0];
+							g += col[1];
+							b += col[2];
+							count++;
 						}
+					}
+					if (count > 0) {
+						// if (currenttile.underlayprops == defaultVertexProp) {
+						// 	currenttile.underlayprops = { ...currenttile.underlayprops };
+						// }
 						currenttile.underlayprops.color = [r / count, g / count, b / count];
 					}
 					//normals
@@ -510,8 +514,8 @@ class TileGrid {
 					let tile = this.getTile(x + dx, z + dz, level);
 					if (!tile) { continue; }
 					//TODO skip 0/-1 values?
-					mats.add(tile.underlayprops.material ?? 0);
-					mats.add(tile.overlayprops.material ?? 0);
+					mats.add(tile.underlayprops.material ?? -1);
+					mats.add(tile.overlayprops.material ?? -1);
 				}
 			}
 		}
@@ -532,30 +536,33 @@ class TileGrid {
 					if (typeof tile.height != "undefined") {
 						height += tile.height;
 					} else {
-						//TODO this is an arbitrary guess
-						height += 32;
+						//TODO this is a guss that sort of fits
+						height += 30;
 					}
 					let visible = false;
 					let shape = (typeof tile.shape == "undefined" ? defaulttileshape : tileshapes[tile.shape]);
 					let bleedsOverlayMaterial = false;
-					let underlayprop = defaultVertexProp;
-					let overlayprop = defaultVertexProp;
+					let underlayprop: TileVertex | undefined = undefined;
+					let overlayprop: TileVertex | undefined = undefined
 					if (typeof tile.underlay != "undefined") {
 						//TODO bound checks
 						let underlay = chunk.underlays[tile.underlay - 1];
 						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
 							visible = true;
 						}
-						underlayprop = { material: underlay.material ?? 0, color: underlay.color ?? [255, 0, 255] };
+						underlayprop = { material: underlay.material ?? 0, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
 					}
 					if (typeof tile.overlay != "undefined") {
 						let overlay = chunk.overlays[tile.overlay - 1];
-						overlayprop = { material: overlay.material ?? 0, color: overlay.primary_colour ?? [255, 0, 255] };
-						bleedsOverlayMaterial = !!overlay.unknown_0x0C;
+						overlayprop = { material: overlay.material ?? 0, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
+						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
 					//let newindex = this.levelstep * level + (z + chunk.zoffset - this.zoffset) * this.zstep + (x + chunk.xoffset - this.xoffset) * this.xstep
 					let y = height * tiledimensions * heightScale;
+					//need to clone here since its colors will be modified
+					underlayprop ??= { ...defaultVertexProp };
+					overlayprop ??= { ...defaultVertexProp };
 					let parsedTile: TileProps = {
 						raw: tile,
 						next01: undefined,
@@ -585,14 +592,19 @@ class TileGrid {
 export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean };
 type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], chunk: ChunkData };
 
-export async function parseMapsquare(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: ParsemapOpts) {
-
+export async function mapConfigData(source: CacheFileSource) {
 	//TODO proper erroring on nulls
 	let configunderlaymeta = await source.getIndexFile(cacheMajors.config);
 	let underarch = await source.getFileArchive(configunderlaymeta[1]);
 	let underlays = underarch.map(q => parseMapsquareUnderlays.read(q.buffer));
 	let overlays = (await source.getFileArchive(configunderlaymeta[4]))
 		.map(q => parseMapsquareOverlays.read(q.buffer));
+	return { underlays, overlays };
+}
+
+export async function parseMapsquare(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: ParsemapOpts) {
+
+	let { underlays, overlays } = await mapConfigData(source);
 
 	//TODO implement this again
 	let originx = (opts?.centered ? (rect.x + rect.width / 2) * tiledimensions * squareWidth : 0);
@@ -660,7 +672,7 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 			if (mat.textures.diffuse) {
 				textureproms.push(
 					source.getFileById(cacheMajors.texturesDds, mat.textures.diffuse)
-						.then(file => new ParsedTexture(file).toImageData())
+						.then(file => new ParsedTexture(file, false).toImageData())
 						.then(tex => { textures.set(mat.textures.diffuse!, tex); })
 				);
 			}
@@ -682,11 +694,11 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 		for (let level = 0; level < squareLevels; level++) {
 			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false));
 		}
-		if (opts?.invisibleLayers) {
-			for (let level = 0; level < squareLevels; level++) {
-				floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
-			}
-		}
+		// if (opts?.invisibleLayers) {
+		// 	for (let level = 0; level < squareLevels; level++) {
+		// 		floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
+		// 	}
+		// }
 		squareDatas.push({
 			chunk,
 			floors,
@@ -906,8 +918,8 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 
 			//TODO find out the meaning of this
 			//TODO thse are definitely wrong
-			let linkabove = typeof objectmeta.unknown_5F != "undefined"; //((objectmeta.tileMorph ?? 0) & 2) != 0;
-			let followfloor = linkabove || !!objectmeta.unknown_15; //((objectmeta.tileMorph ?? 0) & 1) != 0 || linkabove;
+			let linkabove = typeof objectmeta.probably_morphCeilingOffset != "undefined"; //((objectmeta.tileMorph ?? 0) & 2) != 0;
+			let followfloor = linkabove || !!objectmeta.probably_morphFloor; //((objectmeta.tileMorph ?? 0) & 1) != 0 || linkabove;
 			let morph: FloorMorph = {
 				width: objectmeta.width ?? 1,
 				length: objectmeta.length ?? 1,
@@ -931,7 +943,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				}
 				if (linkabove) {
 					morph.scaleModelHeight = true;
-					morph.scaleModelHeightOffset = objectmeta.unknown_5F ?? 0;
+					morph.scaleModelHeightOffset = objectmeta.probably_morphCeilingOffset ?? 0;
 				}
 				morph.tiles = tilemorphs;
 				modely = 0//TODO give it a logical y again
@@ -944,23 +956,79 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				//TODO there it probably more logic and a flag that toggles between average and min
 
 				modely = (sizex > 1 || sizez > 1 ? Math.min(y00, y01, y10, y11) : (y00 + y01 + y10 + y11) / 4);
+
+				// if (sizex > 1 || sizez > 1) {
+				// 	modely = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane)!.y;
+				// }
 			}
 
-			for (let ch of objectmeta.models ?? []) {
-				if (ch.type != inst.type) { continue; }
-				for (let modelid of ch.values) {
-					models.push({
-						extras,
-						modelid,
-						morph,
-						posttransform,
-						position: [
-							(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
-							modely,
-							(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
-						]
-					});
+			let modelcount = 0;
+			let addmodel = (type: number, posttransform: MapsquareLocation["posttransform"]) => {
+				for (let ch of objectmeta.models ?? []) {
+					if (ch.type != type) { continue; }
+					modelcount++;
+					for (let modelid of ch.values) {
+						models.push({
+							extras,
+							modelid,
+							morph,
+							posttransform,
+							position: [
+								(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
+								modely,
+								(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
+							]
+						});
+					}
 				}
+			}
+			//0 straight wall
+			//1 wall concave corner
+			//2 wall corner (only half of model is stored and needs to be copied+transformed)
+			//3 end of wall/pillar
+			//4 wall attachment
+			//5 wall attachment on inside wall, translates a little in local x (model taken from type 4)
+			//6 ?
+			//7 diagonal inside wall ornament 225deg diagonal using model 4
+			//8 ?
+			//9 diagonal wall
+			//10 scenery (most areas are built exclusively from this type)
+			//11 diagonal scenery (uses model 10)
+			//12 straight roof
+			//13 corner roof (diagonal)
+			//14 concave corner roof 
+			//15 concave roof (with angle)
+			//16 also corner roof (with angle)
+			//17 flat center roof
+			//18 roof overhang
+			//19 corner roof overhang (diagonal)
+			//21 corner roof overhang (with angle)
+			//22 floor decoration
+			if (inst.type == 11) {
+				addmodel(10, { ...posttransform, rotateY: Math.PI / 4 });
+			} else if (inst.type == 7) {
+				let dx = tiledimensions / 2;
+				addmodel(4, {
+					...posttransform,
+					rotateY: Math.PI / 4 * 5,
+					translate: [Math.cos((inst.rotation / 2 - 1 / 4) * Math.PI) * dx, 0, Math.sin((inst.rotation / 2 - 1 / 4) * Math.PI) * dx]
+				});
+			} else if (inst.type == 2) {
+				//corner wall made out of 2 pieces
+				addmodel(2, { ...posttransform, scale: [(inst.rotation % 2 == 0 ? 1 : -1), 1, (inst.rotation % 2 == 1 ? 1 : -1)] });
+				addmodel(2, { ...posttransform, rotateY: Math.PI / 2 });
+			} else if (inst.type == 5) {
+				//moves the model some amount in x direction
+				//this might actually for real try to move depending on the size of objects it shares a tile with
+				//this doesn't take every other transform into account! but should be good enough for old 
+				//models that actually use this prop
+				let dx = tiledimensions / 6;
+				addmodel(4, { ...posttransform, translate: [Math.cos(inst.rotation / 2 * Math.PI) * dx, 0, -Math.sin(inst.rotation / 2 * Math.PI) * dx] });
+			} else {
+				addmodel(inst.type, posttransform);
+			}
+			if (modelcount == 0) {
+				console.log("model not found for render type", inst.type, extras);
 			}
 		}
 	}
@@ -1052,6 +1120,7 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 				node.updateMatrix();
 			}
 			if (obj.posttransform.scale) {
+				//TODO for some reason scale:[1,1,1] increases the model size by like 2%???
 				node.scale.multiply(new THREE.Vector3(...obj.posttransform.scale));
 				node.updateMatrix();
 			}
@@ -1074,20 +1143,23 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 	const posoffset = 0;// 0/4
 	const normaloffset = 3;// 12/4
 	const coloroffset = 24;// 24/1
-	const texweightoffset = 28;// 28/1
-	const texuvoffset = 16;// 32/2
-	const vertexstride = 48;
+	const texusescoloroffset = 28;// 28/1
+	const texweightoffset = 32;// 32/1
+	const texuvoffset = 18;// 36/2
+	const vertexstride = 52;
 	//overalloce worst case scenario
 	let vertexbuffer = new ArrayBuffer(maxtiles * vertexstride * maxVerticesPerTile);
 	let indexbuffer = new Uint16Array(maxtiles * maxVerticesPerTile);
 	let posbuffer = new Float32Array(vertexbuffer);//size 12 bytes
 	let normalbuffer = new Float32Array(vertexbuffer);//size 12 bytes
 	let colorbuffer = new Uint8Array(vertexbuffer);//4 bytes
+	let texusescolorbuffer = new Uint8Array(vertexbuffer);//4 bytes
 	let texweightbuffer = new Uint8Array(vertexbuffer);//4 bytes
 	let texuvbuffer = new Uint16Array(vertexbuffer);//16 bytes [u,v][4]
 	const posstride = vertexstride / 4 | 0;//position indices to skip per vertex (cast to int32)
 	const normalstride = vertexstride / 4 | 0;//normal indices to skip per vertex (cast to int32)
 	const colorstride = vertexstride | 0;//color indices to skip per vertex (cast to int32)
+	const texusescolorstride = vertexstride | 0;//wether each texture uses vertex colors or not
 	const texweightstride = vertexstride | 0;
 	const textuvstride = vertexstride / 2 | 0;
 
@@ -1099,19 +1171,17 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 
 	let minx = Infinity, miny = Infinity, minz = Infinity;
 	let maxx = -Infinity, maxy = -Infinity, maxz = -Infinity;
-	const writeVertex = (tile: TileProps, subx: number, subz: number, color: number[], mats: SimpleTexturePackerAlloc[], currentmat: number) => {
+	const writeVertex = (tile: TileProps, subx: number, subz: number, polyprops: TileVertex[], currentmat: number) => {
 		const pospointer = vertexindex * posstride + posoffset;
 		const normalpointer = vertexindex * normalstride + normaloffset;
 		const colpointer = vertexindex * colorstride + coloroffset;
 		const texweightpointer = vertexindex * texweightstride + texweightoffset;
+		const texusescolorpointer = vertexindex * texusescolorstride + texusescoloroffset;
 		const texuvpointer = vertexindex * textuvstride + texuvoffset;
 
-		//TODO remove
-		// subz = 1 - subz;
 		const x = tile.x + subx * tiledimensions - modelx;
 		const y = tile.y * (1 - subx) * (1 - subz) + tile.y01 * subx * (1 - subz) + tile.y10 * (1 - subx) * subz + tile.y11 * subx * subz;
 		const z = tile.z + subz * tiledimensions - modelz;
-		// subz = 1 - subz;
 
 		minx = Math.min(minx, x); miny = Math.min(miny, y); minz = Math.min(minz, z);
 		maxx = Math.max(maxx, x); maxy = Math.max(maxy, y); maxz = Math.max(maxz, z);
@@ -1121,19 +1191,34 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		normalbuffer[normalpointer + 0] = tile.normalX;
 		normalbuffer[normalpointer + 1] = Math.sqrt(1 - tile.normalX * tile.normalX - tile.normalZ * tile.normalZ);
 		normalbuffer[normalpointer + 2] = tile.normalZ;
-		colorbuffer[colpointer + 0] = color[0];
-		colorbuffer[colpointer + 1] = color[1];
-		colorbuffer[colpointer + 2] = color[2];
+		colorbuffer[colpointer + 0] = polyprops[currentmat].color[0];
+		colorbuffer[colpointer + 1] = polyprops[currentmat].color[1];
+		colorbuffer[colpointer + 2] = polyprops[currentmat].color[2];
 
-		for (let i = 0; i < mats.length; i++) {
-			const texdata = mats[i];
-			let gridsize = texdata.img.width / 128;//TODO is the 4/512 a constant?
+		for (let i = 0; i < polyprops.length; i++) {
+			const subprop = polyprops[i];
+			let texdata: SimpleTexturePackerAlloc | undefined = undefined;
+			if (subprop && subprop.material != -1) {
+				let mat = materials.get(subprop.material);
+				if (mat?.textures.diffuse) {
+					texdata = atlas.map.get(mat.textures.diffuse)!;
+				}
+			}
+			if (!texdata) {
+				//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
+				//not writing anything simple leaves the weight for this texture at 0
+				continue;
+			}
+			//TODO is the 128px per tile a constant?
+			//definitely not, there are also 64px textures
+			let gridsize = Math.max(1, texdata.img.width / 128);
 			let ubase = (tile.x / tiledimensions) % gridsize;
 			let vbase = (tile.z / tiledimensions) % gridsize;
 			const maxuv = 0x10000;
 			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + subx) / gridsize) * maxuv;
 			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + subz) / gridsize) * maxuv;
 			texweightbuffer[texweightpointer + i] = (i == currentmat ? 255 : 0);
+			texusescolorbuffer[texusescolorpointer + i] = (subprop.usesColor ? 255 : 0);
 		}
 
 		return vertexindex++;
@@ -1147,13 +1232,15 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 
 			let shape = tile.shape;
 
-			if (shape.overlay.length != 0) {
+			let hasneighbours = tile.next01 && tile.next10 && tile.next11;
+
+			if (hasneighbours && shape.overlay.length != 0) {
 				let overlaytype = chunk.overlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
 				let color = overlaytype.primary_colour ?? [255, 0, 255];
 				let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
 				if (isvisible || showhidden) {
 					let props = shape.overlay.map(vertex => {
-						if (!overlaytype.unknown_0x0C) { return tile!.overlayprops; }
+						if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
 						else {
 							let node: TileProps | undefined = tile;
 							if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
@@ -1163,68 +1250,46 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 						}
 						return defaultVertexProp;
 					});
-					let mats = props.map(prop => {
-						if (prop && prop.material != -1) {
-							let mat = materials.get(prop.material);
-							if (mat?.textures.diffuse) {
-								return atlas.map.get(mat.textures.diffuse);
-							}
-						}
-						return undefined;
-					});
 					for (let i = 2; i < shape.overlay.length; i++) {
-						let mat0 = mats[0];
-						let mat1 = mats[i - 1];
-						let mat2 = mats[i];
-						//TODO continue with white instead
-						if (!mat0 || !mat1 || !mat2) { continue; }
-
-						let submats = [mat0, mat1, mat2];
 						let v0 = shape.overlay[0];
 						let v1 = shape.overlay[i - 1];
 						let v2 = shape.overlay[i];
-
-						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, props[0].color, submats, 0);
-						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, props[i - 1].color, submats, 1);
-						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, props[i].color, submats, 2);
+						if (!v0 || !v1 || !v2) { continue; }
+						let polyprops = [props[0], props[i - 1], props[i]];
+						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
+						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
+						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
 					}
 				}
 			}
-			if (shape.underlay.length != 0) {
-				if (tile.next01 && tile.next10 && tile.next11) {
-					let props = shape.underlay.map(vertex => {
-						let node: TileProps | undefined = tile;
-						if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-						else if (vertex.nextx) { node = tile!.next01; }
-						else if (vertex.nextz) { node = tile!.next10; }
-						if (node) { return node.vertexprops[vertex.subvertex]; }
-						return defaultVertexProp;
-					});
-					let mats = props.map(prop => {
-						if (prop && prop.material != -1) {
-							let mat = materials.get(prop.material);
-							if (mat?.textures.diffuse) {
-								return atlas.map.get(mat.textures.diffuse);
-							}
+			if (hasneighbours && shape.underlay.length != 0 && (tile.visible || showhidden)) {
+				let props = shape.underlay.map(vertex => {
+					let node: TileProps | undefined = tile;
+					if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+					else if (vertex.nextx) { node = tile!.next01; }
+					else if (vertex.nextz) { node = tile!.next10; }
+					if (node) {
+						let prop = node.vertexprops[vertex.subvertex];
+						if (prop.material == -1) {
+							//TODO there seems to be more to the underlay thing
+							//maybe materials themselves also get blended somehow
+							//just copy our own materials for now if the neighbour is missing
+							return { ...prop, material: tile!.underlayprops.material };
+						} else {
+							return prop;
 						}
-						return undefined;
-					});
-					for (let i = 2; i < shape.underlay.length; i++) {
-						let mat0 = mats[0];
-						let mat1 = mats[i - 1];
-						let mat2 = mats[i];
-						//TODO continue with white instead
-						if (!mat0 || !mat1 || !mat2) { continue; }
-						let submats = [mat0, mat1, mat2];
-
-						let v0 = shape.underlay[0];
-						let v1 = shape.underlay[i - 1];
-						let v2 = shape.underlay[i];
-
-						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, props[0].color, submats, 0);
-						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, props[i - 1].color, submats, 1);
-						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, props[i].color, submats, 2);
 					}
+					return defaultVertexProp;
+				});
+				for (let i = 2; i < shape.underlay.length; i++) {
+					let v0 = shape.underlay[0];
+					let v1 = shape.underlay[i - 1];
+					let v2 = shape.underlay[i];
+					if (!v0 || !v1 || !v2) { continue; }
+					let polyprops = [props[0], props[i - 1], props[i]];
+					indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
+					indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
+					indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
 				}
 			}
 		}
@@ -1255,6 +1320,7 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		_RA_FLOORTEX_UV01: { src: texuvbuffer, offset: texuvoffset + 0, vecsize: 4, normalized: true },
 		_RA_FLOORTEX_UV23: { src: texuvbuffer, offset: texuvoffset + 4, vecsize: 4, normalized: true },
 		_RA_FLOORTEX_WEIGHTS: { src: texweightbuffer, offset: texweightoffset, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_USESCOLOR: { src: texusescolorbuffer, offset: texusescoloroffset, vecsize: 4, normalized: true },
 
 		posmax: [maxx, maxy, maxz],
 		posmin: [minx, miny, minz],
@@ -1279,6 +1345,7 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	geo.setAttribute("_ra_floortex_uv01", makeAttribute(floor._RA_FLOORTEX_UV01));
 	geo.setAttribute("_ra_floortex_uv23", makeAttribute(floor._RA_FLOORTEX_UV23));
 	geo.setAttribute("_ra_floortex_weights", makeAttribute(floor._RA_FLOORTEX_WEIGHTS));
+	geo.setAttribute("_ra_floortex_usescolor", makeAttribute(floor._RA_FLOORTEX_USESCOLOR));
 	let mat = new THREE.MeshPhongMaterial({ shininess: 0 });
 	mat.vertexColors = true;
 	if (!floor.showhidden) {
@@ -1322,6 +1389,7 @@ async function floorToGltf(scene: GLTFSceneCache, floor: FloorMeshData) {
 	attrs._RA_FLOORTEX_UV01 = addAccessor("texuv_01", floor._RA_FLOORTEX_UV01);
 	attrs._RA_FLOORTEX_UV23 = addAccessor("texuv_23", floor._RA_FLOORTEX_UV23);
 	attrs._RA_FLOORTEX_WEIGHTS = addAccessor("texuv_weights", floor._RA_FLOORTEX_WEIGHTS);
+	attrs._RA_FLOORTEX_USESCOLOR = addAccessor("texuv_usescolor", floor._RA_FLOORTEX_USESCOLOR);
 
 	let floortex = -1;
 	if (!floor.showhidden) {

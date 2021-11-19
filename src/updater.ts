@@ -225,7 +225,7 @@ export const updateCallbacks: { [major: number]: { [minor: number]: CacheUpdateH
 				"singular": "texture", "plural": "textures", "folder": "textures",
 				"fileExtension": "png",
 				"bufferCallback": (staticArguments, record, buffer) => {
-					let texture = new ParsedTexture(buffer);
+					let texture = new ParsedTexture(buffer, false);//TODO destructive loss of alpha here
 					if (texture.type != "png") { throw new Error("png image expected"); }
 					//TODO actually extract all subimgs/mipmaps
 					fs.writeFile(`${cachedir}/${staticArguments.folder}/${record}.png`, texture.imagefiles[0], () => { });

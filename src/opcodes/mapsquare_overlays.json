@@ -7,7 +7,7 @@
 	"0x09": { "name":                        "unknown_0x09", "read": "unsigned short" },
 	"0x0A": { "name":                        "unknown_0x0A", "read": "true" },
 	"0x0B": { "name":                        "unknown_0x0B", "read": "unsigned byte" },
-	"0x0C": { "name":                        "unknown_0x0C", "read": "true" },
+	"0x0C": { "name":                     "bleedToUnderlay", "read": "true" },
 	"0x0D": { "name":                     "tertiary_colour", "read": ["array",3,"unsigned byte"] },
 	"0x0E": { "name":                        "unknown_0x0E", "read": "unsigned byte" },
 	"0x10": { "name":                        "unknown_0x10", "read": "unsigned byte" }

@@ -15,9 +15,10 @@ import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
 import { mapsquareModels, mapsquareToGltf, mapsquareToThree, parseMapsquare } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
+import { getMaterialData } from "../3d/ob3togltf";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
-type LookupMode = "model" | "item" | "npc" | "object" | "map";
+type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
 type RenderMode = "gltf" | "ob3" | "three";
 
 const vertexShader = fs.readFileSync(__dirname + "/../assets/shader_vertex.glsl", "utf-8");
@@ -127,6 +128,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setState({ mode: "npc" })}><span>NPCs IDs</span></div>
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setState({ mode: "object" })}><span>Obj/Locs IDs</span></div>
+							<div></div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setState({ mode: "material" })}><span>Material IDs</span></div>
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setState({ mode: "model" })}><span>Model IDs</span></div>
 							<div></div>
@@ -252,6 +255,13 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 			modelids = npc.models ?? [];
 			console.log(npc);
+			break;
+		case "material":
+			modelids = [93776];//"RuneTek_Asset" jagex test model
+			mods.replaceMaterials = [
+				[4314, +searchid]
+			];
+			metatext = JSON.stringify(await getMaterialData(cache.getRaw, +searchid), undefined, "\t");
 			break;
 		case "object":
 			let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));

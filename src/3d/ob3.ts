@@ -135,7 +135,7 @@ export class OB3 {
 			tex = {
 				id: texId,
 				loaded: this.getFile(cacheMajors.texturesPng, texId).then(texfile => {
-					let parsed = new ParsedTexture(texfile);
+					let parsed = new ParsedTexture(texfile, false);//TODO use material flag
 					return parsed.toWebgl().then(img => tex.texture = img)
 				}),
 				texture: null,

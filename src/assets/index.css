@@ -248,7 +248,7 @@ input[type="text"]:focus {
 #sidebar-browser {
 	overflow: hidden;
 	display: grid;
-	grid-template-rows: min-content min-content max-content;
+	grid-template-rows: min-content min-content minmax(0,1fr);
 }
 #sidebar-browser-tab {
 	display: grid;
@@ -264,7 +264,7 @@ input[type="text"]:focus {
 }
 .sidebar-browser-tab-strip {
 	display: grid;
-	grid-template-columns: 144fr 55px 89fr 55px 89fr 55px 89fr 55px 89fr 55px 144fr;
+	grid-template-columns: 144fr 55px 89fr 55px 89fr 55px 89fr 55px 89fr 55px 89fr 55px 144fr;
 	height: 55px;
 	padding-top: 10px;
 	padding-bottom: 5px;
