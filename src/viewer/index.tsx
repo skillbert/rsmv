@@ -97,10 +97,10 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			if (this.state.rendermode == "gltf") {
-				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged, true);
+				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged, hackyCacheFileSource, true);
 			}
 			if (this.state.rendermode == "three") {
-				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged);
+				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged, hackyCacheFileSource);
 			}
 			if (this.state.rendermode == "ob3") {
 				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);
@@ -282,7 +282,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);
 			// renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
 			let scene = await mapsquareToThree(hackyCacheFileSource, modeldata);
-			renderer.setModels?.([scene], [], "");
+			renderer.setModels?.([scene], "");
 			break;
 		default:
 			throw new Error("unknown mode");
@@ -302,7 +302,7 @@ export type ModelViewerState = {
 export interface ModelSink {
 	setOb3Models: (models: Buffer[], cache: MiniCache, mods: ModelModifications, meta: string) => void
 	setGltfModels?: (models: Buffer[]) => void,
-	setModels?: (models: THREE.Object3D[], groupnames: string[], metastr?: string) => void,
+	setModels?: (models: THREE.Object3D[], metastr?: string) => void,
 	setValue?: (key: string, value: boolean) => void
 };
 class Ob3Renderer implements ModelSink {

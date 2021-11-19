@@ -26,7 +26,7 @@ export class MapRenderer {
 	idcounter = 1;
 	squares: MaprenderSquare[] = [];
 	constructor(cnv: HTMLCanvasElement) {
-		this.renderer = new ThreeJsRenderer(cnv, () => { });
+		this.renderer = new ThreeJsRenderer(cnv, () => { },hackyCacheFileSource);
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),

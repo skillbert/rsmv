@@ -21,6 +21,10 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as fs from "fs";
 
 import { ModelViewerState, ModelSink, MiniCache } from "./index";
+import { CacheFileSource } from '../cache';
+import { parseObject } from '../opdecoder';
+import { cacheMajors } from '../constants';
+import { MeshPhongMaterial } from 'three';
 
 
 export class ThreeJsRenderer implements ModelSink {
@@ -30,7 +34,7 @@ export class ThreeJsRenderer implements ModelSink {
 	uistate: ModelViewerState = { meta: "", toggles: {} };
 	scene: THREE.Scene;
 	camera: THREE.Camera | THREE.PerspectiveCamera;
-	selectedmodels: THREE.Object3D[] = [];
+	selectedmodels: { mesh: THREE.Mesh, oldmaterial: THREE.Material }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group | null = null;
 	floormesh: THREE.Mesh;
@@ -39,9 +43,11 @@ export class ThreeJsRenderer implements ModelSink {
 	contextLossCount = 0;
 	contextLossCountLastRender = 0;
 	unpackOb3WithGltf: boolean;
+	filesource: CacheFileSource;
 
-	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void, unpackOb3WithGltf = false) {
+	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource, unpackOb3WithGltf = false) {
 		(window as any).render = this;//TODO remove
+		this.filesource = filesource;
 		this.canvas = canvas;
 		this.unpackOb3WithGltf = unpackOb3WithGltf;
 		this.stateChangeCallback = stateChangeCallback;
@@ -239,13 +245,12 @@ export class ThreeJsRenderer implements ModelSink {
 			return this.setGltfModels(models, metastr);
 		} else {
 			return this.setModels(
-				await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods))),
-				[], metastr);
+				await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods))), metastr);
 		}
 	}
 	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
 		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));
-		this.setModels(newmodels.map(q => q.rootnode), newmodels.flatMap(q => [...q.groupnames]), metastr);
+		this.setModels(newmodels.map(q => q.rootnode), metastr);
 	}
 
 	async takePicture(x: number, z: number, ntiles: number, framesize = 2048) {
@@ -293,29 +298,14 @@ export class ThreeJsRenderer implements ModelSink {
 
 		let model = await new Promise<GLTF>((d, e) => loader.parse(modelbuffer, "", d, e));
 
-		let groupnames = new Set<string>();
-
 		//use faster materials
 		let rootnode = model.scene;
 		rootnode.traverse(node => {
 			node.matrixAutoUpdate = false;
-			if (node.userData.modelgroup) {
-				groupnames.add(node.userData.modelgroup);
-			}
 			node.updateMatrix();
 			if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
 				let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
-				let parent: THREE.Object3D | null = node;
-				let iswireframe = false;
-				//TODO this data should be on the mesh it concerns instead of a parent
-				while (parent) {
-					if (parent.userData.modeltype == "floorhidden") {
-						iswireframe = true;
-					}
-					parent = parent.parent;
-				}
-				node.visible = !iswireframe;//TODO bad logic
-				let mat = new THREE.MeshPhongMaterial({ wireframe: iswireframe });
+				let mat = new THREE.MeshPhongMaterial();
 				if (floortex) {
 					augmentThreeJsFloorMaterial(mat);
 				}
@@ -329,15 +319,37 @@ export class ThreeJsRenderer implements ModelSink {
 				node.material = mat;
 			}
 		});
-		return { rootnode, groupnames };
+		return { rootnode };
 	}
 
-	async setModels(models: THREE.Object3D[], groupnames: string[], metastr = "") {
+	async setModels(models: THREE.Object3D[], metastr = "") {
 		let combined = new THREE.Group();
-		let groups = new Set<string>(groupnames);
+		let groups = new Set<string>();
 		models.forEach(m => combined.add(m));
 		combined.scale.setScalar(1 / 512);
 		(window as any).scene = this.scene;
+
+		combined.traverse(node => {
+			if (node.userData.modelgroup) {
+				groups.add(node.userData.modelgroup);
+			}
+			if (node instanceof THREE.Mesh) {
+				let parent: THREE.Object3D | null = node;
+				let iswireframe = false;
+				//TODO this data should be on the mesh it concerns instead of a parent
+				while (parent) {
+					if (parent.userData.modeltype == "floorhidden") {
+						iswireframe = true;
+					}
+					parent = parent.parent;
+				}
+				node.visible = !iswireframe;//TODO bad logic
+				if (iswireframe && node.material instanceof MeshPhongMaterial) {
+					node.material.wireframe = true;
+				}
+			}
+		});
+
 		// compute the box that contains all the stuff
 		// from root and below
 		const box = new THREE.Box3().setFromObject(combined);
@@ -369,7 +381,12 @@ export class ThreeJsRenderer implements ModelSink {
 	}
 
 	@boundMethod
-	click(e: React.MouseEvent | MouseEvent) {
+	async click(e: React.MouseEvent | MouseEvent) {
+		for (let model of this.selectedmodels) {
+			model.mesh.material = model.oldmaterial;
+		}
+
+		this.selectedmodels = [];
 		let raycaster = new THREE.Raycaster();
 		let cnvrect = this.canvas.getBoundingClientRect();
 		let mousepos = new THREE.Vector2(
@@ -386,7 +403,16 @@ export class ThreeJsRenderer implements ModelSink {
 			}
 			if (obj) {
 				console.log(obj.userData.locationid, obj.userData, [obj]);
-				this.uistate.meta = JSON.stringify(obj.userData, undefined, "\t");
+				obj.traverse(node => {
+					if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshPhongMaterial) {
+						this.selectedmodels.push({ mesh: node, oldmaterial: node.material });
+						node.material = node.material.clone();
+						node.material.color = new THREE.Color(1, 0, 0);
+						node.material.vertexColors = false;
+					}
+				});
+				let object = parseObject.read(await this.filesource.getFileById(cacheMajors.objects, +obj.userData.locationid));
+				this.uistate.meta = JSON.stringify({ ...obj.userData, object }, undefined, "\t");
 				this.stateChangeCallback(this.uistate);
 				break;
 			}

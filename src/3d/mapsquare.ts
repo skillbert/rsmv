@@ -536,7 +536,7 @@ class TileGrid {
 					if (typeof tile.height != "undefined") {
 						height += tile.height;
 					} else {
-						//TODO this is a guss that sort of fits
+						//TODO this is a guess that sort of fits
 						height += 30;
 					}
 					let visible = false;
@@ -694,11 +694,11 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 		for (let level = 0; level < squareLevels; level++) {
 			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false));
 		}
-		// if (opts?.invisibleLayers) {
-		// 	for (let level = 0; level < squareLevels; level++) {
-		// 		floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
-		// 	}
-		// }
+		if (opts?.invisibleLayers) {
+			for (let level = 0; level < squareLevels; level++) {
+				floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
+			}
+		}
 		squareDatas.push({
 			chunk,
 			floors,
@@ -741,8 +741,7 @@ export async function mapsquareToThree(source: CacheFileSource, chunks: ChunkMod
 		node.matrixAutoUpdate = false;
 		node.position.set(chunk.chunk.xoffset * tiledimensions, 0, chunk.chunk.zoffset * tiledimensions);
 		node.updateMatrix();
-		//TODO fix hidden floors tag
-		node.add(... (await Promise.all(chunk.floors.filter(f => !f.showhidden).map(f => floorToThree(scene, f)))).filter(q => q) as any);
+		node.add(... (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any);
 		node.add(await mapSquareLocationsToThree(scene, chunk.models));
 		root.add(node);
 	}
@@ -948,19 +947,35 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				morph.tiles = tilemorphs;
 				modely = 0//TODO give it a logical y again
 			} else {
-				let y00 = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane)!.y;
-				let y01 = grid.getTile(inst.x + chunk.xoffset + sizex - 1, inst.y + chunk.zoffset, inst.plane)?.y01 ?? y00;
-				let y10 = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset + sizez - 1, inst.plane)?.y10 ?? y00;
-				let y11 = grid.getTile(inst.x + chunk.xoffset + sizex - 1, inst.y + chunk.zoffset + sizez - 1, inst.plane)?.y11 ?? y00;
 
 				//TODO there it probably more logic and a flag that toggles between average and min
+				let y00 = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane)!.y;
+				modely = y00;
+				// if (objectmeta.tileplacement_related_c4 == 2) {
+					let tile = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane);
+					if (tile) {
+						if (sizex % 2 == 1 && sizez % 2 == 1) {
+							modely = (tile.y + tile.y01 + tile.y10 + tile.y11) / 4;
+						} else if (sizex % 2 == 1) {
+							modely = (tile.y + tile.y01) / 2;
+						} else if (sizez % 2 == 1) {
+							modely = (tile.y + tile.y10) / 2;
+						} else {
+							modely = tile.y;
+						}
+					}
+				// } else {
 
-				modely = (sizex > 1 || sizez > 1 ? Math.min(y00, y01, y10, y11) : (y00 + y01 + y10 + y11) / 4);
-
-				// if (sizex > 1 || sizez > 1) {
-				// 	modely = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane)!.y;
+				// 	let y01 = grid.getTile(inst.x + chunk.xoffset + sizex - 1, inst.y + chunk.zoffset, inst.plane)?.y01 ?? y00;
+				// 	let y10 = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset + sizez - 1, inst.plane)?.y10 ?? y00;
+				// 	let y11 = grid.getTile(inst.x + chunk.xoffset + sizex - 1, inst.y + chunk.zoffset + sizez - 1, inst.plane)?.y11 ?? y00;
+				// 	modely = (objectmeta.tileplacement_related_c4 != 2 ? Math.min(y00, y01, y10, y11) : (y00 + y01 + y10 + y11) / 4);
+				// 	// if (sizex > 1 || sizez > 1) {
+				// 	// 	modely = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane)!.y;
+				// 	// }
 				// }
 			}
+
 
 			let modelcount = 0;
 			let addmodel = (type: number, posttransform: MapsquareLocation["posttransform"]) => {
@@ -990,7 +1005,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			//5 wall attachment on inside wall, translates a little in local x (model taken from type 4)
 			//6 ?
 			//7 diagonal inside wall ornament 225deg diagonal using model 4
-			//8 ?
+			//8 ? uses type 4 model
 			//9 diagonal wall
 			//10 scenery (most areas are built exclusively from this type)
 			//11 diagonal scenery (uses model 10)

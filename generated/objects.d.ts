@@ -11,14 +11,14 @@ export type objects = {
 	width?: number | undefined
 	length?: number | undefined
 	unknown_11?: true | undefined
-	unknown_12?: true | undefined
-	unknown_13?: number | undefined
+	maybe_allows_lineofsight?: true | undefined
+	is_doorlike?: boolean | undefined
 	probably_morphFloor?: true | undefined
 	unknown_16?: true | undefined
 	occludes_1?: false | undefined
 	probably_animation?: number | undefined
-	unknown_1B?: true | undefined
-	unknown_1C?: number | undefined
+	maybe_blocks_movement?: true | undefined
+	wallkit_related_1C?: number | undefined
 	ambient?: number | undefined
 	actions_0?: string | undefined
 	actions_1?: string | undefined
@@ -38,7 +38,7 @@ export type objects = {
 	unknown_2C?: number | undefined
 	unknown_2D?: number | undefined
 	mirror?: true | undefined
-	model?: false | undefined
+	unknown_40?: true | undefined
 	scaleX?: number | undefined
 	scaleY?: number | undefined
 	scaleZ?: number | undefined
@@ -47,16 +47,16 @@ export type objects = {
 	translateY?: number | undefined
 	translateZ?: number | undefined
 	unknown_49?: true | undefined
-	blocks_ranged?: true | undefined
+	unknown_4A?: true | undefined
 	unknown_4B?: number | undefined
 	morphs_1?: {
 		unk1: number,
 		unk2: number[],
 		unk3: number,
 	} | undefined
-	unknown_4E?: {
-		unknown_1: number,
-		unknown_2: number,
+	light_source_related_4E?: {
+		maybe_color: number,
+		maybe_radius: number,
 	} | undefined
 	unknown_4F?: {
 		unknown_1: number,
@@ -66,7 +66,7 @@ export type objects = {
 	} | undefined
 	unknown_51?: number | undefined
 	unknown_52?: true | undefined
-	unknown_58?: true | undefined
+	is_members?: true | undefined
 	unknown_59?: true | undefined
 	isMembers?: true | undefined
 	morphs_2?: {
@@ -75,11 +75,14 @@ export type objects = {
 		unk3: number[],
 		unk4: number,
 	} | undefined
-	unknown_5D?: number | undefined
-	unknown_5E?: true | undefined
+	tilt_xz?: [
+		number,
+		number,
+	] | undefined
+	under_water?: true | undefined
 	probably_morphCeilingOffset?: number | undefined
-	unknown_61?: true | undefined
-	unknown_62?: true | undefined
+	ground_decoration_related_61?: true | undefined
+	has_animated_texture?: true | undefined
 	dummy_63?: {
 		unknown_2: number,
 		unknown_1: number,
@@ -88,10 +91,10 @@ export type objects = {
 		unknown_2: number,
 		unknown_1: number,
 	} | undefined
-	unknown_65?: number | undefined
+	unused_65?: number | undefined
 	mapscene?: number | undefined
 	occludes_2?: false | undefined
-	unknown_68?: number | undefined
+	interactable_related_68?: number | undefined
 	invertMapScene?: true | undefined
 	headModels?: {
 		model: number,
@@ -104,41 +107,41 @@ export type objects = {
 	members_action_4?: string | undefined
 	members_action_5?: string | undefined
 	unknown_A0?: number[] | undefined
-	unknown_A2?: number | undefined
+	singleuse_A2?: number | undefined
 	unknown_A3?: {
 		unknown_1: number,
 		unknown_2: number,
 		unknown_3: number,
 		unknown_4: number,
 	} | undefined
-	unknown_A4?: number | undefined
-	unknown_A5?: number | undefined
-	unknown_A6?: number | undefined
-	unknown_A7?: number | undefined
-	dummy_a8?: true | undefined
-	dummy_a9?: true | undefined
-	unknown_AA?: number | undefined
-	unknown_AB?: number | undefined
-	unknown_AD?: {
+	singleuse_A4?: number | undefined
+	singleuse_A5?: number | undefined
+	singleuse_A6?: number | undefined
+	floor_thickness?: number | undefined
+	unused_a8?: true | undefined
+	unused_a9?: true | undefined
+	wallkit_related_AA?: number | undefined
+	possibly_wallkit_skew_AB?: number | undefined
+	lightsource_related_AD?: {
 		unknown_1: number,
 		unknown_2: number,
 	} | undefined
-	unknown_B1?: true | undefined
+	can_change_color?: true | undefined
 	unknown_B2?: number | undefined
 	unknown_BA?: number | undefined
 	dummy_bc?: true | undefined
-	unknown_BD?: true | undefined
+	treerockordoor_BD?: true | undefined
 	action_cursors_0?: number | undefined
 	action_cursors_1?: number | undefined
 	action_cursors_2?: number | undefined
 	action_cursors_3?: number | undefined
 	action_cursors_4?: number | undefined
 	action_cursors_5?: number | undefined
-	unknown_C4?: number | undefined
-	unknown_C5?: number | undefined
-	dummy_c6?: true | undefined
-	dummy_c7?: true | undefined
-	unknown_C8?: true | undefined
+	tileplacement_related_c4?: number | undefined
+	clan_citadel_C5?: number | undefined
+	invisible_c6?: true | undefined
+	flooroverlay_c7?: true | undefined
+	singleuse_C8?: true | undefined
 	unknown_C9?: {
 		unknown_1: number,
 		unknown_2: number,
@@ -147,7 +150,7 @@ export type objects = {
 		unknown_5: number,
 		unknown_6: number,
 	} | undefined
-	unknown_CA?: number | undefined
+	singleuse_CA?: number | undefined
 	extra?: {
 		prop: number,
 		intvalue: number | undefined,
