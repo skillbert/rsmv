@@ -13,15 +13,15 @@
 			["type",["ref","$data",[2,5]]],
 			["extra",["opt",["$data",7,"bitflag"],["struct",
 				["flags","unsigned byte"],
-				["unk_0",["opt",["flags",0,"bitflag"],["array",4,"unsigned short"]]],
-				["unk_1",["opt",["flags",1,"bitflag"],"unsigned short"]],
-				["unk_2",["opt",["flags",2,"bitflag"],"unsigned short"]],
-				["unk_3",["opt",["flags",3,"bitflag"],"unsigned short"]],
-				["unk_4",["opt",["flags",4,"bitflag"],"unsigned short"]],
+				["rotation",["opt",["flags",0,"bitflag"],["array",4,"short"]]],
+				["translateX",["opt",["flags",1,"bitflag"],"short"]],
+				["translateY",["opt",["flags",2,"bitflag"],"short"]],
+				["translateZ",["opt",["flags",3,"bitflag"],"short"]],
+				["scale",["opt",["flags",4,"bitflag"],"unsigned short"]],
 				["unk_not4",["opt",["flags",4,"bitflagnot"],["struct",
-					["unkn_5",["opt",["flags",5,"bitflag"],"unsigned short"]],
-					["unkn_6",["opt",["flags",6,"bitflag"],"unsigned short"]],
-					["unkn_7",["opt",["flags",7,"bitflag"],"unsigned short"]]
+					["scaleX",["opt",["flags",5,"bitflag"],"unsigned short"]],
+					["scaleY",["opt",["flags",6,"bitflag"],"unsigned short"]],
+					["scaleZ",["opt",["flags",7,"bitflag"],"unsigned short"]]
 				]]]
 			]]]
 		]]]

@@ -1004,6 +1004,33 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				for (let ch of objectmeta.models ?? []) {
 					if (ch.type != type) { continue; }
 					modelcount++;
+					if (inst.extra) {
+						if (inst.extra.translateX || inst.extra.translateY || inst.extra.translateZ) {
+							//this one is apparently not divided by 4!
+							posttransform = {
+								...posttransform,
+								translate: [
+									(posttransform?.translate?.[0] ?? 0) + (inst.extra.translateX ?? 0),
+									(posttransform?.translate?.[1] ?? 0) + (inst.extra.translateY ?? 0),
+									(posttransform?.translate?.[2] ?? 0) + (inst.extra.translateZ ?? 0)
+								]
+							}
+						}
+						if (inst.extra.unk_not4 || inst.extra.scale) {
+							let allscale = (inst.extra.unk_not4?.scaleX ?? 128) / 128;
+							posttransform = {
+								...posttransform,
+								scale: [
+									allscale * (posttransform?.scale?.[0] ?? 1) * (inst.extra.unk_not4?.scaleX ?? 128) / 128,
+									allscale * (posttransform?.scale?.[1] ?? 1) * (inst.extra.unk_not4?.scaleY ?? 128) / 128,
+									allscale * (posttransform?.scale?.[2] ?? 1) * (inst.extra.unk_not4?.scaleZ ?? 128) / 128
+								]
+							}
+						}
+						if (inst.extra.rotation) {
+							//TODO need to rewrite the floormorph class for this to use trs and get rid of the posttransform
+						}
+					}
 					for (let modelid of ch.values) {
 						models.push({
 							extras,
@@ -1300,17 +1327,17 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 				let tr = obj.posttransform.translate;
 				//no clue why it is -y and +x +z
 				node.position.add(new THREE.Vector3(tr[0], -tr[1], tr[2]));
-				node.updateMatrix();
+				// node.updateMatrix();
 			}
 			if (obj.posttransform.scale) {
 				//TODO for some reason scale:[1,1,1] increases the model size by like 2%???
 				node.scale.multiply(new THREE.Vector3(...obj.posttransform.scale));
-				node.updateMatrix();
+				// node.updateMatrix();
 			}
 			if (obj.posttransform.rotateY) {
 				node.rotateY(obj.posttransform.rotateY);
-				node.updateMatrix();
 			}
+			node.updateMatrix();
 		}
 		node.matrixAutoUpdate = false;
 		node.updateMatrix();
