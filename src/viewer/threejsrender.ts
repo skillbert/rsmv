@@ -24,7 +24,8 @@ import { ModelViewerState, ModelSink, MiniCache } from "./index";
 import { CacheFileSource } from '../cache';
 import { parseObject } from '../opdecoder';
 import { cacheMajors } from '../constants';
-import { MeshPhongMaterial } from 'three';
+import { BufferGeometry, MeshPhongMaterial } from 'three';
+import { ModelExtras, MeshTileInfo } from '../3d/mapsquare';
 
 
 export class ThreeJsRenderer implements ModelSink {
@@ -34,7 +35,7 @@ export class ThreeJsRenderer implements ModelSink {
 	uistate: ModelViewerState = { meta: "", toggles: {} };
 	scene: THREE.Scene;
 	camera: THREE.Camera | THREE.PerspectiveCamera;
-	selectedmodels: { mesh: THREE.Mesh, oldmaterial: THREE.Material }[] = [];
+	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group | null = null;
 	floormesh: THREE.Mesh;
@@ -382,8 +383,9 @@ export class ThreeJsRenderer implements ModelSink {
 
 	@boundMethod
 	async click(e: React.MouseEvent | MouseEvent) {
+		//reset previous selection
 		for (let model of this.selectedmodels) {
-			model.mesh.material = model.oldmaterial;
+			model.unselect();
 		}
 
 		this.selectedmodels = [];
@@ -398,27 +400,85 @@ export class ThreeJsRenderer implements ModelSink {
 		let intersects = raycaster.intersectObjects(this.scene.children);
 		for (let isct of intersects) {
 			let obj: THREE.Object3D | null = isct.object;
-			while (obj && obj.userData?.modeltype != "location") {
+			if (!obj.visible) { continue; }
+			while (obj && obj.userData?.modeltype != "location" && obj.userData?.modeltype != "floor") {
 				obj = obj.parent;
 			}
 			if (obj) {
-				console.log(obj.userData.locationid, obj.userData, [obj]);
-				obj.traverse(node => {
-					if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshPhongMaterial) {
-						this.selectedmodels.push({ mesh: node, oldmaterial: node.material });
-						node.material = node.material.clone();
-						node.material.color = new THREE.Color(1, 0, 0);
-						node.material.vertexColors = false;
+				let userdata = obj.userData as ModelExtras;
+				if (userdata.modeltype == "location") {
+					console.log(userdata.locationid, userdata, [obj]);
+					obj.traverse(node => {
+						if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshPhongMaterial) {
+							let oldmaterial = node.material;
+							this.selectedmodels.push({
+								mesh: node,
+								unselect() { node.material = oldmaterial; }
+							});
+							node.material = node.material.clone();
+							node.material.color = new THREE.Color(1, 0, 0);
+							node.material.vertexColors = false;
+						}
+					});
+					let object = parseObject.read(await this.filesource.getFileById(cacheMajors.objects, +userdata.locationid));
+					this.uistate.meta = JSON.stringify({ ...userdata, object }, undefined, "\t");
+					break;
+				}
+				if (userdata.modeltype == "floor") {
+					console.log(isct, obj);
+
+					if (userdata.tileinfos) {
+						if (!(obj instanceof THREE.Mesh) || !(obj.geometry instanceof BufferGeometry)) {
+							console.log("expected floor object to be a mesh with buffergeometry");
+							continue
+						}
+						let match: MeshTileInfo | undefined = undefined;
+						let endindex = 0;
+						for (let i = 0; i < userdata.tileinfos.length; i++) {
+							if (isct.face!.a < userdata.tileinfos[i].startindex) {
+								endindex = userdata.tileinfos[i].startindex;
+								break;
+							}
+							match = userdata.tileinfos[i];
+						}
+
+						if (match) {
+							let color = obj.geometry.getAttribute("color");
+							let usecolor = obj.geometry.getAttribute("_ra_floortex_usescolor");
+							let undos: (() => void)[] = [];
+							for (let i = match.startindex; i < endindex; i++) {
+								let oldr = color.getX(i), oldg = color.getY(i), oldb = color.getZ(i);
+								let use0 = usecolor.getX(i), use1 = usecolor.getY(i), use2 = usecolor.getZ(i), use3 = usecolor.getW(i);
+								undos.push(() => {
+									color.setXYZ(i, oldr, oldg, oldb);
+									usecolor.setXYZW(i, use0, use1, use2, use3);
+								});
+								color.setXYZ(i, 255, 0, 0);
+								usecolor.setXYZW(i, 255, 255, 255, 255);
+							}
+							undos.push(() => color.needsUpdate = true);
+							undos.push(() => usecolor.needsUpdate = true);
+							this.selectedmodels.push({
+								mesh: obj,
+								unselect() { undos.forEach(undo => undo()); }
+							});
+							color.needsUpdate = true;
+							usecolor.needsUpdate = true;
+							this.uistate.meta = JSON.stringify({
+								...userdata,
+								x: match.x,
+								z: match.z,
+								tileinfos: undefined,//remove (near) circular res from json
+								tile: { ...match.tile, next01: undefined, next10: undefined, next11: undefined }
+							}, undefined, "\t");
+							break;
+						}
 					}
-				});
-				let object = parseObject.read(await this.filesource.getFileById(cacheMajors.objects, +obj.userData.locationid));
-				this.uistate.meta = JSON.stringify({ ...obj.userData, object }, undefined, "\t");
-				this.stateChangeCallback(this.uistate);
-				break;
+				}
 			}
-			//(obj as any).material.color.set(0xff0000);
 		}
 
+		this.stateChangeCallback(this.uistate);
 		this.forceFrame();
 	}
 

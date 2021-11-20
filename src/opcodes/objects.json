@@ -3,7 +3,7 @@
 	"0x02": { "name":                                "name", "read": "string" },
 	"0x0E": { "name":                               "width", "read": "unsigned byte" },
 	"0x0F": { "name":                              "length", "read": "unsigned byte" },
-	"0x11": { "name":                          "unknown_11", "read": "true" },
+	"0x11": { "name":                "probably_nocollision", "read": "true" },
 	"0x12": { "name":            "maybe_allows_lineofsight", "read": "true" },
 	"0x13": { "name":                         "is_doorlike", "read": "boolean" },
 	"0x15": { "name":                 "probably_morphFloor", "read": "true" },

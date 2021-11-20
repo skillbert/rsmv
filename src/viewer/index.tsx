@@ -13,9 +13,10 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareModels, mapsquareToGltf, mapsquareToThree, parseMapsquare } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToGltf, mapsquareToThree, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 import { getMaterialData } from "../3d/ob3togltf";
+import { ParsedTexture } from "../3d/textures";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
@@ -261,7 +262,22 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			mods.replaceMaterials = [
 				[4314, +searchid]
 			];
-			metatext = JSON.stringify(await getMaterialData(cache.getRaw, +searchid), undefined, "\t");
+			let mat = await getMaterialData(cache.getRaw, +searchid);
+			let info: any = { mat };
+			let addtex = async (name: string, texid: number) => {
+				let file = await cache.getRaw(cacheMajors.texturesDds, texid);
+				let parsed = new ParsedTexture(file, false);
+				//bit of a waste to get decode the whole thing just to get meta data, but w/e
+				let img0 = await parsed.toImageData(0);
+				info[name] = { texid, filesize: file.length, width: img0.width, height: img0.height };
+			}
+			for (let tex in mat.textures) {
+				if (mat.textures[tex] != 0) {
+					await addtex(tex, mat.textures[tex]);
+				}
+			}
+
+			metatext = JSON.stringify(info, undefined, "\t");
 			break;
 		case "object":
 			let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));
@@ -276,7 +292,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			width = width ?? 1;
 			height = height ?? width;
 			//TODO enable centered again
-			let opts = { centered: true, invisibleLayers: true };
+			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true };
 			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, opts);
 			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);

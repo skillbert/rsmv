@@ -10,7 +10,7 @@ export type objects = {
 	name?: string | undefined
 	width?: number | undefined
 	length?: number | undefined
-	unknown_11?: true | undefined
+	probably_nocollision?: true | undefined
 	maybe_allows_lineofsight?: true | undefined
 	is_doorlike?: boolean | undefined
 	probably_morphFloor?: true | undefined
