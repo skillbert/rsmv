@@ -13,7 +13,7 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareModels, mapsquareToGltf, mapsquareToThree, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";

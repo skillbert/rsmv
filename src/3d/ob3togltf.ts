@@ -6,6 +6,9 @@ import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 
+//can't use module import syntax because es6 wants to be more es6 than es6
+const THREE = require("three/build/three.js") as typeof import("three");
+
 export type FileGetter = (major: number, minor: number) => Promise<Buffer>;
 
 
@@ -136,16 +139,17 @@ export async function getMaterialData(getFile: FileGetter, matid: number) {
 	return material;
 }
 
+//TODO remove or rewrite
 export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mods: ModelModifications) {
-	let scene = new GLTFSceneCache(getFile);
-	let stream = new Stream(model);
-	let mesh = await addOb3Model(scene, parseOb3Model(stream, mods));
-	//flip z to go from right-handed to left handed
-	let rootnode = scene.gltf.addNode({ mesh: mesh, scale: [1, 1, -1] });
-	scene.gltf.addScene({ nodes: [rootnode] });
-	let result = await scene.gltf.convert({ singlefile: true, glb: false });
-	console.log("gltf", scene.gltf.json);
-	return result.mainfile;
+	// let scene = new GLTFSceneCache(getFile);
+	// let stream = new Stream(model);
+	// let mesh = await addOb3Model(scene, parseOb3Model(stream, mods));
+	// //flip z to go from right-handed to left handed
+	// let rootnode = scene.gltf.addNode({ mesh: mesh, scale: [1, 1, -1] });
+	// scene.gltf.addScene({ nodes: [rootnode] });
+	// let result = await scene.gltf.convert({ singlefile: true, glb: false });
+	// console.log("gltf", scene.gltf.json);
+	// return result.mainfile;
 }
 
 export type ModelData = {
@@ -158,10 +162,10 @@ export type ModelMeshData = {
 	materialId: number,
 	hasVertexAlpha: boolean,
 	attributes: {
-		pos: AttributeSoure,
-		normals?: AttributeSoure,
-		color?: AttributeSoure,
-		texuvs?: AttributeSoure
+		pos: THREE.BufferAttribute,
+		normals?: THREE.BufferAttribute,
+		color?: THREE.BufferAttribute,
+		texuvs?: THREE.BufferAttribute
 	}
 }
 
@@ -270,6 +274,7 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 				materialId = replacedmaterial;
 			}
 		}
+		//TODO let threejs do this while making the bounding box
 		for (let i = 0; i < positionBuffer.length; i += 3) {
 			if (positionBuffer[i + 1] > maxy) {
 				maxy = positionBuffer[i + 1];
@@ -284,17 +289,18 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 			materialId,
 			hasVertexAlpha,
 			attributes: {
-				pos: { newtype: "f32", vecsize: 3, source: positionBuffer }
+				pos:new THREE.BufferAttribute( positionBuffer,3) 
 			}
 		};
 		meshes.push(meshdata);
 
 		if (uvBuffer) {
-			meshdata.attributes.texuvs = { newtype: "f32", vecsize: 2, source: uvBuffer };
+			meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer,2) ;
 		}
 
 		if (normalBuffer) {
 			let normalsrepacked = new Float32Array(normalBuffer.length);
+			//TODO threejs can probly do this for us
 			for (let i = 0; i < normalBuffer.length; i += 3) {
 				let x = normalBuffer[i + 0];
 				let y = normalBuffer[i + 1];
@@ -305,13 +311,14 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 				normalsrepacked[i + 1] = y / len;
 				normalsrepacked[i + 2] = z / len;
 			}
-			meshdata.attributes.normals = { newtype: "f32", vecsize: 3, source: normalsrepacked };
+			meshdata.attributes.normals = new THREE.BufferAttribute(normalsrepacked,3);// { newtype: "f32", vecsize: 3, source: normalsrepacked };
 		}
 
 		//convert per-face attributes to per-vertex
 		if (colourBuffer) {
 			let vertexcolor = new Uint8Array(vertexCount * 4);
-			meshdata.attributes.color = { newtype: "u8", vecsize: 4, source: vertexcolor };
+			//TODO might be able to let three do this for us
+			meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor,4,true);
 			//copy this face color to all vertices on the face
 			for (let i = 0; i < faceCount; i++) {
 				//iterate triangle vertices
@@ -347,51 +354,51 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 	return r;
 }
 
-
+//TODO remove or rebuild
 export async function addOb3Model(scenecache: GLTFSceneCache, model: ModelData) {
-	let gltf = scenecache.gltf;
-	let primitives: MeshPrimitive[] = [];
+	// let gltf = scenecache.gltf;
+	// let primitives: MeshPrimitive[] = [];
 
-	for (let meshdata of model.meshes) {
-		let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(meshdata.attributes);
+	// for (let meshdata of model.meshes) {
+	// 	let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(meshdata.attributes);
 
-		let attrs: MeshPrimitive["attributes"] = {};
+	// 	let attrs: MeshPrimitive["attributes"] = {};
 
-		let view = gltf.addBufferWithView(buffer, bytestride, false);
-		attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
-		if (attributes.normals) {
-			attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexcount);
-		}
-		if (attributes.texuvs) {
-			attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexcount);
-		}
-		if (attributes.color) {
-			attributes.color.normalize = true;
-			attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexcount);
-		}
+	// 	let view = gltf.addBufferWithView(buffer, bytestride, false);
+	// 	attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
+	// 	if (attributes.normals) {
+	// 		attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexcount);
+	// 	}
+	// 	if (attributes.texuvs) {
+	// 		attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexcount);
+	// 	}
+	// 	if (attributes.color) {
+	// 		attributes.color.normalize = true;
+	// 		attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexcount);
+	// 	}
 
-		let viewIndex = gltf.addBufferWithView(meshdata.indices, undefined, true);
+	// 	let viewIndex = gltf.addBufferWithView(meshdata.indices, undefined, true);
 
-		let indices = gltf.addAccessor({
-			componentType: glTypeIds.u16.gltype,
-			count: meshdata.indices.length,
-			type: "SCALAR",
-			bufferView: viewIndex
-		});
+	// 	let indices = gltf.addAccessor({
+	// 		componentType: glTypeIds.u16.gltype,
+	// 		count: meshdata.indices.length,
+	// 		type: "SCALAR",
+	// 		bufferView: viewIndex
+	// 	});
 
-		let materialNode: number | undefined = undefined;
-		if (meshdata.materialId != -1) {
-			materialNode = await scenecache.getGlTfMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
-		}
+	// 	let materialNode: number | undefined = undefined;
+	// 	if (meshdata.materialId != -1) {
+	// 		materialNode = await scenecache.getGlTfMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
+	// 	}
 
-		primitives.push({
-			attributes: attrs,
-			indices: indices,
-			material: materialNode
-		});
-	}
-	let mesh = gltf.addMesh({ primitives });
-	//enables use of normalized ints for a couple of attribute types
-	//gltf.addExtension("KHR_mesh_quantization", true);
-	return mesh;//gltf.addNode({ mesh });
+	// 	primitives.push({
+	// 		attributes: attrs,
+	// 		indices: indices,
+	// 		material: materialNode
+	// 	});
+	// }
+	// let mesh = gltf.addMesh({ primitives });
+	// //enables use of normalized ints for a couple of attribute types
+	// //gltf.addExtension("KHR_mesh_quantization", true);
+	// return mesh;//gltf.addNode({ mesh });
 }

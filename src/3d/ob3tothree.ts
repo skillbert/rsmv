@@ -136,10 +136,10 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
 		let geo = new THREE.BufferGeometry();
-		geo.setAttribute("position", new THREE.BufferAttribute(attrs.pos.source, attrs.pos.vecsize, false));
-		if (attrs.color) { geo.setAttribute("color", new THREE.BufferAttribute(attrs.color.source, attrs.color.vecsize, true)); }
-		if (attrs.normals) { geo.setAttribute("normal", new THREE.BufferAttribute(attrs.normals.source, attrs.normals.vecsize, false)); }
-		if (attrs.texuvs) { geo.setAttribute("uv", new THREE.BufferAttribute(attrs.texuvs.source, attrs.texuvs.vecsize, false)); }
+		geo.setAttribute("position", attrs.pos);
+		if (attrs.color) { geo.setAttribute("color", attrs.color); }
+		if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
+		if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
 
 		geo.index = new THREE.BufferAttribute(meshdata.indices, 1, false);
 

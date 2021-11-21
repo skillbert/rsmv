@@ -17,10 +17,12 @@ import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import * as fs from "fs";
 import sharp from "sharp";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
-import type { Object3D } from "three";
+import { Object3D, Quaternion, Vector3 } from "three";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
+
+const upvector = new THREE.Vector3(0, 1, 0);
 
 const tiledimensions = 512;
 const squareWidth = 64;
@@ -132,13 +134,16 @@ type TileMorph = {
 }
 
 type FloorMorph = {
-	rotation: number,
-	mirror: boolean,
-	width: number,
-	length: number,
-	tiles: TileMorph[] | undefined,
-	scaleModelHeight: boolean,
-	scaleModelHeightOffset: number
+	translate: THREE.Vector3,
+	rotation: THREE.Quaternion,
+	scale: THREE.Vector3,
+	tiletransform: undefined | {
+		tilesx: number,
+		tilesz: number,
+		tiles: TileMorph[],
+		scaleModelHeight: boolean,
+		scaleModelHeightOffset: number
+	}
 }
 
 function generateTileShapes() {
@@ -272,8 +277,8 @@ function boxMesh(width: number, length: number, height: number) {
 
 	let res: ModelMeshData = {
 		attributes: {
-			pos: { newtype: "f32", source: pos, vecsize: 3 },
-			color: { newtype: "u8", source: col, vecsize: 3 }
+			pos: new THREE.BufferAttribute(pos, 3),
+			color: new THREE.BufferAttribute(col, 3)
 		},
 		indices: index,
 		hasVertexAlpha: false,
@@ -283,60 +288,49 @@ function boxMesh(width: number, length: number, height: number) {
 }
 
 export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheight: number) {
-	let q00: number, q01: number, q10: number, q11: number;
-	if (morph.rotation % 2 == 1) {
-		q00 = 0; q01 = 1;
-		q10 = -1; q11 = 0;
-	} else {
-		q00 = 1; q01 = 0;
-		q10 = 0; q11 = 1;
-	}
-	if (morph.rotation >= 2) {
-		q00 *= -1; q01 *= -1; q10 *= -1; q11 *= -1;
-	}
-	if (morph.mirror) {
-		q11 *= -1; q01 *= -1;
-	}
-	let xsize = (morph.rotation % 2 == 1 ? morph.length : morph.width);
-	let zsize = (morph.rotation % 2 == 1 ? morph.width : morph.length);
+	let matrix = new THREE.Matrix4()
+		//TODO propery deal with translate relative to tiles instead of absolute frame
+		// .makeTranslation(morph.translate.x, morph.translate.y, morph.translate.z)
+		.multiply(new THREE.Matrix4().makeRotationFromQuaternion(morph.rotation))
+		.multiply(new THREE.Matrix4().makeScale(morph.scale.x, morph.scale.y, morph.scale.z));
+	let vector = new THREE.Vector3();
+
+	let xsize = morph.tiletransform?.tilesx ?? 1;// (morph.rotation % 2 == 1 ? morph.length : morph.width);
+	let zsize = morph.tiletransform?.tilesz ?? 1;// (morph.rotation % 2 == 1 ? morph.width : morph.length);
 
 	let roundoffsetx = xsize / 2;
 	let roundoffsetz = zsize / 2;
-	let pos = mesh.attributes.pos.source;
-	if (mesh.attributes.pos.vecsize != 3 || mesh.attributes.pos.newtype != "f32") {
+	let pos = mesh.attributes.pos;
+	if (mesh.attributes.pos.itemSize != 3) {
 		throw new Error("unexpected mesh pos type during model transform");
 	}
 
-	let yscale = (morph.scaleModelHeight ? 1 / (modelheight + morph.scaleModelHeightOffset) : 1);
+	let yscale = (morph.tiletransform?.scaleModelHeight ? 1 / (modelheight + morph.tiletransform.scaleModelHeightOffset) : 1);
 
-	const tiles = morph.tiles;
-	let newpos = new Float32Array(pos.length);
-	for (let i = 0; i < pos.length; i += 3) {
-		let x = pos[i + 0];
-		let y = pos[i + 1];
-		let z = pos[i + 2];
-		let newx = x * q00 + z * q01;
-		let newz = x * q10 + z * q11;
-		let newy = y;
+	const tiles = morph.tiletransform?.tiles;
+	let newposdata = new Float32Array(pos.count * 3);
+	//TODO get this as argument instead
+	let newpos = new THREE.BufferAttribute(newposdata, 3);
+	for (let i = 0; i < pos.count; i++) {
+		vector.fromBufferAttribute(pos, i);
+		vector.applyMatrix4(matrix);
 		if (tiles) {
-			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(newx / tiledimensions + roundoffsetx)));
-			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(newz / tiledimensions + roundoffsetz)));
+			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(vector.x / tiledimensions + roundoffsetx)));
+			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(vector.z / tiledimensions + roundoffsetz)));
 			let tile = tiles[tilex + tilez * xsize];
-			let dx = newx + (-tilex + roundoffsetx - 0.5) * tiledimensions;
-			let dy = y * yscale;
-			let dz = newz + (-tilez + roundoffsetz - 0.5) * tiledimensions;
-			newy = tile.constant
+			let dx = vector.x + (-tilex + roundoffsetx - 0.5) * tiledimensions;
+			let dy = vector.y * yscale;
+			let dz = vector.z + (-tilez + roundoffsetz - 0.5) * tiledimensions;
+			vector.y = tile.constant
 				+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
 				+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
 				+ tile.cubic * dx * dy * dz
 		}
-		newpos[i + 0] = newx;
-		newpos[i + 1] = newy;
-		newpos[i + 2] = newz;
+		newpos.setXYZ(i, vector.x, vector.y, vector.z);
 	}
 
 	let indices = mesh.indices;
-	if (morph.mirror) {
+	if (matrix.determinant() < 0) {
 		//reverse the winding order if the model is mirrored
 		if (!(indices instanceof Uint16Array)) { throw new Error("uint16 indices expected"); }
 		let oldindices = indices;
@@ -354,11 +348,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 		indices,
 		attributes: {
 			...mesh.attributes,
-			pos: {
-				newtype: mesh.attributes.pos.newtype,
-				source: newpos,
-				vecsize: 3
-			}
+			pos: newpos
 		}
 	}
 	return r;
@@ -739,29 +729,29 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 	return squareDatas;
 }
 
-export async function mapsquareToGltf(source: CacheFileSource, chunks: ChunkModelData[]) {
-	let scene = new GLTFSceneCache(source.getFileById.bind(source));
-	let nodes: number[] = [];
+// export async function mapsquareToGltf(source: CacheFileSource, chunks: ChunkModelData[]) {
+// 	let scene = new GLTFSceneCache(source.getFileById.bind(source));
+// 	let nodes: number[] = [];
 
-	for (let chunk of chunks) {
-		let squarenodes: number[] = [];
-		squarenodes.push(... (await Promise.all(chunk.floors.map(f => floorToGltf(scene, f)))).filter(q => q != -1));
-		squarenodes.push(await mapSquareLocationsToGltf(scene, chunk.models));
-		nodes.push(scene.gltf.addNode({
-			children: squarenodes,
-			translation: [
-				chunk.chunk.xoffset * tiledimensions,//- originx,//TODO
-				0,
-				chunk.chunk.zoffset * tiledimensions //- originz
-			]
-		}));
-	}
+// 	for (let chunk of chunks) {
+// 		let squarenodes: number[] = [];
+// 		squarenodes.push(... (await Promise.all(chunk.floors.map(f => floorToGltf(scene, f)))).filter(q => q != -1));
+// 		squarenodes.push(await mapSquareLocationsToGltf(scene, chunk.models));
+// 		nodes.push(scene.gltf.addNode({
+// 			children: squarenodes,
+// 			translation: [
+// 				chunk.chunk.xoffset * tiledimensions,//- originx,//TODO
+// 				0,
+// 				chunk.chunk.zoffset * tiledimensions //- originz
+// 			]
+// 		}));
+// 	}
 
-	let rootnode = scene.gltf.addNode({ children: nodes, scale: [1, 1, -1] });
-	scene.gltf.addScene({ nodes: [rootnode] });
-	let model = await scene.gltf.convert({ glb: true, singlefile: true });
-	return model.mainfile;
-}
+// 	let rootnode = scene.gltf.addNode({ children: nodes, scale: [1, 1, -1] });
+// 	scene.gltf.addScene({ nodes: [rootnode] });
+// 	let model = await scene.gltf.convert({ glb: true, singlefile: true });
+// 	return model.mainfile;
+// }
 
 export async function mapsquareToThree(source: CacheFileSource, chunks: ChunkModelData[]) {
 	let scene = new ThreejsSceneCache(source.getFileById.bind(source));
@@ -874,12 +864,6 @@ class SimpleTexturePacker {
 type MapsquareLocation = {
 	modelid: number,
 	morph: FloorMorph,
-	position: [number, number, number],
-	posttransform?: {
-		scale?: [number, number, number],
-		translate?: [number, number, number],
-		rotateY?: number
-	},
 	extras: ModelExtras
 }
 
@@ -897,32 +881,24 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 		let objectfile = await source.getFileById(cacheMajors.objects, loc.id);
 		let objectmeta = parseObject.read(objectfile);
 
-		let posttransform: MapsquareLocation["posttransform"] = undefined;
-		if (objectmeta.translateX || objectmeta.translateY || objectmeta.translateZ) {
-			posttransform ||= {};
-			const translatefactor = 4;//no clue why but seems right
-			posttransform.translate = [
-				(objectmeta.translateX ?? 0) * translatefactor,
-				(objectmeta.translateY ?? 0) * translatefactor,
-				(objectmeta.translateZ ?? 0) * translatefactor
-			];
-		}
-		if (objectmeta.scaleX || objectmeta.scaleY || objectmeta.scaleZ) {
-			posttransform ||= {};
-			const scalefactor = 1 / 128;//estimated fit was 127.5 ...
-			posttransform.scale = [
-				(objectmeta.scaleX ?? 128) * scalefactor,
-				(objectmeta.scaleY ?? 128) * scalefactor,
-				(objectmeta.scaleZ ?? 128) * scalefactor
-			];
+		const translatefactor = 4;//no clue why but seems right
+		let extratranslate = new Vector3().set(
+			(objectmeta.translateX ?? 0) * translatefactor,
+			//minus y!!!
+			-(objectmeta.translateY ?? 0) * translatefactor,
+			(objectmeta.translateZ ?? 0) * translatefactor
+		);
+		const scalefactor = 1 / 128;//estimated fit was 127.5 ...
+		let extrascale = new Vector3().set(
+			(objectmeta.scaleX ?? 128) * scalefactor,
+			(objectmeta.scaleY ?? 128) * scalefactor,
+			(objectmeta.scaleZ ?? 128) * scalefactor
+		);
+		if (objectmeta.mirror) {
+			extrascale.multiply(new Vector3().set(1, 1, -1));
 		}
 
 		instloop: for (let inst of loc.uses) {
-			// if(loc.id<63151-10||loc.id>63151+10){continue}
-			// if (inst.x > 2 || inst.y < 17 || inst.y > 20) { continue }
-			// if (inst.x != 3347 % 64 || inst.y != 3085 % 64) { continue; }
-			//if (loc.id > 63002 - 100 && loc.id < 63002 + 100) { continue; }//TODO unhide dominion tower
-
 			let sizex = (objectmeta.width ?? 1);
 			let sizez = (objectmeta.length ?? 1);
 
@@ -954,15 +930,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			//TODO thse are definitely wrong
 			let linkabove = typeof objectmeta.probably_morphCeilingOffset != "undefined"; //((objectmeta.tileMorph ?? 0) & 2) != 0;
 			let followfloor = linkabove || !!objectmeta.probably_morphFloor; //((objectmeta.tileMorph ?? 0) & 1) != 0 || linkabove;
-			let morph: FloorMorph = {
-				width: objectmeta.width ?? 1,
-				length: objectmeta.length ?? 1,
-				mirror: !!objectmeta.mirror,
-				rotation: inst.rotation,
-				tiles: undefined,
-				scaleModelHeight: false,
-				scaleModelHeightOffset: 0
-			};
+			let tiletransform: FloorMorph["tiletransform"] = undefined;
 			if (followfloor || linkabove) {
 				let tilemorphs: TileMorph[] = [];
 				for (let dz = 0; dz < sizez; dz++) {
@@ -975,11 +943,13 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 						tilemorphs.push(pl);
 					}
 				}
-				if (linkabove) {
-					morph.scaleModelHeight = true;
-					morph.scaleModelHeightOffset = objectmeta.probably_morphCeilingOffset ?? 0;
+				tiletransform = {
+					tilesx: sizex,
+					tilesz: sizez,
+					tiles: tilemorphs,
+					scaleModelHeight: linkabove,
+					scaleModelHeightOffset: (linkabove ? objectmeta.probably_morphCeilingOffset ?? 0 : 0)
 				}
-				morph.tiles = tilemorphs;
 				modely = 0//TODO give it a logical y again
 			} else {
 				let tile = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane);
@@ -998,51 +968,54 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				}
 			}
 
+			let translate = new THREE.Vector3().set(
+				(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
+				modely,
+				(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
+			).add(extratranslate);
+			let scale = new THREE.Vector3().copy(extrascale);
+			let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, inst.rotation / 2 * Math.PI);
+
+			if (inst.extra) {
+				translate.add(new Vector3().set(
+					inst.extra.translateX ?? 0,
+					-(inst.extra.translateY ?? 0),
+					inst.extra.translateZ ?? 0
+				));
+				if (inst.extra.scale) {
+					scale.multiplyScalar((inst.extra.scale ?? 128) / 128);
+				}
+				//TODO i don't thinkthe unk_not4 subprop actually depends on scalar scale not existing
+				if (inst.extra.unk_not4) {
+					scale.multiply(new Vector3().set(
+						(inst.extra.unk_not4.scaleX ?? 128) / 128,
+						(inst.extra.unk_not4.scaleY ?? 128) / 128,
+						(inst.extra.unk_not4.scaleZ ?? 128) / 128,
+					));
+				}
+				if (inst.extra.rotation) {
+					let scale = 1 / (1 << 15);
+					//not sure why it needs a premultiplied inverse or what that even does
+					rotation.premultiply(new THREE.Quaternion(
+						inst.extra.rotation[0] * scale,
+						inst.extra.rotation[1] * scale,
+						inst.extra.rotation[2] * scale,
+						inst.extra.rotation[3] * scale
+					).invert());
+				}
+			}
+			let morph: FloorMorph = {
+				translate, rotation, scale,
+				tiletransform
+			};
 
 			let modelcount = 0;
-			let addmodel = (type: number, posttransform: MapsquareLocation["posttransform"]) => {
+			let addmodel = (type: number, finalmorph: FloorMorph) => {
 				for (let ch of objectmeta.models ?? []) {
 					if (ch.type != type) { continue; }
 					modelcount++;
-					if (inst.extra) {
-						if (inst.extra.translateX || inst.extra.translateY || inst.extra.translateZ) {
-							//this one is apparently not divided by 4!
-							posttransform = {
-								...posttransform,
-								translate: [
-									(posttransform?.translate?.[0] ?? 0) + (inst.extra.translateX ?? 0),
-									(posttransform?.translate?.[1] ?? 0) + (inst.extra.translateY ?? 0),
-									(posttransform?.translate?.[2] ?? 0) + (inst.extra.translateZ ?? 0)
-								]
-							}
-						}
-						if (inst.extra.unk_not4 || inst.extra.scale) {
-							let allscale = (inst.extra.unk_not4?.scaleX ?? 128) / 128;
-							posttransform = {
-								...posttransform,
-								scale: [
-									allscale * (posttransform?.scale?.[0] ?? 1) * (inst.extra.unk_not4?.scaleX ?? 128) / 128,
-									allscale * (posttransform?.scale?.[1] ?? 1) * (inst.extra.unk_not4?.scaleY ?? 128) / 128,
-									allscale * (posttransform?.scale?.[2] ?? 1) * (inst.extra.unk_not4?.scaleZ ?? 128) / 128
-								]
-							}
-						}
-						if (inst.extra.rotation) {
-							//TODO need to rewrite the floormorph class for this to use trs and get rid of the posttransform
-						}
-					}
 					for (let modelid of ch.values) {
-						models.push({
-							extras,
-							modelid,
-							morph,
-							posttransform,
-							position: [
-								(chunk.xoffset + inst.x + sizex / 2) * tiledimensions - rootx,
-								modely,
-								(chunk.zoffset + inst.y + sizez / 2) * tiledimensions - rootz
-							]
-						});
+						models.push({ extras, modelid, morph: finalmorph });
 					}
 				}
 			}
@@ -1052,7 +1025,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			//3 end of wall/pillar
 			//4 wall attachment
 			//5 wall attachment on inside wall, translates a little in local x (model taken from type 4)
-			//6 ?
+			//6 wall attachment on diagonal inside wall, using model 4
 			//7 diagonal inside wall ornament 225deg diagonal using model 4
 			//8 ? uses type 4 model
 			//9 diagonal wall
@@ -1069,27 +1042,28 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			//21 corner roof overhang (with angle)
 			//22 floor decoration
 			if (inst.type == 11) {
-				addmodel(10, { ...posttransform, rotateY: Math.PI / 4 });
-			} else if (inst.type == 7) {
-				let dx = tiledimensions / 2;
-				addmodel(4, {
-					...posttransform,
-					rotateY: Math.PI / 4 * 5,
-					translate: [Math.cos((inst.rotation / 2 - 1 / 4) * Math.PI) * dx, 0, Math.sin((inst.rotation / 2 - 1 / 4) * Math.PI) * dx]
-				});
+				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, Math.PI / 4));
+				addmodel(10, morph);
+			} else if (inst.type == 7 || inst.type == 6) {
+				let dx = (inst.type == 6 ? tiledimensions/2 : tiledimensions / 2);
+				//why is there a seperate one for +180deg???
+				let angle = (inst.type == 6 ? Math.PI / 4 : Math.PI / 4 * 5);
+				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle));
+				morph.translate.add(new THREE.Vector3().set(dx, 0, 0).applyQuaternion(morph.rotation));
+				addmodel(4, morph);
 			} else if (inst.type == 2) {
 				//corner wall made out of 2 pieces
-				addmodel(2, { ...posttransform, scale: [(inst.rotation % 2 == 0 ? 1 : -1), 1, (inst.rotation % 2 == 1 ? 1 : -1)] });
-				addmodel(2, { ...posttransform, rotateY: Math.PI / 2 });
+				addmodel(2, { ...morph, scale: new Vector3().set(1, 1, -1).multiply(morph.scale) });
+				addmodel(2, { ...morph, rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 2).premultiply(morph.rotation) });
 			} else if (inst.type == 5) {
 				//moves the model some amount in x direction
 				//this might actually for real try to move depending on the size of objects it shares a tile with
 				//this doesn't take every other transform into account! but should be good enough for old 
 				//models that actually use this prop
 				let dx = tiledimensions / 6;
-				addmodel(4, { ...posttransform, translate: [Math.cos(inst.rotation / 2 * Math.PI) * dx, 0, -Math.sin(inst.rotation / 2 * Math.PI) * dx] });
+				addmodel(4, { ...morph, translate: new THREE.Vector3().set(dx, 0, 0).applyQuaternion(morph.rotation).add(morph.translate) });
 			} else {
-				addmodel(inst.type, posttransform);
+				addmodel(inst.type, morph);
 			}
 			if (modelcount == 0) {
 				console.log("model not found for render type", inst.type, extras);
@@ -1128,49 +1102,49 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 	return models;
 }
 
-async function mapSquareLocationsToGltf(scene: GLTFSceneCache, models: MapsquareLocation[]) {
-	let modelcache = new Map<number, { modeldata: ModelData, gltfmesh: number }>();
-	let nodes: number[] = [];
+// async function mapSquareLocationsToGltf(scene: GLTFSceneCache, models: MapsquareLocation[]) {
+// 	let modelcache = new Map<number, { modeldata: ModelData, gltfmesh: number }>();
+// 	let nodes: number[] = [];
 
-	for (let obj of models) {
-		let model = modelcache.get(obj.modelid);
-		if (!model) {
-			let file = await scene.getFileById(cacheMajors.models, obj.modelid);
-			let modeldata = parseOb3Model(new Stream(file), {});
-			model = { modeldata, gltfmesh: -1 };
-			modelcache.set(obj.modelid, model);
-		}
+// 	for (let obj of models) {
+// 		let model = modelcache.get(obj.modelid);
+// 		if (!model) {
+// 			let file = await scene.getFileById(cacheMajors.models, obj.modelid);
+// 			let modeldata = parseOb3Model(new Stream(file), {});
+// 			model = { modeldata, gltfmesh: -1 };
+// 			modelcache.set(obj.modelid, model);
+// 		}
 
-		if (obj.morph.tiles) {
-			//generate morphed model
-			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
-			let mesh = await addOb3Model(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
-			nodes.push(scene.gltf.addNode({
-				mesh: mesh,
-				translation: obj.position,
-				extras: obj.extras,
-			}));
-		} else {
-			//cache and reuse the model if it only has afine transforms
-			if (model.gltfmesh == -1) {
-				model.gltfmesh = await addOb3Model(scene, model.modeldata);
-			}
-			//0-3 rotation for 0-270 degrees
-			//i messed up something with the quaternion, but this transform worked..
-			let rotation = (-obj.morph.rotation + 2) / 4 * Math.PI * 2;
-			nodes.push(scene.gltf.addNode({
-				mesh: model.gltfmesh,
-				translation: obj.position,
-				scale: [1, 1, (obj.morph.mirror ? -1 : 1)],
-				//quaternions, have fun
-				rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)],
-				extras: obj.extras,
-			}));
-		}
-	}
+// 		if (obj.morph.tiles) {
+// 			//generate morphed model
+// 			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
+// 			let mesh = await addOb3Model(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
+// 			nodes.push(scene.gltf.addNode({
+// 				mesh: mesh,
+// 				translation: obj.position,
+// 				extras: obj.extras,
+// 			}));
+// 		} else {
+// 			//cache and reuse the model if it only has afine transforms
+// 			if (model.gltfmesh == -1) {
+// 				model.gltfmesh = await addOb3Model(scene, model.modeldata);
+// 			}
+// 			//0-3 rotation for 0-270 degrees
+// 			//i messed up something with the quaternion, but this transform worked..
+// 			let rotation = (-obj.morph.rotation + 2) / 4 * Math.PI * 2;
+// 			nodes.push(scene.gltf.addNode({
+// 				mesh: model.gltfmesh,
+// 				translation: obj.position,
+// 				scale: [1, 1, (obj.morph.mirror ? -1 : 1)],
+// 				//quaternions, have fun
+// 				rotation: [0, Math.cos(rotation / 2), 0, Math.sin(rotation / 2)],
+// 				extras: obj.extras,
+// 			}));
+// 		}
+// 	}
 
-	return scene.gltf.addNode({ children: nodes });
-}
+// 	return scene.gltf.addNode({ children: nodes });
+// }
 
 function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number) {
 	const maxtriangles = squareHeight * squareWidth * 5 * 6 * 2;
@@ -1303,42 +1277,22 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 
 		let node: Object3D;
 
-		if (obj.morph.tiles) {
+		if (obj.morph.tiletransform) {
 			//generate morphed model
 			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
 			node = await ob3ModelToThree(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
-			node.position.set(...obj.position);
+			node.position.copy(obj.morph.translate);
 		} else {
 			//cache and reuse the model if it only has afine transforms
 			if (!model.instancemesh) {
 				model.instancemesh = await ob3ModelToThree(scene, model.modeldata);
 			}
 			node = model.instancemesh.clone(true);
-			node.rotation.set(0, obj.morph.rotation / 4 * 2 * Math.PI, 0);
-			if (obj.morph.mirror) {
-				node.scale.multiply(new THREE.Vector3(1, 1, -1));
-			}
+			node.rotation.setFromQuaternion(obj.morph.rotation);
+			node.scale.copy(obj.morph.scale);
+			node.position.copy(obj.morph.translate);
 		}
 		node.userData = obj.extras;
-		node.position.set(...obj.position);
-		node.userData = obj.extras;
-		if (obj.posttransform) {
-			if (obj.posttransform.translate) {
-				let tr = obj.posttransform.translate;
-				//no clue why it is -y and +x +z
-				node.position.add(new THREE.Vector3(tr[0], -tr[1], tr[2]));
-				// node.updateMatrix();
-			}
-			if (obj.posttransform.scale) {
-				//TODO for some reason scale:[1,1,1] increases the model size by like 2%???
-				node.scale.multiply(new THREE.Vector3(...obj.posttransform.scale));
-				// node.updateMatrix();
-			}
-			if (obj.posttransform.rotateY) {
-				node.rotateY(obj.posttransform.rotateY);
-			}
-			node.updateMatrix();
-		}
 		node.matrixAutoUpdate = false;
 		node.updateMatrix();
 		nodes.push(node);

@@ -1,6 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { mapsquareModels, mapsquareToGltf, mapsquareToThree, parseMapsquare, ParsemapOpts } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts } from "../3d/mapsquare";
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
@@ -166,13 +166,14 @@ export async function downloadMap(x0 = 0, z0 = 0) {
 }
 
 export async function downloadMapsquare(x: number, z: number) {
-	console.log(`generating mapsquare ${x} ${z}`);
-	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false };
-	let { chunks, grid } = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, opts);
-	let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
-	let file = await mapsquareToGltf(hackyCacheFileSource, modeldata);
-	console.log(`completed mapsquare ${x} ${z}`);
-	return file;
+	//TODO
+	// console.log(`generating mapsquare ${x} ${z}`);
+	// let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false };
+	// let { chunks, grid } = await parseMapsquare(hackyCacheFileSource, { x, y: z, width: 1, height: 1 }, opts);
+	// let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
+	// let file = await mapsquareToGltf(hackyCacheFileSource, modeldata);
+	// console.log(`completed mapsquare ${x} ${z}`);
+	// return file;
 }
 
 export async function downloadMapsquareThree(x: number, z: number) {

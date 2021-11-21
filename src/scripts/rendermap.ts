@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareLocations } from "../opdecoder";
-import { mapConfigData, mapsquareModels, mapsquareToGltf, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
+import { mapConfigData, mapsquareModels, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
 import sharp from "sharp";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
 
@@ -23,9 +23,11 @@ let cmd = command({
 		let opts: ParsemapOpts = { centered: true, invisibleLayers: false };
 		let { chunks, grid } = await parseMapsquare(args.source, args.area, opts);
 		if (args.mode == "model") {
-			let modeldata = await mapsquareModels(args.source, grid, chunks, opts);
-			let file = await mapsquareToGltf(args.source, modeldata);
-			fs.writeFileSync(args.save + "/" + Date.now() + ".glb", file);
+			//TODO
+			console.log("needs repimplementation");
+			// let modeldata = await mapsquareModels(args.source, grid, chunks, opts);
+			// let file = await mapsquareToGltf(args.source, modeldata);
+			// fs.writeFileSync(args.save + "/" + Date.now() + ".glb", file);
 		}
 		if (args.mode == "objects") {
 			let locs: { squarex: number, squarez: number, locs: mapsquare_locations["locations"] }[] = [];

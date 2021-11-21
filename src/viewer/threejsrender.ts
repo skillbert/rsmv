@@ -242,8 +242,9 @@ export class ThreeJsRenderer implements ModelSink {
 
 	async setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, metastr: string) {
 		if (this.unpackOb3WithGltf) {
-			let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
-			return this.setGltfModels(models, metastr);
+			//TODO
+			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
+			// return this.setGltfModels(models, metastr);
 		} else {
 			return this.setModels(
 				await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods))), metastr);
