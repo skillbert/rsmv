@@ -225,17 +225,21 @@ export class ThreeJsRenderer implements ModelSink {
 		}
 	}
 
-	setValue(prop: string, value: boolean) {
-		this.uistate.toggles[prop] = value;
-
+	@boundMethod
+	fixVisisbleMeshes() {
 		this.modelnode?.traverse(node => {
 			if (node.userData.modelgroup) {
-				let newvis = this.uistate.toggles[node.userData.modelgroup];
+				let newvis = this.uistate.toggles[node.userData.modelgroup] ?? true;
 				node.traverse(child => {
 					if (child instanceof THREE.Mesh) { child.visible = newvis; }
 				})
 			}
 		});
+	}
+
+	setValue(prop: string, value: boolean) {
+		this.uistate.toggles[prop] = value;
+		this.fixVisisbleMeshes();
 		this.forceFrame();
 		this.stateChangeCallback(this.uistate);
 	}
@@ -345,7 +349,6 @@ export class ThreeJsRenderer implements ModelSink {
 					}
 					parent = parent.parent;
 				}
-				node.visible = !iswireframe;//TODO bad logic
 				if (iswireframe && node.material instanceof MeshPhongMaterial) {
 					node.material.wireframe = true;
 				}
@@ -375,8 +378,9 @@ export class ThreeJsRenderer implements ModelSink {
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
 		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-			this.uistate.toggles[q] = !q.match(/floorhidden/);
+			this.uistate.toggles[q] = !q.match(/(floorhidden|collision)/);
 		});
+		this.fixVisisbleMeshes();
 
 		this.forceFrame();
 		this.stateChangeCallback(this.uistate);

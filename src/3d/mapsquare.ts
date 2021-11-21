@@ -138,8 +138,10 @@ type FloorMorph = {
 	rotation: THREE.Quaternion,
 	scale: THREE.Vector3,
 	tiletransform: undefined | {
-		tilesx: number,
-		tilesz: number,
+		sizex: number,
+		sizez: number,
+		offsetx: number,
+		offsetz: number,
 		tiles: TileMorph[],
 		scaleModelHeight: boolean,
 		scaleModelHeightOffset: number
@@ -289,17 +291,18 @@ function boxMesh(width: number, length: number, height: number) {
 
 export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheight: number) {
 	let matrix = new THREE.Matrix4()
-		//TODO propery deal with translate relative to tiles instead of absolute frame
-		// .makeTranslation(morph.translate.x, morph.translate.y, morph.translate.z)
+		.makeTranslation(morph.translate.x, morph.translate.y, morph.translate.z)
 		.multiply(new THREE.Matrix4().makeRotationFromQuaternion(morph.rotation))
 		.multiply(new THREE.Matrix4().makeScale(morph.scale.x, morph.scale.y, morph.scale.z));
 	let vector = new THREE.Vector3();
 
-	let xsize = morph.tiletransform?.tilesx ?? 1;// (morph.rotation % 2 == 1 ? morph.length : morph.width);
-	let zsize = morph.tiletransform?.tilesz ?? 1;// (morph.rotation % 2 == 1 ? morph.width : morph.length);
+	let xsize = morph.tiletransform?.sizex ?? 1;// (morph.rotation % 2 == 1 ? morph.length : morph.width);
+	let zsize = morph.tiletransform?.sizez ?? 1;// (morph.rotation % 2 == 1 ? morph.width : morph.length);
 
 	let roundoffsetx = xsize / 2;
 	let roundoffsetz = zsize / 2;
+	let tileoffsetx = (morph.tiletransform?.offsetx ?? 0) + roundoffsetx;
+	let tileoffsetz = (morph.tiletransform?.offsetz ?? 0) + roundoffsetz;
 	let pos = mesh.attributes.pos;
 	if (mesh.attributes.pos.itemSize != 3) {
 		throw new Error("unexpected mesh pos type during model transform");
@@ -313,15 +316,16 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 	let newpos = new THREE.BufferAttribute(newposdata, 3);
 	for (let i = 0; i < pos.count; i++) {
 		vector.fromBufferAttribute(pos, i);
+		let vertexy = vector.y ;
 		vector.applyMatrix4(matrix);
 		if (tiles) {
-			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(vector.x / tiledimensions + roundoffsetx)));
-			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(vector.z / tiledimensions + roundoffsetz)));
+			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(vector.x / tiledimensions - tileoffsetx + roundoffsetx)));
+			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(vector.z / tiledimensions - tileoffsetz + roundoffsetz)));
 			let tile = tiles[tilex + tilez * xsize];
-			let dx = vector.x + (-tilex + roundoffsetx - 0.5) * tiledimensions;
-			let dy = vector.y * yscale;
-			let dz = vector.z + (-tilez + roundoffsetz - 0.5) * tiledimensions;
-			vector.y = tile.constant
+			let dx = vector.x + (-tilex - tileoffsetx + roundoffsetx - 0.5) * tiledimensions;
+			let dy=vertexy*yscale;
+			let dz = vector.z + (-tilez - tileoffsetz + roundoffsetz - 0.5) * tiledimensions;
+			vector.y += -vertexy + tile.constant
 				+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
 				+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
 				+ tile.cubic * dx * dy * dz
@@ -880,12 +884,20 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 	for (let loc of locations) {
 		let objectfile = await source.getFileById(cacheMajors.objects, loc.id);
 		let objectmeta = parseObject.read(objectfile);
+		if (objectmeta.morphs_1 || objectmeta.morphs_2) {
+			let newid = -1;
+			if (objectmeta.morphs_1) { newid = objectmeta.morphs_1.unk3; }
+			if (objectmeta.morphs_2) { newid = objectmeta.morphs_2.unk4; }
+			if (newid != -1) {
+				objectfile = await source.getFileById(cacheMajors.objects, newid);
+				objectmeta = parseObject.read(objectfile);
+			}
+		}
 
 		const translatefactor = 4;//no clue why but seems right
 		let extratranslate = new Vector3().set(
 			(objectmeta.translateX ?? 0) * translatefactor,
-			//minus y!!!
-			-(objectmeta.translateY ?? 0) * translatefactor,
+			-(objectmeta.translateY ?? 0) * translatefactor,//minus y!!!
 			(objectmeta.translateZ ?? 0) * translatefactor
 		);
 		const scalefactor = 1 / 128;//estimated fit was 127.5 ...
@@ -944,13 +956,17 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 					}
 				}
 				tiletransform = {
-					tilesx: sizex,
-					tilesz: sizez,
+					sizex,
+					sizez,
+					offsetx: inst.x,
+					offsetz: inst.y,
 					tiles: tilemorphs,
 					scaleModelHeight: linkabove,
 					scaleModelHeightOffset: (linkabove ? objectmeta.probably_morphCeilingOffset ?? 0 : 0)
 				}
-				modely = 0//TODO give it a logical y again
+				let y = tilemorphs.reduce((a, v) => a + v.constant, 0);
+				modely = y / tilemorphs.length;
+				tilemorphs.forEach(t => t.constant -= modely);
 			} else {
 				let tile = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane);
 				if (tile) {
@@ -1045,7 +1061,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, Math.PI / 4));
 				addmodel(10, morph);
 			} else if (inst.type == 7 || inst.type == 6) {
-				let dx = (inst.type == 6 ? tiledimensions/2 : tiledimensions / 2);
+				let dx = (inst.type == 6 ? tiledimensions / 2 : tiledimensions / 2);
 				//why is there a seperate one for +180deg???
 				let angle = (inst.type == 6 ? Math.PI / 4 : Math.PI / 4 * 5);
 				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle));
@@ -1066,7 +1082,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				addmodel(inst.type, morph);
 			}
 			if (modelcount == 0) {
-				console.log("model not found for render type", inst.type, extras);
+				console.log("model not found for render type", inst.type, objectmeta);
 			}
 
 			if (collision && !objectmeta.probably_nocollision) {
@@ -1281,14 +1297,14 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 			//generate morphed model
 			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
 			node = await ob3ModelToThree(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
-			node.position.copy(obj.morph.translate);
+			// node.position.copy(obj.morph.translate);
 		} else {
 			//cache and reuse the model if it only has afine transforms
 			if (!model.instancemesh) {
 				model.instancemesh = await ob3ModelToThree(scene, model.modeldata);
 			}
-			node = model.instancemesh.clone(true);
-			node.rotation.setFromQuaternion(obj.morph.rotation);
+			node = model.instancemesh.clone();
+			node.quaternion.copy(obj.morph.rotation);
 			node.scale.copy(obj.morph.scale);
 			node.position.copy(obj.morph.translate);
 		}
