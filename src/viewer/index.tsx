@@ -185,7 +185,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 					<div className="credits">
 						<p>
 							Interface modified by the RuneScape <br />Preservation Unit.
-							Original tool author unknown.
+							Originally made by Sahima.
 						</p>
 					</div>
 				</div>
