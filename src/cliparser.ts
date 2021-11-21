@@ -21,26 +21,28 @@ export function setLoadingIndicator(ind: typeof loadingIndicator) {
 	loadingIndicator = ind;
 }
 
-const ReadCacheSource: Type<string, CacheFileSource> = {
+const ReadCacheSource: Type<string, () => Promise<CacheFileSource>> = {
 	async from(str) {
 		let [mode, ...argparts] = str.split(":",);
 		let arg = argparts.join(":");
-		switch (mode) {
-			case "live":
-				return new Downloader();
-			case "local":
-				updater.on("update-progress", loadingIndicator.progress.bind(loadingIndicator));
-				await loadingIndicator.start();
-				await updater.run(arg || "cache", loadingIndicator.interval);
-				await loadingIndicator.done();
-				return updater.fileSource;
-			case "cache":
-				return new GameCacheLoader(arg || path.resolve(process.env.ProgramData!, "jagex/runescape"));
-			default:
-				throw new Error("unknown mode");
+		return async () => {
+			switch (mode) {
+				case "live":
+					return new Downloader();
+				case "local":
+					updater.on("update-progress", loadingIndicator.progress.bind(loadingIndicator));
+					await loadingIndicator.start();
+					await updater.run(arg || "cache", loadingIndicator.interval);
+					await loadingIndicator.done();
+					return updater.fileSource;
+				case "cache":
+					return new GameCacheLoader(arg || path.resolve(process.env.ProgramData!, "jagex/runescape"));
+				default:
+					throw new Error("unknown mode");
+			}
 		}
 	},
-	defaultValue: () => new Downloader(),
+	defaultValue: () => () => Promise.resolve(new Downloader()),//yep, you saw it here first, the double lambda without brackets
 	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
 };
 

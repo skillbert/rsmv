@@ -158,7 +158,7 @@ export type ModelData = {
 }
 
 export type ModelMeshData = {
-	indices: Uint16Array,
+	indices: THREE.BufferAttribute,
 	materialId: number,
 	hasVertexAlpha: boolean,
 	attributes: {
@@ -280,22 +280,24 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 				maxy = positionBuffer[i + 1];
 			}
 		}
+		// let positionfloatbuffer = new Float32Array(positionBuffer);
+
 
 		//highest level of detail only
 		let indexbuf = indexBuffers[0];
 
 		let meshdata: ModelMeshData = {
-			indices: indexbuf,
+			indices: new THREE.BufferAttribute(indexbuf, 1),
 			materialId,
 			hasVertexAlpha,
 			attributes: {
-				pos:new THREE.BufferAttribute( positionBuffer,3) 
+				pos: new THREE.BufferAttribute(positionBuffer, 3)
 			}
 		};
 		meshes.push(meshdata);
 
 		if (uvBuffer) {
-			meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer,2) ;
+			meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
 		}
 
 		if (normalBuffer) {
@@ -311,14 +313,14 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 				normalsrepacked[i + 1] = y / len;
 				normalsrepacked[i + 2] = z / len;
 			}
-			meshdata.attributes.normals = new THREE.BufferAttribute(normalsrepacked,3);// { newtype: "f32", vecsize: 3, source: normalsrepacked };
+			meshdata.attributes.normals = new THREE.BufferAttribute(normalsrepacked, 3);// { newtype: "f32", vecsize: 3, source: normalsrepacked };
 		}
 
 		//convert per-face attributes to per-vertex
 		if (colourBuffer) {
 			let vertexcolor = new Uint8Array(vertexCount * 4);
 			//TODO might be able to let three do this for us
-			meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor,4,true);
+			meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
 			//copy this face color to all vertices on the face
 			for (let i = 0; i < faceCount; i++) {
 				//iterate triangle vertices

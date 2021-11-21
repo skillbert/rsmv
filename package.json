@@ -4,8 +4,9 @@
 	"description": "A viewer for NXT client models and materials",
 	"main": "dist/main.js",
 	"scripts": {
-		"start": "electron --inspect --experimental-repl-await ./dist/main.js",
+		"start": "electron --inspect ./dist/main.js",
 		"debug": "electron --inspect-brk ./dist/main.js",
+		"biggpu": "node ./dist/scripts/forcegpu --inspect ./dist/main.js",
 		"build": "gulp",
 		"watch": "gulp watch",
 		"filetypes": "gulp filetypes",

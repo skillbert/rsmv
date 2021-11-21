@@ -368,6 +368,7 @@ export class ThreeJsRenderer implements ModelSink {
 		this.controls.maxDistance = Math.min(500, boxSize * 10 + 10);
 		this.controls.target.copy(boxCenter);
 		this.controls.update();
+		this.controls.screenSpacePanning = false;
 
 		if (this.modelnode) { this.scene.remove(this.modelnode); }
 		this.modelnode = combined;

@@ -20,6 +20,7 @@ app.commandLine.appendSwitch('--disable-gpu-process-crash-limit');
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
+app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
 
 //prevents comptuer from sleeping
 //TODO properly toggle this only when render is running
@@ -60,8 +61,7 @@ let cmd = command({
 		...argparser.filesource
 	},
 	handler: async (args) => {
-		let viewerFileSource = args.source;
-
+		let viewerFileSource = await args.source();
 		//expose to global for debugging
 		(global as any).loader = viewerFileSource;
 
@@ -90,7 +90,6 @@ let cmd = command({
 				contextIsolation: false,
 			}
 		});
-		//index.webContents.openDevTools({ mode: "detach" });
 	}
 });
 
@@ -103,31 +102,9 @@ async function createWindow(page: string, options: Electron.BrowserWindowConstru
 app.on("window-all-closed", () => {
 	//prevent shutdown until all scripts are done
 	//TODO allow some way to exit updater?
-	return;
+	// return;
 	// MacOS stuff I guess?
 	if (process.platform !== "darwin") {
 		app.quit();
 	}
 });
-
-app.on("activate", () => {
-	// MacOS stuff I guess?
-	if (BrowserWindow.getAllWindows().length === 0) {
-		//TODO this doesn't make any sense
-		//@ts-ignore
-		createWindow();
-	}
-});
-
-
-
-// 135 795
-// 135 943
-
-
-// Oak 5
-// Beech 5
-// Hickory 5
-// Yew 6
-// Birch 5
-// Ash 5

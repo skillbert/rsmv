@@ -21,6 +21,7 @@ import { Object3D, Quaternion, Vector3 } from "three";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
+require("three/examples/js/utils/BufferGeometryUtils");
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
@@ -282,7 +283,7 @@ function boxMesh(width: number, length: number, height: number) {
 			pos: new THREE.BufferAttribute(pos, 3),
 			color: new THREE.BufferAttribute(col, 3)
 		},
-		indices: index,
+		indices: new THREE.BufferAttribute(index, 1),
 		hasVertexAlpha: false,
 		materialId: -1
 	}
@@ -311,38 +312,49 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 	let yscale = (morph.tiletransform?.scaleModelHeight ? 1 / (modelheight + morph.tiletransform.scaleModelHeightOffset) : 1);
 
 	const tiles = morph.tiletransform?.tiles;
-	let newposdata = new Float32Array(pos.count * 3);
 	//TODO get this as argument instead
-	let newpos = new THREE.BufferAttribute(newposdata, 3);
+	//needs to be cast to float since int16 overflows
+	let newposarray = new Float32Array(mesh.attributes.pos.count * 3);
+	let newpos = new THREE.BufferAttribute(newposarray, 3);
 	for (let i = 0; i < pos.count; i++) {
 		vector.fromBufferAttribute(pos, i);
-		let vertexy = vector.y ;
+		let vertexy = vector.y;
 		vector.applyMatrix4(matrix);
 		if (tiles) {
 			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(vector.x / tiledimensions - tileoffsetx + roundoffsetx)));
 			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(vector.z / tiledimensions - tileoffsetz + roundoffsetz)));
 			let tile = tiles[tilex + tilez * xsize];
 			let dx = vector.x + (-tilex - tileoffsetx + roundoffsetx - 0.5) * tiledimensions;
-			let dy=vertexy*yscale;
+			let dy = vertexy * yscale;
 			let dz = vector.z + (-tilez - tileoffsetz + roundoffsetz - 0.5) * tiledimensions;
 			vector.y += -vertexy + tile.constant
 				+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
 				+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
-				+ tile.cubic * dx * dy * dz
+				+ tile.cubic * dx * dy * dz;
 		}
 		newpos.setXYZ(i, vector.x, vector.y, vector.z);
+	}
+	let newnorm = mesh.attributes.normals;
+	if (mesh.attributes.normals) {
+		let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
+		let norm = mesh.attributes.normals;
+		newnorm = mesh.attributes.normals.clone();
+		for (let i = 0; i < norm.count; i++) {
+			vector.fromBufferAttribute(norm, i);
+			vector.applyMatrix3(matrix3);
+			newnorm.setXYZ(i, vector.x, vector.y, vector.z);
+		}
 	}
 
 	let indices = mesh.indices;
 	if (matrix.determinant() < 0) {
 		//reverse the winding order if the model is mirrored
-		if (!(indices instanceof Uint16Array)) { throw new Error("uint16 indices expected"); }
 		let oldindices = indices;
-		indices = new Uint16Array(indices.length)
-		for (let i = 0; i < indices.length; i += 3) {
-			indices[i + 0] = oldindices[i + 0]
-			indices[i + 1] = oldindices[i + 2];
-			indices[i + 2] = oldindices[i + 1];
+		indices = indices.clone();
+		for (let i = 0; i < indices.count; i += 3) {
+			indices.setX(i + 0, oldindices.getX(i + 0));
+			indices.setX(i + 1, oldindices.getX(i + 2));
+			indices.setX(i + 2, oldindices.getX(i + 1));
 		}
 	}
 
@@ -352,6 +364,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 		indices,
 		attributes: {
 			...mesh.attributes,
+			normals: newnorm,
 			pos: newpos
 		}
 	}
@@ -1282,6 +1295,7 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 	let modelcache = new Map<number, { modeldata: ModelData, instancemesh: THREE.Object3D | undefined }>();
 	let nodes: THREE.Object3D[] = [];
 
+	let matmeshes = new Map<number, [MapsquareLocation, ModelMeshData, ModelData][]>();
 	for (let obj of models) {
 		let model = modelcache.get(obj.modelid);
 		if (!model) {
@@ -1290,29 +1304,67 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 			model = { modeldata, instancemesh: undefined };
 			modelcache.set(obj.modelid, model);
 		}
-
-		let node: Object3D;
-
-		if (obj.morph.tiletransform) {
-			//generate morphed model
-			let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
-			node = await ob3ModelToThree(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
-			// node.position.copy(obj.morph.translate);
-		} else {
-			//cache and reuse the model if it only has afine transforms
-			if (!model.instancemesh) {
-				model.instancemesh = await ob3ModelToThree(scene, model.modeldata);
+		model.modeldata.meshes.forEach(m => {
+			let matgroup = matmeshes.get(m.materialId);
+			if (!matgroup) {
+				matgroup = [];
+				matmeshes.set(m.materialId, matgroup);
 			}
-			node = model.instancemesh.clone();
-			node.quaternion.copy(obj.morph.rotation);
-			node.scale.copy(obj.morph.scale);
-			node.position.copy(obj.morph.translate);
-		}
-		node.userData = obj.extras;
-		node.matrixAutoUpdate = false;
-		node.updateMatrix();
-		nodes.push(node);
+			matgroup.push([obj, m, model!.modeldata]);
+		})
 	}
+	for (let meshgroup of matmeshes.values()) {
+		let geos = meshgroup.map(m => {
+			let transformed = transformMesh(m[1], m[0].morph, m[2].maxy);
+			let attrs = transformed.attributes;
+			let geo = new THREE.BufferGeometry();
+			geo.setAttribute("position", attrs.pos.clone());
+			if (attrs.color) { geo.setAttribute("color", attrs.color); }
+			if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
+			if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
+			geo.index = transformed.indices;
+			return geo;
+		});
+		let mergedgeo = THREE.BufferGeometryUtils.mergeBufferGeometries(geos);
+		let mat = await scene.getMaterial(meshgroup[0][1].materialId, meshgroup[0][1].hasVertexAlpha);
+		let mesh = new THREE.Mesh(mergedgeo, mat);
+		mergedgeo.userData = meshgroup[0][0].extras;
+		mesh.matrixAutoUpdate = false;
+		mesh.updateMatrix();
+		nodes.push(mesh);
+	}
+
+	// for (let obj of models) {
+	// 	let model = modelcache.get(obj.modelid);
+	// 	if (!model) {
+	// 		let file = await scene.getFileById(cacheMajors.models, obj.modelid);
+	// 		let modeldata = parseOb3Model(new Stream(file), {});
+	// 		model = { modeldata, instancemesh: undefined };
+	// 		modelcache.set(obj.modelid, model);
+	// 	}
+
+	// 	let node: Object3D;
+
+	// 	if (obj.morph.tiletransform) {
+	// 		//generate morphed model
+	// 		let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
+	// 		node = await ob3ModelToThree(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
+	// 		// node.position.copy(obj.morph.translate);
+	// 	} else {
+	// 		//cache and reuse the model if it only has afine transforms
+	// 		if (!model.instancemesh) {
+	// 			model.instancemesh = await ob3ModelToThree(scene, model.modeldata);
+	// 		}
+	// 		node = model.instancemesh.clone(true);
+	// 		node.quaternion.copy(obj.morph.rotation);
+	// 		node.scale.copy(obj.morph.scale);
+	// 		node.position.copy(obj.morph.translate);
+	// 	}
+	// 	node.userData = obj.extras;
+	// 	node.matrixAutoUpdate = false;
+	// 	node.updateMatrix();
+	// 	nodes.push(node);
+	// }
 	let root = new THREE.Group();
 	root.add(...nodes);
 	return root;

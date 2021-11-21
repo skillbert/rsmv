@@ -39,6 +39,7 @@ let cmd = command({
 	handler: async (args) => {
 		let major = isNaN(+args.major) ? cacheMajors[args.major] : +args.major;
 		if (isNaN(major)) { throw new Error("could not find major: " + args.major); }
+		let filesource = await args.source();
 		let minorstart = 0;
 		let minorend = 0;
 		if (args.minor == "all") {
@@ -53,7 +54,7 @@ let cmd = command({
 			}
 		}
 
-		let indexfile = await args.source.getIndexFile(major);
+		let indexfile = await filesource.getIndexFile(major);
 		let decoder = (args.decode ? Object.values(decoders).find(q =>
 			q.index == major
 			&& (typeof q.minor == "undefined" || q.minor == minorstart)
@@ -66,7 +67,7 @@ let cmd = command({
 		for (let index of indexfile) {
 			if (!index) { continue; }
 			if (index.minor >= minorstart && index.minor < minorend) {
-				let files = await args.source.getFileArchive(index);
+				let files = await filesource.getFileArchive(index);
 				let batchedoutput: string[] = [];
 				for (let fileindex in index.subindices) {
 					if (args.subfile != -1 && index.subindices[fileindex] != args.subfile) { continue; }
@@ -88,7 +89,7 @@ let cmd = command({
 						}
 					} else if (args.decode == "gltf") {
 						if (!decoder?.gltf) { throw new Error(); }
-						let buf = await decoder.gltf(file, args.source);
+						let buf = await decoder.gltf(file, filesource);
 						fs.writeFileSync(filename, buf);
 						console.log(filename, files[fileindex].size);
 					}
@@ -100,7 +101,7 @@ let cmd = command({
 				}
 			}
 		}
-		args.source.close();
+		filesource.close();
 		console.log("done");
 	}
 });
