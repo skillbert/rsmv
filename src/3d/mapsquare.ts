@@ -75,27 +75,42 @@ type ChunkData = {
 	cacheIndex: CacheIndex
 }
 
-export type ModelExtras = {
+export type ClickableMesh<T> = {
+	isclickable: true,
+	searchPeers: boolean
+	subranges: number[],
+	subobjects: T[]
+}
+
+type ModelExtrasLocation = {
 	modeltype: "location",
+	isclickable: false,
 	modelgroup: string,
 	locationid: number,
 	worldx: number,
 	worldz: number,
+	rotation: number,
+	mirror: boolean,
 	level: number,
-} | {
+	locationInstance: unknown
+}
+
+export type ModelExtras = ModelExtrasLocation | {
 	modeltype: "floor" | "floorhidden",
 	modelgroup: string,
 	mapsquarex: number,
 	mapsquarez: number,
-	level: number,
-	tileinfos: MeshTileInfo[]
-} | {
+	level: number
+} & ClickableMesh<MeshTileInfo> | {
 	modeltype: "collision",
+	isclickable: false,
 	modelgroup: string,
 	level: number
-}
+} | {
+	modeltype: "locationgroup",
+} & ClickableMesh<ModelExtrasLocation>
 
-export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number, startindex: number }
+export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number };
 
 type TileProps = {
 	raw: mapsquare_tiles[number],
@@ -815,7 +830,7 @@ function copyImageData(dest: ImageData, src: ImageData, destx: number, desty: nu
 type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, img: ImageData }
 
 class SimpleTexturePacker {
-	padsize = 16;
+	padsize = 32;//was still bleeding at 16
 	size: number;
 	allocs: SimpleTexturePackerAlloc[] = [];
 	map = new Map<number, SimpleTexturePackerAlloc>()
@@ -881,7 +896,26 @@ class SimpleTexturePacker {
 type MapsquareLocation = {
 	modelid: number,
 	morph: FloorMorph,
-	extras: ModelExtras
+	extras: ModelExtrasLocation
+}
+
+//TODO move this to a more logical location
+export async function resolveMorphedObject(source: CacheFileSource, id: number) {
+	let objectfile = await source.getFileById(cacheMajors.objects, id);
+	let objectmeta = parseObject.read(objectfile);
+	if (objectmeta.morphs_1 || objectmeta.morphs_2) {
+		let newid = -1;
+		if (objectmeta.morphs_1) { newid = objectmeta.morphs_1.unk3; }
+		if (objectmeta.morphs_2) { newid = objectmeta.morphs_2.unk4; }
+		if (newid != -1) {
+			objectfile = await source.getFileById(cacheMajors.objects, newid);
+			objectmeta = {
+				...objectmeta,
+				...parseObject.read(objectfile)
+			};
+		}
+	}
+	return objectmeta
 }
 
 async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid: TileGrid, collision = false) {
@@ -895,17 +929,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 	let models: MapsquareLocation[] = [];
 
 	for (let loc of locations) {
-		let objectfile = await source.getFileById(cacheMajors.objects, loc.id);
-		let objectmeta = parseObject.read(objectfile);
-		if (objectmeta.morphs_1 || objectmeta.morphs_2) {
-			let newid = -1;
-			if (objectmeta.morphs_1) { newid = objectmeta.morphs_1.unk3; }
-			if (objectmeta.morphs_2) { newid = objectmeta.morphs_2.unk4; }
-			if (newid != -1) {
-				objectfile = await source.getFileById(cacheMajors.objects, newid);
-				objectmeta = parseObject.read(objectfile);
-			}
-		}
+		let objectmeta = await resolveMorphedObject(source, loc.id);
 
 		const translatefactor = 4;//no clue why but seems right
 		let extratranslate = new Vector3().set(
@@ -936,8 +960,9 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				[sizex, sizez] = [sizez, sizex];
 			}
 
-			let extras = {
+			let extras: ModelExtrasLocation = {
 				modeltype: "location",
+				isclickable: false,
 				modelgroup: "objects",
 				locationid: loc.id,
 				worldx: chunk.xoffset + inst.x,
@@ -947,7 +972,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				level: inst.plane,
 				// callingtile,
 				locationInstance: inst
-			} as ModelExtras;
+			};
 
 			let modely: number;
 
@@ -1272,6 +1297,7 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 
 	let extra: ModelExtras = {
 		modeltype: "collision",
+		isclickable: false,
 		modelgroup: "collision" + level,
 		level
 	}
@@ -1342,7 +1368,22 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 		let mergedgeo = THREE.BufferGeometryUtils.mergeBufferGeometries(geos);
 		let mat = await scene.getMaterial(meshgroup[0][1].materialId, meshgroup[0][1].hasVertexAlpha);
 		let mesh = new THREE.Mesh(mergedgeo, mat);
-		mergedgeo.userData = meshgroup[0][0].extras;
+
+		let count = 0;
+		let counts: number[] = [];
+		for (let geo of geos) {
+			counts.push(count);
+			count += geo.index!.count;
+		}
+		let clickable: ModelExtras = {
+			modeltype: "locationgroup",
+			isclickable: true,
+			subranges: counts,
+			searchPeers: true,
+			subobjects: meshgroup.map(q => q[0].extras)
+		}
+		mesh.userData = clickable;
+
 		mesh.matrixAutoUpdate = false;
 		mesh.updateMatrix();
 		nodes.push(mesh);
@@ -1416,6 +1457,7 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 	const modelx = chunk.xoffset * tiledimensions;
 	const modelz = chunk.zoffset * tiledimensions;
 	let tileinfos: MeshTileInfo[] = [];
+	let tileindices: number[] = [];
 
 	let minx = Infinity, miny = Infinity, minz = Infinity;
 	let maxx = -Infinity, maxy = -Infinity, maxz = -Infinity;
@@ -1483,7 +1525,8 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 			let hasneighbours = tile.next01 && tile.next10 && tile.next11;
 
 			if (keeptileinfo) {
-				tileinfos.push({ tile, startindex: indexpointer, x, z, level });
+				tileinfos.push({ tile, x, z, level });
+				tileindices.push(indexpointer);
 			}
 			if (hasneighbours && shape.overlay.length != 0) {
 				let overlaytype = chunk.overlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
@@ -1552,7 +1595,10 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		mapsquarex: chunk.mapsquarex,
 		mapsquarez: chunk.mapsquarez,
 		level: level,
-		tileinfos: []
+		isclickable: true,
+		searchPeers: false,
+		subobjects: tileinfos,
+		subranges: tileindices
 	};
 
 	return {
@@ -1563,6 +1609,7 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 
 		buffer: new Uint8Array(vertexbuffer, 0, vertexindex * vertexstride),
 		vertexstride: vertexstride,
+		//TODO i'm not actually using these, can get rid of it again
 		indices: new Uint16Array(indexbuffer.buffer, indexbuffer.byteOffset, indexpointer),
 		nvertices: vertexindex,
 		atlas,
@@ -1612,7 +1659,7 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 		mat.wireframe = true;
 	}
 	let model = new THREE.Mesh(geo, mat);
-	model.userData = Object.assign(floor.extra, { tileinfos: floor.tileinfos });
+	model.userData = floor.extra;
 	return model;
 }
 

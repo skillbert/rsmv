@@ -25,7 +25,7 @@ import { CacheFileSource } from '../cache';
 import { parseObject } from '../opdecoder';
 import { cacheMajors } from '../constants';
 import { BufferGeometry, MeshPhongMaterial } from 'three';
-import { ModelExtras, MeshTileInfo } from '../3d/mapsquare';
+import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 
 
 export class ThreeJsRenderer implements ModelSink {
@@ -368,7 +368,7 @@ export class ThreeJsRenderer implements ModelSink {
 		this.controls.maxDistance = Math.min(500, boxSize * 10 + 10);
 		this.controls.target.copy(boxCenter);
 		this.controls.update();
-		this.controls.screenSpacePanning = false;
+		this.controls.screenSpacePanning = true;
 
 		if (this.modelnode) { this.scene.remove(this.modelnode); }
 		this.modelnode = combined;
@@ -407,81 +407,116 @@ export class ThreeJsRenderer implements ModelSink {
 		for (let isct of intersects) {
 			let obj: THREE.Object3D | null = isct.object;
 			if (!obj.visible) { continue; }
-			while (obj && obj.userData?.modeltype != "location" && obj.userData?.modeltype != "floor") {
-				obj = obj.parent;
-			}
-			if (obj) {
-				let userdata = obj.userData as ModelExtras;
-				if (userdata.modeltype == "location") {
-					console.log(userdata.locationid, userdata, [obj]);
-					obj.traverse(node => {
-						if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshPhongMaterial) {
-							let oldmaterial = node.material;
-							this.selectedmodels.push({
-								mesh: node,
-								unselect() { node.material = oldmaterial; }
-							});
-							node.material = node.material.clone();
-							node.material.color = new THREE.Color(1, 0, 0);
-							node.material.vertexColors = false;
-						}
-					});
-					let object = parseObject.read(await this.filesource.getFileById(cacheMajors.objects, +userdata.locationid));
-					this.uistate.meta = JSON.stringify({ ...userdata, object }, undefined, "\t");
+			if (!(obj instanceof THREE.Mesh) || !obj.userData.isclickable) { continue; }
+			let meshdata = obj.userData as ModelExtras;
+			if (!meshdata.isclickable) { continue; }
+
+			//find out what we clicked
+			let match: unknown = undefined;
+			let endindex: number = obj.geometry.index?.count ?? obj.geometry.attributes.position.count;
+			let startindex = 0;
+			let clickindex = isct.faceIndex;
+			if (typeof clickindex == "undefined") { throw new Error("???") }
+			for (let i = 0; i < meshdata.subranges.length; i++) {
+				if (clickindex * 3 < meshdata.subranges[i]) {
+					endindex = meshdata.subranges[i];
 					break;
 				}
-				if (userdata.modeltype == "floor") {
-					console.log(isct, obj);
+				startindex = meshdata.subranges[i];
+				match = meshdata.subobjects[i];
+			}
+			if (!match) { continue; }
 
-					if (userdata.tileinfos) {
-						if (!(obj instanceof THREE.Mesh) || !(obj.geometry instanceof BufferGeometry)) {
-							console.log("expected floor object to be a mesh with buffergeometry");
-							continue
-						}
-						let match: MeshTileInfo | undefined = undefined;
-						let endindex = 0;
-						for (let i = 0; i < userdata.tileinfos.length; i++) {
-							if (isct.face!.a < userdata.tileinfos[i].startindex) {
-								endindex = userdata.tileinfos[i].startindex;
-								break;
-							}
-							match = userdata.tileinfos[i];
-						}
+			//find all the meshes and vertex ranges that are part of this obejct
+			let matches: { start: number, end: number, mesh: THREE.Mesh }[] = [];
+			if (!meshdata.searchPeers) {
+				matches.push({ start: startindex, end: endindex, mesh: obj });
+			} else {
+				let root: THREE.Object3D = obj;
+				while (root.parent) { root = root.parent; }
 
-						if (match) {
-							let color = obj.geometry.getAttribute("color");
-							let usecolor = obj.geometry.getAttribute("_ra_floortex_usescolor");
-							let undos: (() => void)[] = [];
-							for (let i = match.startindex; i < endindex; i++) {
-								let oldr = color.getX(i), oldg = color.getY(i), oldb = color.getZ(i);
-								let use0 = usecolor.getX(i), use1 = usecolor.getY(i), use2 = usecolor.getZ(i), use3 = usecolor.getW(i);
-								undos.push(() => {
-									color.setXYZ(i, oldr, oldg, oldb);
-									usecolor.setXYZW(i, use0, use1, use2, use3);
+				root.traverseVisible(obj => {
+					let meshdata = obj.userData as ModelExtras;
+					if (obj instanceof THREE.Mesh && meshdata.isclickable && meshdata.searchPeers) {
+						for (let i = 0; i < meshdata.subobjects.length; i++) {
+							if (meshdata.subobjects[i] == match) {
+								matches.push({
+									start: meshdata.subranges[i],
+									end: meshdata.subranges[i + 1] ?? obj.geometry.index.count,
+									mesh: obj
 								});
-								color.setXYZ(i, 255, 0, 0);
-								usecolor.setXYZW(i, 255, 255, 255, 255);
 							}
-							undos.push(() => color.needsUpdate = true);
-							undos.push(() => usecolor.needsUpdate = true);
-							this.selectedmodels.push({
-								mesh: obj,
-								unselect() { undos.forEach(undo => undo()); }
-							});
-							color.needsUpdate = true;
-							usecolor.needsUpdate = true;
-							this.uistate.meta = JSON.stringify({
-								...userdata,
-								x: match.x,
-								z: match.z,
-								tileinfos: undefined,//remove (near) circular res from json
-								tile: { ...match.tile, next01: undefined, next10: undefined, next11: undefined }
-							}, undefined, "\t");
-							break;
 						}
 					}
-				}
+				});
 			}
+
+			console.log(matches);
+
+			//update the affected meshes
+			let undos: (() => void)[] = [];
+			for (let submatch of matches) {
+				let color = submatch.mesh.geometry.getAttribute("color");
+				let usecolor = submatch.mesh.geometry.getAttribute("_ra_floortex_usescolor");
+				let oldindices: number[] = [];
+				let oldcols: [number, number, number][] = [];
+				let oldusecols: [number, number, number, number][] = [];
+				//remember old atribute values
+				for (let i = submatch.start; i < submatch.end; i++) {
+					let index = submatch.mesh.geometry.index?.getX(i) ?? i;
+					oldindices.push(index);
+					oldcols.push([color.getX(index), color.getY(index), color.getZ(index)]);
+					if (usecolor) {
+						oldusecols.push([usecolor.getX(index), usecolor.getY(index), usecolor.getZ(index), usecolor.getW(index)]);
+					}
+				}
+				//update the value in a seperate loop since we'll be writing some multiple times
+				for (let i = submatch.start; i < submatch.end; i++) {
+					let index = submatch.mesh.geometry.index?.getX(i) ?? i;
+					oldindices.push(index);
+					color.setXYZ(index, 255, 0, 0);
+					if (usecolor) {
+						usecolor.setXYZW(index, 255, 255, 255, 255);
+					}
+				}
+				undos.push(() => {
+					for (let i = submatch.start; i < submatch.end; i++) {
+						let index = oldindices[i - submatch.start];
+						color.setXYZ(index, ...oldcols[i - submatch.start]);
+						color.needsUpdate = true;
+						if (usecolor) {
+							usecolor.setXYZW(index, ...oldusecols[i - submatch.start]);
+							usecolor.needsUpdate = true;
+						}
+					}
+				});
+				this.selectedmodels.push({
+					mesh: submatch.mesh,
+					unselect() { undos.forEach(undo => undo()); }
+				});
+				color.needsUpdate = true;
+				if (usecolor) { usecolor.needsUpdate = true; }
+			}
+
+			//show data about what we clicked
+			console.log(match);
+			if (meshdata.modeltype == "locationgroup") {
+				let typedmatch = match as typeof meshdata.subobjects[number];
+				let object = resolveMorphedObject(this.filesource, typedmatch.locationid);
+				this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
+			}
+			if (meshdata.modeltype == "floor") {
+				let typedmatch = match as typeof meshdata.subobjects[number];
+				this.uistate.meta = JSON.stringify({
+					...meshdata,
+					x: typedmatch.x,
+					z: typedmatch.z,
+					subobjects: undefined,//remove (near) circular ref from json
+					subranges: undefined,
+					tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined }
+				}, undefined, "\t");
+			}
+			break;
 		}
 
 		this.stateChangeCallback(this.uistate);
