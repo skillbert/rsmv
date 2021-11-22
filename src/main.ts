@@ -14,18 +14,12 @@ app.allowRendererProcessReuse = false;
 //don't use browser behavoir of blocking gpu access after a opengl crash
 app.disableDomainBlockingFor3DAPIs();
 //don't give up after 3 crashes! keep trying!
-app.commandLine.appendSwitch('--disable-gpu-process-crash-limit');
-//prevent electron from nerfing performance when the window isn't visible
-//TODO should probably toggle only when rendering the map
-app.commandLine.appendSwitch("disable-renderer-backgrounding");
-app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
-app.commandLine.appendSwitch("disable-background-timer-throttling");
+app.commandLine.appendSwitch("disable-gpu-process-crash-limit");
 app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
 
-//prevents comptuer from sleeping
-//TODO properly toggle this only when render is running
-const id = powerSaveBlocker.start("prevent-app-suspension");
-//powerSaveBlocker.stop(id)
+//forces dedicated gpu on windows
+//https://stackoverflow.com/questions/54464276/how-to-force-discrete-gpu-in-electron-js/63668188#63668188
+process.env.SHIM_MCCOMPAT = '0x800000001';
 
 //show a nice loading window while updating our local cache
 let loadingwnd: BrowserWindow | null = null;

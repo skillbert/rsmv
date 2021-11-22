@@ -12,7 +12,7 @@ export type objects = {
 	length?: number | undefined
 	probably_nocollision?: true | undefined
 	maybe_allows_lineofsight?: true | undefined
-	is_doorlike?: boolean | undefined
+	deletable?: boolean | undefined
 	probably_morphFloor?: true | undefined
 	unknown_16?: true | undefined
 	occludes_1?: false | undefined

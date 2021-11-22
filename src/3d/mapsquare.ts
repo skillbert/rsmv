@@ -1049,14 +1049,14 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				}
 			}
 			//0 straight wall
-			//1 wall concave corner
-			//2 wall corner (only half of model is stored and needs to be copied+transformed)
+			//1 wall short corner
+			//2 wall long corner (only half of model is stored and needs to be copied+transformed)
 			//3 end of wall/pillar
 			//4 wall attachment
 			//5 wall attachment on inside wall, translates a little in local x (model taken from type 4)
-			//6 wall attachment on diagonal inside wall, using model 4
-			//7 diagonal inside wall ornament 225deg diagonal using model 4
-			//8 ? uses type 4 model
+			//6 wall attachment on diagonal inside wall, translates a little and uses model 4
+			//7 diagonal outside wall ornament 225deg diagonal using model 4
+			//8 BOTH 6 and 7, both using model 4
 			//9 diagonal wall
 			//10 scenery (most areas are built exclusively from this type)
 			//11 diagonal scenery (uses model 10)
@@ -1073,13 +1073,27 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			if (inst.type == 11) {
 				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, Math.PI / 4));
 				addmodel(10, morph);
-			} else if (inst.type == 7 || inst.type == 6) {
-				let dx = (inst.type == 6 ? tiledimensions / 2 : tiledimensions / 2);
-				//why is there a seperate one for +180deg???
-				let angle = (inst.type == 6 ? Math.PI / 4 : Math.PI / 4 * 5);
-				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle));
-				morph.translate.add(new THREE.Vector3().set(dx, 0, 0).applyQuaternion(morph.rotation));
-				addmodel(4, morph);
+			} else if (inst.type == 8 || inst.type == 7 || inst.type == 6) {
+				if (inst.type == 6 || inst.type == 8) {
+					let dx = tiledimensions * 0.6;
+					let angle = Math.PI / 4;
+					let rotation = morph.rotation.clone().multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle));
+					addmodel(4, {
+						...morph,
+						rotation,
+						translate: morph.translate.clone().add(new THREE.Vector3().set(dx, 0, 0).applyQuaternion(rotation))
+					});
+				}
+				if (inst.type == 7 || inst.type == 8) {
+					let dx = tiledimensions * 0.5;
+					let angle = Math.PI / 4 * 5;
+					let rotation = morph.rotation.clone().multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle))
+					addmodel(4, {
+						...morph,
+						rotation,
+						translate: morph.translate.clone().add(new THREE.Vector3().set(dx, 0, 0).applyQuaternion(rotation))
+					});
+				}
 			} else if (inst.type == 2) {
 				//corner wall made out of 2 pieces
 				addmodel(2, { ...morph, scale: new Vector3().set(1, 1, -1).multiply(morph.scale) });

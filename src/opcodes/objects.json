@@ -5,7 +5,7 @@
 	"0x0F": { "name":                              "length", "read": "unsigned byte" },
 	"0x11": { "name":                "probably_nocollision", "read": "true" },
 	"0x12": { "name":            "maybe_allows_lineofsight", "read": "true" },
-	"0x13": { "name":                         "is_doorlike", "read": "boolean" },
+	"0x13": { "name":                           "deletable", "read": "boolean" },
 	"0x15": { "name":                 "probably_morphFloor", "read": "true" },
 	"0x16": { "name":                          "unknown_16", "read": "true" },
 	"0x17": { "name":                          "occludes_1", "read": "false" },

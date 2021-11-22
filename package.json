@@ -5,8 +5,8 @@
 	"main": "dist/main.js",
 	"scripts": {
 		"start": "electron --inspect ./dist/main.js",
+		"map": "electron --inspect ./dist/map/run.js",
 		"debug": "electron --inspect-brk ./dist/main.js",
-		"biggpu": "node ./dist/scripts/forcegpu --inspect ./dist/main.js",
 		"build": "gulp",
 		"watch": "gulp watch",
 		"filetypes": "gulp filetypes",

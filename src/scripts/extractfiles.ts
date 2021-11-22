@@ -106,4 +106,4 @@ let cmd = command({
 	}
 });
 
-run(cmd, cliArguments);
+run(cmd, cliArguments());

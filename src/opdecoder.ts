@@ -6,6 +6,8 @@ import * as opcode_reader from "./opcode_reader";
 //the buffer is reused so it saves a ton of buffer allocs
 const scratchbuf = Object.assign(Buffer.alloc(1024 * 100), { scan: 0 });
 
+
+let bytesleftoverwarncount = 0;
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser<T>;
 
@@ -19,9 +21,15 @@ export class FileParser<T> {
 		let scanbuf = Object.assign(buffer, { scan: 0 });
 		let res = this.parser.read(scanbuf, {});
 		if (scanbuf.scan != scanbuf.length) {
-			console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
-			let name = `cache/bonusbytes-${Date.now()}.bin`;
-			fs.writeFileSync(name, scanbuf.slice(scanbuf.scan));
+			bytesleftoverwarncount++;
+			if (bytesleftoverwarncount < 100) {
+				console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+				// let name = `cache/bonusbytes-${Date.now()}.bin`;
+				// fs.writeFileSync(name, scanbuf.slice(scanbuf.scan));
+			}
+			if (bytesleftoverwarncount == 100) {
+				console.log("too many bytes left over warning, no more warnings will be logged");
+			}
 		}
 		return res;
 	}
