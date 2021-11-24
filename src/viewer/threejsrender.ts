@@ -452,8 +452,6 @@ export class ThreeJsRenderer implements ModelSink {
 				});
 			}
 
-			console.log(matches);
-
 			//update the affected meshes
 			let undos: (() => void)[] = [];
 			for (let submatch of matches) {
@@ -500,7 +498,7 @@ export class ThreeJsRenderer implements ModelSink {
 			}
 
 			//show data about what we clicked
-			console.log(match);
+			console.log(obj.material.userData);
 			if (meshdata.modeltype == "locationgroup") {
 				let typedmatch = match as typeof meshdata.subobjects[number];
 				let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);

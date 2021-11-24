@@ -18,6 +18,7 @@ import sharp from "sharp";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
 import { BufferAttribute, Object3D, Quaternion, Vector3 } from "three";
 import { materialCacheKey } from "./jmat";
+import { number } from "cmd-ts";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -362,7 +363,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 		throw new Error("unexpected mesh pos type during model transform");
 	}
 
-	let yscale = (morph.tiletransform?.scaleModelHeight ? 1 / (modelheight + morph.tiletransform.scaleModelHeightOffset) : 1);
+	let yscale = (morph.tiletransform?.scaleModelHeight && modelheight > 0 ? 1 / (modelheight + morph.tiletransform.scaleModelHeightOffset) : 1);
 
 	const tiles = morph.tiletransform?.tiles;
 	//TODO get this as argument instead
@@ -378,12 +379,22 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(vector.z / tiledimensions - tileoffsetz + roundoffsetz)));
 			let tile = tiles[tilex + tilez * xsize];
 			let dx = vector.x + (-tilex - tileoffsetx + roundoffsetx - 0.5) * tiledimensions;
-			let dy = vertexy * yscale;
 			let dz = vector.z + (-tilez - tileoffsetz + roundoffsetz - 0.5) * tiledimensions;
+			let dy: number;
+			if (vertexy < 0) {
+				//ignore y related morphs if vertex is below tile floor
+				vector.y += vertexy;
+				dy = 0;
+			} else {
+				dy = vertexy * yscale;
+			}
 			vector.y += -vertexy + tile.constant
 				+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
 				+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
 				+ tile.cubic * dx * dy * dz;
+			if (isNaN(vector.y)) {
+				debugger;
+			}
 		}
 		newpos.setXYZ(i, vector.x, vector.y, vector.z);
 	}
@@ -451,7 +462,7 @@ class TileGrid {
 		this.levelstep = this.zstep * gridheight * squareHeight;
 		this.tiles = [];
 	}
-	getObjectPlacement(x: number, z: number, plane: number, linkabove: boolean, rotation: number, mirror: boolean) {
+	getObjectPlacement(x: number, z: number, plane: number, linkabove: boolean) {
 		let tile = this.getTile(x, z, plane);
 		if (!tile) {
 			console.log("could not find all corner tiles of object");
@@ -464,20 +475,13 @@ class TileGrid {
 		let dydz = (tile.y10 / 2 + tile.y11 / 2 - originy) / xdist;
 		let dydxz = (tile.y11 - originy - dydx * xdist - dydz * zdist) / xdist / zdist;
 
-		//TODO rotation and mirror should be handled in the transform instead
-		if ((rotation % 2 == 1) != mirror) { dydxz = -dydxz; }
-		if (rotation == 1) { [dydx, dydz] = [-dydz, dydx]; }
-		if (rotation == 2) { [dydx, dydz] = [-dydx, -dydz]; }
-		if (rotation == 3) { [dydx, dydz] = [dydz, -dydx]; }
-		if (mirror) { dydz = -dydz; }
-
 		let dydxy = 0;
 		let dydyz = 0;
 		let dydxyz = 0;
 		let dydy = 1;
 
 		if (linkabove) {
-			let roof = this.getObjectPlacement(x, z, plane + 1, false, rotation, mirror);
+			let roof = this.getObjectPlacement(x, z, plane + 1, false);
 			if (roof) {
 				dydy = (roof.constant - originy);
 				dydxy = (roof.linear[0] - dydx);
@@ -1035,7 +1039,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				let tilemorphs: TileMorph[] = [];
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
-						let pl = grid.getObjectPlacement(chunk.xoffset + inst.x + dx, chunk.zoffset + inst.y + dz, inst.plane, linkabove, 0, false)
+						let pl = grid.getObjectPlacement(chunk.xoffset + inst.x + dx, chunk.zoffset + inst.y + dz, inst.plane, linkabove);
 						if (!pl) {
 							console.log("could not find multitile placement")
 							continue instloop;

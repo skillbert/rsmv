@@ -98,9 +98,8 @@ export class ThreejsSceneCache {
 				let material = await getMaterialData(this.getFileById, matid);
 
 				let mat = new THREE.MeshPhongMaterial();
-				mat.transparent = hasVertexAlpha || material.alphamode == "blend";
+				mat.transparent = hasVertexAlpha || material.alphamode != "opaque";
 				mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
-				mat.vertexColors = material.vertexColors;
 				if (material.textures.diffuse) {
 					mat.map = await this.getTextureFile(material.textures.diffuse, material.alphamode != "opaque");
 					mat.map.wrapS = THREE.RepeatWrapping;
@@ -111,6 +110,15 @@ export class ThreejsSceneCache {
 					mat.normalMap = await this.getTextureFile(material.textures.normal, false);
 					mat.normalMap.wrapS = THREE.RepeatWrapping;
 					mat.normalMap.wrapT = THREE.RepeatWrapping;
+				}
+				mat.vertexColors = material.vertexColors || hasVertexAlpha;
+				if (!material.vertexColors && hasVertexAlpha) {
+					mat.customProgramCacheKey = () => "vertexalphaonly";
+					mat.onBeforeCompile = (shader, renderer) => {
+						//this sucks but is nessecary since three doesn't support vertex alpha without vertex color
+						//hard to rewrite the color attribute since we don't know if other meshes do use the colors
+						shader.fragmentShader = shader.fragmentShader.replace("#include <color_fragment>", "diffuseColor.a *= vColor.a;");
+					}
 				}
 				mat.shininess = 0;
 				mat.userData = material;

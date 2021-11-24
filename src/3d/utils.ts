@@ -10,11 +10,11 @@ export type Stream = {
 	scanloc(): number;
 	readByte(): number;
 	readUByte(): number;
-	readShort(): number;
-	readUShort(): number;
-	readUInt(): number
-	readFloat(): number;
-	readHalf(): number;
+	readShort(flip?: boolean): number;
+	readUShort(flip?: boolean): number;
+	readUInt(flip?: boolean): number
+	readFloat(flip?: boolean, signage?: boolean): number;
+	readHalf(flip?: boolean): number;
 }
 
 export function Stream(data: Buffer) {
@@ -102,6 +102,7 @@ export function Stream(data: Buffer) {
 	}
 
 	this.readHalf = function (flip = false) {
+		//TODO flip isn't even implemented?
 		var upper = data[scan++];
 		var lower = data[scan++];
 		var mantissa = lower | ((upper << 8) & 0x0300);

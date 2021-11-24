@@ -33,7 +33,7 @@ export function materialCacheKey(matid: number, hasVertexAlpha: boolean) {
 }
 
 //TODO stream es6 class
-function Spec_0(material: any): MaterialData {
+function Spec_0(material: Stream): MaterialData {
 	let mat = defaultMaterial();
 	mat.raw.unk1 = material.readUByte();
 	mat.raw.texSize = material.readUShort();
@@ -90,16 +90,22 @@ function Spec_0(material: any): MaterialData {
 					val = "0" + val;
 				unk11 += val;
 			}
+			mat.raw.unk11 = unk11;
 			let probably_forceOpaque = material.readUByte();
 			mat.raw.probably_forceOpaque = probably_forceOpaque;
 			if (!probably_forceOpaque) { mat.alphamode = "blend"; }
 			mat.raw.specular = material.readUByte();
 			mat.raw.metalness = material.readUByte();
 			mat.raw.colourInt = material.readUShort(true);
+			mat.vertexColors = mat.raw.colourInt != 0;
 			mat.raw.colour = HSL2RGB(packedHSL2HSL(mat.raw.colourInt));
 		} else if (unk10 == 0) {
 			//more stuff?
 		}
+	}
+	if (material.scanloc() != material.getData().length) {
+		mat.raw.extrabytes = material.getData().slice(material.scanloc());
+		console.log(mat, "mat0 extra bytes", mat.raw.extrabytes);
 	}
 	return mat;
 }
@@ -151,7 +157,7 @@ function Spec_190411_Flags(flags: number) {
 }
 
 //TODO stream es6 class
-function Spec_190411(material: any) {
+function Spec_190411(material: Stream) {
 	let mat = defaultMaterial();
 	let flags = Spec_190411_Flags(material.readUInt(true));
 	//this is very wrong
@@ -198,6 +204,10 @@ function Spec_190411(material: any) {
 		ss += 1
 
 	ss += 6*/
+	if (material.scanloc() != material.getData().length) {
+		mat.raw.extrabytes = material.getData().slice(material.scanloc());
+		console.log(mat, "mat1 extra bytes", mat.raw.extrabytes);
+	}
 	return mat;
 }
 
