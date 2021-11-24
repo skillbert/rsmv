@@ -1,10 +1,11 @@
-import { JMat, JMatInternal } from "./jmat";
+import { defaultMaterial, JMat, materialCacheKey } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
+import * as fs from "fs";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -38,7 +39,7 @@ export class GLTFSceneCache {
 	async getGlTfMaterial(matid: number, hasVertexAlpha: boolean) {
 		//create a seperate material if we have alpha
 		//TODO the material should have this data, not the mesh
-		let matcacheid = matid | (hasVertexAlpha ? 0x800000 : 0);
+		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
@@ -97,46 +98,11 @@ export type MaterialData = {
 }
 //this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
 export async function getMaterialData(getFile: FileGetter, matid: number) {
-	let material: MaterialData = {
-		textures: {},
-		alphamode: "opaque",
-		raw: undefined
-	};
-	//TODO unused atm
-	let factors = {
-		metalness: 1,
-		specular: 1,
-		color: 1
+	if (matid == -1) {
+		return defaultMaterial();
 	}
-	let originalMaterial: JMatInternal | null = null;
-	if (matid != -1) {
-		var materialfile = await getFile(cacheMajors.materials, matid);
-
-		if (materialfile[0] == 0x00) {
-			var mat = new JMat(materialfile).get();
-			material.raw = mat;
-			originalMaterial = mat;
-			material.textures.diffuse = mat.maps["diffuseId"];
-			material.textures.metalness = 0;
-			material.textures.specular = 0;
-			factors.specular = mat.specular / 255;
-			factors.metalness = mat.metalness / 255;
-			factors.color = mat.colour / 255;
-			material.alphamode = mat.alphaMode == 0 ? "opaque" : mat.alphaMode == 1 ? "cutoff" : "blend";
-		}
-		else if (materialfile[0] == 0x01) {
-			var mat = new JMat(materialfile).get();
-			material.raw = mat;
-			originalMaterial = mat;
-			if (mat.flags.hasDiffuse)
-				material.textures.diffuse = mat.maps["diffuseId"];
-			if (mat.flags.hasNormal)
-				material.textures.normal = mat.maps["normalId"];
-			if (mat.flags.hasCompound)
-				material.textures.compound = mat.maps["compoundId"];
-		}
-	}
-	return material;
+	var materialfile = await getFile(cacheMajors.materials, matid);
+	return JMat(materialfile);
 }
 
 //TODO remove or rewrite
@@ -154,6 +120,7 @@ export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mod
 
 export type ModelData = {
 	maxy: number,
+	miny: number,
 	meshes: ModelMeshData[]
 }
 
@@ -169,18 +136,20 @@ export type ModelMeshData = {
 	}
 }
 
-export function parseOb3Model(model: Stream, modifications: ModelModifications) {
-
+export function parseOb3Model(modelfile: Buffer) {
+	let model: Stream = new Stream(modelfile);
 	let format = model.readByte();
 	let unk1 = model.readByte(); //always 03?
 	let version = model.readByte();
 	let meshCount = model.readUByte();
 	let unkCount0 = model.readUByte();
 	let unkCount1 = model.readUByte();
-	let unkCount2 = model.readUShort();
+	let unkCount2 = model.readUByte();
+	let unkCount3 = model.readUByte();
 	//console.log(unkCount0,unkCount1,unkCount2,unk1)
 
 	let maxy = 0;
+	let miny = 0;
 	let meshes: ModelMeshData[] = [];
 
 	for (var n = 0; n < meshCount; ++n) {
@@ -196,6 +165,10 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 		let hasVertexAlpha = (groupFlags & 0x02) != 0;
 		let hasFlag4 = (groupFlags & 0x04) != 0;
 		let hasBoneids = (groupFlags & 0x08) != 0;
+		if (groupFlags > 16) {
+			console.log("unknown model flags", groupFlags & ~15);
+		}
+		let isHidden = (groupFlags & 0x10) != 0;
 
 		let colourBuffer: Uint8Array | null = null;
 		let alphaBuffer: Uint8Array | null = null;
@@ -205,17 +178,17 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 		let boneidBuffer: Uint16Array | null = null;
 
 		if (hasVertices) {
-			let replaces = modifications.replaceColors ?? [];
-			replaces.push([39834, 43220]);//TODO what is this? found it hard coded in before
+			// let replaces = modifications.replaceColors ?? [];
+			// replaces.push([39834, 43220]);//TODO what is this? found it hard coded in before
 			colourBuffer = new Uint8Array(faceCount * 3);
 			for (var i = 0; i < faceCount; ++i) {
 				var faceColour = model.readUShort();
-				for (let repl of replaces) {
-					if (faceColour == repl[0]) {
-						faceColour = repl[1];
-						break;
-					}
-				}
+				// for (let repl of replaces) {
+				// 	if (faceColour == repl[0]) {
+				// 		faceColour = repl[1];
+				// 		break;
+				// 	}
+				// }
 				var colour = HSL2RGB(packedHSL2HSL(faceColour));
 				colourBuffer[i * 3 + 0] = colour[0];
 				colourBuffer[i * 3 + 1] = colour[1];
@@ -260,6 +233,11 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 			}
 		}
 
+		if (isHidden) {
+			console.log("skipped mesh with 0x10 flag");
+			continue;
+		}
+
 		if (!positionBuffer) {
 			console.log("skipped mesh without position buffer")
 			continue;
@@ -269,15 +247,18 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 		//TODO somehow this doesn't always work
 		let materialId = materialArgument - 1
 		if (materialId != -1) {
-			let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
-			if (typeof replacedmaterial != "undefined") {
-				materialId = replacedmaterial;
-			}
+			// let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
+			// if (typeof replacedmaterial != "undefined") {
+			// 	materialId = replacedmaterial;
+			// }
 		}
 		//TODO let threejs do this while making the bounding box
 		for (let i = 0; i < positionBuffer.length; i += 3) {
 			if (positionBuffer[i + 1] > maxy) {
 				maxy = positionBuffer[i + 1];
+			}
+			if (positionBuffer[i + 1] < miny) {
+				miny = positionBuffer[i + 1];
 			}
 		}
 		// let positionfloatbuffer = new Float32Array(positionBuffer);
@@ -352,7 +333,25 @@ export function parseOb3Model(model: Stream, modifications: ModelModifications) 
 		// 	vertexcolor[index + 3] = 255;
 		// }
 	}
-	let r: ModelData = { maxy, meshes };
+	for (let n = 0; n < unkCount1; n++) {
+		model.skip(37);
+	}
+	for (let n = 0; n < unkCount2; n++) {
+		model.skip(2);//material id?
+		for (let i = 0; i < 3; i++) {
+			model.skip(2); model.skip(2);//u16 flags mostly 0x0000,0x0040,0x0080, f16 position? mostly -5.0<x<5.0
+			model.skip(2); model.skip(2);//u16 flags, f16?
+			model.skip(2); model.skip(2);//u16 flags, f16?
+			model.skip(2);//i16, mostly -1, otherwise <400
+		}
+	}
+
+	let r: ModelData = { maxy, miny, meshes };
+
+	if (model.scanloc() != model.getData().length) {
+		console.log("extra model bytes", model.getData().length - model.scanloc(), "format", format, "unk1", unk1, "version", version, "unkcounts", unkCount0, unkCount1, unkCount2, unkCount3);
+		// fs.writeFileSync(`cache/particles/${Date.now()}.bin`, model.getData().slice(model.scanloc()));
+	}
 	return r;
 }
 

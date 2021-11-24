@@ -1,21 +1,24 @@
-import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
+import { GLTFSceneCache, ModelData, ModelMeshData, FileGetter, parseOb3Model, getMaterialData } from '../3d/ob3togltf';
+import { boundMethod } from 'autobind-decorator';
+import * as fs from "fs";
+import { materialCacheKey } from "./jmat";
+import { modifyMesh } from "./mapsquare";
 
 //yay, three is now using modules so i can no longer use modules myself.....
 //requirejs cant load modules since all modules are now promises (in case they want
 //to use top level await).
 const THREE = require("three/build/three.js") as typeof import("three");
-//i have to also put it in the global scope for the other libs...
-global.THREE = THREE;
 
-import { GLTFSceneCache, ModelData, ModelMeshData, FileGetter, parseOb3Model, getMaterialData } from '../3d/ob3togltf';
-import { boundMethod } from 'autobind-decorator';
-import * as fs from "fs";
+(globalThis as any).packedhsl = function (hsl: number) {
+	return HSL2RGB(packedHSL2HSL(hsl));
+}
+
 
 export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 	mat.customProgramCacheKey = () => "floortex";
@@ -88,29 +91,29 @@ export class ThreejsSceneCache {
 
 	async getMaterial(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
-		let matcacheid = matid | (hasVertexAlpha ? 0x800000 : 0);
+		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let { textures, alphamode } = await getMaterialData(this.getFileById, matid);
+				let material = await getMaterialData(this.getFileById, matid);
 
 				let mat = new THREE.MeshPhongMaterial();
-				mat.transparent = hasVertexAlpha;
-				if (textures.diffuse) {
-					mat.map = await this.getTextureFile(textures.diffuse, alphamode != "opaque");
+				mat.transparent = hasVertexAlpha || material.alphamode == "blend";
+				mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
+				mat.vertexColors = material.vertexColors;
+				if (material.textures.diffuse) {
+					mat.map = await this.getTextureFile(material.textures.diffuse, material.alphamode != "opaque");
 					mat.map.wrapS = THREE.RepeatWrapping;
 					mat.map.wrapT = THREE.RepeatWrapping;
 					mat.map.encoding = THREE.sRGBEncoding;
-					mat.transparent = hasVertexAlpha || alphamode == "blend" || alphamode == "cutoff";
-					mat.alphaTest = (alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
 				}
-				if (textures.normal) {
-					mat.normalMap = await this.getTextureFile(textures.normal, false);
+				if (material.textures.normal) {
+					mat.normalMap = await this.getTextureFile(material.textures.normal, false);
 					mat.normalMap.wrapS = THREE.RepeatWrapping;
 					mat.normalMap.wrapT = THREE.RepeatWrapping;
 				}
-				mat.vertexColors = true;
 				mat.shininess = 0;
+				mat.userData = material;
 				return mat;
 			})();
 			this.gltfMaterialCache.set(matcacheid, cached);
@@ -121,10 +124,11 @@ export class ThreejsSceneCache {
 
 
 
-export async function ob3ModelToThreejsNode(getFile: FileGetter, model: Buffer, mods: ModelModifications) {
+export async function ob3ModelToThreejsNode(getFile: FileGetter, modelfile: Buffer, mods: ModelModifications) {
 	let scene = new ThreejsSceneCache(getFile);
-	let stream = new Stream(model);
-	let mesh = await ob3ModelToThree(scene, parseOb3Model(stream, mods));
+	let meshdata = parseOb3Model(modelfile);
+	meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
+	let mesh = await ob3ModelToThree(scene, meshdata);
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
 	return mesh;
@@ -142,7 +146,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
 		geo.index = meshdata.indices;
 		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
-		(mat as THREE.MeshPhongMaterial).flatShading=true;
+		// (mat as THREE.MeshPhongMaterial).flatShading = true;
 		let mesh = new THREE.Mesh(geo, mat);
 		rootnode.add(mesh);
 	}

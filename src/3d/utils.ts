@@ -1,7 +1,7 @@
 
 export type ModelModifications = {
-	replaceColors?: [from:number, to:number][];
-	replaceMaterials?: [from:number, to:number][];
+	replaceColors?: [from: number, to: number][];
+	replaceMaterials?: [from: number, to: number][];
 }
 
 export type Stream = {
@@ -121,7 +121,7 @@ export function Stream(data: Buffer) {
 }
 
 // https://stackoverflow.com/a/9493060
-export function HSL2RGB(hsl: number[]) {
+export function HSL2RGB(hsl: number[]): [number, number, number] {
 	var h = hsl[0];
 	var s = hsl[1];
 	var l = hsl[2];

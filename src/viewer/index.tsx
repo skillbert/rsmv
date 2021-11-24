@@ -13,7 +13,7 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
@@ -262,6 +262,10 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			mods.replaceMaterials = [
 				[4314, +searchid]
 			];
+			// modelids = [67768];//is a cube but has transparent vertices
+			// mods.replaceMaterials = [
+			// 	[8868, +searchid]
+			// ];
 			let mat = await getMaterialData(cache.getRaw, +searchid);
 			let info: any = { mat };
 			let addtex = async (name: string, texid: number) => {
@@ -280,19 +284,23 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			metatext = JSON.stringify(info, undefined, "\t");
 			break;
 		case "object":
-			let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));
+			//TODO should be using the same file source consistenly
+			let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);
+			// let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));
 			console.log(obj);
 			metatext = JSON.stringify(obj, undefined, 2);
-			if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
-			if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
-			modelids = obj.models?.flatMap(m => m.values) ?? [];
+			if (obj) {
+				if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
+				if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
+				modelids = obj.models?.flatMap(m => m.values) ?? [];
+			}
 			break;
 		case "map":
 			let [x, y, width, height] = searchid.split(/[,\.\/:;]/).map(n => +n);
 			width = width ?? 1;
 			height = height ?? width;
 			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true };
+			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
 			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, opts);
 			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);

@@ -1,4 +1,3 @@
-import { JMat, JMatInternal } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
@@ -17,7 +16,8 @@ import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import * as fs from "fs";
 import sharp from "sharp";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
-import { Object3D, Quaternion, Vector3 } from "three";
+import { BufferAttribute, Object3D, Quaternion, Vector3 } from "three";
+import { materialCacheKey } from "./jmat";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -108,6 +108,7 @@ export type ModelExtras = ModelExtrasLocation | {
 	level: number
 } | {
 	modeltype: "locationgroup",
+	modelgroup: string
 } & ClickableMesh<ModelExtrasLocation>
 
 export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number };
@@ -303,6 +304,43 @@ function boxMesh(width: number, length: number, height: number) {
 		materialId: -1
 	}
 	return res;
+}
+
+export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
+	let newmat = mods.replaceMaterials?.find(q => q[0] == mesh.materialId)?.[1];
+	let newmesh = { ...mesh };
+	if (typeof newmat != "undefined") {
+		newmesh.materialId = (newmat == (1 << 16) - 1 ? -1 : newmat);
+	}
+
+	if (mods.replaceColors && mesh.attributes.color) {
+		let colors = mesh.attributes.color;
+		let clonedcolors: BufferAttribute | undefined = undefined;
+
+		let map: [number, [number, number, number]][] = [];
+		for (let repl of mods.replaceColors) {
+			let oldcol = HSL2RGB(packedHSL2HSL(repl[0]));
+			let newcol = HSL2RGB(packedHSL2HSL(repl[1]));
+			map.push([(oldcol[0] << 16) | (oldcol[1] << 8) | oldcol[2], newcol]);
+		}
+
+		for (let i = 0; i < colors.count; i++) {
+			let key = (colors.getX(i) << 16) | (colors.getY(i) << 8) | colors.getZ(i);
+			for (let repl of map) {
+				if (key == repl[0]) {
+					if (!clonedcolors) {
+						clonedcolors = colors.clone();
+					}
+					clonedcolors.setXYZ(i, ...repl[1]);
+					break;
+				}
+			}
+		}
+		if (clonedcolors) {
+			newmesh.attributes.color = clonedcolors;
+		}
+	}
+	return newmesh;
 }
 
 export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheight: number) {
@@ -665,8 +703,8 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 	let chunkfloorpadding = (opts?.padfloor ? 1 : 0);
 	let grid = new TileGrid(rect.x, rect.y, rect.width + chunkfloorpadding, rect.height + chunkfloorpadding);
 	let chunks: ChunkData[] = [];
-	for (let z = 0; z < rect.height + chunkfloorpadding; z++) {
-		for (let x = 0; x < rect.width + chunkfloorpadding; x++) {
+	for (let z = -chunkfloorpadding; z < rect.height + chunkfloorpadding; z++) {
+		for (let x = -chunkfloorpadding; x < rect.width + chunkfloorpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.y + z) * worldStride;
 			let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
@@ -896,6 +934,7 @@ class SimpleTexturePacker {
 type MapsquareLocation = {
 	modelid: number,
 	morph: FloorMorph,
+	mods: ModelModifications,
 	extras: ModelExtrasLocation
 }
 
@@ -905,8 +944,11 @@ export async function resolveMorphedObject(source: CacheFileSource, id: number) 
 	let objectmeta = parseObject.read(objectfile);
 	if (objectmeta.morphs_1 || objectmeta.morphs_2) {
 		let newid = -1;
-		if (objectmeta.morphs_1) { newid = objectmeta.morphs_1.unk3; }
-		if (objectmeta.morphs_2) { newid = objectmeta.morphs_2.unk4; }
+		if (objectmeta.morphs_1) { newid = objectmeta.morphs_1.unk2[0] ?? objectmeta.morphs_1.unk3; }
+		if (objectmeta.morphs_2) { newid = objectmeta.morphs_2.unk2; }
+		if (newid == (1 << 15) - 1) {
+			return undefined;
+		}
 		if (newid != -1) {
 			objectfile = await source.getFileById(cacheMajors.objects, newid);
 			objectmeta = {
@@ -930,6 +972,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 
 	for (let loc of locations) {
 		let objectmeta = await resolveMorphedObject(source, loc.id);
+		if (!objectmeta) { continue; }
 
 		const translatefactor = 4;//no clue why but seems right
 		let extratranslate = new Vector3().set(
@@ -947,9 +990,16 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			extrascale.multiply(new Vector3().set(1, 1, -1));
 		}
 
+		let modelmods: ModelModifications = {
+			replaceColors: objectmeta.color_replacements,
+			replaceMaterials: objectmeta.material_replacements
+		};
+
 		instloop: for (let inst of loc.uses) {
 			let sizex = (objectmeta.width ?? 1);
 			let sizez = (objectmeta.length ?? 1);
+
+			//if (loc.id == 56842 && inst.x == 50 && inst.y == 35) { debugger; }
 
 			// let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
 
@@ -1049,13 +1099,14 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				}
 				if (inst.extra.rotation) {
 					let scale = 1 / (1 << 15);
-					//not sure why it needs a premultiplied inverse or what that even does
-					rotation.premultiply(new THREE.Quaternion(
-						inst.extra.rotation[0] * scale,
+					//flip the y axis by flipping x and z sign
+					let rot = new THREE.Quaternion(
+						-inst.extra.rotation[0] * scale,
 						inst.extra.rotation[1] * scale,
-						inst.extra.rotation[2] * scale,
+						-inst.extra.rotation[2] * scale,
 						inst.extra.rotation[3] * scale
-					).invert());
+					);
+					rotation.premultiply(rot);
 				}
 			}
 			let morph: FloorMorph = {
@@ -1065,11 +1116,11 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 
 			let modelcount = 0;
 			let addmodel = (type: number, finalmorph: FloorMorph) => {
-				for (let ch of objectmeta.models ?? []) {
+				for (let ch of objectmeta!.models ?? []) {
 					if (ch.type != type) { continue; }
 					modelcount++;
 					for (let modelid of ch.values) {
-						models.push({ extras, modelid, morph: finalmorph });
+						models.push({ extras, modelid, morph: finalmorph, mods: modelmods });
 					}
 				}
 			}
@@ -1340,18 +1391,20 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 		let model = modelcache.get(obj.modelid);
 		if (!model) {
 			let file = await scene.getFileById(cacheMajors.models, obj.modelid);
-			let modeldata = parseOb3Model(new Stream(file), {});
+			let modeldata = parseOb3Model(file);
 			model = { modeldata, instancemesh: undefined };
 			modelcache.set(obj.modelid, model);
 		}
-		model.modeldata.meshes.forEach(m => {
-			let matgroup = matmeshes.get(m.materialId);
+		model.modeldata.meshes.forEach(rawmesh => {
+			let modified = modifyMesh(rawmesh, obj.mods);
+			let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
+			let matgroup = matmeshes.get(matkey);
 			if (!matgroup) {
 				matgroup = [];
-				matmeshes.set(m.materialId, matgroup);
+				matmeshes.set(matkey, matgroup);
 			}
-			matgroup.push([obj, m, model!.modeldata]);
-		})
+			matgroup.push([obj, modified, model!.modeldata]);
+		});
 	}
 	for (let meshgroup of matmeshes.values()) {
 		let geos = meshgroup.map(m => {
@@ -1377,6 +1430,7 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 		}
 		let clickable: ModelExtras = {
 			modeltype: "locationgroup",
+			modelgroup: meshgroup[0][0].extras.modelgroup,//this may have the result of merging different groups
 			isclickable: true,
 			subranges: counts,
 			searchPeers: true,
@@ -1393,7 +1447,7 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 	// 	let model = modelcache.get(obj.modelid);
 	// 	if (!model) {
 	// 		let file = await scene.getFileById(cacheMajors.models, obj.modelid);
-	// 		let modeldata = parseOb3Model(new Stream(file), {});
+	// 		let modeldata = parseOb3Model(file);
 	// 		model = { modeldata, instancemesh: undefined };
 	// 		modelcache.set(obj.modelid, model);
 	// 	}

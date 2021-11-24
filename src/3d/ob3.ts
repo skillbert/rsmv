@@ -1,5 +1,5 @@
 // May or may not be called ob3 :shrug:
-import { JMat, JMatInternal } from "./jmat";
+import { JMat } from "./jmat";
 import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
@@ -29,7 +29,7 @@ export type Mesh = {
 	indexBufferCount: number;
 	vertexCount: number;
 
-	material: JMatInternal;
+	material: any;
 	textures: { [key: string]: Texture };
 	specular: number;
 	metalness: number;
@@ -153,25 +153,16 @@ export class OB3 {
 			var material = await this.getFile(cacheMajors.materials, this.materialGroups[g].materialId - 1);
 			var materialGroup = this.materialGroups[g];
 
-			if (material[0] == 0x00) {
-				var mat = new JMat(material).get();
-				materialGroup.material = mat;
-				materialGroup.textures["diffuse"] = this.loadTexture(mat.maps["diffuseId"]);
-				materialGroup.specular = mat.specular;
-				materialGroup.metalness = mat.metalness;
-				materialGroup.colour = mat.colour;
-			}
-			else if (material[0] == 0x01) {
-				var mat = new JMat(material).get();
-				materialGroup.material = mat;
-				if (mat.flags.hasDiffuse)
-					materialGroup.textures["diffuse"] = this.loadTexture(mat.maps["diffuseId"]);
-				if (mat.flags.hasNormal)
-					materialGroup.textures["normal"] = this.loadTexture(mat.maps["normalId"]);
-				if (mat.flags.hasCompound)
-					materialGroup.textures["compound"] = this.loadTexture(mat.maps["compoundId"])
-			}
-			//console.log(mat);
+			var mat = JMat(material);
+
+			materialGroup.material = mat;
+			materialGroup.specular = 0;//mat.specular;
+			materialGroup.metalness = 0;//mat.metalness;
+			materialGroup.colour = 0;// mat.colour;
+			
+			if (mat.textures.diffuse) { materialGroup.textures["diffuse"] = this.loadTexture(mat.textures.diffuse); }
+			if (mat.textures.normal) { materialGroup.textures["normal"] = this.loadTexture(mat.textures.normal); }
+			if (mat.textures.compound) { materialGroup.textures["compound"] = this.loadTexture(mat.textures.compound); }
 			materialGroup.textures["environment"] = this.loadTexture(5522);
 		}
 		let ready = Object.values(this.textures).map(t => t.loaded);

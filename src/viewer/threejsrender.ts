@@ -250,8 +250,9 @@ export class ThreeJsRenderer implements ModelSink {
 			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
 			// return this.setGltfModels(models, metastr);
 		} else {
-			return this.setModels(
-				await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods))), metastr);
+			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods)));
+			console.log(models);
+			return this.setModels(models, metastr);
 		}
 	}
 	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
@@ -321,7 +322,7 @@ export class ThreeJsRenderer implements ModelSink {
 				mat.alphaTest = 0.1;
 				mat.shininess = 0;
 				mat.userData = node.material.userData;
-				mat.flatShading = true;
+				mat.flatShading = true;//TODO remove
 				node.material = mat;
 			}
 		});
@@ -502,7 +503,7 @@ export class ThreeJsRenderer implements ModelSink {
 			console.log(match);
 			if (meshdata.modeltype == "locationgroup") {
 				let typedmatch = match as typeof meshdata.subobjects[number];
-				let object = resolveMorphedObject(this.filesource, typedmatch.locationid);
+				let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);
 				this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
 			}
 			if (meshdata.modeltype == "floor") {
