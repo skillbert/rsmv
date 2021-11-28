@@ -393,26 +393,26 @@ export async function generateMips(config: Mapconfig) {
 		basequeue.add(`${tilex / 2 | 0}:${tiley / 2 | 0}`);
 
 		//slice it up to smaller one and do first mips without quality loss
-		// for (let layer of config.layers) {
-		// 	for (let zoom = 0; (config.capturesize >> zoom) >= config.targetsize; zoom++) {
-		// 		let size = config.capturesize >> zoom;
-		// 		let muliplier = 1 << zoom;
-		// 		for (let suby = 0; suby * size < config.capturesize; suby++) {
-		// 			for (let subx = 0; subx * size < config.capturesize; subx++) {
-		// 				let filename = `${config.rawdir}/${layer}/${chunkx}-${chunkz}.png`;
-		// 				if (fs.existsSync(filename)) {
-		// 					tasks.push(() =>
-		// 						sharp(filename)
-		// 							.extract({ left: subx * size, top: suby * size, width: size, height: size })
-		// 							.resize(config.targetsize, config.targetsize, { kernel: "mitchell" })
-		// 							.webp({ lossless: true })
-		// 							.toFile(outpath(layer, zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
-		// 					);
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// }
+		for (let layer of config.layers) {
+			for (let zoom = 0; (config.capturesize >> zoom) >= config.targetsize; zoom++) {
+				let size = config.capturesize >> zoom;
+				let muliplier = 1 << zoom;
+				for (let suby = 0; suby * size < config.capturesize; suby++) {
+					for (let subx = 0; subx * size < config.capturesize; subx++) {
+						let filename = `${config.rawdir}/${layer}/${chunkx}-${chunkz}.png`;
+						if (fs.existsSync(filename)) {
+							tasks.push(() =>
+								sharp(filename)
+									.extract({ left: subx * size, top: suby * size, width: size, height: size })
+									.resize(config.targetsize, config.targetsize, { kernel: "mitchell" })
+									.webp({ lossless: true })
+									.toFile(outpath(layer, zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
+							);
+						}
+					}
+				}
+			}
+		}
 	}
 	await trickleTasks("sub image mipmaps", 4, tasks);
 
