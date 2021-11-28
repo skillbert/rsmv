@@ -26,42 +26,7 @@
 
 <body>
 	<div id="map" style="background: black;"></div>
-	<script>
-		var chunkoffsetx = 16;
-		var chunkoffsetz = 48;
-
-		var mapsizex = 100;
-		var mapsizez = 200;
-
-		var chunksize = 64;
-		var lowestmip = 10;
-		var pxpertile = 32;
-
-		var mip0pxpertile = 1;
-
-		var crs = L.CRS.Simple;
-		crs.transformation = L.transformation(
-			mip0pxpertile, chunkoffsetx * mip0pxpertile,
-			-mip0pxpertile, (mapsizez * chunksize + chunkoffsetz) * mip0pxpertile
-		);
-
-		var mymap = L.map('map', {
-			crs: crs,
-			minZoom: -5,
-			maxZoom: 7,
-			//maxBounds: [[0, 0], [mapsizez * chunksize * mip0pxpertile, mapsizex * chunksize * mip0pxpertile]]
-		});
-		mymap.on("click",e=>console.log(e.latlng));
-		L.tileLayer('../../cache/map4/{z}/{x}-{y}.png', {
-			attribution: 'Skillbert',
-			tileSize: 512,
-			maxNativeZoom: 5,
-			// minNativeZoom: -5
-			minZoom: -5,
-			// maxZoom: 5,
-		}).addTo(mymap);
-		mymap.setView([3200, 3000], 4);
-	</script>
+	<script src="../map/mapviewer.js"></script>
 </body>
 
 </html>

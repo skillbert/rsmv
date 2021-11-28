@@ -18,7 +18,6 @@ import sharp from "sharp";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
 import { BufferAttribute, Object3D, Quaternion, Vector3 } from "three";
 import { materialCacheKey } from "./jmat";
-import { number } from "cmd-ts";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
 const THREE = require("three/build/three.js") as typeof import("three");
@@ -38,6 +37,7 @@ const { tileshapes, defaulttileshape } = generateTileShapes();
 const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
 
 type CollisionData = {
+	settings: number,
 	walk: boolean,
 	sight: boolean,
 	//left,bot,right,top,center
@@ -127,6 +127,7 @@ type TileProps = {
 	y10: number,
 	y01: number,
 	y11: number,
+	playery: number,
 	shape: TileShape,
 	visible: boolean,
 	normalX: number,
@@ -136,8 +137,11 @@ type TileProps = {
 	vertexprops: TileVertex[],
 	overlayprops: TileVertex,
 	originalUnderlayColor: number[],
-	underlayprops: TileVertex
-	collision: CollisionData | undefined
+	underlayprops: TileVertex,
+	rawCollision: CollisionData | undefined,
+	effectiveCollision: CollisionData | undefined,
+	effectiveLevel: number,
+	effectiveVisualLevel: number
 }
 
 //how much each component adds to the y coord of the vertex
@@ -370,6 +374,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 	//needs to be cast to float since int16 overflows
 	let newposarray = new Float32Array(mesh.attributes.pos.count * 3);
 	let newpos = new THREE.BufferAttribute(newposarray, 3);
+	const maxdistance = tiledimensions / 2;
 	for (let i = 0; i < pos.count; i++) {
 		vector.fromBufferAttribute(pos, i);
 		let vertexy = vector.y;
@@ -378,8 +383,8 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 			let tilex = Math.max(0, Math.min(xsize - 1, Math.floor(vector.x / tiledimensions - tileoffsetx + roundoffsetx)));
 			let tilez = Math.max(0, Math.min(zsize - 1, Math.floor(vector.z / tiledimensions - tileoffsetz + roundoffsetz)));
 			let tile = tiles[tilex + tilez * xsize];
-			let dx = vector.x + (-tilex - tileoffsetx + roundoffsetx - 0.5) * tiledimensions;
-			let dz = vector.z + (-tilez - tileoffsetz + roundoffsetz - 0.5) * tiledimensions;
+			let dx = Math.max(-maxdistance, Math.min(maxdistance, vector.x + (-tilex - tileoffsetx + roundoffsetx - 0.5) * tiledimensions));
+			let dz = Math.max(-maxdistance, Math.min(maxdistance, vector.z + (-tilez - tileoffsetz + roundoffsetz - 0.5) * tiledimensions));
 			let dy: number;
 			if (vertexy < 0) {
 				//ignore y related morphs if vertex is below tile floor
@@ -392,9 +397,6 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 				+ tile.linear[0] * dx + tile.linear[1] * dy + tile.linear[2] * dz
 				+ tile.quadratic[0] * dx * dy + tile.quadratic[1] * dy * dz + tile.quadratic[2] * dz * dx
 				+ tile.cubic * dx * dy * dz;
-			if (isNaN(vector.y)) {
-				debugger;
-			}
 		}
 		newpos.setXYZ(i, vector.x, vector.y, vector.z);
 	}
@@ -513,14 +515,18 @@ class TileGrid {
 		return this.tiles[this.levelstep * level + z * this.zstep + x * this.xstep];
 	}
 	blendUnderlays(kernelRadius = 3) {
-		//5 deep letsgooooooo
 		for (let z = this.zoffset; z < this.zoffset + this.height; z++) {
 			for (let x = this.xoffset; x < this.xoffset + this.width; x++) {
+				let effectiveLevel = -1;
+				let effectiveVisualLevel = 0;
 				for (let level = 0; level < squareLevels; level++) {
 					let currenttile = this.getTile(x, z, level);
 					if (!currenttile) { continue; }
+
+					//color blending
 					let r = 0, g = 0, b = 0;
 					let count = 0;
+					//5 deep letsgooooooo
 					for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
 						for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
 							let tile = this.getTile(x + dx, z + dz, level);
@@ -533,11 +539,9 @@ class TileGrid {
 						}
 					}
 					if (count > 0) {
-						// if (currenttile.underlayprops == defaultVertexProp) {
-						// 	currenttile.underlayprops = { ...currenttile.underlayprops };
-						// }
 						currenttile.underlayprops.color = [r / count, g / count, b / count];
 					}
+
 					//normals
 					let dydx = 0;
 					let dydz = 0;
@@ -552,15 +556,45 @@ class TileGrid {
 					let len = Math.hypot(dydx, dydz, 1);
 					currenttile.normalZ = dydx / len;
 					currenttile.normalX = dydz / len;
+
 					//corners
 					let xznext = this.getTile(x + 1, z + 1, level);
 					currenttile.y01 = xnext?.y ?? currenttile.y;
 					currenttile.y10 = znext?.y ?? currenttile.y;
 					currenttile.y11 = xznext?.y ?? currenttile.y;
+					currenttile.playery = (currenttile.y + currenttile.y01 + currenttile.y10 + currenttile.y11) / 4;
 
 					currenttile.next01 = xnext;
 					currenttile.next10 = znext;
 					currenttile.next11 = xznext;
+
+					let mergeunder = ((currenttile.raw.settings ?? 0) & 2) != 0;
+					let alwaysshow = ((currenttile.raw.settings ?? 0) & 8) != 0;
+
+					//weirdness with flag 2 and 8 related to effective levels
+					if (!mergeunder) { effectiveLevel++; }
+					if (alwaysshow) { effectiveVisualLevel = 0; }
+					effectiveLevel = Math.max(0, effectiveLevel);
+
+					let effectiveTile = this.getTile(x, z, effectiveLevel)!;
+					let hasroof = ((effectiveTile.raw.settings ?? 0) & 4) != 0;
+
+					if (effectiveLevel != level) {
+						let receivingtile = this.getTile(x, z, effectiveLevel)!;
+						receivingtile.effectiveCollision = currenttile.rawCollision;
+						receivingtile.playery = currenttile.playery;
+					}
+					currenttile.effectiveLevel = effectiveLevel;
+					currenttile.effectiveVisualLevel = Math.max(currenttile.effectiveVisualLevel, effectiveVisualLevel);
+
+					//spread to our neighbours
+					//there is a lot more to it than this but it gives decent results
+					if (xnext && ((xnext.raw.settings ?? 0) & 0x8) == 0) { xnext.effectiveVisualLevel = Math.max(xnext.effectiveVisualLevel, effectiveVisualLevel); }
+					if (znext && ((znext.raw.settings ?? 0) & 0x8) == 0) { znext.effectiveVisualLevel = Math.max(znext.effectiveVisualLevel, effectiveVisualLevel); }
+					if (xprev && ((xprev.raw.settings ?? 0) & 0x8) == 0) { xprev.effectiveVisualLevel = Math.max(xprev.effectiveVisualLevel, effectiveVisualLevel); }
+					if (zprev && ((zprev.raw.settings ?? 0) & 0x8) == 0) { zprev.effectiveVisualLevel = Math.max(zprev.effectiveVisualLevel, effectiveVisualLevel); }
+
+					if (hasroof) { effectiveVisualLevel = effectiveLevel + 1; }
 				}
 			}
 		}
@@ -648,6 +682,7 @@ class TileGrid {
 					if (docollision) {
 						let blocked = ((tile.settings ?? 0) & 1) != 0;
 						collision = {
+							settings: tile.settings ?? 0,
 							walk: blocked,
 							sight: false,
 							walkwalls: [false, false, false, false],
@@ -665,6 +700,7 @@ class TileGrid {
 						y: y,
 						z: tilez,
 						y01: y, y10: y, y11: y,
+						playery: y,
 						shape,
 						visible,
 						normalX: 0, normalZ: 0,
@@ -673,7 +709,10 @@ class TileGrid {
 						underlayprops: underlayprop,
 						overlayprops: overlayprop,
 						originalUnderlayColor: underlayprop.color,
-						collision
+						rawCollision: collision,
+						effectiveCollision: collision,
+						effectiveLevel: level,
+						effectiveVisualLevel: 0
 					}
 					this.tiles[newindex] = parsedTile;
 					tileindex += squareWidth * squareHeight;
@@ -1000,32 +1039,44 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 		};
 
 		instloop: for (let inst of loc.uses) {
-			let sizex = (objectmeta.width ?? 1);
-			let sizez = (objectmeta.length ?? 1);
-
-			//if (loc.id == 56842 && inst.x == 50 && inst.y == 35) { debugger; }
-
-			// let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
+			let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
+			if (!callingtile) { console.log("callingtile not found"); continue; }
 
 			//models have their center in the middle, but they always rotate such that their southwest corner
 			//corresponds to the southwest corner of the tile
+			let sizex = (objectmeta.width ?? 1);
+			let sizez = (objectmeta.length ?? 1);
 			if ((inst.rotation % 2) == 1) {
 				//flip offsets if we are rotated with 90deg or 270deg
 				[sizex, sizez] = [sizez, sizex];
 			}
 
+			let visualLevel = callingtile.effectiveVisualLevel;
+			for (let dz = 0; dz < sizez; dz++) {
+				for (let dx = 0; dx < sizex; dx++) {
+					let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, inst.plane);
+					if (tile && tile.effectiveVisualLevel > visualLevel) {
+						visualLevel = tile.effectiveVisualLevel;
+					}
+				}
+			}
+
 			let extras: ModelExtrasLocation = {
 				modeltype: "location",
 				isclickable: false,
-				modelgroup: "objects",
+				modelgroup: "objects" + visualLevel,
 				locationid: loc.id,
 				worldx: chunk.xoffset + inst.x,
 				worldz: chunk.zoffset + inst.y,
 				rotation: inst.rotation,
 				mirror: !!objectmeta.mirror,
-				level: inst.plane,
+				level: visualLevel,
 				// callingtile,
-				locationInstance: inst
+				locationInstance: inst,
+				...{
+					roofx: inst.x + Math.floor(sizex / 2),
+					roofz: inst.y + Math.floor(sizez / 2)
+				}
 			};
 
 			let modely: number;
@@ -1060,19 +1111,19 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				modely = y / tilemorphs.length;
 				tilemorphs.forEach(t => t.constant -= modely);
 			} else {
-				let tile = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane);
-				if (tile) {
+				let positiontile = grid.getTile(inst.x + chunk.xoffset + Math.floor(sizex / 2), inst.y + chunk.zoffset + Math.floor(sizez / 2), inst.plane);
+				if (positiontile) {
 					if (sizex % 2 == 1 && sizez % 2 == 1) {
-						modely = (tile.y + tile.y01 + tile.y10 + tile.y11) / 4;
+						modely = (positiontile.y + positiontile.y01 + positiontile.y10 + positiontile.y11) / 4;
 					} else if (sizex % 2 == 1) {
-						modely = (tile.y + tile.y01) / 2;
+						modely = (positiontile.y + positiontile.y01) / 2;
 					} else if (sizez % 2 == 1) {
-						modely = (tile.y + tile.y10) / 2;
+						modely = (positiontile.y + positiontile.y10) / 2;
 					} else {
-						modely = tile.y;
+						modely = positiontile.y;
 					}
 				} else {
-					modely = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane)!.y;
+					modely = callingtile.y;
 				}
 			}
 
@@ -1197,7 +1248,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 					for (let dx = 0; dx < sizex; dx++) {
 						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, inst.plane);
 						if (tile) {
-							let col = tile.collision!;
+							let col = tile.rawCollision!;
 							if (inst.type == 0) {
 								col.walkwalls[inst.rotation] = true;
 								if (!objectmeta.maybe_allows_lineofsight) {
@@ -1331,14 +1382,22 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 	for (let z = chunk.zoffset; z < chunk.zoffset + squareHeight; z++) {
 		for (let x = chunk.xoffset; x < chunk.xoffset + squareWidth; x++) {
 			let tile = grid.getTile(x, z, level);
-			if (tile?.collision) {
-				if (tile.collision.walk) {
-					let height = (tile.collision.sight ? 1.8 : 0.3);
+			if (tile?.rawCollision) {
+				if (tile.rawCollision.walk) {
+					let height = (tile.rawCollision.sight ? 1.8 : 0.3);
 					writebox(tile, 0.05, 0, 0.05, 0.9, height, 0.9, [100, 50, 50, 255]);
 				}
+				if (tile.rawCollision.settings & (2 | 4 | 8 | 16)) {
+					let r = 0, g = 0, b = 0;
+					if (tile.rawCollision.settings & 2) { r += 0; g += 127; b += 127; }
+					if (tile.rawCollision.settings & 4) { r += 0; g += 127; b += 0; }
+					if (tile.rawCollision.settings & 8) { r += 127; g += 0; b += 0; }
+					if (tile.rawCollision.settings & ~(1 | 2 | 4 | 8)) { r += 0; g += 0; b += 127; }
+					writebox(tile, -0.05, -0.05, 0, 1.1, 0.25, 1.1, [r, g, b, 255]);
+				}
 				for (let dir = 0; dir < 4; dir++) {
-					if (tile.collision.walkwalls[dir]) {
-						let height = (tile.collision.sightwalls[dir] ? 2 : 0.5);
+					if (tile.rawCollision.walkwalls[dir]) {
+						let height = (tile.rawCollision.sightwalls[dir] ? 2 : 0.5);
 						let col = [255, 60, 60, 255];
 						if (dir == 0) { writebox(tile, 0, 0, 0, 0.15, height, 1, col); }
 						if (dir == 1) { writebox(tile, 0, 0, 0.85, 1, height, 0.15, col); }
@@ -1388,9 +1447,11 @@ function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number) {
 
 async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: MapsquareLocation[]) {
 	let modelcache = new Map<number, { modeldata: ModelData, instancemesh: THREE.Object3D | undefined }>();
-	let nodes: THREE.Object3D[] = [];
 
-	let matmeshes = new Map<number, [MapsquareLocation, ModelMeshData, ModelData][]>();
+	type MatMesh = { loc: MapsquareLocation, mesh: ModelMeshData, model: ModelData };
+	let matmeshes: Map<number, MatMesh[]>[] = [];
+	for (let level = 0; level < squareLevels; level++) { matmeshes.push(new Map()); }
+
 	for (let obj of models) {
 		let model = modelcache.get(obj.modelid);
 		if (!model) {
@@ -1402,51 +1463,54 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 		model.modeldata.meshes.forEach(rawmesh => {
 			let modified = modifyMesh(rawmesh, obj.mods);
 			let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
-			let matgroup = matmeshes.get(matkey);
+			let matgroup = matmeshes[obj.extras.level].get(matkey);
 			if (!matgroup) {
 				matgroup = [];
-				matmeshes.set(matkey, matgroup);
+				matmeshes[obj.extras.level].set(matkey, matgroup);
 			}
-			matgroup.push([obj, modified, model!.modeldata]);
+			matgroup.push({ loc: obj, mesh: modified, model: model!.modeldata });
 		});
 	}
-	for (let meshgroup of matmeshes.values()) {
-		let geos = meshgroup.map(m => {
-			let transformed = transformMesh(m[1], m[0].morph, m[2].maxy);
-			let attrs = transformed.attributes;
-			let geo = new THREE.BufferGeometry();
-			geo.setAttribute("position", attrs.pos.clone());
-			if (attrs.color) { geo.setAttribute("color", attrs.color); }
-			if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
-			if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
-			geo.index = transformed.indices;
-			return geo;
-		});
-		let mergedgeo = THREE.BufferGeometryUtils.mergeBufferGeometries(geos);
-		let mat = await scene.getMaterial(meshgroup[0][1].materialId, meshgroup[0][1].hasVertexAlpha);
-		let mesh = new THREE.Mesh(mergedgeo, mat);
 
-		let count = 0;
-		let counts: number[] = [];
-		for (let geo of geos) {
-			counts.push(count);
-			count += geo.index!.count;
-		}
-		let clickable: ModelExtras = {
-			modeltype: "locationgroup",
-			modelgroup: meshgroup[0][0].extras.modelgroup,//this may have the result of merging different groups
-			isclickable: true,
-			subranges: counts,
-			searchPeers: true,
-			subobjects: meshgroup.map(q => q[0].extras)
-		}
-		mesh.userData = clickable;
+	let nodes: THREE.Object3D[] = [];
+	for (let levelgroups of matmeshes) {
+		for (let meshgroup of levelgroups.values()) {
+			let geos = meshgroup.map(m => {
+				let transformed = transformMesh(m.mesh, m.loc.morph, m.model.maxy);
+				let attrs = transformed.attributes;
+				let geo = new THREE.BufferGeometry();
+				geo.setAttribute("position", attrs.pos.clone());
+				if (attrs.color) { geo.setAttribute("color", attrs.color); }
+				if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
+				if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
+				geo.index = transformed.indices;
+				return geo;
+			});
+			let mergedgeo = THREE.BufferGeometryUtils.mergeBufferGeometries(geos);
+			let mat = await scene.getMaterial(meshgroup[0].mesh.materialId, meshgroup[0].mesh.hasVertexAlpha);
+			let mesh = new THREE.Mesh(mergedgeo, mat);
 
-		mesh.matrixAutoUpdate = false;
-		mesh.updateMatrix();
-		nodes.push(mesh);
+			let count = 0;
+			let counts: number[] = [];
+			for (let geo of geos) {
+				counts.push(count);
+				count += geo.index!.count;
+			}
+			let clickable: ModelExtras = {
+				modeltype: "locationgroup",
+				modelgroup: meshgroup[0].loc.extras.modelgroup,
+				isclickable: true,
+				subranges: counts,
+				searchPeers: true,
+				subobjects: meshgroup.map(q => q.loc.extras)
+			}
+			mesh.userData = clickable;
+
+			mesh.matrixAutoUpdate = false;
+			mesh.updateMatrix();
+			nodes.push(mesh);
+		}
 	}
-
 	// for (let obj of models) {
 	// 	let model = modelcache.get(obj.modelid);
 	// 	if (!model) {
@@ -1572,76 +1636,78 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		return vertexindex++;
 	}
 
-	for (let z = 0; z < squareHeight; z++) {
-		for (let x = 0; x < squareWidth; x++) {
-			let tile = grid.getTile(chunk.xoffset + x, chunk.zoffset + z, level);
-			if (!tile) { continue; }
-			let rawtile = tile.raw;
+	for (let tilelevel = level; tilelevel < squareLevels; tilelevel++) {
+		for (let z = 0; z < squareHeight; z++) {
+			for (let x = 0; x < squareWidth; x++) {
+				let tile = grid.getTile(chunk.xoffset + x, chunk.zoffset + z, tilelevel);
+				if (!tile) { continue; }
+				if (tile.effectiveVisualLevel != level) { continue; }
 
-			let shape = tile.shape;
+				let rawtile = tile.raw;
+				let shape = tile.shape;
+				let hasneighbours = tile.next01 && tile.next10 && tile.next11;
 
-			let hasneighbours = tile.next01 && tile.next10 && tile.next11;
-
-			if (keeptileinfo) {
-				tileinfos.push({ tile, x, z, level });
-				tileindices.push(indexpointer);
-			}
-			if (hasneighbours && shape.overlay.length != 0) {
-				let overlaytype = chunk.overlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
-				let color = overlaytype.primary_colour ?? [255, 0, 255];
-				let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
-				if (isvisible || showhidden) {
-					let props = shape.overlay.map(vertex => {
-						if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
-						else {
-							let node: TileProps | undefined = tile;
-							if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-							else if (vertex.nextx) { node = tile!.next01; }
-							else if (vertex.nextz) { node = tile!.next10; }
-							if (node) { return node.vertexprops[vertex.subvertex]; }
+				if (keeptileinfo) {
+					tileinfos.push({ tile, x, z, level: tilelevel });
+					tileindices.push(indexpointer);
+				}
+				if (hasneighbours && shape.overlay.length != 0) {
+					let overlaytype = chunk.overlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
+					let color = overlaytype.primary_colour ?? [255, 0, 255];
+					let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
+					if (isvisible || showhidden) {
+						let props = shape.overlay.map(vertex => {
+							if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
+							else {
+								let node: TileProps | undefined = tile;
+								if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+								else if (vertex.nextx) { node = tile!.next01; }
+								else if (vertex.nextz) { node = tile!.next10; }
+								if (node) { return node.vertexprops[vertex.subvertex]; }
+							}
+							return defaultVertexProp;
+						});
+						for (let i = 2; i < shape.overlay.length; i++) {
+							let v0 = shape.overlay[0];
+							let v1 = shape.overlay[i - 1];
+							let v2 = shape.overlay[i];
+							if (!v0 || !v1 || !v2) { continue; }
+							let polyprops = [props[0], props[i - 1], props[i]];
+							indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
+							indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
+							indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
+						}
+					}
+				}
+				if (hasneighbours && shape.underlay.length != 0 && (tile.visible || showhidden)) {
+					let props = shape.underlay.map(vertex => {
+						let node: TileProps | undefined = tile;
+						if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+						else if (vertex.nextx) { node = tile!.next01; }
+						else if (vertex.nextz) { node = tile!.next10; }
+						if (node) {
+							let prop = node.vertexprops[vertex.subvertex];
+							if (prop.material == -1) {
+								//TODO there seems to be more to the underlay thing
+								//maybe materials themselves also get blended somehow
+								//just copy our own materials for now if the neighbour is missing
+								return { ...prop, material: tile!.underlayprops.material };
+							} else {
+								return prop;
+							}
 						}
 						return defaultVertexProp;
 					});
-					for (let i = 2; i < shape.overlay.length; i++) {
-						let v0 = shape.overlay[0];
-						let v1 = shape.overlay[i - 1];
-						let v2 = shape.overlay[i];
+					for (let i = 2; i < shape.underlay.length; i++) {
+						let v0 = shape.underlay[0];
+						let v1 = shape.underlay[i - 1];
+						let v2 = shape.underlay[i];
 						if (!v0 || !v1 || !v2) { continue; }
 						let polyprops = [props[0], props[i - 1], props[i]];
 						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
 						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
 						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
 					}
-				}
-			}
-			if (hasneighbours && shape.underlay.length != 0 && (tile.visible || showhidden)) {
-				let props = shape.underlay.map(vertex => {
-					let node: TileProps | undefined = tile;
-					if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-					else if (vertex.nextx) { node = tile!.next01; }
-					else if (vertex.nextz) { node = tile!.next10; }
-					if (node) {
-						let prop = node.vertexprops[vertex.subvertex];
-						if (prop.material == -1) {
-							//TODO there seems to be more to the underlay thing
-							//maybe materials themselves also get blended somehow
-							//just copy our own materials for now if the neighbour is missing
-							return { ...prop, material: tile!.underlayprops.material };
-						} else {
-							return prop;
-						}
-					}
-					return defaultVertexProp;
-				});
-				for (let i = 2; i < shape.underlay.length; i++) {
-					let v0 = shape.underlay[0];
-					let v1 = shape.underlay[i - 1];
-					let v2 = shape.underlay[i];
-					if (!v0 || !v1 || !v2) { continue; }
-					let polyprops = [props[0], props[i - 1], props[i]];
-					indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
-					indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
-					indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
 				}
 			}
 		}

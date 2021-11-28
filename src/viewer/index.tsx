@@ -52,7 +52,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 		super(p);
 		this.state = {
 			hist: [],
-			mode: "model",
+			mode: localStorage.rsmv_lastmode ?? "model",
 			search: localStorage.rsmv_lastsearch ?? "0",
 			cnvRefresh: 0,
 			rendermode: "three",
@@ -63,6 +63,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	@boundMethod
 	submitSearchIds(value: string) {
 		localStorage.rsmv_lastsearch = value;
+		localStorage.rsmv_lastmode = this.state.mode;
 		if (!this.state.hist.includes(value)) {
 			this.setState({ hist: [...this.state.hist.slice(-4), value] });
 		}

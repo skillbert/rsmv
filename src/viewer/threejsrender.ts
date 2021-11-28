@@ -276,16 +276,21 @@ export class ThreeJsRenderer implements ModelSink {
 		let img: Blob | null = null;
 		for (let retry = 0; retry < 5; retry++) {
 			await this.guaranteeRender();
-			img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
+			let ctx = this.renderer.getContext();
+			let pixelbuffer = new Uint8Array(ctx.canvas.width * ctx.canvas.height * 4);
+			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
+			// img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
 			if (this.contextLossCountLastRender != this.contextLossCount) {
 				console.log("context loss during capture");
 				img = null;
 				continue;
 			}
-			break;
+			return { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 as 4 };
+			// break;
 		}
-		if (!img) { throw new Error("capture failed"); }
-		return new Uint8Array(await img.arrayBuffer());
+		throw new Error("capture failed");
+		// if (!img) { throw new Error("capture failed"); }
+		// return new Uint8Array(await img.arrayBuffer());
 	}
 
 	async parseGltfFile(modelfile: Uint8Array) {
