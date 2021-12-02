@@ -1,0 +1,24 @@
+["struct",
+	["internal_name","string"],
+	["name","string"],
+	["center","unsigned int"],
+	["unknown_1","unsigned int"],
+	["show","boolean"],
+	["default_zoom","unsigned byte"],
+	["unknown_2","unsigned byte"],
+	["bounds",["array",["struct",
+		["plane","unsigned byte"],
+		["src",["struct",
+			["xstart","unsigned short"],
+			["zstart","unsigned short"],
+			["xend","unsigned short"],
+			["zend","unsigned short"]
+		]],
+		["dst",["struct",
+			["xstart","unsigned short"],
+			["zstart","unsigned short"],
+			["xend","unsigned short"],
+			["zend","unsigned short"]
+		]]]
+	]]
+]

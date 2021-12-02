@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums } from "../opdecoder";
 import { achiveToFileId, CacheFileSource } from "../cache";
 
 type KnownType = {
@@ -23,7 +23,9 @@ const decoders: Record<string, KnownType> = {
 	mapunderlays: { index: cacheMajors.config, parser: parseMapsquareUnderlays },
 	maptiles: { index: cacheMajors.mapsquares, subfile: 3, parser: parseMapsquareTiles },
 	overlays: { index: cacheMajors.config, minor: 4, parser: parseMapsquareOverlays },
-	underlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareOverlays }
+	underlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareOverlays },
+	mapzones: { index: cacheMajors.worldmap, minor: 0, parser: parseMapZones },
+	enums: { index: cacheMajors.enums, minor: 0, parser: parseEnums }
 }
 
 let cmd = command({

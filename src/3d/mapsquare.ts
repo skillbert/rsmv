@@ -63,7 +63,7 @@ type TileVertex = {
 	usesColor: boolean
 }
 
-type ChunkData = {
+export type ChunkData = {
 	xoffset: number,
 	zoffset: number,
 	mapsquarex: number,
@@ -437,7 +437,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, modelheigh
 	return r;
 }
 
-class TileGrid {
+export class TileGrid {
 	//position and size of this grid measure in mapsquares
 	gridx: number;
 	gridz: number;
@@ -508,6 +508,21 @@ class TileGrid {
 			// modelheight
 		}
 	}
+
+	getHeightFile(x: number, z: number, level: number, xsize: number, zsize: number) {
+		let file = new Uint16Array(xsize * zsize * squareLevels);
+		for (let dz = 0; dz < zsize; dz++) {
+			for (let dx = 0; dx < xsize; dx++) {
+				let tile = this.getTile(x + dx, z + dz, level);
+				if (tile) {
+					let index = dx + dz * xsize;
+					file[index] = tile.playery / 16;
+				}
+			}
+		}
+		return file;
+	}
+
 	getTile(x: number, z: number, level: number) {
 		x -= this.xoffset;
 		z -= this.zoffset;

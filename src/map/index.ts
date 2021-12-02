@@ -1,6 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData } from "../3d/mapsquare";
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
@@ -8,6 +8,7 @@ import * as electron from "electron";
 import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
+import type { Object3D } from "three";
 
 window.addEventListener("keydown", e => {
 	if (e.key == "F5") { document.location.reload(); }
@@ -20,26 +21,33 @@ const THREE = require("three/build/three.js") as typeof import("three");
 type Mapconfig = {
 	basedir: string,
 	rawdir: string,
-	layers: string[],
-	//the capture size of one game square of 64 tiles (pxpertile=capturesize/64)
-	capturesize: number,
-	targetsize: number,
+	layers: LayerConfig[],
+	tileimgsize: number,
 	mapsizex: number,
-	mapsizez: number
+	mapsizez: number,
+	overwrite: boolean
 }
 
+type LayerConfig = {
+	name: string,
+	pxpersquare: number,
+	dxdy: number,
+	dzdy: number,
+	level: number,
+	subtractlayer?: string,
+	walls?: boolean
+}
 
 let cmd = cmdts.command({
 	name: "download",
 	args: {
 		...filesource,
 		...mapareasourceoptional,
+		overwrite: cmdts.flag({ long: "force", short: "f" }),
 		save: cmdts.option({ long: "save", short: "s", type: cmdts.string, defaultValue: () => "cache/map" }),
 	},
 	handler: async (args) => {
-
-		const targetsize = 512;
-		const capturesize = 2048;
+		const tileimgsize = 512;
 
 		const mapsizez = 200;
 		const mapsizex = 100;
@@ -48,11 +56,40 @@ let cmd = cmdts.command({
 		let config: Mapconfig = {
 			basedir: path.resolve(args.save),
 			rawdir: path.resolve(`${args.save}/raw`),
-			capturesize,
-			targetsize,
+			tileimgsize,
 			mapsizex,
 			mapsizez,
-			layers: ["full", "indoors-0", "indoors-1", "indoors-2"]
+			overwrite: args.overwrite,
+			layers: [{
+				name: "topdown",
+				dxdy: 0, dzdy: 0,
+				level: 3,
+				pxpersquare: 16,
+				walls: true
+			}, {
+				name: "level-0",
+				dxdy: 0.15, dzdy: 0.5,
+				level: 0,
+				pxpersquare: 32,
+			}, {
+				name: "level-1",
+				dxdy: 0.15, dzdy: 0.5,
+				pxpersquare: 32,
+				level: 1,
+				subtractlayer: "level-0"
+			}, {
+				name: "level-2",
+				dxdy: 0.15, dzdy: 0.5,
+				pxpersquare: 32,
+				level: 2,
+				subtractlayer: "level-0"
+			}, {
+				name: "level-3",
+				dxdy: 0.15, dzdy: 0.5,
+				pxpersquare: 32,
+				level: 3,
+				subtractlayer: "level-0"
+			}]
 		};
 		let filesource = await args.source();
 
@@ -71,15 +108,19 @@ if (argvbase64) {
 	cmdts.run(cmd, cliArguments(argv));
 }
 
-type MaprenderSquare = { prom: Promise<THREE.Group | null>, x: number, z: number, id: number, used: boolean };
+type MaprenderSquare = { prom: Promise<ChunkResult>, x: number, z: number, id: number, used: boolean };
+
+type ChunkResult = { chunks: ChunkData[], grid: TileGrid, model: Object3D };
 
 export class MapRenderer {
 	renderer: ThreeJsRenderer;
 	maxunused = 6;
 	idcounter = 1;
 	squares: MaprenderSquare[] = [];
-	constructor(cnv: HTMLCanvasElement, filesource: CacheFileSource) {
+	chunksource: (x: number, z: number) => Promise<ChunkResult>;
+	constructor(cnv: HTMLCanvasElement, filesource: CacheFileSource, chunksource: (x: number, z: number) => Promise<ChunkResult>) {
 		this.renderer = new ThreeJsRenderer(cnv, () => { }, filesource);
+		this.chunksource = chunksource;
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),
@@ -92,41 +133,35 @@ export class MapRenderer {
 		});
 	}
 
-	async setArea(x: number, z: number, width: number, length: number, getfile: (x: number, z: number) => Promise<Uint8Array | null | THREE.Group>) {
+	getChunk(x: number, z: number) {
+		let existing = this.squares.find(q => q.x == x && q.z == z);
+		if (existing) {
+			return existing;
+		} else {
+			let square: MaprenderSquare = {
+				x: x,
+				z: z,
+				prom: this.chunksource(x, z),
+				id: this.idcounter++,
+				used: false
+			}
+			this.squares.push(square)
+			return square;
+		}
+	}
+
+	async setArea(x: number, z: number, width: number, length: number) {
 		let load: MaprenderSquare[] = [];
 		for (let dz = 0; dz < length; dz++) {
 			for (let dx = 0; dx < width; dx++) {
-				let existing = this.squares.find(q => q.x == x + dx && q.z == z + dz);
-				if (existing) {
-					load.push(existing);
-				} else {
-					let square: MaprenderSquare = {
-						x: x + dx,
-						z: z + dz,
-						prom: (async () => {
-							let f = await getfile(x + dx, z + dz);
-							if (!f) { return null; }
-							if (f instanceof THREE.Object3D) {
-								//f.scale.setScalar(1 / 512);
-								return f;
-							}
-							let model = await this.renderer.parseGltfFile(f)
-							model.rootnode.scale.setScalar(1 / 512);
-							return model.rootnode;
-						})(),
-						id: this.idcounter++,
-						used: false
-					}
-					load.push(square);
-					this.squares.push(square)
-				}
+				load.push(this.getChunk(x + dx, z + dz))
 			}
 		}
 		let squares = await Promise.all(load.map(q => q.prom));
 		let combined = new THREE.Group();
 		combined.scale.setScalar(1 / 512);
 		squares.forEach(model => {
-			if (model) { combined.add(model); }
+			if (model) { combined.add(model.model); }
 		});
 		if (this.renderer.modelnode) { this.renderer.scene.remove(this.renderer.modelnode); }
 		this.renderer.modelnode = combined;
@@ -135,7 +170,7 @@ export class MapRenderer {
 		obsolete.sort((a, b) => b.id - a.id);
 		let removed = obsolete.slice(this.maxunused);
 		// removed.forEach(q => console.log("removing", q.x, q.z));
-		removed.forEach(r => r.prom.then(disposeThreeTree));
+		removed.forEach(r => r.prom.then(q => disposeThreeTree(q.model)));
 		this.squares = this.squares.filter(sq => !removed.includes(sq));
 	}
 }
@@ -206,10 +241,12 @@ export function isImageEmpty(pixels: Uint8Array, mode: "black" | "transparent") 
 
 export async function downloadMap(filesource: CacheFileSource, rect: Rect, config: Mapconfig) {
 	let cnv = document.createElement("canvas");
-	let maprender = new MapRenderer(cnv, filesource);
+	let chunksource = (x: number, z: number) => downloadMapsquareThree(filesource, x, z);
+	let maprender = new MapRenderer(cnv, filesource, chunksource);
 	fs.mkdirSync(`${config.rawdir}/meta`, { recursive: true });
+	fs.mkdirSync(`${config.rawdir}/height`, { recursive: true });
 	for (let layer of config.layers) {
-		fs.mkdirSync(`${config.rawdir}/${layer}`, { recursive: true });
+		fs.mkdirSync(`${config.rawdir}/${layer.name}`, { recursive: true });
 	};
 
 	let errs: Error[] = [];
@@ -229,7 +266,7 @@ export async function downloadMap(filesource: CacheFileSource, rect: Rect, confi
 					break;
 				} catch (e) {
 					let cnv = document.createElement("canvas");
-					maprender = new MapRenderer(cnv, filesource);
+					maprender = new MapRenderer(cnv, filesource, chunksource);
 					console.warn(e);
 					errs.push(e);
 				}
@@ -247,21 +284,13 @@ export async function downloadMapsquareThree(filesource: CacheFileSource, x: num
 	let modeldata = await mapsquareModels(filesource, grid, chunks, opts);
 	let file = await mapsquareToThree(filesource, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
-	return file;
+	return { grid, chunks, model: file };
 }
 
-export async function renderMapsquare(filesource: CacheFileSource, subrect: Rect, config: Mapconfig, renderer?: MapRenderer) {
-	if (!renderer) {
-		let cnv = document.createElement("canvas");
-		renderer = new MapRenderer(cnv, filesource);
-	}
-	let loadsquaremodel = async (x: number, z: number) => {
-		return downloadMapsquareThree(filesource, x, z);
-	}
-
-	let takepicture = async (x: number, z: number) => {
+export async function renderMapsquare(filesource: CacheFileSource, subrect: Rect, config: Mapconfig, renderer: MapRenderer) {
+	let takepicture = async (cnf: LayerConfig, x: number, z: number) => {
 		for (let retry = 0; retry <= 2; retry++) {
-			let img = await renderer!.renderer.takePicture(x * 64 - 16, z * 64 - 16, 64, config.capturesize);
+			let img = await renderer!.renderer.takePicture(x * 64 - 16, z * 64 - 16, 64, cnf.pxpersquare, cnf.dxdy, cnf.dzdy);
 			//need to check this after the image because it can be lost during the image and three wont know
 			//TODO this shouldn't be needed anymore since guaranteeframe handles it
 			if (renderer!.renderer.renderer.getContext().isContextLost()) {
@@ -285,32 +314,36 @@ export async function renderMapsquare(filesource: CacheFileSource, subrect: Rect
 			let x = subrect.x + dx;
 			let z = subrect.y + dz;
 			let metafilename = `${config.rawdir}/meta/${x}-${z}.json`;
-			if (fs.existsSync(metafilename)) { continue; }
-			await renderer.setArea(x - 1, z - 1, 2, 2, loadsquaremodel);
-			setfloors(4);
-			let imgfiles = 0;
-			let fullimg = await takepicture(x, z);
-			fs.writeFileSync(metafilename, JSON.stringify({}, undefined, 2));
-			if (!isImageEmpty(fullimg.data, "transparent")) {
-				await sharp(fullimg.data, { raw: fullimg })
-					.flip()
-					.webp({ lossless: true })
-					.toFile(`${config.rawdir}/full/${x}-${z}.png`);
-				imgfiles++;
+			if (!config.overwrite && fs.existsSync(metafilename)) { continue; }
+			await renderer.setArea(x - 1, z - 1, 2, 2,);
+			let data = await renderer.getChunk(x, z).prom;
+
+			for (let level = 0; level < 4; level++) {
+				fs.writeFileSync(`${config.rawdir}/height/${x}-${z}-${level}.bin`, data.grid.getHeightFile(x * 64, z * 64, level, 64, 64));
 			}
 
-			for (let level = 0; level < 3; level++) {
-				setfloors(level);
-				let img = await takepicture(x, z);
-				subtractbackground(img.data, fullimg.data);
+			let meta = {};
+			let imgs: Record<string, any> = {};
+
+			let imgfiles = 0;
+			for (let cnf of config.layers) {
+				setfloors(cnf.level);
+				let img = await takepicture(cnf, x, z);
+
+				if (cnf.subtractlayer) {
+					subtractbackground(img.data, imgs[cnf.subtractlayer].data);
+				}
+
+				imgs[cnf.name] = img;
 				if (!isImageEmpty(img.data, "transparent")) {
 					await sharp(img.data, { raw: img })
 						.flip()
 						.webp({ lossless: true })
-						.toFile(`${config.rawdir}/indoors-${level}/${x}-${z}.png`);
+						.toFile(`${config.rawdir}/${cnf.name}/${x}-${z}.png`);
 					imgfiles++;
 				}
 			}
+			fs.writeFileSync(metafilename, JSON.stringify(meta, undefined, 2));
 
 			console.log("imaged", x, z, "files", imgfiles);
 			nimages++;
@@ -345,80 +378,83 @@ function trickleTasks(name: string, parallel: number, tasks: (() => Promise<any>
 }
 
 export async function generateMips(config: Mapconfig) {
-	const minzoom = Math.floor(Math.log2(config.targetsize / (Math.max(config.mapsizex, config.mapsizez) * 64)));
-	const maxzoom = Math.log2(config.capturesize / 64);
-	const basezoom = Math.log2(config.targetsize / 64);
-
-	const outzoom = (layer: string, zoom: number) => `${config.basedir}/${layer}/${zoom}`;
-	const outpath = (layer: string, zoom: number, x: number, y: number) => `${outzoom(layer, zoom)}/${x}-${y}.png`;
-
+	fs.mkdirSync(`${config.basedir}`, { recursive: true });
 	let skiptime = 0;
 	try {
-		let meta = fs.statSync(`${config.basedir}/info.json`);
-		skiptime = +meta.mtime;
+		// let meta = fs.statSync(`${config.basedir}/info.json`);
+		// skiptime = +meta.mtime;
 	} catch (e) {
 		console.log("no meta file")
 	}
 
 	fs.writeFileSync(`${config.basedir}/info.json`, JSON.stringify(config, undefined, "\t"));
 
-	let files = fs.readdirSync(`${config.rawdir}/meta`)
-		.filter(file => {
-			let stat = fs.statSync(`${config.rawdir}/meta/${file}`);
-			return +stat.mtime >= skiptime;
-		}).map(file => `${config.rawdir}/${file}`)
-
-
-	let basequeue = new Set<string>();
-
-	for (let layer of config.layers) {
-		for (let zoom = minzoom; zoom <= maxzoom; zoom++) {
-			fs.mkdirSync(outzoom(layer, zoom), { recursive: true });
-		}
-	}
-
-	console.log("starting with x files", files.length);
-	let tasks: (() => Promise<any>)[] = [];
+	let files = fs.readdirSync(`${config.rawdir}/meta`);
+	let chunks: { x: number, z: number }[] = [];
 	for (let file of files) {
+		// if (!config.overwrite) {
+		let stat = fs.statSync(`${config.rawdir}/meta/${file}`);
+		if (+stat.mtime < skiptime) { continue; }
+		// }
 		let m = file.match(/(\/|^)(\d+)-(\d+)\./);
 		if (!m) {
 			console.log("unexpected file in src dir " + file);
 			continue;
 		}
-		let chunkx = +m[2];
-		let chunkz = +m[3];
-		let tilex = chunkx;
-		let tiley = config.mapsizez - chunkz;
+		chunks.push({ x: +m[2], z: +m[3] })
+	}
+	console.log(chunks);
+	fs.mkdirSync(`${config.basedir}/height`, { recursive: true });
+	for (let chunk of chunks) {
+		for (let level = 0; level < 4; level++) {
+			fs.copyFileSync(`${config.rawdir}/height/${chunk.x}-${chunk.z}-${level}.bin`, `${config.basedir}/height/${chunk.x}-${chunk.z}-${level}.bin`);
+		}
+	}
 
-		basequeue.add(`${tilex / 2 | 0}:${tiley / 2 | 0}`);
+	console.log("starting with x files", files.length);
+	for (let layercnf of config.layers) {
 
-		//slice it up to smaller one and do first mips without quality loss
-		for (let layer of config.layers) {
-			for (let zoom = 0; (config.capturesize >> zoom) >= config.targetsize; zoom++) {
-				let size = config.capturesize >> zoom;
+
+		const minzoom = Math.floor(Math.log2(config.tileimgsize / (Math.max(config.mapsizex, config.mapsizez) * 64)));
+		const maxzoom = Math.log2(layercnf.pxpersquare);
+		const basezoom = Math.log2(config.tileimgsize / 64);
+
+		const outzoom = (zoom: number) => `${config.basedir}/${layercnf.name}/${zoom}`;
+		const outpath = (zoom: number, x: number, y: number) => `${outzoom(zoom)}/${x}-${y}.png`;
+
+		for (let zoom = minzoom; zoom <= maxzoom; zoom++) {
+			fs.mkdirSync(outzoom(zoom), { recursive: true });
+		}
+		let basequeue = new Set<string>();
+		let tasks: (() => Promise<any>)[] = [];
+		for (let chunk of chunks) {
+			let tilex = chunk.x;
+			let tiley = config.mapsizez - chunk.z;
+			let filename = `${config.rawdir}/${layercnf.name}/${chunk.x}-${chunk.z}.png`;
+			
+			if (!fs.existsSync(filename)) { continue; }
+			basequeue.add(`${tilex / 2 | 0}:${tiley / 2 | 0}`);
+
+			//slice it up to smaller one and do first mips without quality loss
+			for (let zoom = 0; (layercnf.pxpersquare * 64 >> zoom) >= config.tileimgsize; zoom++) {
+				let size = layercnf.pxpersquare * 64 >> zoom;
 				let muliplier = 1 << zoom;
-				for (let suby = 0; suby * size < config.capturesize; suby++) {
-					for (let subx = 0; subx * size < config.capturesize; subx++) {
-						let filename = `${config.rawdir}/${layer}/${chunkx}-${chunkz}.png`;
-						if (fs.existsSync(filename)) {
-							tasks.push(() =>
-								sharp(filename)
-									.extract({ left: subx * size, top: suby * size, width: size, height: size })
-									.resize(config.targetsize, config.targetsize, { kernel: "mitchell" })
-									.webp({ lossless: true })
-									.toFile(outpath(layer, zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
-							);
-						}
+				for (let suby = 0; suby * size < layercnf.pxpersquare * 64; suby++) {
+					for (let subx = 0; subx * size < layercnf.pxpersquare * 64; subx++) {
+						tasks.push(() =>
+							sharp(filename)
+								.extract({ left: subx * size, top: suby * size, width: size, height: size })
+								.resize(config.tileimgsize, config.tileimgsize, { kernel: "mitchell" })
+								.webp({ lossless: true })
+								.toFile(outpath(zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
+						);
 					}
 				}
 			}
 		}
-	}
-	await trickleTasks("sub image mipmaps", 4, tasks);
+		await trickleTasks("sub image mipmaps", 4, tasks);
 
-	for (let layer of config.layers) {
 		let queue = basequeue;
-		if (layer == "full") { continue; }//TODO remove
 		for (let zoom = basezoom - 1; zoom >= minzoom; zoom--) {
 			let currentqueue = queue;
 			queue = new Set();
@@ -429,11 +465,10 @@ export async function generateMips(config: Mapconfig) {
 				let y = +m[2];
 				queue.add(`${x / 2 | 0}:${y / 2 | 0}`);
 
-
-				let path00 = outpath(layer, zoom + 1, x * 2 + 0, y * 2 + 0);
-				let path01 = outpath(layer, zoom + 1, x * 2 + 1, y * 2 + 0);
-				let path10 = outpath(layer, zoom + 1, x * 2 + 0, y * 2 + 1);
-				let path11 = outpath(layer, zoom + 1, x * 2 + 1, y * 2 + 1);
+				let path00 = outpath(zoom + 1, x * 2 + 0, y * 2 + 0);
+				let path01 = outpath(zoom + 1, x * 2 + 1, y * 2 + 0);
+				let path10 = outpath(zoom + 1, x * 2 + 0, y * 2 + 1);
+				let path11 = outpath(zoom + 1, x * 2 + 1, y * 2 + 1);
 
 				let overlays: sharp.OverlayOptions[] = [];
 				if (fs.existsSync(path00)) { overlays.push({ blend: "over", input: path00, gravity: "northwest" }); }
@@ -443,20 +478,20 @@ export async function generateMips(config: Mapconfig) {
 
 				if (overlays.length != 0) {
 					tasks.push(
-						() => sharp({ create: { channels: 4, width: config.targetsize * 2, height: config.targetsize * 2, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+						() => sharp({ create: { channels: 4, width: config.tileimgsize * 2, height: config.tileimgsize * 2, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
 							.composite(overlays)
 							.raw()
 							.toBuffer({ resolveWithObject: true })//need to render to force resize after composite
 							.then(combined =>
 								sharp(combined.data, { raw: combined.info })
-									.resize(config.targetsize, config.targetsize, { kernel: "mitchell" })
+									.resize(config.tileimgsize, config.tileimgsize, { kernel: "mitchell" })
 									.webp({ lossless: true })
-									.toFile(outpath(layer, zoom, x, y))
+									.toFile(outpath(zoom, x, y))
 							)
 					);
 				}
 			}
-			await trickleTasks(`zoomed mipmaps layer ${layer} level ${zoom}`, 4, tasks);
+			await trickleTasks(`zoomed mipmaps layer ${layercnf.name} level ${zoom}`, 4, tasks);
 		}
 	}
 }

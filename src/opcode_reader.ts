@@ -560,7 +560,7 @@ function booleanParser(): ChunkParser<boolean> {
 	return {
 		read(buffer) {
 			let boolint = buffer.readUInt8(buffer.scan++);
-			if (boolint != 1 && boolint != 0) throw new Error(`value parsed as bool was not 0x00 or 0x01`)
+			if (boolint != 1 && boolint != 0) throw new Error(`value 0x${boolint} parsed as bool was not 0x00 or 0x01`)
 			return boolint != 0;
 		},
 		write(buffer, value) {

@@ -260,12 +260,13 @@ export class ThreeJsRenderer implements ModelSink {
 		this.setModels(newmodels.map(q => q.rootnode), metastr);
 	}
 
-	async takePicture(x: number, z: number, ntiles: number, framesize = 2048) {
+	async takePicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
+		let framesize = ntiles * pxpertile;
 		let scale = 2 / ntiles;
 		let cam = new THREE.Camera();
 		cam.projectionMatrix.elements = [
-			scale, scale / 5, 0, -x * scale - 1,
-			0, scale / 2, -scale, -z * scale - 1,
+			scale, scale * dxdy, 0, -x * scale - 1,
+			0, scale * dzdy, -scale, -z * scale - 1,
 			0, -0.001, 0, 0,
 			0, 0, 0, 1
 		];

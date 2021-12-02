@@ -1,30 +1,13 @@
-[
-  {"opcode": "0x01", "name": "code_01", "readType": "readByte"},
-  {"opcode": "0x02", "name": "code_02", "readType": "readByte"},
-  {"opcode": "0x03", "name": "defaultString", "readType": "readString"},
-  {"opcode": "0x04", "name": "defaultInt", "readType": "readInt"},
-  {"opcode": "0x05", "name": "code_05", "type": "KVArray",
-    "count": {"readType": "readUShort"},
-    "key_type": {"readType": "readInt"},
-    "element_type": {"readType": "readString"}
-  },
-  {"opcode": "0x06", "name": "code_06", "type": "KVArray",
-    "count": {"readType": "readUShort"},
-    "key_type": {"readType": "readInt"},
-    "element_type": {"readType": "readInt"}
-  },
-  {"opcode": "0x07", "name": "code_07", "type": "KVArrayIndex",
-    "maxIndex": {"readType": "readUShort"},
-    "count": {"readType": "readUShort"},
-    "key_type": {"readType": "readUShort"},
-    "element_type": {"readType": "readString"}
-  },
-  {"opcode": "0x08", "name": "code_08", "type": "KVArrayIndex",
-    "maxIndex": {"readType": "readUShort"},
-    "count": {"readType": "readUShort"},
-    "key_type": {"readType": "readUShort"},
-    "element_type": {"readType": "readInt"}
-  },
-  {"opcode": "0x65", "name": "code_65", "readType": "readUSmart"},
-  {"opcode": "0x66", "name": "code_66", "readType": "readUSmart"}
-]
+{
+	"0x01": { "name":                           "key_type1", "read": "unsigned byte" },
+	"0x02": { "name":                         "value_type1", "read": "unsigned byte" },
+	"0x65": { "name":                           "key_type2", "read": "unsigned byte" },
+	"0x66": { "name":                         "value_type2", "read": "unsigned byte" },
+	"0x03": { "name":                         "stringValue", "read": "string" },
+	"0x04": { "name":                            "intValue", "read": "unsigned int" },
+	"0x05": { "name":                   "stringArrayValue1", "read": ["array","unsigned short",["unsigned int","string"]] },
+	"0x06": { "name":                      "intArrayValue1", "read": ["array","unsigned short",["unsigned int","int"]] },
+	"0x07": { "name":                   "stringArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["unsigned short","string"]]]] },
+	"0x08": { "name":                      "intArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["unsigned short","int"]]]] },
+	"0x83": { "name":                          "unknown_83", "read": "true" }
+}

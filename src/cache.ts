@@ -142,8 +142,9 @@ export function indexBufferToObject(major: number, buffer: Buffer) {
 const mappedFileIds = {
 	[cacheMajors.items]: 256,//not sure
 	[cacheMajors.npcs]: 256,//not sure
-	[cacheMajors.materials]: Infinity,
-	[cacheMajors.objects]: 256
+	[cacheMajors.enums]: 256,
+	[cacheMajors.objects]: 256,
+	[cacheMajors.materials]: Infinity
 }
 
 export function fileIdToArchiveminor(major: number, fileid: number) {

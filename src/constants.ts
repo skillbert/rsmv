@@ -3,9 +3,11 @@ export const cacheMajors = {
 	mapsquares: 5,
 
 	objects: 16,
+	enums: 17,
 	npcs: 18,
 	items: 19,
 	materials: 26,
+	worldmap: 23,
 	models: 47,
 
 	texturesDds: 52,
