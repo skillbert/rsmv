@@ -105,7 +105,7 @@ function Spec_0(material: Stream): MaterialData {
 	}
 	if (material.scanloc() != material.getData().length) {
 		mat.raw.extrabytes = material.getData().slice(material.scanloc());
-		console.log(mat, "mat0 extra bytes", mat.raw.extrabytes);
+		// console.log(mat, "mat0 extra bytes", mat.raw.extrabytes);
 	}
 	return mat;
 }
@@ -206,7 +206,7 @@ function Spec_190411(material: Stream) {
 	ss += 6*/
 	if (material.scanloc() != material.getData().length) {
 		mat.raw.extrabytes = material.getData().slice(material.scanloc());
-		console.log(mat, "mat1 extra bytes", mat.raw.extrabytes);
+		// console.log(mat, "mat1 extra bytes", mat.raw.extrabytes);
 	}
 	return mat;
 }

@@ -154,7 +154,6 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
 		geo.index = meshdata.indices;
 		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
-		// (mat as THREE.MeshPhongMaterial).flatShading = true;
 		let mesh = new THREE.Mesh(geo, mat);
 		rootnode.add(mesh);
 	}

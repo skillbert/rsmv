@@ -328,7 +328,7 @@ export class ThreeJsRenderer implements ModelSink {
 				mat.alphaTest = 0.1;
 				mat.shininess = 0;
 				mat.userData = node.material.userData;
-				mat.flatShading = true;//TODO remove
+				// mat.flatShading = true;//TODO remove
 				node.material = mat;
 			}
 		});
@@ -386,7 +386,7 @@ export class ThreeJsRenderer implements ModelSink {
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
 		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-			this.uistate.toggles[q] = !q.match(/(floorhidden|collision)/);
+			this.uistate.toggles[q] = !q.match(/(floorhidden|collision|walls)/);
 		});
 		this.fixVisisbleMeshes();
 
@@ -507,8 +507,10 @@ export class ThreeJsRenderer implements ModelSink {
 			console.log(obj.material.userData);
 			if (meshdata.modeltype == "locationgroup") {
 				let typedmatch = match as typeof meshdata.subobjects[number];
-				let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);
-				this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
+				if (typedmatch.modeltype == "location") {
+					let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);
+					this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
+				}
 			}
 			if (meshdata.modeltype == "floor") {
 				let typedmatch = match as typeof meshdata.subobjects[number];

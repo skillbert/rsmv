@@ -345,6 +345,9 @@ export function parseOb3Model(modelfile: Buffer) {
 			model.skip(2);//i16, mostly -1, otherwise <400
 		}
 	}
+	for (let n = 0; n < unkCount3; n++) {
+		model.skip(16);
+	}
 
 	let r: ModelData = { maxy, miny, meshes };
 

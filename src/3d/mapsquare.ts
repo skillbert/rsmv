@@ -1,6 +1,6 @@
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
-import { CacheFileSource, CacheIndex, SubFile } from "../cache";
+import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
@@ -33,6 +33,7 @@ const heightScale = 1 / 16;
 const worldStride = 128;
 
 const { tileshapes, defaulttileshape } = generateTileShapes();
+const wallmodels = generateWallModels();
 
 const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
 
@@ -96,21 +97,23 @@ type ModelExtrasLocation = {
 	locationInstance: unknown
 }
 
-export type ModelExtras = ModelExtrasLocation | {
+type ModelExtrasCollision = {
+	modeltype: "collision",
+	isclickable: false,
+	modelgroup: string,
+	level: number
+}
+
+export type ModelExtras = ModelExtrasLocation | ModelExtrasCollision | {
 	modeltype: "floor" | "floorhidden",
 	modelgroup: string,
 	mapsquarex: number,
 	mapsquarez: number,
 	level: number
 } & ClickableMesh<MeshTileInfo> | {
-	modeltype: "collision",
-	isclickable: false,
-	modelgroup: string,
-	level: number
-} | {
 	modeltype: "locationgroup",
 	modelgroup: string
-} & ClickableMesh<ModelExtrasLocation>
+} & ClickableMesh<ModelExtrasLocation | ModelExtrasCollision>
 
 export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number };
 
@@ -167,6 +170,132 @@ type FloorMorph = {
 		tiles: TileMorph[],
 		scaleModelHeight: boolean,
 		scaleModelHeightOffset: number
+	}
+}
+
+function extrudedPolygonMesh(points: { x: number, z: number }[], height: number, color: number[]): ModelMeshData {
+	let nvertices = points.length * 4 + points.length * 2;
+	let nfaces = points.length + 2;
+	let pos = new Float32Array(3 * nvertices);
+	let col = new Uint8Array(3 * nvertices);
+	for (let a = 0; a < col.length; a += 3) {
+		col[a + 0] = color[0]; col[a + 1] = color[1]; col[a + 2] = color[2];
+	}
+	let indexbuffer = new Uint16Array((nvertices - nfaces) * 3);
+	//side faces
+	let vertexindex = 0;
+	let index = 0;
+	let lastpoint = points[points.length - 1];
+	//side faces
+	for (let a = 0; a < points.length; a++) {
+		let point = points[a];
+		let firstvertex = vertexindex / 3;
+		pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = 0; pos[vertexindex++] = lastpoint.z;
+		pos[vertexindex++] = point.x; pos[vertexindex++] = 0; pos[vertexindex++] = point.z;
+		pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = height; pos[vertexindex++] = lastpoint.z;
+		pos[vertexindex++] = point.x; pos[vertexindex++] = height; pos[vertexindex++] = point.z;
+
+		indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 1; indexbuffer[index++] = firstvertex + 3;
+		indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 3; indexbuffer[index++] = firstvertex + 2;
+
+		lastpoint = point;
+	}
+
+	//bottom polygon
+	let firstvertex = vertexindex / 3;
+	pos[vertexindex++] = points[0].x; pos[vertexindex++] = 0; pos[vertexindex++] = points[0].z;
+	let lastvertex = vertexindex / 3;
+	pos[vertexindex++] = points[points.length - 1].x; pos[vertexindex++] = 0; pos[vertexindex++] = points[points.length - 1].z;
+	for (let a = points.length - 2; a >= 1; a--) {
+		let vertex = vertexindex / 3;
+		pos[vertexindex++] = points[a].x; pos[vertexindex++] = 0; pos[vertexindex++] = points[a].z;
+		indexbuffer[index++] = firstvertex; indexbuffer[index++] = lastvertex; indexbuffer[index++] = vertex;
+		lastvertex = vertex
+	}
+	//top polygon
+	firstvertex = vertexindex / 3;
+	pos[vertexindex++] = points[0].x; pos[vertexindex++] = height; pos[vertexindex++] = points[0].z;
+	lastvertex = vertexindex / 3;
+	pos[vertexindex++] = points[1].x; pos[vertexindex++] = height; pos[vertexindex++] = points[1].z;
+	for (let a = 2; a < points.length; a++) {
+		let vertex = vertexindex / 3;
+		pos[vertexindex++] = points[a].x; pos[vertexindex++] = height; pos[vertexindex++] = points[a].z;
+		indexbuffer[index++] = firstvertex; indexbuffer[index++] = lastvertex; indexbuffer[index++] = vertex;
+		lastvertex = vertex
+	}
+
+	return {
+		attributes: {
+			pos: new THREE.BufferAttribute(pos, 3, false),
+			color: new THREE.BufferAttribute(col, 3, true)
+		},
+		indices: new THREE.BufferAttribute(indexbuffer, 1, false),
+		hasVertexAlpha: false,
+		materialId: -1
+	}
+}
+
+function generateWallModels() {
+	const thick = tiledimensions / 8;
+	const height = tiledimensions * 1.5;
+	const white = [255, 255, 255];
+	const red = [255, 0, 0];
+	const halftile = tiledimensions / 2;
+	return {
+		wall: {
+			maxy: height,
+			miny: 0,
+			meshes: [extrudedPolygonMesh([
+				{ x: -halftile, z: -halftile },
+				{ x: -halftile, z: halftile },
+				{ x: -halftile + thick, z: halftile },
+				{ x: -halftile + thick, z: -halftile }
+			], height, white)]
+		} as ModelData,
+		shortcorner: {
+			maxy: height,
+			miny: 0,
+			meshes: [extrudedPolygonMesh([
+				{ x: -halftile, z: halftile },
+				{ x: -halftile + thick, z: halftile },
+				{ x: -halftile + thick, z: halftile - thick },
+				{ x: -halftile, z: halftile - thick }
+			], height, white)]
+		} as ModelData,
+		longcorner: {
+			maxy: height,
+			miny: 0,
+			meshes: [extrudedPolygonMesh([
+				{ x: -halftile + thick, z: halftile - thick },
+				{ x: -halftile + thick, z: -halftile },
+				{ x: -halftile, z: -halftile },
+				{ x: -halftile, z: halftile },
+				{ x: halftile, z: halftile },
+				{ x: halftile, z: halftile - thick },
+			], height, white)]
+		} as ModelData,
+		pillar: {
+			maxy: height,
+			miny: 0,
+			meshes: [extrudedPolygonMesh([
+				{ x: -halftile, z: halftile },
+				{ x: -halftile + thick, z: halftile },
+				{ x: -halftile + thick, z: halftile - thick },
+				{ x: -halftile, z: halftile - thick }
+			], height, white)]
+		} as ModelData,
+		diagonal: {
+			maxy: height,
+			miny: 0,
+			meshes: [extrudedPolygonMesh([
+				{ x: -halftile, z: -halftile },
+				{ x: -halftile, z: -halftile + thick },
+				{ x: halftile - thick, z: halftile },
+				{ x: halftile, z: halftile },
+				{ x: halftile, z: halftile - thick },
+				{ x: -halftile + thick, z: -halftile },
+			], height, white)]
+		} as ModelData,
 	}
 }
 
@@ -738,7 +867,7 @@ export class TileGrid {
 }
 
 export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean };
-type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], chunk: ChunkData, grid: TileGrid };
+type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], walls: MapsquareLocation[], chunk: ChunkData, grid: TileGrid };
 
 export async function mapConfigData(source: CacheFileSource) {
 	//TODO proper erroring on nulls
@@ -759,7 +888,7 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 	let originz = (opts?.centered ? (rect.y + rect.height / 2) * tiledimensions * squareHeight : 0);
 
 	let chunkfloorpadding = (opts?.padfloor ? 1 : 0);
-	let grid = new TileGrid(rect.x, rect.y, rect.width + chunkfloorpadding, rect.height + chunkfloorpadding);
+	let grid = new TileGrid(rect.x - chunkfloorpadding, rect.y - chunkfloorpadding, rect.width + chunkfloorpadding * 2, rect.height + chunkfloorpadding * 2);
 	let chunks: ChunkData[] = [];
 	for (let z = -chunkfloorpadding; z < rect.height + chunkfloorpadding; z++) {
 		for (let x = -chunkfloorpadding; x < rect.width + chunkfloorpadding; x++) {
@@ -847,11 +976,13 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 				floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
 			}
 		}
+		let { models, walls } = await mapsquareObjects(source, chunk, grid, !!opts?.collision);
 		squareDatas.push({
 			chunk,
 			floors,
-			models: await mapsquareObjects(source, chunk, grid, !!opts?.collision),
-			grid
+			models,
+			grid,
+			walls
 		});
 	}
 	return squareDatas;
@@ -896,6 +1027,7 @@ export async function mapsquareToThree(source: CacheFileSource, chunks: ChunkMod
 			let boxes = mapsquareCollisionToThree(chunk, level);
 			if (boxes) { node.add(boxes); }
 		}
+		node.add(await mapSquareLocationsToThree(scene, chunk.walls));
 		root.add(node);
 	}
 
@@ -989,11 +1121,19 @@ class SimpleTexturePacker {
 	}
 }
 
+type MapsquareWall = {
+	x: number,
+	z: number,
+	rotation: number,
+	type: 0 | 1 | 2 | 3 | 9,
+	red: boolean
+}
+
 type MapsquareLocation = {
-	modelid: number,
+	modelid: number | ModelData,
 	morph: FloorMorph,
 	mods: ModelModifications,
-	extras: ModelExtrasLocation
+	extras: ModelExtrasLocation | ModelExtrasCollision
 }
 
 //TODO move this to a more logical location
@@ -1019,14 +1159,15 @@ export async function resolveMorphedObject(source: CacheFileSource, id: number) 
 }
 
 async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid: TileGrid, collision = false) {
+	let models: MapsquareLocation[] = [];
+	let walls: MapsquareLocation[] = [];
+
 	let locationindex = chunk.cacheIndex.subindices.indexOf(0);
-	if (locationindex == -1) { return []; }
+	if (locationindex == -1) { return { models, walls }; }
 	let locations = parseMapsquareLocations.read(chunk.archive[locationindex].buffer).locations;
 
 	let rootx = chunk.xoffset * tiledimensions;
 	let rootz = chunk.zoffset * tiledimensions;
-
-	let models: MapsquareLocation[] = [];
 
 	for (let loc of locations) {
 		let objectmeta = await resolveMorphedObject(source, loc.id);
@@ -1217,8 +1358,8 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			//21 corner roof overhang (with angle)
 			//22 floor decoration
 			if (inst.type == 11) {
-				morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, Math.PI / 4));
-				addmodel(10, morph);
+				// morph.rotation.multiply(new THREE.Quaternion().setFromAxisAngle(upvector, Math.PI / 4));
+				addmodel(10, { ...morph, rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 4).premultiply(morph.rotation) });
 			} else if (inst.type == 8 || inst.type == 7 || inst.type == 6) {
 				if (inst.type == 6 || inst.type == 8) {
 					let dx = tiledimensions * 0.6;
@@ -1258,6 +1399,26 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				console.log("model not found for render type", inst.type, objectmeta);
 			}
 
+			//wall drawing
+			//TODO just use same extras?
+			let wallextra: ModelExtrasCollision = {
+				modeltype: "collision",
+				isclickable: false,
+				modelgroup: "walls" + visualLevel,
+				level: visualLevel
+			}
+			if (inst.type == 0) {
+				walls.push({ extras: wallextra, modelid: wallmodels.wall, mods: {}, morph: morph });
+			} else if (inst.type == 1) {
+				walls.push({ extras: wallextra, modelid: wallmodels.shortcorner, mods: {}, morph: morph });
+			} else if (inst.type == 2) {
+				walls.push({ extras: wallextra, modelid: wallmodels.longcorner, mods: {}, morph: morph });
+			} else if (inst.type == 3) {
+				walls.push({ extras: wallextra, modelid: wallmodels.pillar, mods: {}, morph: morph });
+			} else if (inst.type == 9) {
+				walls.push({ extras: wallextra, modelid: wallmodels.diagonal, mods: {}, morph: morph });
+			}
+
 			if (collision && !objectmeta.probably_nocollision) {
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
@@ -1288,7 +1449,7 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 			}
 		}
 	}
-	return models;
+	return { models, walls };
 }
 
 // async function mapSquareLocationsToGltf(scene: GLTFSceneCache, models: MapsquareLocation[]) {
@@ -1461,21 +1622,25 @@ function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number) {
 }
 
 async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: MapsquareLocation[]) {
-	let modelcache = new Map<number, { modeldata: ModelData, instancemesh: THREE.Object3D | undefined }>();
+	let modelcache = new Map<number, ModelData>();
 
 	type MatMesh = { loc: MapsquareLocation, mesh: ModelMeshData, model: ModelData };
 	let matmeshes: Map<number, MatMesh[]>[] = [];
 	for (let level = 0; level < squareLevels; level++) { matmeshes.push(new Map()); }
 
 	for (let obj of models) {
-		let model = modelcache.get(obj.modelid);
-		if (!model) {
-			let file = await scene.getFileById(cacheMajors.models, obj.modelid);
-			let modeldata = parseOb3Model(file);
-			model = { modeldata, instancemesh: undefined };
-			modelcache.set(obj.modelid, model);
+		let model: ModelData | undefined;
+		if (typeof obj.modelid == "object") {
+			model = obj.modelid;
+		} else {
+			model = modelcache.get(obj.modelid);
+			if (!model) {
+				let file = await scene.getFileById(cacheMajors.models, obj.modelid);
+				model = parseOb3Model(file);
+				modelcache.set(obj.modelid, model);
+			}
 		}
-		model.modeldata.meshes.forEach(rawmesh => {
+		model.meshes.forEach(rawmesh => {
 			let modified = modifyMesh(rawmesh, obj.mods);
 			let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
 			let matgroup = matmeshes[obj.extras.level].get(matkey);
@@ -1483,7 +1648,7 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 				matgroup = [];
 				matmeshes[obj.extras.level].set(matkey, matgroup);
 			}
-			matgroup.push({ loc: obj, mesh: modified, model: model!.modeldata });
+			matgroup.push({ loc: obj, mesh: modified, model: model! });
 		});
 	}
 
@@ -1497,6 +1662,11 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 				geo.setAttribute("position", attrs.pos.clone());
 				if (attrs.color) { geo.setAttribute("color", attrs.color); }
 				if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
+				else {
+					//TODO remove this
+					// console.log("calculating missing normals");
+					geo.computeVertexNormals();
+				}
 				if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
 				geo.index = transformed.indices;
 				return geo;
@@ -1526,37 +1696,6 @@ async function mapSquareLocationsToThree(scene: ThreejsSceneCache, models: Mapsq
 			nodes.push(mesh);
 		}
 	}
-	// for (let obj of models) {
-	// 	let model = modelcache.get(obj.modelid);
-	// 	if (!model) {
-	// 		let file = await scene.getFileById(cacheMajors.models, obj.modelid);
-	// 		let modeldata = parseOb3Model(file);
-	// 		model = { modeldata, instancemesh: undefined };
-	// 		modelcache.set(obj.modelid, model);
-	// 	}
-
-	// 	let node: Object3D;
-
-	// 	if (obj.morph.tiletransform) {
-	// 		//generate morphed model
-	// 		let morphmesh = model.modeldata.meshes.map(m => transformMesh(m, obj.morph, model!.modeldata.maxy));
-	// 		node = await ob3ModelToThree(scene, { maxy: model.modeldata.maxy, meshes: morphmesh });
-	// 		// node.position.copy(obj.morph.translate);
-	// 	} else {
-	// 		//cache and reuse the model if it only has afine transforms
-	// 		if (!model.instancemesh) {
-	// 			model.instancemesh = await ob3ModelToThree(scene, model.modeldata);
-	// 		}
-	// 		node = model.instancemesh.clone(true);
-	// 		node.quaternion.copy(obj.morph.rotation);
-	// 		node.scale.copy(obj.morph.scale);
-	// 		node.position.copy(obj.morph.translate);
-	// 	}
-	// 	node.userData = obj.extras;
-	// 	node.matrixAutoUpdate = false;
-	// 	node.updateMatrix();
-	// 	nodes.push(node);
-	// }
 	let root = new THREE.Group();
 	root.add(...nodes);
 	return root;
@@ -1606,18 +1745,26 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		const texusescolorpointer = vertexindex * texusescolorstride + texusescoloroffset;
 		const texuvpointer = vertexindex * textuvstride + texuvoffset;
 
+		const w00 = (1 - subx) * (1 - subz);
+		const w01 = subx * (1 - subz);
+		const w10 = (1 - subx) * subz
+		const w11 = subx * subz;
+
 		const x = tile.x + subx * tiledimensions - modelx;
-		const y = tile.y * (1 - subx) * (1 - subz) + tile.y01 * subx * (1 - subz) + tile.y10 * (1 - subx) * subz + tile.y11 * subx * subz;
 		const z = tile.z + subz * tiledimensions - modelz;
+
+		const y = tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11;
+		const normalx = tile.normalX * w00 + (tile.next01 ?? tile).normalX * w01 + (tile.next10 ?? tile).normalX * w10 + (tile.next11 ?? tile).normalX * w11;
+		const normalz = tile.normalZ * w00 + (tile.next01 ?? tile).normalZ * w01 + (tile.next10 ?? tile).normalZ * w10 + (tile.next11 ?? tile).normalZ * w11;
 
 		minx = Math.min(minx, x); miny = Math.min(miny, y); minz = Math.min(minz, z);
 		maxx = Math.max(maxx, x); maxy = Math.max(maxy, y); maxz = Math.max(maxz, z);
 		posbuffer[pospointer + 0] = x;
 		posbuffer[pospointer + 1] = y;
 		posbuffer[pospointer + 2] = z;
-		normalbuffer[normalpointer + 0] = tile.normalX;
-		normalbuffer[normalpointer + 1] = Math.sqrt(1 - tile.normalX * tile.normalX - tile.normalZ * tile.normalZ);
-		normalbuffer[normalpointer + 2] = tile.normalZ;
+		normalbuffer[normalpointer + 0] = normalx;
+		normalbuffer[normalpointer + 1] = Math.sqrt(1 - normalx * normalx - normalz * normalz);
+		normalbuffer[normalpointer + 2] = normalz;
 		colorbuffer[colpointer + 0] = polyprops[currentmat].color[0];
 		colorbuffer[colpointer + 1] = polyprops[currentmat].color[1];
 		colorbuffer[colpointer + 2] = polyprops[currentmat].color[2];

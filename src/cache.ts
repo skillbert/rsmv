@@ -157,10 +157,17 @@ export function achiveToFileId(major: number, minor: number, subfile: number) {
 	return minor * archsize + subfile;
 }
 
-export abstract class CacheFileSource {
-	abstract getFile(major: number, minor: number, crc?: number): Promise<Buffer>;
-	abstract getFileArchive(index: CacheIndex): Promise<SubFile[]>;
-	abstract getIndexFile(major: number): Promise<CacheIndexFile>;
+export class CacheFileSource {
+	//could use abstract here but typings get weird
+	getFile(major: number, minor: number, crc?: number): Promise<Buffer> {
+		throw new Error("not implemented");
+	}
+	getFileArchive(index: CacheIndex): Promise<SubFile[]> {
+		throw new Error("not implemented");
+	}
+	getIndexFile(major: number): Promise<CacheIndexFile> {
+		throw new Error("not implemented");
+	}
 
 	async getFileById(major: number, fileid: number) {
 		let holderindex = fileIdToArchiveminor(major, fileid);
@@ -175,6 +182,40 @@ export abstract class CacheFileSource {
 		return file;
 	}
 	close() { }
+}
+
+export function cachingFileSourceMixin<T extends new (...args: any[]) => CacheFileSource>(source: T) {
+	return class CachedFileSource extends source {
+		useindexcounter = 1;
+		cache: { index: CacheIndex, files: Promise<SubFile[]>, useindex: number }[] = [];
+		indices = new Map<number, Promise<CacheIndexFile>>();
+		constructor(...args: any[]) {
+			super(...args);
+		}
+
+		getIndexFile(major: number) {
+			let cached = this.indices.get(major);
+			if (!cached) {
+				cached = super.getIndexFile(major);
+				this.indices.set(major, cached);
+			}
+			return cached;
+		}
+		getFileArchive(index: CacheIndex) {
+			let cached = this.cache.find(q => q.index.major == index.major && q.index.minor == index.minor);
+			if (!cached) {
+				cached = { files: super.getFileArchive(index), index, useindex: this.useindexcounter++ };
+				this.cache.push(cached);
+				if (this.cache.length > 200) {
+					this.cache.sort((a, b) => b.useindex - a.useindex);
+					this.cache.length = 150;
+				}
+			} else {
+				cached.useindex = this.useindexcounter++;
+			}
+			return cached.files;
+		}
+	}
 }
 
 // export class MemoryCachedFileSource {

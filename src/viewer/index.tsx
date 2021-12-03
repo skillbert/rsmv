@@ -17,6 +17,8 @@ import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolv
 import { GameCacheLoader } from "../cacheloader";
 import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
+import { cachingFileSourceMixin } from "../cache";
+import { Downloader } from "../downloader";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
@@ -44,7 +46,10 @@ async function getFile(major: number, minor: number) {
 }
 
 //TODO remove this hack
-const hackyCacheFileSource = new GameCacheLoader(path.resolve(process.env.ProgramData!, "jagex/runescape"));
+let CachedHacky = cachingFileSourceMixin(GameCacheLoader);
+const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
+// let CachedHacky = cachingFileSourceMixin(Downloader);
+// const hackyCacheFileSource = new CachedHacky();
 
 class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, viewerState: ModelViewerState }> {
 	renderer: ModelSink;
@@ -301,7 +306,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			width = width ?? 1;
 			height = height ?? width;
 			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true };
+			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
 			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, opts);
 			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);

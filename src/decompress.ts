@@ -59,7 +59,8 @@ var _bz2 = function (input: Buffer) {
 	// Add the header
 	processed.writeUInt16BE(0x425A, 0x0); // Magic Number
 	processed.writeUInt8(0x68, 0x2); // Version
-	processed.writeUInt8(Math.ceil(uncompressed / (1024 * 102.4)) + 0x30, 0x3); // Block size in 100kB because why the hell not
+	// processed.writeUInt8(Math.ceil(uncompressed / (1024 * 102.4)) + 0x30, 0x3); // Block size in 100kB because why the hell not
+	processed.writeUInt8(5 + 0x30, 0x3); // the lib expects a number between 1-9 here (+0x30)
 
 	return Buffer.from(bzip2.simple(bzip2.array(processed)));
 }
