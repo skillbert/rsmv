@@ -18,11 +18,9 @@
 				["translateY",["opt",["flags",2,"bitflag"],"short"]],
 				["translateZ",["opt",["flags",3,"bitflag"],"short"]],
 				["scale",["opt",["flags",4,"bitflag"],"unsigned short"]],
-				["unk_not4",["opt",["flags",4,"bitflagnot"],["struct",
-					["scaleX",["opt",["flags",5,"bitflag"],"unsigned short"]],
-					["scaleY",["opt",["flags",6,"bitflag"],"unsigned short"]],
-					["scaleZ",["opt",["flags",7,"bitflag"],"unsigned short"]]
-				]]]
+				["scaleX",["opt",["flags",5,"bitflag"],"unsigned short"]],
+				["scaleY",["opt",["flags",6,"bitflag"],"unsigned short"]],
+				["scaleZ",["opt",["flags",7,"bitflag"],"unsigned short"]]
 			]]]
 		]]]
 	]]]

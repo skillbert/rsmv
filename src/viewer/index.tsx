@@ -306,12 +306,12 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			width = width ?? 1;
 			height = height ?? width;
 			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
+			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: false };
 			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, opts);
 			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);
 			// renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
-			let scene = await mapsquareToThree(hackyCacheFileSource, modeldata);
+			let scene = await mapsquareToThree(hackyCacheFileSource, grid, modeldata);
 			renderer.setModels?.([scene], "");
 			break;
 		default:

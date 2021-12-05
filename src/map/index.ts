@@ -282,7 +282,7 @@ export async function downloadMapsquareThree(filesource: CacheFileSource, x: num
 	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false };
 	let { chunks, grid } = await parseMapsquare(filesource, { x, y: z, width: 1, height: 1 }, opts);
 	let modeldata = await mapsquareModels(filesource, grid, chunks, opts);
-	let file = await mapsquareToThree(filesource, modeldata);
+	let file = await mapsquareToThree(filesource, grid, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
 	return { grid, chunks, model: file };
 }
@@ -431,7 +431,7 @@ export async function generateMips(config: Mapconfig) {
 			let tilex = chunk.x;
 			let tiley = config.mapsizez - chunk.z;
 			let filename = `${config.rawdir}/${layercnf.name}/${chunk.x}-${chunk.z}.png`;
-			
+
 			if (!fs.existsSync(filename)) { continue; }
 			basequeue.add(`${tilex / 2 | 0}:${tiley / 2 | 0}`);
 
