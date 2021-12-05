@@ -2,7 +2,7 @@ import { filesource, cliArguments } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
-import { cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums, parseMapscenes } from "../opdecoder";
 import { achiveToFileId, CacheFileSource } from "../cache";
 import { parseSprite } from "../3d/sprite";
@@ -22,15 +22,17 @@ const decoders: Record<string, KnownType> = {
 	npcs: { index: cacheMajors.npcs, parser: parseNpc },
 	objects: { index: cacheMajors.objects, parser: parseObject },
 	achievements: { index: cacheMajors.achievements, parser: parseAchievement },
-	mapsquares: { index: cacheMajors.mapsquares, parser: parseMapsquareTiles },
-	mapunderlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareUnderlays },
-	maptiles: { index: cacheMajors.mapsquares, subfile: 3, parser: parseMapsquareTiles },
-	overlays: { index: cacheMajors.config, minor: 4, parser: parseMapsquareOverlays },
-	underlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareOverlays },
+	sprites: { index: cacheMajors.sprites, img: (b) => Promise.resolve(parseSprite(b)) },
+
+	overlays: { index: cacheMajors.config, minor: cacheConfigPages.mapoverlays, parser: parseMapsquareOverlays },
+	underlays: { index: cacheMajors.config, minor: cacheConfigPages.mapunderlays, parser: parseMapsquareOverlays },
+	mapscenes: { index: cacheMajors.config, minor: cacheConfigPages.mapscenes, parser: parseMapscenes },
+
 	mapzones: { index: cacheMajors.worldmap, minor: 0, parser: parseMapZones },
+
 	enums: { index: cacheMajors.enums, minor: 0, parser: parseEnums },
-	mapscenes: { index: cacheMajors.config, minor: 34, parser: parseMapscenes },
-	sprites: { index: cacheMajors.sprites, img: (b) => Promise.resolve(parseSprite(b)) }
+	
+	maptiles: { index: cacheMajors.mapsquares, subfile: 3, parser: parseMapsquareTiles },
 }
 
 let cmd = command({

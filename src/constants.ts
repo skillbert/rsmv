@@ -19,3 +19,9 @@ export const cacheMajors = {
 
 	index: 255
 }
+
+export const cacheConfigPages = {
+	mapunderlays: 1,
+	mapoverlays: 4,
+	mapscenes: 34
+}
