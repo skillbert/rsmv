@@ -56,5 +56,6 @@ export const parseMapsquareOverlays = new FileParser<import("../generated/mapsqu
 export const parseMapsquareLocations = new FileParser<import("../generated/mapsquare_locations").mapsquare_locations>(__dirname + "/opcodes/mapsquare_locations.json");
 export const parseMapZones = new FileParser<import("../generated/mapzones").mapzones>(__dirname + "/opcodes/mapzones.json");
 export const parseEnums = new FileParser<import("../generated/enums").enums>(__dirname + "/opcodes/enums.json");
+export const parseMapscenes = new FileParser<import("../generated/mapscenes").mapscenes>(__dirname + "/opcodes/mapscenes.json");
 
 

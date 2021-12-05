@@ -3,8 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums } from "../opdecoder";
-import { achiveToFileId, CacheFileSource } from "../cache";
+import { parseItem, parseEnums } from "../opdecoder";
 
 type Coord = { x: number, z: number, level: number };
 

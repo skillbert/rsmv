@@ -3,15 +3,18 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums, parseMapscenes } from "../opdecoder";
 import { achiveToFileId, CacheFileSource } from "../cache";
+import { parseSprite } from "../3d/sprite";
+import sharp from "sharp";
 
 type KnownType = {
 	index: number,
 	subfile?: number,
 	minor?: number,
-	parser: FileParser<any>,
-	gltf?: (b: Buffer, source: CacheFileSource) => Promise<Uint8Array>
+	parser?: FileParser<any>,
+	gltf?: (b: Buffer, source: CacheFileSource) => Promise<Uint8Array>,
+	img?: (b: Buffer, source: CacheFileSource) => Promise<{ width: number, height: number, channels: 4, data: Uint8Array }[]>
 }
 
 const decoders: Record<string, KnownType> = {
@@ -20,12 +23,14 @@ const decoders: Record<string, KnownType> = {
 	objects: { index: cacheMajors.objects, parser: parseObject },
 	achievements: { index: cacheMajors.achievements, parser: parseAchievement },
 	mapsquares: { index: cacheMajors.mapsquares, parser: parseMapsquareTiles },
-	mapunderlays: { index: cacheMajors.config, parser: parseMapsquareUnderlays },
+	mapunderlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareUnderlays },
 	maptiles: { index: cacheMajors.mapsquares, subfile: 3, parser: parseMapsquareTiles },
 	overlays: { index: cacheMajors.config, minor: 4, parser: parseMapsquareOverlays },
 	underlays: { index: cacheMajors.config, minor: 1, parser: parseMapsquareOverlays },
 	mapzones: { index: cacheMajors.worldmap, minor: 0, parser: parseMapZones },
-	enums: { index: cacheMajors.enums, minor: 0, parser: parseEnums }
+	enums: { index: cacheMajors.enums, minor: 0, parser: parseEnums },
+	mapscenes: { index: cacheMajors.config, minor: 34, parser: parseMapscenes },
+	sprites: { index: cacheMajors.sprites, img: (b) => Promise.resolve(parseSprite(b)) }
 }
 
 let cmd = command({
@@ -35,7 +40,7 @@ let cmd = command({
 		major: option({ long: "major", type: string }),
 		minor: option({ long: "minor", type: string, defaultValue: () => "all" }),
 		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-		decode: option({ long: "format", short: "t", type: oneOf(["json", "batchjson", "bin", "gltf"]), defaultValue: () => "bin" as any }),
+		decode: option({ long: "format", short: "t", type: oneOf(["json", "batchjson", "bin", "gltf", "img"]), defaultValue: () => "bin" as any }),
 		subfile: option({ long: "subfile", short: "a", type: number, defaultValue: () => -1 })
 	},
 	handler: async (args) => {
@@ -62,6 +67,7 @@ let cmd = command({
 			&& (typeof q.minor == "undefined" || q.minor == minorstart)
 			&& (typeof q.subfile == "undefined" || q.subfile == args.subfile)
 		) : undefined);
+
 		if (args.decode != "bin" && !decoder) { throw new Error("no decoder known for this cache major"); }
 
 		let outdir = path.resolve(args.save)
@@ -94,6 +100,24 @@ let cmd = command({
 						let buf = await decoder.gltf(file, filesource);
 						fs.writeFileSync(filename, buf);
 						console.log(filename, files[fileindex].size);
+					} else if (args.decode == "img") {
+						if (!decoder?.img) { throw new Error(); }
+						try {
+							let imgs = await decoder.img(file, filesource);
+							for (let i = 0; i < imgs.length; i++) {
+								let filename = path.resolve(outdir, `${index.minor}${imgs.length == 1 ? "" : "-" + i}.png`);
+								let img = imgs[i];
+								let info = await sharp(img.data, { raw: img })
+									.png()
+									.toFile(filename);
+
+								console.log(filename, info.size);
+							}
+						} catch (e) {
+							console.error(e);
+							fs.writeFileSync("img" + Date.now() + ".bin", file);
+							//TODO bugs with bzip2 stopping to soon
+						}
 					}
 				}
 				if (args.decode == "batchjson" && batchedoutput.length != 0) {

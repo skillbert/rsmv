@@ -39,7 +39,7 @@ export class ParsedTexture {
 		if (this.type == "bmpmips") {
 			this.bmpWidth = texture.readUInt32BE(offset); offset += 4;
 			this.bmpWidth = texture.readUInt32BE(offset); offset += 4;
-		}
+		} 
 		for (let i = 0; i < this.mipmaps; i++) {
 			let compressedsize: number;
 			if (i != 0 && this.type == "bmpmips") {

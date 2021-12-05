@@ -1,0 +1,7 @@
+{
+	"0x01": { "name":                           "sprite_id", "read": "variable unsigned int" },
+	"0x02": { "name":                           "unknown_2", "read": "unsigned int" },
+	"0x03": { "name":                           "unknown_3", "read": "true" },
+	"0x04": { "name":                           "unknown_4", "read": "true" },
+	"0x05": { "name":                           "unknown_5", "read": "true" }
+}

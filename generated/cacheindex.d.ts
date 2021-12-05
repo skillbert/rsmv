@@ -9,6 +9,8 @@ export type cacheindex = {
 	indices: ({
 		minor: number,
 	} & {
+		name: number | undefined,
+	} & {
 		crc: number,
 	} & {
 		uncompressed_crc: number,

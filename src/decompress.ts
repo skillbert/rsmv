@@ -50,7 +50,8 @@ var _uncompressed = function (input: Buffer) {
  * @param {Buffer} input The input buffer straight from the server
  */
 var _bz2 = function (input: Buffer) {
-	var bzip2 = require("bzip2");
+	//var bzip2 = require("bzip2");
+	var bzip2 = require("./libs/bzip2fork");
 	var compressed = input.readUInt32BE(0x1);
 	var uncompressed = input.readUInt32BE(0x5);
 	var processed = Buffer.alloc(compressed + 0x2 + 0x1 + 0x1);
@@ -60,8 +61,7 @@ var _bz2 = function (input: Buffer) {
 	processed.writeUInt16BE(0x425A, 0x0); // Magic Number
 	processed.writeUInt8(0x68, 0x2); // Version
 	// processed.writeUInt8(Math.ceil(uncompressed / (1024 * 102.4)) + 0x30, 0x3); // Block size in 100kB because why the hell not
-	processed.writeUInt8(5 + 0x30, 0x3); // the lib expects a number between 1-9 here (+0x30)
-
+	processed.writeUInt8(8 + 0x30, 0x3); // the lib expects a number between 1-9 here (+0x30)
 	return Buffer.from(bzip2.simple(bzip2.array(processed)));
 }
 

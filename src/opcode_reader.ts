@@ -30,8 +30,9 @@ export type ComposedChunk = string
 	| [type: "array", props: ComposedChunk]
 	//cant be labaled or typescript craps its pants
 	//| [type: "array", lengthTypeOrConst: string | number, ...chunkedprops: ComposedChunk[]]
-	| ["array", ComposedChunk | number, ...ComposedChunk[]]
-	| ["nullarray", ComposedChunk, ...ComposedChunk[]]
+	| ["chunkedarray", ComposedChunk | number, ...ComposedChunk[]]
+	| ["array", ComposedChunk | number, ComposedChunk]
+	| ["nullarray", ComposedChunk, ComposedChunk]
 	| [type: "ref", ref: string, bitrange?: [number, number]]
 	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
 	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
@@ -114,8 +115,7 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						if (typeof valuearg == "string") { valuearg = parseInt(valuearg) }
 						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg, cmpmode);
 					}
-					case "nullarray":
-					case "array": {
+					case "chunkedarray": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
 						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
@@ -123,11 +123,18 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						if (!Array.isArray(valuetype)) {
 							valuetype = [valuetype];
 						}
+						return chunkedArrayParser(sizetype, valuetype.map(t => buildParser(t, typedef)));
+					}
+					case "nullarray":
+					case "array": {
+						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
+						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
+						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						let valuetype = chunkdef[chunkdef.length >= 3 ? 2 : 1] as ComposedChunk;
 						if (chunkdef[0] == "array") {
-							return arrayParser(sizetype, valuetype.map(t => buildParser(t, typedef)));
+							return arrayParser(sizetype, buildParser(valuetype, typedef));
 						} else {
-							if (valuetype.length != 1) { throw new Error("cant use chunked arrays in null terminated arrays"); }
-							return arrayNullTerminatedParser(sizetype, buildParser(valuetype[0], typedef));
+							return arrayNullTerminatedParser(sizetype, buildParser(valuetype, typedef));
 						}
 					}
 					case "struct": {
@@ -301,37 +308,63 @@ function checkCondition(parser: ChunkParser<any>, v: number) {
 	}
 }
 
-function arrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: ChunkParser<T>[]): ChunkParser<T[]> {
+function chunkedArrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: ChunkParser<T>[]): ChunkParser<T[]> {
 	return {
-		read(buffer, ctx) {
-			let len = lengthtype.read(buffer, ctx);
+		read(buffer, parentctx) {
+			let len = lengthtype.read(buffer, parentctx);
 			let r: T[] = [];
+			let ctxs: any[] = [];
 			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
 				let proptype = chunktypes[chunkindex]
 				for (let i = 0; i < len; i++) {
+					let ctx: any;
+					let obj: T;
 					if (chunkindex == 0) {
-						r.push(proptype.read(buffer, ctx));
+						obj = {} as T;
+						ctx = Object.create(parentctx);
+						r.push(obj);
+						ctxs.push(ctx);
 					} else {
-						Object.assign(r[i], proptype.read(buffer, Object.create(r[i] as any)));
+						ctx = ctxs[i];
+						obj = r[i];
 					}
+					let chunk = proptype.read(buffer, ctx);
+					Object.assign(obj, chunk);
+					Object.assign(ctx, chunk);
 				}
+			}
+			return r;
+		},
+		write(buf, v) {
+			throw new Error("not implemented");
+		},
+		getTypescriptType(indent: string) {
+			let joined = chunktypes.map(c => c.getTypescriptType(indent)).join(" & ");
+			if (chunktypes.length == 1) { return `${joined}[]`; }
+			else { return `(${joined})[]`; }
+		}
+	}
+}
+
+function arrayParser<T>(lengthtype: ChunkParser<number>, subtype: ChunkParser<T>): ChunkParser<T[]> {
+	return {
+		read(buffer, parentctx) {
+			let len = lengthtype.read(buffer, parentctx);
+			let r: T[] = [];
+			for (let i = 0; i < len; i++) {
+				r.push(subtype.read(buffer, parentctx));
 			}
 			return r;
 		},
 		write(buffer, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			lengthtype.write(buffer, value.length);
-			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
-				let proptype = chunktypes[chunkindex]
-				for (let i = 0; i < value.length; i++) {
-					proptype.write(buffer, value[i]);
-				}
+			for (let i = 0; i < value.length; i++) {
+				subtype.write(buffer, value[i]);
 			}
 		},
 		getTypescriptType(indent) {
-			let joined = chunktypes.map(c => c.getTypescriptType(indent)).join(" & ");
-			if (chunktypes.length == 1) { return `${joined}[]`; }
-			else { return `(${joined})[]`; }
+			return `${subtype.getTypescriptType(indent)}[]`;
 		}
 	};
 }

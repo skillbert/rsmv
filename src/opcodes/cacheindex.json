@@ -3,9 +3,12 @@
 	["timestamp","unsigned int"],
 	["flags","unsigned byte"],
 	["$minorindex","0"],
-	["indices",["array","variable unsigned int",
+	["indices",["chunkedarray","variable unsigned int",
 		["struct",
 			["minor",["accum","$minorindex","unsigned short"]]
+		],
+		["struct",
+			["name",["opt",["flags",0,"bitflag"],"unsigned int"]]
 		],
 		["struct",
 			["crc","unsigned int"]

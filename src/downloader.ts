@@ -76,7 +76,7 @@ export class Downloader extends CacheFileSource {
 	}
 
 	async downloadFile(major: number, minor: number, crc?: number) {
-		for (let attempts = 0; attempts < 5; attempts++) {
+		for (let attempts = 0; attempts < 10; attempts++) {
 			//console.log(`download queued (${this.queuedReqs}) ${major} ${minor}`);
 			await this.setState(() => new DownloadState(this.socket));
 			//console.log(`download starting ${major} ${minor}`);
@@ -98,6 +98,9 @@ export class Downloader extends CacheFileSource {
 				console.log(`downloaded a file without crc check ${major} ${minor}`);
 			} else if (bufcrc != crc) {
 				console.log(`downloaded crc did not match requested data, attempt ${attempts}/5`)
+				if (attempts >= 5) {
+					await new Promise(d => setTimeout(d, 500));
+				}
 				continue;
 			}
 			return res;
