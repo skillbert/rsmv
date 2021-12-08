@@ -1,6 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect } from "../3d/mapsquare";
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
@@ -9,6 +9,7 @@ import { runCliApplication, cliArguments, filesource, mapareasource, mapareasour
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
 import type { Object3D } from "three";
+import { svgfloor } from "./svgrender";
 
 window.addEventListener("keydown", e => {
 	if (e.key == "F5") { document.location.reload(); }
@@ -29,14 +30,20 @@ type Mapconfig = {
 }
 
 type LayerConfig = {
+	mode: string,
 	name: string,
 	pxpersquare: number,
+	level: number,
+	mapsquares?: number,
+	subtractlayer?: string
+} & ({
+	mode: "3d",
 	dxdy: number,
 	dzdy: number,
-	level: number,
-	subtractlayer?: string,
 	walls?: boolean
-}
+} | {
+	mode: "map"
+});
 
 let cmd = cmdts.command({
 	name: "download",
@@ -61,34 +68,45 @@ let cmd = cmdts.command({
 			mapsizez,
 			overwrite: args.overwrite,
 			layers: [{
+				mode: "3d",
 				name: "topdown",
 				dxdy: 0, dzdy: 0,
 				level: 3,
 				pxpersquare: 16,
 				walls: true
 			}, {
+				mode: "3d",
 				name: "level-0",
 				dxdy: 0.15, dzdy: 0.5,
 				level: 0,
 				pxpersquare: 32,
 			}, {
+				mode: "3d",
 				name: "level-1",
 				dxdy: 0.15, dzdy: 0.5,
 				pxpersquare: 32,
 				level: 1,
 				subtractlayer: "level-0"
 			}, {
+				mode: "3d",
 				name: "level-2",
 				dxdy: 0.15, dzdy: 0.5,
 				pxpersquare: 32,
 				level: 2,
 				subtractlayer: "level-0"
 			}, {
+				mode: "3d",
 				name: "level-3",
 				dxdy: 0.15, dzdy: 0.5,
 				pxpersquare: 32,
 				level: 3,
 				subtractlayer: "level-0"
+			}, {
+				mode: "map",
+				name: "map",
+				level: 0,
+				pxpersquare: 4,
+				mapsquares: 2
 			}]
 		};
 		let filesource = await args.source();
@@ -110,7 +128,7 @@ if (argvbase64) {
 
 type MaprenderSquare = { prom: Promise<ChunkResult>, x: number, z: number, id: number, used: boolean };
 
-type ChunkResult = { chunks: ChunkData[], grid: TileGrid, model: Object3D };
+type ChunkResult = { chunks: ChunkData[], grid: TileGrid, model: Object3D, modeldata: ChunkModelData[]; };
 
 export class MapRenderer {
 	renderer: ThreeJsRenderer;
@@ -258,7 +276,7 @@ export async function downloadMap(filesource: CacheFileSource, rect: Rect, confi
 			for (let retry = 0; retry <= maxretries; retry++) {
 				try {
 					let zsize = Math.min(zscan, rect.y + rect.height - z);
-					progress += await renderMapsquare(filesource, { x, y: z, width: 1, height: zsize }, config, maprender);
+					progress += await renderMapsquare(filesource, { x, z, xsize: 1, zsize }, config, maprender);
 					// if (progress >= 16) {
 					// 	progress = 0;
 					// 	generateMips();
@@ -280,21 +298,21 @@ export async function downloadMap(filesource: CacheFileSource, rect: Rect, confi
 export async function downloadMapsquareThree(filesource: CacheFileSource, x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
 	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false };
-	let { chunks, grid } = await parseMapsquare(filesource, { x, y: z, width: 1, height: 1 }, opts);
+	let { chunks, grid } = await parseMapsquare(filesource, { x, z, xsize: 1, zsize: 1 }, opts);
 	let modeldata = await mapsquareModels(filesource, grid, chunks, opts);
 	let file = await mapsquareToThree(filesource, grid, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
-	return { grid, chunks, model: file };
+	return { grid, chunks, model: file, modeldata };
 }
 
-export async function renderMapsquare(filesource: CacheFileSource, subrect: Rect, config: Mapconfig, renderer: MapRenderer) {
-	let takepicture = async (cnf: LayerConfig, x: number, z: number) => {
+export async function renderMapsquare(filesource: CacheFileSource, subrect: MapRect, config: Mapconfig, renderer: MapRenderer) {
+	let takepicture = async (cnf: LayerConfig & { mode: "3d" }, rect: MapRect) => {
 		for (let retry = 0; retry <= 2; retry++) {
-			let img = await renderer!.renderer.takePicture(x * 64 - 16, z * 64 - 16, 64, cnf.pxpersquare, cnf.dxdy, cnf.dzdy);
+			let img = await renderer!.renderer.takePicture(rect.x, rect.z, rect.xsize, cnf.pxpersquare, cnf.dxdy, cnf.dzdy);
 			//need to check this after the image because it can be lost during the image and three wont know
 			//TODO this shouldn't be needed anymore since guaranteeframe handles it
 			if (renderer!.renderer.renderer.getContext().isContextLost()) {
-				console.log("image failed retrying", x, z);
+				console.log("image failed retrying", rect.x, rect.z);
 				continue;
 			}
 			return img;
@@ -309,17 +327,17 @@ export async function renderMapsquare(filesource: CacheFileSource, subrect: Rect
 	}
 
 	let nimages = 0;
-	for (let dz = 0; dz < subrect.height; dz++) {
-		for (let dx = 0; dx < subrect.width; dx++) {
+	for (let dz = 0; dz < subrect.zsize; dz++) {
+		for (let dx = 0; dx < subrect.xsize; dx++) {
 			let x = subrect.x + dx;
-			let z = subrect.y + dz;
+			let z = subrect.z + dz;
 			let metafilename = `${config.rawdir}/meta/${x}-${z}.json`;
 			if (!config.overwrite && fs.existsSync(metafilename)) { continue; }
-			await renderer.setArea(x - 1, z - 1, 2, 2,);
-			let data = await renderer.getChunk(x, z).prom;
 
+			//move this inside the generator logic?
+			let { grid } = await renderer.getChunk(x, z).prom;
 			for (let level = 0; level < 4; level++) {
-				fs.writeFileSync(`${config.rawdir}/height/${x}-${z}-${level}.bin`, data.grid.getHeightFile(x * 64, z * 64, level, 64, 64));
+				fs.writeFileSync(`${config.rawdir}/height/${x}-${z}-${level}.bin`, grid.getHeightFile(x * 64, z * 64, level, 64, 64));
 			}
 
 			let meta = {};
@@ -327,20 +345,33 @@ export async function renderMapsquare(filesource: CacheFileSource, subrect: Rect
 
 			let imgfiles = 0;
 			for (let cnf of config.layers) {
-				setfloors(cnf.level);
-				let img = await takepicture(cnf, x, z);
+				let squares = cnf.mapsquares ?? 1;
+				if (x % squares != 0 || z % squares != 0) { continue; }
+				let area: MapRect = { x: x * 64 - 16, z: z * 64 - 16, xsize: 64 * squares, zsize: 64 * squares };
 
-				if (cnf.subtractlayer) {
-					subtractbackground(img.data, imgs[cnf.subtractlayer].data);
+				if (cnf.mode == "3d") {
+					await renderer.setArea(x - 1, z - 1, 2, 2);
+					setfloors(cnf.level);
+					let img = await takepicture(cnf, area);
+
+					if (cnf.subtractlayer) {
+						subtractbackground(img.data, imgs[cnf.subtractlayer].data);
+					}
+
+					imgs[cnf.name] = img;
+					if (!isImageEmpty(img.data, "transparent")) {
+						await sharp(img.data, { raw: img })
+							.flip()
+							.webp({ lossless: true })
+							.toFile(`${config.rawdir}/${cnf.name}/${x}-${z}.png`);
+						imgfiles++;
+					}
 				}
-
-				imgs[cnf.name] = img;
-				if (!isImageEmpty(img.data, "transparent")) {
-					await sharp(img.data, { raw: img })
-						.flip()
-						.webp({ lossless: true })
-						.toFile(`${config.rawdir}/${cnf.name}/${x}-${z}.png`);
-					imgfiles++;
+				if (cnf.mode == "map") {
+					//TODO somehow dedupe this with massive memory cost?
+					let { grid, chunks } = await parseMapsquare(filesource, { x: x - 1, z: z - 1, xsize: squares + 1, zsize: squares + 1 }, {});
+					let svg = await svgfloor(filesource, grid, chunks.flatMap(q => q.locs), area, cnf.level);
+					fs.writeFileSync(`${config.rawdir}/${cnf.name}/${x}-${z}.svg`, svg);
 				}
 			}
 			fs.writeFileSync(metafilename, JSON.stringify(meta, undefined, 2));
@@ -413,10 +444,11 @@ export async function generateMips(config: Mapconfig) {
 
 	console.log("starting with x files", files.length);
 	for (let layercnf of config.layers) {
+		if (layercnf.name != "map") { continue }//TODO remove
 
 
 		const minzoom = Math.floor(Math.log2(config.tileimgsize / (Math.max(config.mapsizex, config.mapsizez) * 64)));
-		const maxzoom = Math.log2(layercnf.pxpersquare);
+		const maxzoom = Math.log2(layercnf.pxpersquare * (layercnf.mapsquares ?? 1));
 		const basezoom = Math.log2(config.tileimgsize / 64);
 
 		const outzoom = (zoom: number) => `${config.basedir}/${layercnf.name}/${zoom}`;
@@ -430,29 +462,37 @@ export async function generateMips(config: Mapconfig) {
 		for (let chunk of chunks) {
 			let tilex = chunk.x;
 			let tiley = config.mapsizez - chunk.z;
-			let filename = `${config.rawdir}/${layercnf.name}/${chunk.x}-${chunk.z}.png`;
+			let filename = `${config.rawdir}/${layercnf.name}/${chunk.x}-${chunk.z}.${layercnf.mode == "map" ? "svg" : "png"}`;
 
 			if (!fs.existsSync(filename)) { continue; }
 			basequeue.add(`${tilex / 2 | 0}:${tiley / 2 | 0}`);
 
 			//slice it up to smaller one and do first mips without quality loss
-			for (let zoom = 0; (layercnf.pxpersquare * 64 >> zoom) >= config.tileimgsize; zoom++) {
-				let size = layercnf.pxpersquare * 64 >> zoom;
+			let inputsize = layercnf.pxpersquare * (layercnf.mapsquares ?? 1) * 64;
+			for (let zoom = 0; (inputsize >> zoom) >= config.tileimgsize; zoom++) {
+				let size = inputsize >> zoom;
 				let muliplier = 1 << zoom;
-				for (let suby = 0; suby * size < layercnf.pxpersquare * 64; suby++) {
-					for (let subx = 0; subx * size < layercnf.pxpersquare * 64; subx++) {
-						tasks.push(() =>
-							sharp(filename)
-								.extract({ left: subx * size, top: suby * size, width: size, height: size })
-								.resize(config.tileimgsize, config.tileimgsize, { kernel: "mitchell" })
-								.webp({ lossless: true })
-								.toFile(outpath(zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
-						);
+				for (let suby = 0; suby * size < inputsize; suby++) {
+					for (let subx = 0; subx * size < inputsize; subx++) {
+						if (zoom == 0 && layercnf.mode == "map") {
+							//don't re-encode svg
+							tasks.push(() =>
+								fs.promises.copyFile(filename, outpath(zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
+							);
+						} else {
+							tasks.push(() =>
+								sharp(filename)
+									.extract({ left: subx * size, top: suby * size, width: size, height: size })
+									.resize(config.tileimgsize, config.tileimgsize, { kernel: "mitchell" })
+									.webp({ lossless: true })
+									.toFile(outpath(zoom + basezoom, tilex * muliplier + subx, tiley * muliplier + suby))
+							);
+						}
 					}
 				}
 			}
 		}
-		await trickleTasks("sub image mipmaps", 4, tasks);
+		await trickleTasks(`${layercnf.name} mipmaps`, 4, tasks);
 
 		let queue = basequeue;
 		for (let zoom = basezoom - 1; zoom >= minzoom; zoom--) {

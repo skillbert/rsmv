@@ -22,7 +22,7 @@ let cmd = command({
 	handler: async (args) => {
 		let opts: ParsemapOpts = { centered: true, invisibleLayers: false };
 		let filesource = await args.source();
-		let { chunks, grid } = await parseMapsquare(filesource, args.area, opts);
+		let { chunks, grid } = await parseMapsquare(filesource, { x: args.area.x, z: args.area.y, xsize: args.area.width, zsize: args.area.height }, opts);
 		if (args.mode == "model") {
 			//TODO
 			console.log("needs repimplementation");

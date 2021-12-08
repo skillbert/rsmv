@@ -8,12 +8,14 @@ global.THREE = THREE;
 require('three/examples/js/controls/OrbitControls');
 require('three/examples/js/loaders/GLTFLoader.js');
 require('three/examples/js/loaders/RGBELoader.js');
+require("three/examples/js/renderers/SVGRenderer.js");
+require("three/examples/js/renderers/Projector");//needed by svgrenderer
 //this is the dumbest thing i've ever writter and there is no better way, i tried
 const GLTFLoader = (THREE as any).GLTFLoader as typeof import('three/examples/jsm/loaders/GLTFLoader').GLTFLoader;
 const OrbitControls = (THREE as any).OrbitControls as typeof import('three/examples/jsm/controls/OrbitControls').OrbitControls;
 const RGBELoader = (THREE as any).RGBELoader as typeof import('three/examples/jsm/loaders/RGBELoader.js').RGBELoader;
+const SVGRenderer = (THREE as any).SVGRenderer as typeof import('three/examples/jsm/renderers/SVGRenderer.js').SVGRenderer;
 
-import { ob3ModelToGltfFile } from '../3d/ob3togltf';
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode } from '../3d/ob3tothree';
 import { ModelModifications } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
@@ -22,9 +24,6 @@ import * as fs from "fs";
 
 import { ModelViewerState, ModelSink, MiniCache } from "./index";
 import { CacheFileSource } from '../cache';
-import { parseObject } from '../opdecoder';
-import { cacheMajors } from '../constants';
-import { BufferGeometry, MeshPhongMaterial } from 'three';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 
 
@@ -119,8 +118,8 @@ export class ThreeJsRenderer implements ModelSink {
 		dirLight.position.set(75, 300, -75);
 		scene.add(dirLight);
 
-		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
-		scene.add(hemilight);
+		// let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
+		// scene.add(hemilight);
 	}
 
 	frameArea(sizeToFitOnScreen: number, boxSize: number, boxCenter: THREE.Vector3, camera: THREE.PerspectiveCamera) {
@@ -198,6 +197,72 @@ export class ThreeJsRenderer implements ModelSink {
 		if (!success) {
 			throw new Error("Failed to render frame after 5 retries");
 		}
+	}
+
+	renderSVG() {
+		let renderer = new SVGRenderer();
+		this.scene.traverse(q => {
+			if (q instanceof THREE.Mesh) {
+				let geo = q.geometry as THREE.BufferGeometry;
+				let mat = q.material as THREE.MeshBasicMaterial;
+				//svgrender doesn't deal with mirrored faces properly (det(proj)<0)
+				mat.side = THREE.DoubleSide;
+				for (let attr in geo.attributes) {
+					//de-interleave attributes since it doesn't understand
+					if (geo.attributes[attr] instanceof THREE.InterleavedBufferAttribute) {
+						geo.attributes[attr] = geo.attributes[attr].clone();
+					}
+					//it also doesn't understand normalized attrs (color)
+					if (geo.attributes[attr].normalized) {
+						let buf = geo.attributes[attr].array;
+						if (geo.attributes[attr].count * geo.attributes[attr].itemSize != buf.length) {
+							throw new Error("simple copy not possible");
+						}
+						let newbuf = new Float32Array(buf.length);
+						let factor = 1;
+						if (buf instanceof Uint8Array) {
+							factor = 1 / ((1 << 8) - 1);
+						} else if (buf instanceof Uint16Array) {
+							factor = 1 / ((1 << 16) - 1);
+						} else if (buf instanceof Int16Array) {
+							factor = 1 / ((1 << 15) - 1);
+						} else {
+							throw new Error("buffer type not supported");
+						}
+						for (let i = 0; i < buf.length; i++) {
+							newbuf[i] = buf[i] * factor;
+						}
+
+						geo.attributes[attr] = new THREE.BufferAttribute(newbuf, geo.attributes[attr].itemSize);
+					}
+				}
+				//vertex alpha also messes it up...
+				if (geo.getAttribute("color")?.itemSize == 4) {
+					let oldvalue = geo.getAttribute("color").array;
+					let arr = new Float32Array(oldvalue.length / 4 * 3);
+					for (let i = 0; i < oldvalue.length / 4; i++) {
+						arr[i * 3 + 0] = oldvalue[i * 4 + 0];
+						arr[i * 3 + 1] = oldvalue[i * 4 + 1];
+						arr[i * 3 + 2] = oldvalue[i * 4 + 2];
+					}
+					geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+				}
+				//non indexed geometries are bugged...
+				if (!geo.index) {
+					let index = new Uint32Array(geo.getAttribute("position").count);
+					for (let i = 0; i < index.length; i++) {
+						index[i] = i;
+					}
+					geo.index = new THREE.BufferAttribute(index, 1);
+				}
+				mat.needsUpdate = true;
+			}
+		})
+		renderer.setSize(this.canvas.width, this.canvas.height);
+		renderer.setPrecision(3);
+		renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
+		renderer.render(this.scene, this.camera);
+		return renderer.domElement;
 	}
 
 	@boundMethod
@@ -356,7 +421,7 @@ export class ThreeJsRenderer implements ModelSink {
 					}
 					parent = parent.parent;
 				}
-				if (iswireframe && node.material instanceof MeshPhongMaterial) {
+				if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
 					node.material.wireframe = true;
 				}
 			}

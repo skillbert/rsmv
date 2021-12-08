@@ -13,12 +13,13 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareObjects, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
 import { GameCacheLoader } from "../cacheloader";
 import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
 import { cachingFileSourceMixin } from "../cache";
 import { Downloader } from "../downloader";
+import { svgfloor } from "../map/svgrender";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
@@ -121,6 +122,14 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	}
 
 	render() {
+		let toggles: Record<string, string[]> = {};
+		for (let toggle of Object.keys(this.state.viewerState.toggles)) {
+			let m = toggle.match(/^(\D+?)(\d.*)?$/);
+			if (!m) { throw new Error("???"); }
+			toggles[m[1]] = toggles[m[1]] ?? [];
+			toggles[m[1]].push(m[2] ?? "");
+		}
+
 		return (
 			<div id="content">
 				<div className="canvas-container">
@@ -176,14 +185,30 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 									{this.state.viewerState.meta}
 								</pre>
 							</div>
-							{Object.entries(this.state.viewerState.toggles).map(([name, value]) => (
-								<div key={name}>
-									<label>
-										<input type="checkbox" checked={value} onChange={e => this.renderer.setValue!(name, !value)} />
-										{name}
-									</label>
-								</div>
-							))}
+							{Object.entries(toggles).map(([base, subs]) => {
+								let all = true;
+								let none = true;
+								subs.forEach(s => {
+									let v = this.state.viewerState.toggles[base + s];
+									all &&= v;
+									none &&= !v;
+								})
+								return (
+									<div key={base}>
+										<label><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.renderer.setValue!(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
+										{subs.map(sub => {
+											let name = base + sub;
+											let value = this.state.viewerState.toggles[name];
+											return (
+												<label key={sub}>
+													<input type="checkbox" checked={value} onChange={e => this.renderer.setValue!(name, e.currentTarget.checked)} />
+													{sub}
+												</label>
+											);
+										})}
+									</div>
+								)
+							})}
 							<div id="sidebar-browser-tab-data">
 								<style>
 								</style>
@@ -302,17 +327,22 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			}
 			break;
 		case "map":
-			let [x, y, width, height] = searchid.split(/[,\.\/:;]/).map(n => +n);
-			width = width ?? 1;
-			height = height ?? width;
+			let [x, z, xsize, zsize] = searchid.split(/[,\.\/:;]/).map(n => +n);
+			xsize = xsize ?? 1;
+			zsize = zsize ?? xsize;
 			//TODO enable centered again
 			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: false };
-			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, y, width, height }, opts);
+			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, z, xsize, zsize }, opts);
 			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
+
 			// let file = await mapsquareToGltf(hackyCacheFileSource, square);
 			// renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
 			let scene = await mapsquareToThree(hackyCacheFileSource, grid, modeldata);
 			renderer.setModels?.([scene], "");
+			//TODO currently parsing this twice
+			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
+			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0);
+			// fs.writeFileSync("map.svg", svg);
 			break;
 		default:
 			throw new Error("unknown mode");

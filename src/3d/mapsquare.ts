@@ -28,9 +28,9 @@ require("three/examples/js/utils/BufferGeometryUtils");
 const upvector = new THREE.Vector3(0, 1, 0);
 
 const tiledimensions = 512;
-const squareWidth = 64;
-const squareHeight = 64
-const squareLevels = 4;
+export const squareWidth = 64;
+export const squareHeight = 64
+export const squareLevels = 4;
 const heightScale = 1 / 16;
 const worldStride = 128;
 
@@ -38,6 +38,13 @@ const { tileshapes, defaulttileshape } = generateTileShapes();
 const wallmodels = generateWallModels();
 
 const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
+
+export type MapRect = {
+	x: number,
+	z: number,
+	xsize: number,
+	zsize: number
+}
 
 type CollisionData = {
 	settings: number,
@@ -60,7 +67,7 @@ type TileShape = {
 	overlay: FloorvertexInfo[],
 };
 
-type TileVertex = {
+export type TileVertex = {
 	material: number,
 	color: number[],
 	usesColor: boolean
@@ -73,7 +80,8 @@ export type ChunkData = {
 	mapsquarez: number,
 	tiles: mapsquare_tiles,
 	archive: SubFile[],
-	cacheIndex: CacheIndex
+	cacheIndex: CacheIndex,
+	locs: WorldLocation[]
 }
 
 export type ClickableMesh<T> = {
@@ -118,8 +126,8 @@ export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: numbe
 
 type TileProps = {
 	raw: mapsquare_tiles[number],
-	rawOverlay: any,
-	rawUnderlay: any,
+	rawOverlay: mapsquare_overlays | undefined,
+	rawUnderlay: mapsquare_underlays | undefined,
 	next01: TileProps | undefined,
 	next10: TileProps | undefined,
 	next11: TileProps | undefined,
@@ -191,8 +199,12 @@ function squareMesh(sizex: number, sizez: number, color: number[]): ModelMeshDat
 }
 
 function extrudedPolygonMesh(points: { x: number, z: number }[], height: number, color: number[]): ModelMeshData {
-	let nvertices = points.length * 4 + points.length * 2;
-	let nfaces = points.length + 2;
+	let nvertices = points.length * 2;
+	let nfaces = 2;
+	if (height != 0) {
+		nvertices += points.length * 4;
+		nfaces += points.length;
+	}
 	let pos = new Float32Array(3 * nvertices);
 	let col = new Uint8Array(3 * nvertices);
 	for (let a = 0; a < col.length; a += 3) {
@@ -204,18 +216,20 @@ function extrudedPolygonMesh(points: { x: number, z: number }[], height: number,
 	let index = 0;
 	let lastpoint = points[points.length - 1];
 	//side faces
-	for (let a = 0; a < points.length; a++) {
-		let point = points[a];
-		let firstvertex = vertexindex / 3;
-		pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = 0; pos[vertexindex++] = lastpoint.z;
-		pos[vertexindex++] = point.x; pos[vertexindex++] = 0; pos[vertexindex++] = point.z;
-		pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = height; pos[vertexindex++] = lastpoint.z;
-		pos[vertexindex++] = point.x; pos[vertexindex++] = height; pos[vertexindex++] = point.z;
+	if (height != 0) {
+		for (let a = 0; a < points.length; a++) {
+			let point = points[a];
+			let firstvertex = vertexindex / 3;
+			pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = 0; pos[vertexindex++] = lastpoint.z;
+			pos[vertexindex++] = point.x; pos[vertexindex++] = 0; pos[vertexindex++] = point.z;
+			pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = height; pos[vertexindex++] = lastpoint.z;
+			pos[vertexindex++] = point.x; pos[vertexindex++] = height; pos[vertexindex++] = point.z;
 
-		indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 1; indexbuffer[index++] = firstvertex + 3;
-		indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 3; indexbuffer[index++] = firstvertex + 2;
+			indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 1; indexbuffer[index++] = firstvertex + 3;
+			indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 3; indexbuffer[index++] = firstvertex + 2;
 
-		lastpoint = point;
+			lastpoint = point;
+		}
 	}
 
 	//bottom polygon
@@ -254,7 +268,7 @@ function extrudedPolygonMesh(points: { x: number, z: number }[], height: number,
 
 function generateWallModels() {
 	const thick = tiledimensions / 8;
-	const height = tiledimensions * 1.5;
+	const height = 0;//tiledimensions * 1.5;
 	const white = [255, 255, 255];
 	const red = [255, 0, 0];
 	const halftile = tiledimensions / 2;
@@ -715,7 +729,7 @@ export class TileGrid {
 						receivingtile.effectiveCollision = currenttile.rawCollision;
 						receivingtile.playery = currenttile.playery;
 					}
-					currenttile.effectiveLevel = effectiveLevel;
+					currenttile.effectiveLevel = (alwaysshow ? 0 : effectiveLevel);
 					currenttile.effectiveVisualLevel = Math.max(currenttile.effectiveVisualLevel, effectiveVisualLevel);
 
 					//spread to our neighbours
@@ -759,6 +773,9 @@ export class TileGrid {
 				for (let dx = 0; dx < xsize; dx++) {
 					let tile = this.getTile(x + dx, z + dz, level);
 					if (!tile) { continue; }
+					if (tile.overlayprops.material == 0 || tile.underlayprops.material == 0) {
+						debugger;
+					}
 					//TODO skip 0/-1 values?
 					mats.add(tile.underlayprops.material ?? -1);
 					mats.add(tile.overlayprops.material ?? -1);
@@ -796,11 +813,11 @@ export class TileGrid {
 						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
 							visible = true;
 						}
-						underlayprop = { material: underlay.material ?? 0, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
+						underlayprop = { material: underlay.material ?? -1, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
 					}
 					let overlay = (typeof tile.overlay != "undefined" ? this.mapconfig.overlays[tile.overlay - 1] : undefined);
 					if (overlay) {
-						overlayprop = { material: overlay.material ?? 0, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
+						overlayprop = { material: overlay.material ?? -1, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
@@ -854,7 +871,7 @@ export class TileGrid {
 }
 
 export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean };
-type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
+export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 type MapConfigData = typeof mapConfigData extends ((...a: any[]) => Promise<infer T>) ? T : never;
 
 export async function mapConfigData(source: CacheFileSource) {
@@ -870,19 +887,19 @@ export async function mapConfigData(source: CacheFileSource) {
 	return { underlays, overlays, mapscenes };
 }
 
-export async function parseMapsquare(source: CacheFileSource, rect: { x: number, y: number, width: number, height: number }, opts?: ParsemapOpts) {
+export async function parseMapsquare(source: CacheFileSource, rect: MapRect, opts?: ParsemapOpts) {
 	let config = await mapConfigData(source);
 
 	let chunkfloorpadding = (opts?.padfloor ? 1 : 0);
-	let grid = new TileGrid(config, rect.x - chunkfloorpadding, rect.y - chunkfloorpadding, rect.width + chunkfloorpadding * 2, rect.height + chunkfloorpadding * 2);
+	let grid = new TileGrid(config, rect.x - chunkfloorpadding, rect.z - chunkfloorpadding, rect.xsize + chunkfloorpadding * 2, rect.zsize + chunkfloorpadding * 2);
 	let chunks: ChunkData[] = [];
-	for (let z = -chunkfloorpadding; z < rect.height + chunkfloorpadding; z++) {
-		for (let x = -chunkfloorpadding; x < rect.width + chunkfloorpadding; x++) {
-			let squareindex = (rect.x + x) + (rect.y + z) * worldStride;
+	for (let z = -chunkfloorpadding; z < rect.zsize + chunkfloorpadding; z++) {
+		for (let x = -chunkfloorpadding; x < rect.xsize + chunkfloorpadding; x++) {
+			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
 			let mapunderlaymeta = await source.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
 			if (!selfindex) {
-				console.log(`skipping mapsquare ${rect.x + x} ${rect.y + z} as it does not exist`);
+				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
 				continue;
 			}
 			let selfarchive = (await source.getFileArchive(selfindex));
@@ -890,7 +907,7 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 			let tileindexwater = selfindex.subindices.indexOf(4);
 
 			if (tileindex == -1) {
-				console.log(`skipping mapsquare ${rect.x + x} ${rect.y + z} as it has no tiles`);
+				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
 				continue;
 			}
 			let tilefile = selfarchive[tileindex].buffer;
@@ -899,18 +916,22 @@ export async function parseMapsquare(source: CacheFileSource, rect: { x: number,
 			let tiles = parseMapsquareTiles.read(tilefile);
 			let chunk: ChunkData = {
 				xoffset: (rect.x + x) * squareWidth,
-				zoffset: (rect.y + z) * squareHeight,
+				zoffset: (rect.z + z) * squareHeight,
 				mapsquarex: rect.x + x,
-				mapsquarez: rect.y + z,
-				tiles, cacheIndex: selfindex, archive: selfarchive
+				mapsquarez: rect.z + z,
+				tiles, cacheIndex: selfindex, archive: selfarchive,
+				locs: []
 			};
 			grid.addMapsquare(chunk, !!opts?.collision);
 
 			//only add the actual ones we need to the queue
-			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.width) { continue; }
-			if (chunk.mapsquarez < rect.y || chunk.mapsquarez >= rect.y + rect.height) { continue; }
+			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.xsize) { continue; }
+			if (chunk.mapsquarez < rect.z || chunk.mapsquarez >= rect.z + rect.zsize) { continue; }
 			chunks.push(chunk);
 		}
+	}
+	for (let chunk of chunks) {
+		chunk.locs = await mapsquareObjects(source, chunk, grid, !!opts?.collision);
 	}
 
 	grid.blendUnderlays();
@@ -931,7 +952,7 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 		await Promise.all(materialproms);
 		let textures = new Map<number, ImageData>();
 		let textureproms: Promise<void>[] = [];
-		for (let mat of materials.values()) {
+		for (let [matid, mat] of materials) {
 			if (mat.textures.diffuse) {
 				textureproms.push(
 					source.getFileById(cacheMajors.texturesDds, mat.textures.diffuse)
@@ -955,16 +976,16 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 		}
 
 		for (let level = 0; level < squareLevels; level++) {
-			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false, true));//TODO remove keeptileinfo last arg
+			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false, true, false));
+			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false, false, true));
 		}
 		if (opts?.invisibleLayers) {
 			for (let level = 0; level < squareLevels; level++) {
 				floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
 			}
 		}
-		let locs = await mapsquareObjects(source, chunk, grid, !!opts?.collision);
-		let models = mapsquareObjectModels(locs);
-		let overlays = await mapsquareOverlays(source, grid, locs);
+		let models = mapsquareObjectModels(chunk.locs);
+		let overlays = await mapsquareOverlays(source, grid, chunk.locs);
 		squareDatas.push({
 			chunk,
 			floors,
@@ -1129,27 +1150,31 @@ async function mapsquareOverlays(source: CacheFileSource, grid: TileGrid, locs: 
 	let mat = new THREE.MeshBasicMaterial();
 	mat.transparent = true;
 	mat.depthTest = false;
-	let wallgroup: PlacedModel = {
-		models: [],
-		groupid: "walls",
-		material: mat,
-		overlayIndex: 1
-	}
+	let floorgroup = (level: number) => {
+		let wallgroup: PlacedModel = {
+			models: [],
+			groupid: "walls" + level,
+			material: mat,
+			overlayIndex: 1
+		}
 
-	let mapscenes = new Map<number, PlacedModel>();
+		let mapscenes = new Map<number, PlacedModel>();
+		return { wallgroup, mapscenes };
+	}
+	let floors = [floorgroup(0), floorgroup(1), floorgroup(2), floorgroup(3)]
 
 	let addwall = (model: ModelData, loc: WorldLocation) => {
 		let translate = new THREE.Vector3().set((loc.x + loc.sizex / 2) * tiledimensions, 0, (loc.z + loc.sizez / 2) * tiledimensions);
 		let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, loc.rotation / 2 * Math.PI);
 		let scale = new THREE.Vector3(1, 1, 1);
 
-		wallgroup.models.push({
+		floors[loc.effectiveLevel].wallgroup.models.push({
 			model: model.meshes[0],
 			extras: {
 				modeltype: "overlay",
 				isclickable: false,
 				modelgroup: "walls" + loc.visualLevel,
-				level: loc.visualLevel
+				level: loc.effectiveLevel
 			},
 			maxy: model.maxy,
 			miny: model.miny,
@@ -1163,10 +1188,10 @@ async function mapsquareOverlays(source: CacheFileSource, grid: TileGrid, locs: 
 	}
 
 	let addMapscene = async (loc: WorldLocation, sceneid: number) => {
-		let group = mapscenes.get(sceneid);
+		let group = floors[loc.effectiveLevel].mapscenes.get(sceneid);
 		if (!group) {
 			let mapscene = grid.mapconfig.mapscenes[sceneid];
-			if (!mapscene.sprite_id) { return; }
+			if (typeof mapscene.sprite_id == "undefined") { return; }
 			let spritefile = await source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 			let sprite = parseSprite(spritefile);
 			let mat = new THREE.MeshBasicMaterial();
@@ -1174,12 +1199,12 @@ async function mapsquareOverlays(source: CacheFileSource, grid: TileGrid, locs: 
 			mat.depthTest = false;
 			mat.transparent = true;
 			group = {
-				groupid: "mapscenes",
+				groupid: "mapscenes" + loc.effectiveLevel,
 				material: mat,
 				models: [],
 				overlayIndex: 2
 			};
-			mapscenes.set(sceneid, group);
+			floors[loc.effectiveLevel].mapscenes.set(sceneid, group);
 		}
 		let tex = (group.material as MeshBasicMaterial).map! as DataTexture;
 
@@ -1225,7 +1250,7 @@ async function mapsquareOverlays(source: CacheFileSource, grid: TileGrid, locs: 
 		}
 	}
 
-	return [wallgroup, ...mapscenes.values()];
+	return floors.flatMap(f => [f.wallgroup, ...f.mapscenes.values()]);
 }
 
 function mapsquareObjectModels(locs: WorldLocation[]) {
@@ -1409,7 +1434,7 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 	return models;
 }
 
-type WorldLocation = {
+export type WorldLocation = {
 	x: number,
 	z: number,
 	type: number,
@@ -1420,10 +1445,11 @@ type WorldLocation = {
 	sizex: number,
 	sizez: number,
 	placement: mapsquare_locations["locations"][number]["uses"][number]["extra"],
-	visualLevel: number
+	visualLevel: number,
+	effectiveLevel: number
 }
 
-async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid: TileGrid, collision = false) {
+export async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid: TileGrid, collision = false) {
 	let locs: WorldLocation[] = [];
 
 	let locationindex = chunk.cacheIndex.subindices.indexOf(0);
@@ -1469,7 +1495,8 @@ async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid:
 				type: inst.type,
 				rotation: inst.rotation,
 				plane: inst.plane,
-				visualLevel
+				visualLevel,
+				effectiveLevel: callingtile.effectiveLevel
 			});
 
 			if (collision && !objectmeta.probably_nocollision) {
@@ -1718,7 +1745,7 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 }
 
 
-async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, materials: Map<number, MaterialData>, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false) {
+async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, materials: Map<number, MaterialData>, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
 	const maxtiles = squareWidth * squareHeight * squareLevels;
 	const maxVerticesPerTile = 8;
 	const posoffset = 0;// 0/4
@@ -1730,7 +1757,8 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 	const vertexstride = 52;
 	//overalloce worst case scenario
 	let vertexbuffer = new ArrayBuffer(maxtiles * vertexstride * maxVerticesPerTile);
-	let indexbuffer = new Uint16Array(maxtiles * maxVerticesPerTile);
+	//TODO get rid of indexbuffer since we're not actually using it and it doesn't fit in uint16 anyway
+	let indexbuffer = new Uint32Array(maxtiles * maxVerticesPerTile);
 	let posbuffer = new Float32Array(vertexbuffer);//size 12 bytes
 	let normalbuffer = new Float32Array(vertexbuffer);//size 12 bytes
 	let colorbuffer = new Uint8Array(vertexbuffer);//4 bytes
@@ -1832,21 +1860,35 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 					tileindices.push(indexpointer);
 				}
 				if (hasneighbours && shape.overlay.length != 0) {
+					//code is a bit weird here, shouldnt have to call back to the raw overlay props
 					let overlaytype = grid.mapconfig.overlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
 					let color = overlaytype.primary_colour ?? [255, 0, 255];
 					let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
+					if (worldmap && !isvisible && overlaytype.secondary_colour) {
+						color = overlaytype.secondary_colour;
+						isvisible = true;
+					}
 					if (isvisible || showhidden) {
-						let props = shape.overlay.map(vertex => {
-							if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
-							else {
-								let node: TileProps | undefined = tile;
-								if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-								else if (vertex.nextx) { node = tile!.next01; }
-								else if (vertex.nextz) { node = tile!.next10; }
-								if (node) { return node.vertexprops[vertex.subvertex]; }
-							}
-							return defaultVertexProp;
-						});
+						let props: TileVertex[];
+						if (!worldmap) {
+							props = shape.overlay.map(vertex => {
+								if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
+								else {
+									let node: TileProps | undefined = tile;
+									if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+									else if (vertex.nextx) { node = tile!.next01; }
+									else if (vertex.nextz) { node = tile!.next10; }
+									if (node) { return node.vertexprops[vertex.subvertex]; }
+								}
+								return defaultVertexProp;
+							});
+						} else {
+							props = Array(shape.overlay.length).fill({
+								color,
+								material: 0,
+								usesColor: true
+							} as TileVertex);
+						}
 						for (let i = 2; i < shape.overlay.length; i++) {
 							let v0 = shape.overlay[0];
 							let v1 = shape.overlay[i - 1];
@@ -1860,24 +1902,29 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 					}
 				}
 				if (hasneighbours && shape.underlay.length != 0 && (tile.visible || showhidden)) {
-					let props = shape.underlay.map(vertex => {
-						let node: TileProps | undefined = tile;
-						if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-						else if (vertex.nextx) { node = tile!.next01; }
-						else if (vertex.nextz) { node = tile!.next10; }
-						if (node) {
-							let prop = node.vertexprops[vertex.subvertex];
-							if (prop.material == -1) {
-								//TODO there seems to be more to the underlay thing
-								//maybe materials themselves also get blended somehow
-								//just copy our own materials for now if the neighbour is missing
-								return { ...prop, material: tile!.underlayprops.material };
-							} else {
-								return prop;
+					let props: TileVertex[];
+					if (!worldmap) {
+						props = shape.underlay.map(vertex => {
+							let node: TileProps | undefined = tile;
+							if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+							else if (vertex.nextx) { node = tile!.next01; }
+							else if (vertex.nextz) { node = tile!.next10; }
+							if (node) {
+								let prop = node.vertexprops[vertex.subvertex];
+								if (prop.material == -1) {
+									//TODO there seems to be more to the underlay thing
+									//maybe materials themselves also get blended somehow
+									//just copy our own materials for now if the neighbour is missing
+									return { ...prop, material: tile!.underlayprops.material };
+								} else {
+									return prop;
+								}
 							}
-						}
-						return defaultVertexProp;
-					});
+							return defaultVertexProp;
+						});
+					} else {
+						props = Array(shape.underlay.length).fill({ color: tile.underlayprops.color, material: 0, usesColor: true } as TileVertex);
+					}
 					for (let i = 2; i < shape.underlay.length; i++) {
 						let v0 = shape.underlay[0];
 						let v1 = shape.underlay[i - 1];
@@ -1894,7 +1941,7 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 	}
 
 	let extra: ModelExtras = {
-		modelgroup: (showhidden ? "floorhidden" : "floor") + level,
+		modelgroup: (showhidden ? "floorhidden" : worldmap ? "map" : "floor") + level,
 		modeltype: (showhidden ? "floorhidden" : "floor"),
 		mapsquarex: chunk.mapsquarex,
 		mapsquarez: chunk.mapsquarez,
@@ -1910,21 +1957,22 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 		level,
 		showhidden,
 		tileinfos,
+		worldmap,
 
 		buffer: new Uint8Array(vertexbuffer, 0, vertexindex * vertexstride),
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
-		indices: new Uint16Array(indexbuffer.buffer, indexbuffer.byteOffset, indexpointer),
+		indices: indexbuffer.subarray(0, indexpointer),
 		nvertices: vertexindex,
 		atlas,
 
-		pos: { src: posbuffer as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
-		normal: { src: normalbuffer, offset: normaloffset, vecsize: 3, normalized: false },
-		color: { src: colorbuffer, offset: coloroffset, vecsize: 3, normalized: true },
-		_RA_FLOORTEX_UV01: { src: texuvbuffer, offset: texuvoffset + 0, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_UV23: { src: texuvbuffer, offset: texuvoffset + 4, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_WEIGHTS: { src: texweightbuffer, offset: texweightoffset, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_USESCOLOR: { src: texusescolorbuffer, offset: texusescoloroffset, vecsize: 4, normalized: true },
+		pos: { src: posbuffer.subarray(0, vertexindex * posstride) as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
+		normal: { src: normalbuffer.subarray(0, vertexindex * normalstride), offset: normaloffset, vecsize: 3, normalized: false },
+		color: { src: colorbuffer.subarray(0, vertexindex * colorstride), offset: coloroffset, vecsize: 3, normalized: true },
+		_RA_FLOORTEX_UV01: { src: texuvbuffer.subarray(0, vertexindex * textuvstride), offset: texuvoffset + 0, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_UV23: { src: texuvbuffer.subarray(0, vertexindex * textuvstride), offset: texuvoffset + 4, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_WEIGHTS: { src: texweightbuffer.subarray(0, vertexindex * texweightstride), offset: texweightoffset, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_USESCOLOR: { src: texusescolorbuffer.subarray(0, vertexindex * texusescolorstride), offset: texusescoloroffset, vecsize: 4, normalized: true },
 
 		posmax: [maxx, maxy, maxz],
 		posmin: [minx, miny, minz],
@@ -1943,6 +1991,8 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 		return new THREE.InterleavedBufferAttribute(buf, attr.vecsize, attr.offset, attr.normalized);
 	}
 	let geo = new THREE.BufferGeometry();
+	//not actually used, remove this
+	// geo.index = new THREE.BufferAttribute(floor.indices, 1);
 	geo.setAttribute("position", makeAttribute(floor.pos));
 	geo.setAttribute("color", makeAttribute(floor.color));
 	geo.setAttribute("normal", makeAttribute(floor.normal));
@@ -1950,15 +2000,17 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	geo.setAttribute("_ra_floortex_uv23", makeAttribute(floor._RA_FLOORTEX_UV23));
 	geo.setAttribute("_ra_floortex_weights", makeAttribute(floor._RA_FLOORTEX_WEIGHTS));
 	geo.setAttribute("_ra_floortex_usescolor", makeAttribute(floor._RA_FLOORTEX_USESCOLOR));
-	let mat = new THREE.MeshPhongMaterial({ shininess: 0 });
+	let mat = (!floor.worldmap ? new THREE.MeshPhongMaterial({ shininess: 0 }) : new THREE.MeshBasicMaterial());
 	mat.vertexColors = true;
 	if (!floor.showhidden) {
-		augmentThreeJsFloorMaterial(mat);
-		let img = floor.atlas.convert();
-		mat.map = new THREE.DataTexture(img.data, img.width, img.height, THREE.RGBAFormat);
-		mat.map.minFilter = THREE.NearestMipMapLinearFilter;
-		mat.map.generateMipmaps = true;
-		mat.map.encoding = THREE.sRGBEncoding;
+		if (!floor.worldmap) {
+			augmentThreeJsFloorMaterial(mat);
+			let img = floor.atlas.convert();
+			mat.map = new THREE.DataTexture(img.data, img.width, img.height, THREE.RGBAFormat);
+			mat.map.minFilter = THREE.NearestMipMapLinearFilter;
+			mat.map.generateMipmaps = true;
+			mat.map.encoding = THREE.sRGBEncoding;
+		}
 	} else {
 		mat.wireframe = true;
 	}
