@@ -14,6 +14,7 @@ import { modifyMesh } from "./mapsquare";
 //requirejs cant load modules since all modules are now promises (in case they want
 //to use top level await).
 const THREE = require("three/build/three.js") as typeof import("three");
+global.THREE = THREE;
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));

@@ -1,4 +1,8 @@
 
+//TODO there must be a better place for this one
+//structure similar to ImageData, but without prototype chain or clamped constraint, easy to consume with sharp
+export type FlatImageData = { data: Uint8Array, width: number, height: number, channels: 4 };
+
 export type ModelModifications = {
 	replaceColors?: [from: number, to: number][];
 	replaceMaterials?: [from: number, to: number][];

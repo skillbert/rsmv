@@ -105,10 +105,10 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			if (this.state.rendermode == "gltf") {
-				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged, hackyCacheFileSource, true);
+				this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource, true);
 			}
 			if (this.state.rendermode == "three") {
-				this.renderer = new ThreeJsRenderer(cnv, this.viewerStateChanged, hackyCacheFileSource);
+				this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource);
 			}
 			if (this.state.rendermode == "ob3") {
 				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);
@@ -335,14 +335,12 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, z, xsize, zsize }, opts);
 			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
 
-			// let file = await mapsquareToGltf(hackyCacheFileSource, square);
-			// renderer.setGltfModels?.([Buffer.from(file.buffer, file.byteOffset, file.byteLength)]);
 			let scene = await mapsquareToThree(hackyCacheFileSource, grid, modeldata);
 			renderer.setModels?.([scene], "");
-			//TODO currently parsing this twice
-			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
-			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0);
-			// fs.writeFileSync("map.svg", svg);
+			// TODO currently parsing this twice
+			let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
+			let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
+			fs.writeFileSync("map.svg", svg);
 			break;
 		default:
 			throw new Error("unknown mode");

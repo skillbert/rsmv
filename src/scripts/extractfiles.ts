@@ -7,6 +7,7 @@ import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles
 import { achiveToFileId, CacheFileSource } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
+import { FlatImageData } from "../3d/utils";
 
 type KnownType = {
 	index: number,
@@ -14,7 +15,7 @@ type KnownType = {
 	minor?: number,
 	parser?: FileParser<any>,
 	gltf?: (b: Buffer, source: CacheFileSource) => Promise<Uint8Array>,
-	img?: (b: Buffer, source: CacheFileSource) => Promise<{ width: number, height: number, channels: 4, data: Uint8Array }[]>
+	img?: (b: Buffer, source: CacheFileSource) => Promise<FlatImageData[]>
 }
 
 const decoders: Record<string, KnownType> = {

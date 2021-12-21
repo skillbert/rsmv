@@ -28,8 +28,7 @@ require("three/examples/js/utils/BufferGeometryUtils");
 const upvector = new THREE.Vector3(0, 1, 0);
 
 const tiledimensions = 512;
-export const squareWidth = 64;
-export const squareHeight = 64
+export const squareSize = 64;
 export const squareLevels = 4;
 const heightScale = 1 / 16;
 const worldStride = 128;
@@ -44,6 +43,18 @@ export type MapRect = {
 	z: number,
 	xsize: number,
 	zsize: number
+}
+
+export function mapRectsIntersect(a: MapRect, b: MapRect) {
+	if (a.x >= b.x + b.xsize || a.x + a.xsize <= b.x) { return false; }
+	if (a.z >= b.z + b.zsize || a.z + a.zsize <= b.z) { return false; }
+	return true;
+}
+export function mapRectContains(rect: MapRect, x: number, z: number) {
+	//the point is implicitly of size 1x1
+	if (x < rect.x || x >= rect.x + rect.xsize) { return false; }
+	if (z < rect.z || z >= rect.z + rect.zsize) { return false; }
+	return true;
 }
 
 type CollisionData = {
@@ -124,7 +135,7 @@ export type ModelExtras = ModelExtrasLocation | ModelExtrasOverlay | {
 
 export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number };
 
-type TileProps = {
+export type TileProps = {
 	raw: mapsquare_tiles[number],
 	rawOverlay: mapsquare_overlays | undefined,
 	rawUnderlay: mapsquare_underlays | undefined,
@@ -595,6 +606,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 
 export class TileGrid {
 	mapconfig: MapConfigData;
+	tilemask: undefined | MapRect[];
 	//position and size of this grid measure in mapsquares
 	gridx: number;
 	gridz: number;
@@ -609,22 +621,24 @@ export class TileGrid {
 	xstep: number;
 	zstep: number;
 	levelstep: number;
-	constructor(mapconfig: MapConfigData, gridx: number, gridz: number, gridwidth: number, gridheight: number) {
+	constructor(mapconfig: MapConfigData, area: MapRect, tilemask: MapRect[] | undefined) {
+		let tilearea: MapRect = { x: area.x * squareSize, z: area.z * squareSize, xsize: area.xsize * squareSize, zsize: area.zsize * squareSize };
+		this.tilemask = tilemask && tilemask.filter(q => mapRectsIntersect(q, tilearea));
 		this.mapconfig = mapconfig;
-		this.gridx = gridx;
-		this.gridz = gridz;
-		this.xoffset = gridx * squareWidth;
-		this.zoffset = gridz * squareHeight;
-		this.width = gridwidth * squareWidth;
-		this.height = gridheight * squareHeight;
+		this.gridx = area.x;
+		this.gridz = area.z;
+		this.xoffset = area.x * squareSize;
+		this.zoffset = area.z * squareSize;
+		this.width = area.xsize * squareSize;
+		this.height = area.zsize * squareSize;
 		this.xstep = 1;
-		this.zstep = this.xstep * gridwidth * squareWidth;
-		this.levelstep = this.zstep * gridheight * squareHeight;
+		this.zstep = this.xstep * area.xsize * squareSize;
+		this.levelstep = this.zstep * area.zsize * squareSize;
 		this.tiles = [];
 	}
 
 	getHeightFile(x: number, z: number, level: number, xsize: number, zsize: number) {
-		let file = new Uint16Array(xsize * zsize * squareLevels);
+		let file = new Uint16Array(xsize * zsize);
 		for (let dz = 0; dz < zsize; dz++) {
 			for (let dx = 0; dx < xsize; dx++) {
 				let tile = this.getTile(x + dx, z + dz, level);
@@ -649,7 +663,9 @@ export class TileGrid {
 		let w10 = (1 - (x - xfloor)) * (z - zfloor);
 		let w11 = (x - xfloor) * (z - zfloor);
 
-		let tile = this.getTile(x0, z0, level)!;
+		let tile = this.getTile(x0, z0, level);
+		//can be empty if the region has gaps
+		if (!tile) { return 0; }
 
 		return tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11;
 	}
@@ -725,20 +741,24 @@ export class TileGrid {
 					let hasroof = ((effectiveTile.raw.settings ?? 0) & 4) != 0;
 
 					if (effectiveLevel != level) {
-						let receivingtile = this.getTile(x, z, effectiveLevel)!;
-						receivingtile.effectiveCollision = currenttile.rawCollision;
-						receivingtile.playery = currenttile.playery;
+						//keep using old effectivelevel if it was already determined
+						if (effectiveLevel == effectiveTile.effectiveLevel) {
+							effectiveVisualLevel = effectiveTile.effectiveVisualLevel;
+						}
+						effectiveTile.effectiveCollision = currenttile.rawCollision;
+						effectiveTile.playery = currenttile.playery;
 					}
 					currenttile.effectiveLevel = (alwaysshow ? 0 : effectiveLevel);
 					currenttile.effectiveVisualLevel = Math.max(currenttile.effectiveVisualLevel, effectiveVisualLevel);
 
 					//spread to our neighbours
 					//there is a lot more to it than this but it gives decent results
-					if (xnext && ((xnext.raw.settings ?? 0) & 0x8) == 0) { xnext.effectiveVisualLevel = Math.max(xnext.effectiveVisualLevel, effectiveVisualLevel); }
-					if (znext && ((znext.raw.settings ?? 0) & 0x8) == 0) { znext.effectiveVisualLevel = Math.max(znext.effectiveVisualLevel, effectiveVisualLevel); }
-					if (xprev && ((xprev.raw.settings ?? 0) & 0x8) == 0) { xprev.effectiveVisualLevel = Math.max(xprev.effectiveVisualLevel, effectiveVisualLevel); }
-					if (zprev && ((zprev.raw.settings ?? 0) & 0x8) == 0) { zprev.effectiveVisualLevel = Math.max(zprev.effectiveVisualLevel, effectiveVisualLevel); }
-
+					for (let dz = -1; dz <= 1; dz++) {
+						for (let dx = -1; dx <= 1; dx++) {
+							let tile = this.getTile(x + dx, z + dz, level);
+							if (tile && ((tile.raw.settings ?? 0) & 0x8) == 0) { tile.effectiveVisualLevel = Math.max(tile.effectiveVisualLevel, effectiveVisualLevel); }
+						}
+					}
 					if (hasroof) { effectiveVisualLevel = effectiveLevel + 1; }
 				}
 			}
@@ -786,13 +806,14 @@ export class TileGrid {
 	}
 	addMapsquare(chunk: ChunkData, docollision = false) {
 		const tiles = chunk.tiles;
-		if (tiles.length != squareWidth * squareHeight * squareLevels) { throw new Error(); }
+		if (tiles.length != squareSize * squareSize * squareLevels) { throw new Error(); }
 		let baseoffset = (chunk.xoffset - this.xoffset) * this.xstep + (chunk.zoffset - this.zoffset) * this.zstep;
-		for (let z = 0; z < squareHeight; z++) {
-			for (let x = 0; x < squareWidth; x++) {
-				let tileindex = z + x * squareHeight;//TODO are these flipped
+		for (let z = 0; z < squareSize; z++) {
+			for (let x = 0; x < squareSize; x++) {
 				let tilex = (chunk.xoffset + x) * tiledimensions;
 				let tilez = (chunk.zoffset + z) * tiledimensions;
+				if (this.tilemask && !this.tilemask.some(q => mapRectContains(q, chunk.xoffset + x, chunk.zoffset + z))) { continue; }
+				let tileindex = z + x * squareSize;//TODO are these flipped
 				let height = 0;
 				for (let level = 0; level < squareLevels; level++) {
 					let tile = tiles[tileindex];
@@ -863,14 +884,14 @@ export class TileGrid {
 						effectiveVisualLevel: 0
 					}
 					this.tiles[newindex] = parsedTile;
-					tileindex += squareWidth * squareHeight;
+					tileindex += squareSize * squareSize;
 				}
 			}
 		}
 	}
 }
 
-export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean };
+export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, mask?: MapRect[] };
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 type MapConfigData = typeof mapConfigData extends ((...a: any[]) => Promise<infer T>) ? T : never;
 
@@ -891,7 +912,12 @@ export async function parseMapsquare(source: CacheFileSource, rect: MapRect, opt
 	let config = await mapConfigData(source);
 
 	let chunkfloorpadding = (opts?.padfloor ? 1 : 0);
-	let grid = new TileGrid(config, rect.x - chunkfloorpadding, rect.z - chunkfloorpadding, rect.xsize + chunkfloorpadding * 2, rect.zsize + chunkfloorpadding * 2);
+	let grid = new TileGrid(config, {
+		x: rect.x - chunkfloorpadding,
+		z: rect.z - chunkfloorpadding,
+		xsize: rect.xsize + chunkfloorpadding * 2,
+		zsize: rect.zsize + chunkfloorpadding * 2
+	}, opts?.mask);
 	let chunks: ChunkData[] = [];
 	for (let z = -chunkfloorpadding; z < rect.zsize + chunkfloorpadding; z++) {
 		for (let x = -chunkfloorpadding; x < rect.xsize + chunkfloorpadding; x++) {
@@ -915,8 +941,8 @@ export async function parseMapsquare(source: CacheFileSource, rect: MapRect, opt
 			//let watertiles = parseMapsquareWaterTiles.read(watertilefile);
 			let tiles = parseMapsquareTiles.read(tilefile);
 			let chunk: ChunkData = {
-				xoffset: (rect.x + x) * squareWidth,
-				zoffset: (rect.z + z) * squareHeight,
+				xoffset: (rect.x + x) * squareSize,
+				zoffset: (rect.z + z) * squareSize,
 				mapsquarex: rect.x + x,
 				mapsquarez: rect.z + z,
 				tiles, cacheIndex: selfindex, archive: selfarchive,
@@ -930,11 +956,11 @@ export async function parseMapsquare(source: CacheFileSource, rect: MapRect, opt
 			chunks.push(chunk);
 		}
 	}
+	grid.blendUnderlays();
 	for (let chunk of chunks) {
 		chunk.locs = await mapsquareObjects(source, chunk, grid, !!opts?.collision);
 	}
 
-	grid.blendUnderlays();
 	return { grid, chunks };
 }
 
@@ -943,7 +969,7 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 
 	for (let chunk of chunks) {
 		let floors: FloorMeshData[] = [];
-		let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareWidth + 1, squareHeight + 1);
+		let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareSize + 1, squareSize + 1);
 		let materials = new Map<number, MaterialData>();
 		let materialproms: Promise<any>[] = [];
 		for (let matid of matids) {
@@ -1463,7 +1489,10 @@ export async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData
 
 		for (let inst of loc.uses) {
 			let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
-			if (!callingtile) { console.log("callingtile not found"); continue; }
+			if (!callingtile) {
+				// console.log("callingtile not found");
+				continue;
+			}
 
 			//models have their center in the middle, but they always rotate such that their southwest corner
 			//corresponds to the southwest corner of the tile
@@ -1499,6 +1528,12 @@ export async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData
 				effectiveLevel: callingtile.effectiveLevel
 			});
 
+			const fullcollisiontypes = [
+				9,//is actually diagonal wall
+				10, 11,
+				12, 13, 14, 15, 16, 17, 18, 19, 20, 21//roof types, only some are confirmed
+			]
+
 			if (collision && !objectmeta.probably_nocollision) {
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
@@ -1517,7 +1552,7 @@ export async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData
 									col.sightwalls[inst.rotation] = true;
 									col.sightwalls[(inst.rotation + 1) % 4] = true;
 								}
-							} else if (inst.type == 9 || inst.type == 10 || inst.type == 11) {
+							} else if (fullcollisiontypes.includes(inst.type)) {
 								col.walk = true;
 								if (!objectmeta.maybe_allows_lineofsight) {
 									col.sight = true;
@@ -1533,7 +1568,7 @@ export async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData
 }
 
 function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number) {
-	const maxtriangles = squareHeight * squareWidth * 5 * 6 * 2;
+	const maxtriangles = squareSize * squareSize * 5 * 6 * 2;
 	let posoffset = 0;
 	let coloroffset = 12;
 	let stride = 16;
@@ -1591,8 +1626,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 		indexbuf[indexpointer++] = v100; indexbuf[indexpointer++] = v111; indexbuf[indexpointer++] = v110;
 		indexbuf[indexpointer++] = v100; indexbuf[indexpointer++] = v101; indexbuf[indexpointer++] = v111;
 	}
-	for (let z = chunk.zoffset; z < chunk.zoffset + squareHeight; z++) {
-		for (let x = chunk.xoffset; x < chunk.xoffset + squareWidth; x++) {
+	for (let z = chunk.zoffset; z < chunk.zoffset + squareSize; z++) {
+		for (let x = chunk.xoffset; x < chunk.xoffset + squareSize; x++) {
 			let tile = grid.getTile(x, z, level);
 			if (tile?.rawCollision) {
 				if (tile.rawCollision.walk) {
@@ -1685,7 +1720,7 @@ async function generateLocationMeshgroups(scene: ThreejsSceneCache, models: Maps
 			let matgroup = group.get(matkey);
 			if (!matgroup) {
 				matgroup = {
-					material: await scene.getMaterial(rawmesh.materialId, rawmesh.hasVertexAlpha),
+					material: await scene.getMaterial(modified.materialId, modified.hasVertexAlpha),
 					models: [],
 					groupid: obj.extras.modelgroup,
 					overlayIndex: 0
@@ -1746,7 +1781,7 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 
 
 async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, materials: Map<number, MaterialData>, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
-	const maxtiles = squareWidth * squareHeight * squareLevels;
+	const maxtiles = squareSize * squareSize * squareLevels;
 	const maxVerticesPerTile = 8;
 	const posoffset = 0;// 0/4
 	const normaloffset = 3;// 12/4
@@ -1845,8 +1880,8 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 
 	for (let tilelevel = level; tilelevel < squareLevels; tilelevel++) {
 		if (showhidden && tilelevel != level) { continue; }
-		for (let z = 0; z < squareHeight; z++) {
-			for (let x = 0; x < squareWidth; x++) {
+		for (let z = 0; z < squareSize; z++) {
+			for (let x = 0; x < squareSize; x++) {
 				let tile = grid.getTile(chunk.xoffset + x, chunk.zoffset + z, tilelevel);
 				if (!tile) { continue; }
 				if (!showhidden && tile.effectiveVisualLevel != level) { continue; }

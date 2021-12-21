@@ -8,6 +8,7 @@ import { CacheFileSource } from "./cache";
 import { Downloader } from "./downloader";
 import * as updater from "./updater";
 import { GameCacheLoader } from "./cacheloader";
+import { MapRect } from "3d/mapsquare";
 
 export type Rect = { x: number, y: number, width: number, height: number };
 
@@ -48,17 +49,17 @@ const ReadCacheSource: Type<string, () => Promise<CacheFileSource>> = {
 	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
 };
 
-const MapRectangle: Type<string, Rect> = {
+const MapRectangle: Type<string, MapRect> = {
 	async from(str) {
 		let coordsparts = str.split(/[,x:;-]/);
 		if (coordsparts.length < 2) { throw new Error("need at least x and y in area"); }
 		if (coordsparts.length == 2) { coordsparts.push("1", "1"); }
 		if (coordsparts.length == 3) { coordsparts.push(coordsparts[2]); }
-		let [x, y, width, height] = coordsparts.map(q => {
+		let [x, z, xsize, zsize] = coordsparts.map(q => {
 			if (isNaN(+q)) { throw new Error("number expected") }
 			return +q;
 		});
-		return { x, y, width, height };
+		return { x, z, xsize, zsize };
 	},
 	description: "A square of map coordinates as 'x,y', 'x,y,size' or 'x,y,w,h'"
 };
@@ -76,7 +77,7 @@ export var mapareasource = literal({
 	area: option({ long: "area", short: "a", type: MapRectangle })
 });
 export var mapareasourceoptional = literal({
-	area: option({ long: "area", short: "a", defaultValue: () => null, type: MapRectangle as cmdts.Type<string, Rect | null> })
+	area: option({ long: "area", short: "a", defaultValue: () => null, type: MapRectangle as cmdts.Type<string, MapRect | null> })
 });
 
 

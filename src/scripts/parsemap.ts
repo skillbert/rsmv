@@ -22,7 +22,8 @@ let cmd = command({
 	handler: async (args) => {
 		let opts: ParsemapOpts = { centered: true, invisibleLayers: false };
 		let filesource = await args.source();
-		let { chunks, grid } = await parseMapsquare(filesource, { x: args.area.x, z: args.area.y, xsize: args.area.width, zsize: args.area.height }, opts);
+		let { chunks, grid } = await parseMapsquare(filesource, args.area, opts);
+		fs.mkdirSync(args.save, { recursive: true });
 		if (args.mode == "model") {
 			//TODO
 			console.log("needs repimplementation");
@@ -59,13 +60,13 @@ let cmd = command({
 			fs.writeFileSync(args.save + "/" + Date.now() + ".json", JSON.stringify(r, undefined, "\t"));
 		}
 		if (args.mode == "height") {
-			let imgw = args.area.width * 64;
-			let imgh = args.area.height * 64;
+			let imgw = args.area.xsize * 64;
+			let imgh = args.area.zsize * 64;
 			let data = new Uint8ClampedArray(imgw * imgh * 4);
-			for (let dz = 0; dz < args.area.height * 64; dz++) {
-				for (let dx = 0; dx < args.area.width * 64; dx++) {
+			for (let dz = 0; dz < args.area.zsize * 64; dz++) {
+				for (let dx = 0; dx < args.area.xsize * 64; dx++) {
 					let i = dx * 4 + dz * imgw * 4;
-					let tile = grid.getTile(args.area.x * 64 + dx, args.area.y * 64 + dz, 0);
+					let tile = grid.getTile(args.area.x * 64 + dx, args.area.z * 64 + dz, 0);
 					if (!tile) { continue; }
 					//1/32=1/(tiledimensions*heightscale)
 					data[i + 0] = tile.y / 32 | 0;

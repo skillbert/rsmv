@@ -13,8 +13,8 @@
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",
 		"ts": "tsc"
 	},
-	"author": "Adam",
-	"license": "ISC",
+	"author": "Skillbert",
+	"license": "GPL-4",
 	"devDependencies": {
 		"@types/crc": "^3.4.0",
 		"@types/leaflet": "^1.7.6",

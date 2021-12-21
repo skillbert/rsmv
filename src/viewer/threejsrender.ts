@@ -13,19 +13,16 @@ require("three/examples/js/renderers/Projector");//needed by svgrenderer
 //this is the dumbest thing i've ever writter and there is no better way, i tried
 const GLTFLoader = (THREE as any).GLTFLoader as typeof import('three/examples/jsm/loaders/GLTFLoader').GLTFLoader;
 const OrbitControls = (THREE as any).OrbitControls as typeof import('three/examples/jsm/controls/OrbitControls').OrbitControls;
-const RGBELoader = (THREE as any).RGBELoader as typeof import('three/examples/jsm/loaders/RGBELoader.js').RGBELoader;
 const SVGRenderer = (THREE as any).SVGRenderer as typeof import('three/examples/jsm/renderers/SVGRenderer.js').SVGRenderer;
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode } from '../3d/ob3tothree';
-import { ModelModifications } from '../3d/utils';
+import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
-import * as fs from "fs";
 
 import { ModelViewerState, ModelSink, MiniCache } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
-
 
 export class ThreeJsRenderer implements ModelSink {
 	renderer: THREE.WebGLRenderer;
@@ -45,13 +42,13 @@ export class ThreeJsRenderer implements ModelSink {
 	unpackOb3WithGltf: boolean;
 	filesource: CacheFileSource;
 
-	constructor(canvas: HTMLCanvasElement, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource, unpackOb3WithGltf = false) {
+	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource, unpackOb3WithGltf = false) {
 		(window as any).render = this;//TODO remove
 		this.filesource = filesource;
 		this.canvas = canvas;
 		this.unpackOb3WithGltf = unpackOb3WithGltf;
 		this.stateChangeCallback = stateChangeCallback;
-		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, powerPreference: "high-performance", antialias: true, ...params });
 		const renderer = this.renderer;
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
 		canvas.onclick = this.click;
@@ -118,8 +115,8 @@ export class ThreeJsRenderer implements ModelSink {
 		dirLight.position.set(75, 300, -75);
 		scene.add(dirLight);
 
-		// let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
-		// scene.add(hemilight);
+		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
+		scene.add(hemilight);
 	}
 
 	frameArea(sizeToFitOnScreen: number, boxSize: number, boxCenter: THREE.Vector3, camera: THREE.PerspectiveCamera) {
@@ -351,7 +348,8 @@ export class ThreeJsRenderer implements ModelSink {
 				img = null;
 				continue;
 			}
-			return { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 as 4 };
+			let r: FlatImageData = { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 };
+			return r;
 			// break;
 		}
 		throw new Error("capture failed");
@@ -451,7 +449,7 @@ export class ThreeJsRenderer implements ModelSink {
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
 		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-			this.uistate.toggles[q] = !q.match(/(floorhidden|collision|walls)/);
+			this.uistate.toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
 		});
 		this.fixVisisbleMeshes();
 
