@@ -50,7 +50,7 @@
 	"extrasmap":        [ "array",["struct",
 		["$type","unsigned byte"],
 		["prop","unsigned tribyte"],
-		["intvalue",["opt",["$type",0],"unsigned int"]],
+		["intvalue",["opt",["$type",0],"int"]],
 		["stringvalue",["opt",["$type",1],"string"]]
 	]]
 }

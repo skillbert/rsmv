@@ -4,9 +4,9 @@
 
 export type mapsquare_tiles = {
 	flags: number,
-	shape: number | undefined,
-	overlay: number | undefined,
-	settings: number | undefined,
-	underlay: number | undefined,
-	height: number | undefined,
+	shape: number | null,
+	overlay: number | null,
+	settings: number | null,
+	underlay: number | null,
+	height: number | null,
 }[];

@@ -24,11 +24,11 @@ export function setLoadingIndicator(ind: typeof loadingIndicator) {
 	loadingIndicator = ind;
 }
 
-const ReadCacheSource: Type<string, () => Promise<CacheFileSource>> = {
+const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
 	async from(str) {
 		let [mode, ...argparts] = str.split(":",);
 		let arg = argparts.join(":");
-		return async () => {
+		return async (opts) => {
 			switch (mode) {
 				case "live":
 					return new Downloader();
@@ -39,7 +39,7 @@ const ReadCacheSource: Type<string, () => Promise<CacheFileSource>> = {
 					await loadingIndicator.done();
 					return updater.fileSource;
 				case "cache":
-					return new GameCacheLoader(arg || path.resolve(process.env.ProgramData!, "jagex/runescape"));
+					return new GameCacheLoader(arg || path.resolve(process.env.ProgramData!, "jagex/runescape"), !!opts?.writable);
 				default:
 					throw new Error("unknown mode");
 			}

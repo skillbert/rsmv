@@ -2,7 +2,7 @@ import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { GLTFBuilder } from "./gltf";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { GlTf, MeshPrimitive, Material } from "./gltftype";
-import { cacheConfigPages, cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { ParsedTexture } from "./textures";
 import { AttributeSoure, buildAttributeBuffer, glTypeIds } from "./gltfutil";
 import { parseMapscenes, parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseMapsquareWaterTiles, parseObject } from "../opdecoder";
@@ -485,7 +485,7 @@ function boxMesh(width: number, length: number, height: number) {
 export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 	let newmat = mods.replaceMaterials?.find(q => q[0] == mesh.materialId)?.[1];
 	let newmesh = { ...mesh };
-	if (typeof newmat != "undefined") {
+	if (newmat != undefined) {
 		newmesh.materialId = (newmat == (1 << 16) - 1 ? -1 : newmat);
 	}
 
@@ -817,26 +817,26 @@ export class TileGrid {
 				let height = 0;
 				for (let level = 0; level < squareLevels; level++) {
 					let tile = tiles[tileindex];
-					if (typeof tile.height != "undefined") {
+					if (tile.height != undefined) {
 						height += tile.height;
 					} else {
 						//TODO this is a guess that sort of fits
 						height += 30;
 					}
 					let visible = false;
-					let shape = (typeof tile.shape == "undefined" ? defaulttileshape : tileshapes[tile.shape]);
+					let shape = (tile.shape == undefined ? defaulttileshape : tileshapes[tile.shape]);
 					let bleedsOverlayMaterial = false;
 					let underlayprop: TileVertex | undefined = undefined;
 					let overlayprop: TileVertex | undefined = undefined;
 					//TODO bound checks
-					let underlay = (typeof tile.underlay != "undefined" ? this.mapconfig.underlays[tile.underlay - 1] : undefined);
+					let underlay = (tile.underlay != undefined ? this.mapconfig.underlays[tile.underlay - 1] : undefined);
 					if (underlay) {
 						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
 							visible = true;
 						}
 						underlayprop = { material: underlay.material ?? -1, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
 					}
-					let overlay = (typeof tile.overlay != "undefined" ? this.mapconfig.overlays[tile.overlay - 1] : undefined);
+					let overlay = ( tile.overlay != undefined ? this.mapconfig.overlays[tile.overlay - 1] : undefined);
 					if (overlay) {
 						overlayprop = { material: overlay.material ?? -1, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
@@ -929,8 +929,8 @@ export async function parseMapsquare(source: CacheFileSource, rect: MapRect, opt
 				continue;
 			}
 			let selfarchive = (await source.getFileArchive(selfindex));
-			let tileindex = selfindex.subindices.indexOf(3);
-			let tileindexwater = selfindex.subindices.indexOf(4);
+			let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
+			let tileindexwater = selfindex.subindices.indexOf(cacheMapFiles.squaresWater);
 
 			if (tileindex == -1) {
 				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
@@ -1217,7 +1217,7 @@ async function mapsquareOverlays(source: CacheFileSource, grid: TileGrid, locs: 
 		let group = floors[loc.effectiveLevel].mapscenes.get(sceneid);
 		if (!group) {
 			let mapscene = grid.mapconfig.mapscenes[sceneid];
-			if (typeof mapscene.sprite_id == "undefined") { return; }
+			if (mapscene.sprite_id == undefined) { return; }
 			let spritefile = await source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 			let sprite = parseSprite(spritefile);
 			let mat = new THREE.MeshBasicMaterial();
@@ -1271,7 +1271,7 @@ async function mapsquareOverlays(source: CacheFileSource, grid: TileGrid, locs: 
 			addwall(wallmodels.diagonal, loc);
 		}
 
-		if (typeof loc.location.mapscene != "undefined") {
+		if (loc.location.mapscene != undefined) {
 			await addMapscene(loc, loc.location.mapscene);
 		}
 	}
@@ -1295,8 +1295,8 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 		let objectmeta = inst.location;
 		if (!model) {
 			let modelmods: ModelModifications = {
-				replaceColors: objectmeta.color_replacements,
-				replaceMaterials: objectmeta.material_replacements
+				replaceColors: objectmeta.color_replacements??undefined,
+				replaceMaterials: objectmeta.material_replacements??undefined
 			};
 			const translatefactor = 4;//no clue why but seems right
 			let translate = new Vector3().set(
@@ -1478,7 +1478,7 @@ export type WorldLocation = {
 export async function mapsquareObjects(source: CacheFileSource, chunk: ChunkData, grid: TileGrid, collision = false) {
 	let locs: WorldLocation[] = [];
 
-	let locationindex = chunk.cacheIndex.subindices.indexOf(0);
+	let locationindex = chunk.cacheIndex.subindices.indexOf(cacheMapFiles.locations);
 	if (locationindex == -1) { return locs; }
 	let locations = parseMapsquareLocations.read(chunk.archive[locationindex].buffer).locations;
 

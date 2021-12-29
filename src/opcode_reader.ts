@@ -1,4 +1,6 @@
 
+import type * as jsonschema from "json-schema";
+
 type PrimitiveInt = {
 	primitive: "int",
 	unsigned: boolean,
@@ -48,7 +50,9 @@ type ParserContext = Record<string, number>;
 export type ChunkParser<T> = {
 	read(buf: ScanBuffer, ctx: ParserContext): T,
 	write(buf: ScanBuffer, v: unknown): void,
+	bubbleConditionValue?(statevalue: T, prop: string, currentvalue: number, isBubbling: boolean): number,
 	getTypescriptType(indent: string): string,
+	getJsonSChema(): jsonschema.JSONSchema6Definition,
 	condName?: string,
 	condValue?: number,
 	condMode?: CompareMode
@@ -211,6 +215,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 		write(buffer, value) {
 			if (typeof value != "object") { throw new Error("oject expected") }
 			for (let key in value) {
+				if (key.startsWith("$")) { continue; }
 				let parser = opts[key];
 				if (!parser) { throw new Error("unknown property " + key); }
 				opcodetype.write(buffer, parser.condValue);
@@ -226,13 +231,21 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 			}
 			r += indent + "}";
 			return r;
+		},
+		getJsonSChema() {
+			return {
+				type: "object",
+				properties: Object.fromEntries([...map.values()].map((prop) => {
+					return [prop.key, prop.parser.getJsonSChema()];
+				}))
+			}
 		}
 	}
 }
 
 function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends true ? number : string, any>>(props: { [key in keyof T]: ChunkParser<T[key]> }, isTuple: TUPPLE): ChunkParser<T> {
-	let keys: (keyof T)[] = Object.keys(props) as any;
-	return {
+	let keys = Object.keys(props);
+	let r: ChunkParser<T> = {
 		read(buffer, parentctx) {
 			let r = (isTuple ? [] : {}) as T;
 			let ctx: ParserContext = Object.create(parentctx);
@@ -249,15 +262,25 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 		},
 		write(buffer, value) {
 			if (typeof value != "object" || !value) { throw new Error("object expected"); }
-			for (let i = 0; i < keys.length; i++) {
-				let key = keys[i];
-				if (key[0] == "$") { continue; }
-				if (!(key in value)) { throw new Error(`struct has no property ${key}`); }
-				let propvalue = value[key as string];
+			for (let key of keys) {
+				let propvalue: any;
+				if (key[0] == "$") {
+					propvalue = r.bubbleConditionValue!(value as any, key, 0, false);
+				} else {
+					// if (!(key in value)) { throw new Error(`struct has no property ${key}`); }
+					propvalue = value[key];
+				}
 				let prop = props[key];
-				//TODO calculate dependent values
 				prop.write(buffer, propvalue);
 			}
+		},
+		bubbleConditionValue(state, prop, val, isBubbling) {
+			//prop is shadowed
+			if (isBubbling && keys.indexOf(prop as any) != -1) { return val; }
+			for (let key of keys) {
+				val = props[key].bubbleConditionValue?.(state[key], prop, val, true) ?? val;
+			}
+			return val;
 		},
 		getTypescriptType(indent) {
 			let r = (isTuple ? "[" : "{") + "\n";
@@ -268,31 +291,68 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 			}
 			r += indent + (isTuple ? "]" : "}");
 			return r;
+		},
+		getJsonSChema() {
+			return {
+				type: "object",
+				properties: Object.fromEntries([...Object.entries(props)].map(([key, prop]) => {
+					return [key, (prop as ChunkParser<any>).getJsonSChema()];
+				})),
+				required: keys
+			}
 		}
 	}
+	return r;
 }
 
-function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | undefined> {
-	let r: ChunkParser<T | undefined> = {
+function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | null> {
+	let r: ChunkParser<T | null> = {
 		read(buffer, ctx) {
 			if (!checkCondition(r, ctx[condvar])) {
-				return undefined;
+				return null;
 			}
 			return type.read(buffer, ctx);
 		},
 		write(buffer, value) {
-			if (typeof value != "undefined") {
+			if ( value != null) {
 				return type.write(buffer, value);
 			}
 		},
+		bubbleConditionValue(state, prop, val) {
+			if (prop == condvar) {
+				val = forceCondition(this, val, state != null);
+			}
+			return val;
+		},
 		getTypescriptType(indent) {
-			return type.getTypescriptType(indent) + " | undefined";
+			return type.getTypescriptType(indent) + " | null";
+		},
+		getJsonSChema() {
+			return {
+				oneOf: [
+					type.getJsonSChema(),
+					{ type: "null" }
+				]
+			}
 		},
 		condName: condvar,
 		condValue: condvalue,
 		condMode: compare,
 	}
 	return r;
+}
+
+function forceCondition(parser: ChunkParser<any>, oldvalue: number, state: boolean) {
+	switch (parser.condMode!) {
+		case "eq":
+			return state ? parser.condValue! : oldvalue;
+		case "bitflag":
+			return (state ? oldvalue | (1 << parser.condValue!) : oldvalue & ~(1 << parser.condValue!));
+		case "bitflagnot":
+			return (state ? oldvalue & ~(1 << parser.condValue!) : oldvalue | (1 << parser.condValue!));
+		default:
+			throw new Error("unkown condition " + parser.condMode);
+	}
 }
 
 function checkCondition(parser: ChunkParser<any>, v: number) {
@@ -315,7 +375,7 @@ function chunkedArrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: Chun
 			let r: T[] = [];
 			let ctxs: any[] = [];
 			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
-				let proptype = chunktypes[chunkindex]
+				let proptype = chunktypes[chunkindex];
 				for (let i = 0; i < len; i++) {
 					let ctx: any;
 					let obj: T;
@@ -338,10 +398,23 @@ function chunkedArrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: Chun
 		write(buf, v) {
 			throw new Error("not implemented");
 		},
+		bubbleConditionValue(state, prop, val) {
+			if (state.length != 0) {
+				for (let chunk of chunktypes) {
+					val = chunk.bubbleConditionValue?.(state[0], prop, val, true) ?? val;
+				}
+			}
+			return val;
+		},
 		getTypescriptType(indent: string) {
 			let joined = chunktypes.map(c => c.getTypescriptType(indent)).join(" & ");
 			if (chunktypes.length == 1) { return `${joined}[]`; }
 			else { return `(${joined})[]`; }
+		},
+		getJsonSChema() {
+			return {
+				allOf: chunktypes.flatMap(chunk => chunk.getJsonSChema())
+			}
 		}
 	}
 }
@@ -363,8 +436,20 @@ function arrayParser<T>(lengthtype: ChunkParser<number>, subtype: ChunkParser<T>
 				subtype.write(buffer, value[i]);
 			}
 		},
+		bubbleConditionValue(state, prop, val) {
+			if (state.length != 0) {
+				val = subtype.bubbleConditionValue?.(state[0], prop, val, true) ?? val;
+			}
+			return val;
+		},
 		getTypescriptType(indent) {
 			return `${subtype.getTypescriptType(indent)}[]`;
+		},
+		getJsonSChema() {
+			return {
+				type: "array",
+				items: subtype.getJsonSChema()
+			}
 		}
 	};
 }
@@ -387,7 +472,6 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			return r;
 		},
 		write(buffer, value) {
-			//throw new Error("not implemented");
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			for (let prop of value) {
 				const lengthvalue = 1;//TODO get this from"prop"
@@ -396,8 +480,20 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			}
 			lengthtype.write(buffer, 0);
 		},
+		bubbleConditionValue(state, prop, val) {
+			if (state.length != 0) {
+				val = proptype.bubbleConditionValue?.(state[0], prop, val, true) ?? val;
+			}
+			return val;
+		},
 		getTypescriptType(indent) {
 			return `${proptype.getTypescriptType(indent)}[]`;
+		},
+		getJsonSChema() {
+			return {
+				type: "array",
+				items: proptype.getJsonSChema()
+			};
 		}
 	};
 }
@@ -459,8 +555,8 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 
 				let mask = ~(~0 << (bytes * 8 - 1));
 				let int = (value & mask) | ((fitshalf ? 0 : 1) << (bytes * 8 - 1));
-				//always write as signed since bitwise operations in js cast to int32
-				buffer[`writeIntBE`](int, buffer.scan, bytes);
+				//write 32bit ints as unsigned since js bitwise operations cast to int32
+				buffer[`write${unsigned && bytes != 4 ? "U" : ""}IntBE`](int, buffer.scan, bytes);
 				buffer.scan += bytes;
 			} else if (readmode == "sumtail") {
 				throw new Error("not implemented");
@@ -471,6 +567,13 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 		},
 		getTypescriptType() {
 			return "number";
+		},
+		getJsonSChema() {
+			return {
+				type: "integer",
+				maximum: 2 ** (primitive.bytes * 8 + (primitive.unsigned ? 0 : -1)) - 1,
+				minimum: (primitive.unsigned ? 0 : 2 ** (primitive.bytes * 8 - 1))
+			}
 		}
 	}
 	return parser;
@@ -492,7 +595,11 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 			} else {
 				return typeof primitive.value;
 			}
-
+		},
+		getJsonSChema() {
+			return {
+				type: typeof primitive.value as any
+			}
 		}
 	}
 }
@@ -506,11 +613,21 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 			return v;
 		},
 		write(buffer, value) {
-			//need to make the struct writer grab its value from here for invisible props
-			throw new Error("write for ref not implemented");
+			//nop, value is written elsewhere
+		},
+		bubbleConditionValue(state, prop, val) {
+			if (propname == prop) { val |= state << minbit; }
+			return val;
 		},
 		getTypescriptType() {
 			return "number";
+		},
+		getJsonSChema() {
+			return {
+				type: "integer",
+				minimum: 0,
+				maximum: 2 ** (bitlength * 8) - 1
+			}
 		}
 	}
 }
@@ -546,6 +663,9 @@ function intAccumlatorParser(refname: string, value: ChunkParser<number | undefi
 		},
 		getTypescriptType() {
 			return "number";
+		},
+		getJsonSChema() {
+			return { type: "integer" };
 		}
 	}
 }
@@ -576,7 +696,7 @@ function stringParser(primitive: PrimitiveString): ChunkParser<string> {
 			validateStringType(primitive);
 			let encoding = primitive.encoding;
 			let termination = primitive.termination;
-			let strbuf = Buffer.from(value, encoding);
+			let strbuf = Buffer.from([...primitive.prebytes, ...Buffer.from(value, encoding)]);
 			//either pad with 0's to fixed length and truncate and longer strings, or add a single 0 at the end
 			let strbinbuf = Buffer.alloc(termination == null ? strbuf.byteLength + 1 : termination, 0);
 			strbuf.copy(strbinbuf, 0, 0, Math.max(strbuf.byteLength, strbinbuf.byteLength));
@@ -585,6 +705,9 @@ function stringParser(primitive: PrimitiveString): ChunkParser<string> {
 		},
 		getTypescriptType() {
 			return "string";
+		},
+		getJsonSChema() {
+			return { type: "string" };
 		}
 	}
 }
@@ -601,6 +724,9 @@ function booleanParser(): ChunkParser<boolean> {
 		},
 		getTypescriptType() {
 			return "boolean";
+		},
+		getJsonSChema() {
+			return { type: "boolean" };
 		}
 	}
 }

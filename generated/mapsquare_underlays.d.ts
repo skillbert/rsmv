@@ -3,9 +3,9 @@
 // run `npm run filetypes` to rebuild
 
 export type mapsquare_underlays = {
-	color?: number[] | undefined
-	material?: number | undefined
-	unknown_0x03?: number | undefined
-	unknown_0x04?: true | undefined
-	unknown_0x05?: true | undefined
+	color?: number[] | null
+	material?: number | null
+	unknown_0x03?: number | null
+	unknown_0x04?: true | null
+	unknown_0x05?: true | null
 };

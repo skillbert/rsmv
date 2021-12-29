@@ -26,7 +26,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 
 	let transparent = 0xff00ff;
 
-	let coltoint = (col: number[] | undefined) => {
+	let coltoint = (col: number[] | undefined | null) => {
 		if (!col) { return transparent; }
 		return col[0] << 16 | col[1] << 8 | col[2];
 	}
@@ -162,7 +162,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 			if (!tile || tile?.effectiveLevel != loc.effectiveLevel) { break; }
 			if (tile.effectiveLevel == maplevel && (getOverlayColor(tile) != transparent || tile.visible)) { occluded = true; }
 		}
-		if (typeof loc.location.mapscene == "undefined") {
+		if (loc.location.mapscene == undefined) {
 			if (drawwalls && !occluded) {
 				if (loc.type == 0) {
 					addline(linegroup, loc.x - rect.x, loc.z - rect.z, 3, 0, loc.rotation);
@@ -181,7 +181,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 					let src = "";
 					let width = 0;
 					let height = 0;
-					if (typeof mapscene.sprite_id != "undefined") {
+					if (mapscene.sprite_id != undefined) {
 						let spritefile = await source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 						let sprite = parseSprite(spritefile);
 						let pngfile = await sharp(sprite[0].data, { raw: { width: sprite[0].width, height: sprite[0].height, channels: 4 } }).png().toBuffer();

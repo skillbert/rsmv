@@ -1,3 +1,4 @@
+import { crc32 } from "crc";
 import { cacheMajors } from "./constants";
 import { parseCacheIndex } from "./opdecoder";
 
@@ -79,6 +80,8 @@ export function packBufferArchive(buffers: Buffer[]) {
 		lastsize = buf.byteLength;
 		footerindex += 4;
 	}
+	result.writeUInt8(1, len - 1);
+	//TODO write last byte, whats in it?
 	return result;
 }
 
@@ -86,6 +89,8 @@ export function unpackBufferArchive(buffer: Buffer, length: number) {
 	var subbufs: SubFile[] = [];
 	var scan = 0x0;
 	//whats in our missing byte?
+	let endbyte = buffer.readUInt8(buffer.length - 1);
+	if (endbyte != 1) { console.log("unexpected archive end byte", endbyte) }
 	var suboffsetScan = buffer.length - 0x1 - (0x4 * length);
 	var lastRecordSize = 0;
 
@@ -144,6 +149,7 @@ const mappedFileIds = {
 	[cacheMajors.npcs]: 256,//not sure
 	[cacheMajors.enums]: 256,
 	[cacheMajors.objects]: 256,
+	[cacheMajors.achievements]: 128,
 	[cacheMajors.materials]: Infinity
 }
 

@@ -92,7 +92,7 @@ var _lzma = function (input: Buffer) {
 	// var lzma = require("lzma");
 	// return Buffer.from(lzma.decompress(processed));
 	var lzma = require("lzma-native").LZMA();
-	return lzma.decompress(processed);
+	return lzma.decompress(processed) as Buffer;
 }
 
 

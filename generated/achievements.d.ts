@@ -3,19 +3,19 @@
 // run `npm run filetypes` to rebuild
 
 export type achievements = {
-	name?: string | undefined
+	name?: string | null
 	description?: {
 		hasironman: number,
 		unk0: number,
 		descr: string,
-		unk1: number | undefined,
-		descr_ironman: string | undefined,
-	} | undefined
-	category?: number | undefined
-	spriteId?: number | undefined
-	runescore?: number | undefined
-	unknown_0x06?: number | undefined
-	rewardtext?: string | undefined
+		unk1: number | null,
+		descr_ironman: string | null,
+	} | null
+	category?: number | null
+	spriteId?: number | null
+	runescore?: number | null
+	unknown_0x06?: number | null
+	rewardtext?: string | null
 	subach_skills?: {
 		ironman: number,
 		level: number,
@@ -23,73 +23,73 @@ export type achievements = {
 		unk_0: number,
 		unk_1: number,
 		skill: number,
-	}[] | undefined
+	}[] | null
 	subach_varbits?: {
 		type: number,
 		value: number,
 		name: string,
 		stepsize: number,
 		varbit: number,
-	}[] | undefined
+	}[] | null
 	varbit_partial_state?: {
 		type: number,
 		value: number,
 		name: string,
 		stepsize: number,
 		varbit: number,
-	}[] | undefined
-	previous_achievements?: number[] | undefined
+	}[] | null
+	previous_achievements?: number[] | null
 	skill_reqs_2?: {
 		unk0: number,
 		level: number,
 		name: string,
 		unk1: number,
 		skill: number,
-	}[] | undefined
+	}[] | null
 	progress_states?: {
 		unk0: number,
 		value: number,
 		name: string,
 		varbits: number[],
-	}[] | undefined
+	}[] | null
 	subreqs?: {
 		unk0: number,
 		value: number,
 		name: string,
 		varbits: number[],
-	}[] | undefined
+	}[] | null
 	sub_achievements?: {
 		unk0: number,
 		achievement: number,
-	}[] | undefined
-	subcategory?: number | undefined
-	hidden?: number | undefined
-	f2p?: true | undefined
-	quest_req_for_miniquests?: number[] | undefined
-	quest_ids?: number[] | undefined
+	}[] | null
+	subcategory?: number | null
+	hidden?: number | null
+	f2p?: true | null
+	quest_req_for_miniquests?: number[] | null
+	quest_ids?: number[] | null
 	reqs23?: {
 		type: number,
 		varbit: number,
 		stepsize: number,
-		name: string | undefined,
-		requirement: number | undefined,
+		name: string | null,
+		requirement: number | null,
 		subbit: number,
-	}[] | undefined
+	}[] | null
 	reqs25?: {
 		type: number,
 		varbit: number,
 		value: number,
-		name: string | undefined,
-		requirement: number | undefined,
+		name: string | null,
+		requirement: number | null,
 		subbit: number,
-	}[] | undefined
-	unknown_0x13?: true | undefined
-	skill_req_count?: number[] | undefined
-	unknown_0x1D?: number | undefined
-	subreq_count?: number[] | undefined
-	unknown_0x1F?: number | undefined
-	unknown_0x20?: number | undefined
-	unknown_0x23?: true | undefined
-	unknown_0x25?: number | undefined
-	unknown_0x26?: true | undefined
+	}[] | null
+	unknown_0x13?: true | null
+	skill_req_count?: number[] | null
+	unknown_0x1D?: number | null
+	subreq_count?: number[] | null
+	unknown_0x1F?: number | null
+	unknown_0x20?: number | null
+	unknown_0x23?: true | null
+	unknown_0x25?: number | null
+	unknown_0x26?: true | null
 };

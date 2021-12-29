@@ -2,12 +2,15 @@ import { filesource, cliArguments } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
-import { cacheConfigPages, cacheMajors } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums, parseMapscenes } from "../opdecoder";
-import { achiveToFileId, CacheFileSource } from "../cache";
+import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums, parseMapscenes, parseMapsquareLocations } from "../opdecoder";
+import { achiveToFileId, CacheFileSource, CacheIndex, CacheIndexStub, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData } from "../3d/utils";
+import { crc32 } from "crc";
+import * as cache from "../cache";
+import { GameCacheLoader } from "../cacheloader";
 
 type KnownType = {
 	index: number,
@@ -18,12 +21,174 @@ type KnownType = {
 	img?: (b: Buffer, source: CacheFileSource) => Promise<FlatImageData[]>
 }
 
+type CacheFileId = {
+	index: CacheIndex,
+	subfile: number
+}
+
+type LogicalIndex = number[];
+
+async function filerange(source: CacheFileSource, startindex: FileId, endindex: FileId) {
+	if (startindex.major != endindex.major) { throw new Error("range must span one major"); }
+	let indexfile = await source.getIndexFile(startindex.major);
+	let files: CacheFileId[] = [];
+	for (let index of indexfile) {
+		if (!index) { continue; }
+		if (index.minor >= startindex.minor && index.minor <= endindex.minor) {
+			for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
+				let subfileid = index.subindices[fileindex];
+				if (index.minor == startindex.minor && subfileid < startindex.subindex) { continue; }
+				if (index.minor == endindex.minor && subfileid > endindex.subindex) { continue; }
+				files.push({ index, subfile: fileindex });
+			}
+		}
+	}
+	return files;
+}
+
+function worldmapIndex(subfile: number): DecodeLookup {
+	const major = cacheMajors.mapsquares;
+	const worldStride = 128;
+	return {
+		major,
+		async logicalRangeToFiles(source, start, end) {
+			let indexfile = await source.getIndexFile(major);
+			let files: CacheFileId[] = [];
+			for (let index of indexfile) {
+				if (!index) { continue; }
+				let x = index.minor % worldStride;
+				let z = Math.floor(index.minor / worldStride);
+				if (x >= start[0] && x <= end[0] && z >= start[1] && z <= end[1]) {
+					for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
+						let subfileid = index.subindices[fileindex];
+						if (subfileid == subfile) {
+							files.push({ index, subfile: fileindex });
+						}
+					}
+				}
+			}
+			return files;
+		},
+		fileToLogical(major, minor, subfile) {
+			return [minor % worldStride, Math.floor(minor / worldStride)];
+		},
+		logicalToFile(id: LogicalIndex) {
+			return { major, minor: id[0] + id[1] * worldStride, subindex: subfile };
+		}
+	}
+}
+
+function singleMinorIndex(major: number, minor: number): DecodeLookup {
+	return {
+		major,
+		async logicalRangeToFiles(source, start, end) {
+			return filerange(source, { major, minor, subindex: start[0] }, { major, minor, subindex: end[0] });
+		},
+		fileToLogical(major, minor, subfile) {
+			return [subfile];
+		},
+		logicalToFile(id: LogicalIndex) {
+			return { major, minor, subindex: id[0] };
+		}
+	}
+}
+
+function chunkedIndex(major: number): DecodeLookup {
+	return {
+		major,
+		async logicalRangeToFiles(source, start, end) {
+			let startindex = fileIdToArchiveminor(major, start[0]);
+			let endindex = fileIdToArchiveminor(major, end[0]);
+			return filerange(source, startindex, endindex);
+		},
+		fileToLogical(major, minor, subfile) {
+			return [achiveToFileId(major, minor, subfile)];
+		},
+		logicalToFile(id: LogicalIndex) {
+			return fileIdToArchiveminor(major, id[0]);
+		}
+	};
+}
+
+function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeModeFactory {
+	let constr: DecodeModeFactory = (outdir) => {
+		let name = Object.entries(modes).find(q => q[1] == constr);
+		if (!name) { throw new Error(); }
+		let schema = parser.parser.getJsonSChema();
+		let relurl = `./.schema-${name[0]}.json`;
+		fs.writeFileSync(path.resolve(outdir, relurl), JSON.stringify(schema, undefined, "\t"));
+		return {
+			...lookup,
+			ext: "json",
+			read(b) {
+				let obj = parser.read(b);
+				obj.$schema = relurl;
+				return JSON.stringify(obj, undefined, "\t");
+			},
+			write(b) {
+				return parser.write(JSON.parse(b.toString("utf8")));
+			}
+		}
+	}
+	return constr;
+}
+
+type DecodeModeFactory = (outdir: string) => DecodeMode;
+
+type FileId = { major: number, minor: number, subindex: number };
+
+type DecodeLookup = {
+	major: number | undefined,
+	logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
+	fileToLogical(major: number, minor: number, subfile: number): LogicalIndex,
+	logicalToFile(id: LogicalIndex): FileId,
+}
+
+type DecodeMode = {
+	ext: string,
+	read(buf: Buffer): (Buffer | string),
+	write(files: Buffer): Buffer
+} & DecodeLookup;
+
+const decodeBinary: DecodeModeFactory = () => {
+	return {
+		ext: "bin",
+		major: undefined,
+		fileToLogical(major, minor, subfile) { return [major, minor, subfile]; },
+		logicalToFile(id) { return { major: id[0], minor: id[1], subindex: id[2] }; },
+		async logicalRangeToFiles(source, start, end) {
+			if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
+			let major = start[0];
+			return filerange(source, { major, minor: start[1], subindex: start[2] }, { major, minor: start[1], subindex: start[2] });
+		},
+		read(b) { return b; },
+		write(b) { return b; }
+	}
+}
+
+
+const modes: Record<string, DecodeModeFactory> = {
+	bin: decodeBinary,
+
+	items: standardFile(parseItem, chunkedIndex(cacheMajors.items)),
+	npcs: standardFile(parseNpc, chunkedIndex(cacheMajors.npcs)),
+	objects: standardFile(parseObject, chunkedIndex(cacheMajors.objects)),
+	achievements: standardFile(parseAchievement, chunkedIndex(cacheMajors.achievements)),
+
+	overlays: standardFile(parseMapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
+	underlays: standardFile(parseMapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
+	mapscenes: standardFile(parseMapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
+
+	maptiles: standardFile(parseMapsquareTiles, worldmapIndex(cacheMapFiles.squares)),
+	maplocations: standardFile(parseMapsquareLocations, worldmapIndex(cacheMapFiles.locations)),
+}
+
 const decoders: Record<string, KnownType> = {
 	items: { index: cacheMajors.items, parser: parseItem },
 	npcs: { index: cacheMajors.npcs, parser: parseNpc },
 	objects: { index: cacheMajors.objects, parser: parseObject },
 	achievements: { index: cacheMajors.achievements, parser: parseAchievement },
-	sprites: { index: cacheMajors.sprites, img: (b) => Promise.resolve(parseSprite(b)) },
+	sprites: { index: cacheMajors.sprites, img: async (b) => parseSprite(b) },
 
 	overlays: { index: cacheMajors.config, minor: cacheConfigPages.mapoverlays, parser: parseMapsquareOverlays },
 	underlays: { index: cacheMajors.config, minor: cacheConfigPages.mapunderlays, parser: parseMapsquareOverlays },
@@ -32,9 +197,96 @@ const decoders: Record<string, KnownType> = {
 	mapzones: { index: cacheMajors.worldmap, minor: 0, parser: parseMapZones },
 
 	enums: { index: cacheMajors.enums, minor: 0, parser: parseEnums },
-	
+
 	maptiles: { index: cacheMajors.mapsquares, subfile: 3, parser: parseMapsquareTiles },
 }
+
+let cmd2 = command({
+	name: "run",
+	args: {
+		...filesource,
+		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
+		mode: option({ long: "mode", short: "m", type: string }),
+		files: option({ long: "ids", short: "i", type: string }),
+		edit: flag({ long: "edit", short: "e" })
+	},
+	handler: async (args) => {
+		let modeconstr = modes[args.mode];
+		if (!modeconstr) { throw new Error("unknown mode"); }
+		let outdir = path.resolve(args.save);
+		let mode = modeconstr(outdir);
+		fs.mkdirSync(outdir, { recursive: true });
+
+		let parts = args.files.split(",");
+		let ranges = parts.map(q => {
+			let ends = q.split("-");
+			let start = ends[0].split(".");
+			let end = (ends[1] ?? ends[0]).split(".");
+			return {
+				start: [+start[0], +(start[1] ?? 0)] as [number, number],
+				end: [+end[0], +(end[1] ?? Infinity)] as [number, number]
+			}
+		});
+
+		let source = await args.source({ writable: args.edit });
+
+		let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(source, q.start, q.end))))
+			.flat()
+			.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subfile - b.subfile);
+
+
+		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
+		for (let fileid of allfiles) {
+			let arch: SubFile[];
+			if (lastarchive && lastarchive.index == fileid.index) {
+				arch = lastarchive.subfiles;
+			} else {
+				arch = await source.getFileArchive(fileid.index);
+				lastarchive = { index: fileid.index, subfiles: arch };
+
+				// let modenet = cache.packBufferArchive(arch.map(q => q.buffer));
+				// console.log("modenet", modenet.byteLength, crc32(modenet));
+				// console.log("actual", fileid.index.uncompressed_size, fileid.index.uncompressed_crc);
+			}
+			let file = arch[fileid.subfile].buffer;
+			let res = mode.read(file);
+			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
+			let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
+			fs.writeFileSync(filename, res);
+		}
+
+
+		if (args.edit) {
+			await new Promise<any>(d => process.stdin.once('data', d));
+
+			let archedited = () => {
+				if (!(source instanceof GameCacheLoader)) { throw new Error("can only do this on file source of type gamecacheloader"); }
+				if (lastarchive) {
+					console.log("writing archive", lastarchive.index.major, lastarchive.index.minor, "files", lastarchive.subfiles.length);
+					return source.writeFileArchive(lastarchive.index, lastarchive.subfiles.map(q => q.buffer));
+				}
+			}
+
+			for (let fileid of allfiles) {
+				let arch: SubFile[];
+				if (lastarchive && lastarchive.index == fileid.index) {
+					arch = lastarchive.subfiles;
+				} else {
+					await archedited();
+					arch = await source.getFileArchive(fileid.index);
+					lastarchive = { index: fileid.index, subfiles: arch };
+				}
+				let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
+				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
+				let newfile = fs.readFileSync(filename);
+				arch[fileid.subfile].buffer = mode.write(newfile);
+			}
+			await archedited();
+		}
+		source.close();
+		console.log("done");
+	}
+})
 
 let cmd = command({
 	name: "download",
@@ -135,4 +387,4 @@ let cmd = command({
 	}
 });
 
-run(cmd, cliArguments());
+run(cmd2, cliArguments());

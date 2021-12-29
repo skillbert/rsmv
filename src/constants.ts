@@ -20,6 +20,12 @@ export const cacheMajors = {
 	index: 255
 }
 
+export const cacheMapFiles={
+	locations:0,
+	squares:3,
+	squaresWater:4
+}
+
 export const cacheConfigPages = {
 	mapunderlays: 1,
 	mapoverlays: 4,

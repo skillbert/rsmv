@@ -3,33 +3,33 @@
 // run `npm run filetypes` to rebuild
 
 export type enums = {
-	key_type1?: number | undefined
-	value_type1?: number | undefined
-	key_type2?: number | undefined
-	value_type2?: number | undefined
-	stringValue?: string | undefined
-	intValue?: number | undefined
+	key_type1?: number | null
+	value_type1?: number | null
+	key_type2?: number | null
+	value_type2?: number | null
+	stringValue?: string | null
+	intValue?: number | null
 	stringArrayValue1?: [
 		number,
 		string,
-	][] | undefined
+	][] | null
 	intArrayValue1?: [
 		number,
 		number,
-	][] | undefined
+	][] | null
 	stringArrayValue2?: {
 		max: number,
 		values: [
 			number,
 			string,
 		][],
-	} | undefined
+	} | null
 	intArrayValue2?: {
 		max: number,
 		values: [
 			number,
 			number,
 		][],
-	} | undefined
-	unknown_83?: true | undefined
+	} | null
+	unknown_83?: true | null
 };

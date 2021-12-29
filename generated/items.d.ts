@@ -3,168 +3,168 @@
 // run `npm run filetypes` to rebuild
 
 export type items = {
-	baseModel?: number | undefined
-	name?: string | undefined
-	buff_effect?: string | undefined
-	rotation_0?: number | undefined
-	rotation_1?: number | undefined
-	rotation_2?: number | undefined
-	modelTranslate_0?: number | undefined
-	modelTranslate_1?: number | undefined
-	unknown_0A?: true | undefined
-	stackable_1?: true | undefined
-	value?: number | undefined
-	equipSlotId?: number | undefined
-	equipId?: number | undefined
-	unknown_0F?: true | undefined
-	members?: true | undefined
-	multiStackSize?: number | undefined
-	maleModels_0?: number | undefined
-	maleModels_1?: number | undefined
-	femaleModels_0?: number | undefined
-	femaleModels_1?: number | undefined
-	unknown_1B?: number | undefined
-	ground_actions_0?: string | undefined
-	ground_actions_1?: string | undefined
-	ground_actions_2?: string | undefined
-	ground_actions_3?: string | undefined
-	ground_actions_4?: string | undefined
-	widget_actions_0?: string | undefined
-	widget_actions_1?: string | undefined
-	widget_actions_2?: string | undefined
-	widget_actions_3?: string | undefined
-	widget_actions_4?: string | undefined
+	baseModel?: number | null
+	name?: string | null
+	buff_effect?: string | null
+	rotation_0?: number | null
+	rotation_1?: number | null
+	rotation_2?: number | null
+	modelTranslate_0?: number | null
+	modelTranslate_1?: number | null
+	unknown_0A?: true | null
+	stackable_1?: true | null
+	value?: number | null
+	equipSlotId?: number | null
+	equipId?: number | null
+	unknown_0F?: true | null
+	members?: true | null
+	multiStackSize?: number | null
+	maleModels_0?: number | null
+	maleModels_1?: number | null
+	femaleModels_0?: number | null
+	femaleModels_1?: number | null
+	unknown_1B?: number | null
+	ground_actions_0?: string | null
+	ground_actions_1?: string | null
+	ground_actions_2?: string | null
+	ground_actions_3?: string | null
+	ground_actions_4?: string | null
+	widget_actions_0?: string | null
+	widget_actions_1?: string | null
+	widget_actions_2?: string | null
+	widget_actions_3?: string | null
+	widget_actions_4?: string | null
 	color_replacements?: [
 		number,
 		number,
-	][] | undefined
+	][] | null
 	material_replacements?: [
 		number,
 		number,
-	][] | undefined
+	][] | null
 	recolourPalette?: [
 		number,
 		number,
-	][] | undefined
-	nameColor?: number | undefined
-	recolorDstIndices?: number | undefined
-	retextureDstIndices?: number | undefined
-	tradeable?: true | undefined
-	buy_limit?: number | undefined
-	maleModels_2?: number | undefined
-	femaleModels_2?: number | undefined
-	maleHeads_0?: number | undefined
-	femaleHeads_0?: number | undefined
-	maleHeads_1?: number | undefined
-	femaleHeads_1?: number | undefined
-	category?: number | undefined
-	modelYaw?: number | undefined
-	dummyItem?: number | undefined
-	noteData?: number | undefined
-	noteTemplate?: number | undefined
+	][] | null
+	nameColor?: number | null
+	recolorDstIndices?: number | null
+	retextureDstIndices?: number | null
+	tradeable?: true | null
+	buy_limit?: number | null
+	maleModels_2?: number | null
+	femaleModels_2?: number | null
+	maleHeads_0?: number | null
+	femaleHeads_0?: number | null
+	maleHeads_1?: number | null
+	femaleHeads_1?: number | null
+	category?: number | null
+	modelYaw?: number | null
+	dummyItem?: number | null
+	noteData?: number | null
+	noteTemplate?: number | null
 	stack_info_0?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_1?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_2?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_3?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_4?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_5?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_6?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_7?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_8?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	stack_info_9?: [
 		number,
 		number,
-	] | undefined
-	scale_0?: number | undefined
-	scale_1?: number | undefined
-	scale_2?: number | undefined
-	ambiance?: number | undefined
-	contrast?: number | undefined
-	team?: number | undefined
-	loanId?: number | undefined
-	loanTemplate?: number | undefined
+	] | null
+	scale_0?: number | null
+	scale_1?: number | null
+	scale_2?: number | null
+	ambiance?: number | null
+	contrast?: number | null
+	team?: number | null
+	loanId?: number | null
+	loanTemplate?: number | null
 	male_translate?: [
 		number,
 		number,
 		number,
-	] | undefined
+	] | null
 	female_translate?: [
 		number,
 		number,
 		number,
-	] | undefined
+	] | null
 	unknown_7F?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	unknown_80?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	unknown_81?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	unknown_82?: [
 		number,
 		number,
-	] | undefined
+	] | null
 	quests?: [
 		number,
 		number,
-	][] | undefined
-	pickSizeShift?: number | undefined
-	bindLink?: number | undefined
-	bindTemplate?: number | undefined
-	ground_actions_cursor_0?: number | undefined
-	ground_actions_cursor_1?: number | undefined
-	ground_actions_cursor_2?: number | undefined
-	ground_actions_cursor_3?: number | undefined
-	ground_actions_cursor_4?: number | undefined
-	widget_actions_cursor_0?: number | undefined
-	widget_actions_cursor_1?: number | undefined
-	widget_actions_cursor_2?: number | undefined
-	widget_actions_cursor_3?: number | undefined
-	widget_actions_cursor_4?: number | undefined
-	dummy?: true | undefined
-	randomizeGroundPos?: true | undefined
-	combine_info?: number | undefined
-	combine_template?: number | undefined
-	combine_num_required?: number | undefined
-	combine_shard_name?: string | undefined
-	neverStackable?: true | undefined
-	unknown_A7?: true | undefined
-	unknown_A8?: true | undefined
+	][] | null
+	pickSizeShift?: number | null
+	bindLink?: number | null
+	bindTemplate?: number | null
+	ground_actions_cursor_0?: number | null
+	ground_actions_cursor_1?: number | null
+	ground_actions_cursor_2?: number | null
+	ground_actions_cursor_3?: number | null
+	ground_actions_cursor_4?: number | null
+	widget_actions_cursor_0?: number | null
+	widget_actions_cursor_1?: number | null
+	widget_actions_cursor_2?: number | null
+	widget_actions_cursor_3?: number | null
+	widget_actions_cursor_4?: number | null
+	dummy?: true | null
+	randomizeGroundPos?: true | null
+	combine_info?: number | null
+	combine_template?: number | null
+	combine_num_required?: number | null
+	combine_shard_name?: string | null
+	neverStackable?: true | null
+	unknown_A7?: true | null
+	unknown_A8?: true | null
 	extra?: {
 		prop: number,
-		intvalue: number | undefined,
-		stringvalue: string | undefined,
-	}[] | undefined
+		intvalue: number | null,
+		stringvalue: string | null,
+	}[] | null
 };
