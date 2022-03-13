@@ -13,8 +13,6 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { addOb3Model, parseOb3Model, GLTFSceneCache, ModelMeshData, ModelData, getMaterialData, MaterialData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import * as fs from "fs";
-import sharp from "sharp";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
 import { BufferAttribute, DataTexture, MeshBasicMaterial, Object3D, Quaternion, Vector3 } from "three";
 import { materialCacheKey } from "./jmat";
@@ -33,7 +31,7 @@ export const squareLevels = 4;
 const heightScale = 1 / 16;
 const worldStride = 128;
 
-const { tileshapes, defaulttileshape } = generateTileShapes();
+const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 const wallmodels = generateWallModels();
 
 const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
@@ -375,6 +373,7 @@ function generateTileShapes() {
 		let shape = i - rotation;
 		if (shape == 0) {
 			overlay.push(0, 2, 4, 6);
+			// overlay.push(2, 4, 6, 0);
 		} else if (shape == 4 || shape == 36 || shape == 40) {
 			overlay.push(0, 4, 6);
 			underlay.push(0, 2, 4);
@@ -418,7 +417,11 @@ function generateTileShapes() {
 		overlay: [],
 		underlay: [0, 2, 4, 6].map(q => getvertex(q, 0))
 	}
-	return { tileshapes, defaulttileshape };
+	let defaulttileshapeflipped: TileShape = {
+		overlay: [],
+		underlay: [2, 4, 6, 0].map(q => getvertex(q, 0))
+	}
+	return { tileshapes, defaulttileshape, defaulttileshapeflipped };
 }
 
 function boxMesh(width: number, length: number, height: number) {
@@ -606,10 +609,8 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 
 export class TileGrid {
 	mapconfig: MapConfigData;
+	area: MapRect;
 	tilemask: undefined | MapRect[];
-	//position and size of this grid measure in mapsquares
-	gridx: number;
-	gridz: number;
 	width: number;
 	height: number;
 	//position of this grid measured in tiles
@@ -622,18 +623,16 @@ export class TileGrid {
 	zstep: number;
 	levelstep: number;
 	constructor(mapconfig: MapConfigData, area: MapRect, tilemask: MapRect[] | undefined) {
-		let tilearea: MapRect = { x: area.x * squareSize, z: area.z * squareSize, xsize: area.xsize * squareSize, zsize: area.zsize * squareSize };
-		this.tilemask = tilemask && tilemask.filter(q => mapRectsIntersect(q, tilearea));
+		this.area = area;
+		this.tilemask = tilemask && tilemask.filter(q => mapRectsIntersect(q, area));
 		this.mapconfig = mapconfig;
-		this.gridx = area.x;
-		this.gridz = area.z;
-		this.xoffset = area.x * squareSize;
-		this.zoffset = area.z * squareSize;
-		this.width = area.xsize * squareSize;
-		this.height = area.zsize * squareSize;
+		this.xoffset = area.x;
+		this.zoffset = area.z;
+		this.width = area.xsize;
+		this.height = area.zsize;
 		this.xstep = 1;
-		this.zstep = this.xstep * area.xsize * squareSize;
-		this.levelstep = this.zstep * area.zsize * squareSize;
+		this.zstep = this.xstep * area.xsize;
+		this.levelstep = this.zstep * area.zsize;
 		this.tiles = [];
 	}
 
@@ -812,8 +811,9 @@ export class TileGrid {
 			for (let x = 0; x < squareSize; x++) {
 				let tilex = (chunk.xoffset + x) * tiledimensions;
 				let tilez = (chunk.zoffset + z) * tiledimensions;
+				if (!mapRectContains(this.area, chunk.xoffset + x, chunk.zoffset + z)) { continue; }
 				if (this.tilemask && !this.tilemask.some(q => mapRectContains(q, chunk.xoffset + x, chunk.zoffset + z))) { continue; }
-				let tileindex = z + x * squareSize;//TODO are these flipped
+				let tileindex = z + x * squareSize;
 				let height = 0;
 				for (let level = 0; level < squareLevels; level++) {
 					let tile = tiles[tileindex];
@@ -836,7 +836,7 @@ export class TileGrid {
 						}
 						underlayprop = { material: underlay.material ?? -1, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
 					}
-					let overlay = ( tile.overlay != undefined ? this.mapconfig.overlays[tile.overlay - 1] : undefined);
+					let overlay = (tile.overlay != undefined ? this.mapconfig.overlays[tile.overlay - 1] : undefined);
 					if (overlay) {
 						overlayprop = { material: overlay.material ?? -1, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
@@ -911,12 +911,12 @@ export async function mapConfigData(source: CacheFileSource) {
 export async function parseMapsquare(source: CacheFileSource, rect: MapRect, opts?: ParsemapOpts) {
 	let config = await mapConfigData(source);
 
-	let chunkfloorpadding = (opts?.padfloor ? 1 : 0);
+	let chunkfloorpadding = (opts?.padfloor ? 10 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
 	let grid = new TileGrid(config, {
-		x: rect.x - chunkfloorpadding,
-		z: rect.z - chunkfloorpadding,
-		xsize: rect.xsize + chunkfloorpadding * 2,
-		zsize: rect.zsize + chunkfloorpadding * 2
+		x: rect.x * squareSize - chunkfloorpadding,
+		z: rect.z * squareSize - chunkfloorpadding,
+		xsize: rect.xsize * squareSize + chunkfloorpadding * 2,
+		zsize: rect.zsize * squareSize + chunkfloorpadding * 2
 	}, opts?.mask);
 	let chunks: ChunkData[] = [];
 	for (let z = -chunkfloorpadding; z < rect.zsize + chunkfloorpadding; z++) {
@@ -1002,12 +1002,12 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 		}
 
 		for (let level = 0; level < squareLevels; level++) {
-			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false, true, false));
-			floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, false, false, true));
+			floors.push(mapsquareMesh(grid, chunk, level, materials, atlas, false, true, false));
+			floors.push(mapsquareMesh(grid, chunk, level, materials, atlas, false, false, true));
 		}
 		if (opts?.invisibleLayers) {
 			for (let level = 0; level < squareLevels; level++) {
-				floors.push(await mapsquareMesh(grid, chunk, level, materials, atlas, true));
+				floors.push(mapsquareMesh(grid, chunk, level, materials, atlas, true));
 			}
 		}
 		let models = mapsquareObjectModels(chunk.locs);
@@ -1295,8 +1295,8 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 		let objectmeta = inst.location;
 		if (!model) {
 			let modelmods: ModelModifications = {
-				replaceColors: objectmeta.color_replacements??undefined,
-				replaceMaterials: objectmeta.material_replacements??undefined
+				replaceColors: objectmeta.color_replacements ?? undefined,
+				replaceMaterials: objectmeta.material_replacements ?? undefined
 			};
 			const translatefactor = 4;//no clue why but seems right
 			let translate = new Vector3().set(
@@ -1780,7 +1780,7 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 }
 
 
-async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, materials: Map<number, MaterialData>, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
+function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, materials: Map<number, MaterialData>, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
 	const maxtiles = squareSize * squareSize * squareLevels;
 	const maxVerticesPerTile = 8;
 	const posoffset = 0;// 0/4
@@ -1889,6 +1889,18 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 				let rawtile = tile.raw;
 				let shape = tile.shape;
 				let hasneighbours = tile.next01 && tile.next10 && tile.next11;
+				//it somehow prefers to split the tile in a way that keeps underlays together
+				// if (shape == defaulttileshape && hasneighbours) {
+				// 	//something going on with underlay materials but unclear what
+				// 	// if (tile.rawUnderlay == tile.next11!.rawUnderlay && tile.next01!.rawUnderlay != tile.next10!.rawUnderlay) {
+				// 	// 	shape = defaulttileshape;
+				// 	// } else
+				// 	 if (Math.abs(tile.y - tile.y11) > Math.abs(tile.y10 - tile.y01)) {
+				// 		shape = defaulttileshape;
+				// 	} else {
+				// 		shape = defaulttileshapeflipped;
+				// 	}
+				// }
 
 				if (keeptileinfo) {
 					tileinfos.push({ tile, x, z, level: tilelevel });
@@ -2016,7 +2028,7 @@ async function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, ma
 	}
 }
 
-type FloorMeshData = typeof mapsquareMesh extends (...args: any[]) => Promise<infer Q> ? Q : never;
+type FloorMeshData = typeof mapsquareMesh extends (...args: any[]) => infer Q ? Q : never;
 
 function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	if (floor.nvertices == 0) { return undefined; }

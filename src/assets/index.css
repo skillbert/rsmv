@@ -155,9 +155,9 @@ input[type="text"]:focus {
 }
 #sidebar {
 	background-color: var(--secondary-bg-colour);
-	min-width: calc(5 * 55px);
+	min-width: calc(6 * 55px);
 	width: 31vw;
-	max-width: calc(5 * 55px + 3.5 * 55px);
+	max-width: calc(6 * 55px + 3.5 * 55px);
 	height: 100%;
 	grid-column-start: 2;
 	grid-column-end: span 0;

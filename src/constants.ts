@@ -10,6 +10,7 @@ export const cacheMajors = {
 	materials: 26,
 	worldmap: 23,
 	models: 47,
+	anims: 48,
 
 	texturesDds: 52,
 	texturesPng: 53,

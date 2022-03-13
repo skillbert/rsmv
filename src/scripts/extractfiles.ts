@@ -3,14 +3,14 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseEnums, parseMapscenes, parseMapsquareLocations } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseAnimations, parseEnums, parseMapscenes, parseMapsquareLocations } from "../opdecoder";
 import { achiveToFileId, CacheFileSource, CacheIndex, CacheIndexStub, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData } from "../3d/utils";
-import { crc32 } from "crc";
 import * as cache from "../cache";
 import { GameCacheLoader } from "../cacheloader";
+import { crc32_backward, forge } from "../libs/crc32util";
 
 type KnownType = {
 	index: number,
@@ -110,6 +110,17 @@ function chunkedIndex(major: number): DecodeLookup {
 	};
 }
 
+function standardIndex(major: number): DecodeLookup {
+	return {
+		major,
+		fileToLogical(major, minor, subfile) { return [minor, subfile]; },
+		logicalToFile(id) { return { major, minor: id[0], subindex: id[1] }; },
+		async logicalRangeToFiles(source, start, end) {
+			return filerange(source, { major, minor: start[0], subindex: start[1] }, { major, minor: end[0], subindex: end[1] });
+		}
+	}
+}
+
 function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeModeFactory {
 	let constr: DecodeModeFactory = (outdir) => {
 		let name = Object.entries(modes).find(q => q[1] == constr);
@@ -159,7 +170,7 @@ const decodeBinary: DecodeModeFactory = () => {
 		async logicalRangeToFiles(source, start, end) {
 			if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
 			let major = start[0];
-			return filerange(source, { major, minor: start[1], subindex: start[2] }, { major, minor: start[1], subindex: start[2] });
+			return filerange(source, { major, minor: start[1], subindex: start[2] }, { major, minor: end[1], subindex: end[2] });
 		},
 		read(b) { return b; },
 		write(b) { return b; }
@@ -181,6 +192,8 @@ const modes: Record<string, DecodeModeFactory> = {
 
 	maptiles: standardFile(parseMapsquareTiles, worldmapIndex(cacheMapFiles.squares)),
 	maplocations: standardFile(parseMapsquareLocations, worldmapIndex(cacheMapFiles.locations)),
+
+	anims: standardFile(parseAnimations, standardIndex(cacheMajors.anims))
 }
 
 const decoders: Record<string, KnownType> = {
@@ -208,14 +221,15 @@ let cmd2 = command({
 		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
 		mode: option({ long: "mode", short: "m", type: string }),
 		files: option({ long: "ids", short: "i", type: string }),
-		edit: flag({ long: "edit", short: "e" })
+		edit: flag({ long: "edit", short: "e" }),
+		fixhash: flag({ long: "fixhash", short: "h" })
 	},
 	handler: async (args) => {
 		let modeconstr = modes[args.mode];
 		if (!modeconstr) { throw new Error("unknown mode"); }
 		let outdir = path.resolve(args.save);
-		let mode = modeconstr(outdir);
 		fs.mkdirSync(outdir, { recursive: true });
+		let mode = modeconstr(outdir);
 
 		let parts = args.files.split(",");
 		let ranges = parts.map(q => {
@@ -241,12 +255,9 @@ let cmd2 = command({
 			if (lastarchive && lastarchive.index == fileid.index) {
 				arch = lastarchive.subfiles;
 			} else {
+				// console.log(fileid.index);
 				arch = await source.getFileArchive(fileid.index);
 				lastarchive = { index: fileid.index, subfiles: arch };
-
-				// let modenet = cache.packBufferArchive(arch.map(q => q.buffer));
-				// console.log("modenet", modenet.byteLength, crc32(modenet));
-				// console.log("actual", fileid.index.uncompressed_size, fileid.index.uncompressed_crc);
 			}
 			let file = arch[fileid.subfile].buffer;
 			let res = mode.read(file);
@@ -263,6 +274,10 @@ let cmd2 = command({
 				if (!(source instanceof GameCacheLoader)) { throw new Error("can only do this on file source of type gamecacheloader"); }
 				if (lastarchive) {
 					console.log("writing archive", lastarchive.index.major, lastarchive.index.minor, "files", lastarchive.subfiles.length);
+					console.log(lastarchive.index);
+					// let arch = new cache.Archive(lastarchive.subfiles.map(q => q.buffer));
+					// arch.forgecrc(lastarchive.index.uncompressed_crc, lastarchive.index.subindices.indexOf(3), 10);
+					// return source.writeFile(lastarchive.index.major, lastarchive.index.minor, arch.packSqlite());
 					return source.writeFileArchive(lastarchive.index, lastarchive.subfiles.map(q => q.buffer));
 				}
 			}

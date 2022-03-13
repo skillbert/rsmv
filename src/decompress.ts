@@ -1,3 +1,4 @@
+
 //decompress data as it comes from the server
 export function decompress(input: Buffer) {
 	switch (input.readUInt8(0x0)) {

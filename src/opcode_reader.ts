@@ -314,7 +314,7 @@ function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, 
 			return type.read(buffer, ctx);
 		},
 		write(buffer, value) {
-			if ( value != null) {
+			if (value != null) {
 				return type.write(buffer, value);
 			}
 		},
@@ -519,7 +519,15 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				// If the number is signed and second-most-significant bit is 1,
 				// set the most-significant bit to 1 since it's no longer a continuation bit
 				if (!unsigned && (firstByte & 0x40) == 0x40) buffer[buffer.scan] |= 0x80;
-				output = buffer[`read${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](buffer.scan, bytes); buffer.scan += bytes;
+				if (unsigned) {
+					if (endianness == "big") { output = buffer.readUIntBE(buffer.scan, bytes); }
+					else { output = buffer.readUIntLE(buffer.scan, bytes); }
+				} else {
+					if (endianness == "big") { output = buffer.readIntBE(buffer.scan, bytes); }
+					else { output = buffer.readIntLE(buffer.scan, bytes); }
+				}
+				buffer.scan += bytes;
+				// output = buffer[`read${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](buffer.scan, bytes); buffer.scan += bytes;
 				buffer[buffer.scan - bytes] = firstByte; // Set it back to what it was originally
 				if (readmode == "sumtail") {
 					//this is very stupid but works
@@ -530,7 +538,15 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 					}
 				}
 			} else {
-				output = buffer[`read${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](buffer.scan, bytes); buffer.scan += bytes;
+				if (unsigned) {
+					if (endianness == "big") { output = buffer.readUIntBE(buffer.scan, bytes); }
+					else { output = buffer.readUIntLE(buffer.scan, bytes); }
+				} else {
+					if (endianness == "big") { output = buffer.readIntBE(buffer.scan, bytes); }
+					else { output = buffer.readIntLE(buffer.scan, bytes); }
+				}
+				buffer.scan += bytes;
+				// output = buffer[`read${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](buffer.scan, bytes); buffer.scan += bytes;
 			}
 			return output;
 		},
@@ -572,7 +588,7 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 			return {
 				type: "integer",
 				maximum: 2 ** (primitive.bytes * 8 + (primitive.unsigned ? 0 : -1)) - 1,
-				minimum: (primitive.unsigned ? 0 : 2 ** (primitive.bytes * 8 - 1))
+				minimum: (primitive.unsigned ? 0 : -1 * (2 ** (primitive.bytes * 8)))
 			}
 		}
 	}

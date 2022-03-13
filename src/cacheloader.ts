@@ -3,7 +3,6 @@ import { compressSqlite, decompress, decompressSqlite } from "./decompress";
 import * as path from "path";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type * as sqlite3 from "sqlite3";
-import { crc32 } from "crc";
 
 type CacheTable = {
 	db: sqlite3.Database,
@@ -64,6 +63,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 			// console.log(`crc from cache (${row.CRC}) did not match requested crc (${crc}) for ${major}.${minor}`);
 		}
 		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
+		// console.log("size",file.byteLength);
 		let res = decompressSqlite(file);
 		return res;
 	}
@@ -92,7 +92,8 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	async getIndex(major: number) {
 		let { dbget } = this.openTable(major);
 		let row = await dbget(`SELECT DATA FROM cache_index`, []);
-		return decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
+		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
+		return decompressSqlite(file);
 	}
 
 	close() {

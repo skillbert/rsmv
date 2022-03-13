@@ -151,6 +151,7 @@ export type objects = {
 		unknown_6: number,
 	} | null
 	singleuse_CA?: number | null
+	unknown_CA?: true | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,

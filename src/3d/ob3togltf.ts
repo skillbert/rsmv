@@ -165,10 +165,11 @@ export function parseOb3Model(modelfile: Buffer) {
 		let hasVertexAlpha = (groupFlags & 0x02) != 0;
 		let hasFlag4 = (groupFlags & 0x04) != 0;
 		let hasBoneids = (groupFlags & 0x08) != 0;
-		if (groupFlags > 16) {
-			console.log("unknown model flags", groupFlags & ~15);
-		}
 		let isHidden = (groupFlags & 0x10) != 0;
+		let hasFlag20 = (groupFlags & 0x20) != 0;
+		if (groupFlags & ~0x2f) {
+			console.log("unknown model flags", groupFlags & ~0x2f);
+		}
 
 		let colourBuffer: Uint8Array | null = null;
 		let alphaBuffer: Uint8Array | null = null;
@@ -231,6 +232,15 @@ export function parseOb3Model(modelfile: Buffer) {
 				//TODO there can't be more than ~50 bones in the engine, what happens to the extra byte?
 				boneidBuffer = streamChunk(Uint16Array, model, vertexCount);
 			}
+		}
+		if (hasFlag20) {
+			//probably material related
+			//models from this update/area also for the first time has some sort of "skybox" material
+			//
+			let count = model.readUInt();
+			let shorts = streamChunk(Uint16Array, model, count);
+			let bytes = streamChunk(Uint8Array, model, count);
+			let a = 1;
 		}
 
 		if (isHidden) {

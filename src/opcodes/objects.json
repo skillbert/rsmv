@@ -94,5 +94,6 @@
 	"0xC8": { "name":                        "singleuse_C8", "read": "true" },
 	"0xC9": { "name":                          "unknown_C9", "read": [ "struct", ["unknown_1", "variable short"], ["unknown_2", "variable short"], ["unknown_3", "variable short"], ["unknown_4", "variable short"], ["unknown_5", "variable short"], ["unknown_6", "variable short"] ] },
 	"0xCA": { "name":						 "singleuse_CA", "read": "unsigned byte" },
+	"0xCB": { "name":						   "unknown_CA", "read": "true" },
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

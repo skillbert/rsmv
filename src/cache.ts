@@ -1,4 +1,4 @@
-import { crc32 } from "crc";
+import { crc32, crc32_backward, forge_crcbytes } from "./libs/crc32util";
 import { cacheMajors } from "./constants";
 import { parseCacheIndex } from "./opdecoder";
 
@@ -27,20 +27,7 @@ export type CacheIndex = CacheIndexStub & {
 export type CacheIndexFile = CacheIndex[];
 
 export function packSqliteBufferArchive(buffers: Buffer[]) {
-	if (buffers.length == 1) { return buffers[0]; }
-	let datasize = buffers.reduce((a, v) => a + v.byteLength, 0);;
-	let headersize = 1 + 4 + buffers.length * 4
-	let result = Buffer.alloc(headersize + datasize);
-	let offset = 0;
-	let dataoffset = headersize;//start of first file
-	result.writeUInt8(0x1, offset); offset++;//unknown
-	result.writeUInt32BE(dataoffset, offset); offset += 4;
-	for (let buffer of buffers) {
-		buffer.copy(result, dataoffset);
-		dataoffset += buffer.byteLength;
-		result.writeUInt32BE(dataoffset, offset); offset += 4;//index at end of file
-	}
-	return result;
+	return new Archive(buffers).packSqlite();
 }
 
 export function unpackSqliteBufferArchive(buffer: Buffer, length: number) {
@@ -65,24 +52,77 @@ export function unpackSqliteBufferArchive(buffer: Buffer, length: number) {
 	return files;
 }
 
-export function packBufferArchive(buffers: Buffer[]) {
-	if (buffers.length == 1) { return buffers[0]; }
-	let datasize = buffers.reduce((a, v) => a + v.byteLength, 0);;
-	let len = 1 + buffers.length * 4 + datasize;
-	let result = Buffer.alloc(len);
-	let lastsize = 0;
-	let footerindex = datasize;
-	let offset = 0;
-	for (let buf of buffers) {
-		buf.copy(result, offset);
-		offset += buf.byteLength;
-		result.writeInt32BE(buf.byteLength - lastsize, footerindex);
-		lastsize = buf.byteLength;
-		footerindex += 4;
+export class Archive {
+	files: Buffer[];
+	constructor(files: Buffer[]) {
+		this.files = files;
 	}
-	result.writeUInt8(1, len - 1);
-	//TODO write last byte, whats in it?
-	return result;
+
+	forgecrc(wantedcrc: number, gapfileindex: number, gapoffset: number) {
+		let frontcrc = 0;
+		for (let i = 0; i < this.files.length; i++) {
+			if (i == gapfileindex) {
+				frontcrc = crc32(this.files[i], frontcrc, 0, gapoffset);
+				break;
+			}
+			frontcrc = crc32(this.files[i], frontcrc);
+		}
+		let backcrc = wantedcrc;
+		backcrc = crc32_backward(this.networkFooter(), backcrc);
+		for (let i = this.files.length - 1; i >= 0; i--) {
+			if (i == gapfileindex) {
+				backcrc = crc32(this.files[i], backcrc, 0, gapoffset + 4);
+				break;
+			}
+			backcrc = crc32(this.files[i], backcrc);
+		}
+		console.log("forging file", gapfileindex, gapoffset, forge_crcbytes(frontcrc, backcrc));
+		this.files[gapfileindex] = Buffer.from(this.files[gapfileindex]);
+		forge_crcbytes(frontcrc, backcrc).copy(this.files[gapfileindex], gapoffset);
+	}
+
+	networkFooter() {
+		if (this.files.length == 1) { return Buffer.from([]); }
+		let len = 1 + this.files.length * 4;
+		let result = Buffer.alloc(len);
+		let lastsize = 0;
+		let footerindex = 0;
+		for (let buf of this.files) {
+			result.writeInt32BE(buf.byteLength - lastsize, footerindex);
+			lastsize = buf.byteLength;
+			footerindex += 4;
+		}
+		result.writeUInt8(0x01, len - 1);//why is this byte 0x01
+		return result;
+	}
+
+	packNetwork() {
+		return Buffer.concat([...this.files, this.networkFooter()]);
+	}
+
+	sqliteHeader() {
+		if (this.files.length == 1) { return Buffer.from([]); }
+
+		let headersize = 1 + 4 + this.files.length * 4
+		let result = Buffer.alloc(headersize);
+		let offset = 0;
+		let dataoffset = headersize;//start of first file
+		result.writeUInt8(0x1, offset); offset++;//unknown
+		result.writeUInt32BE(dataoffset, offset); offset += 4;
+		for (let buffer of this.files) {
+			dataoffset += buffer.byteLength;
+			result.writeUInt32BE(dataoffset, offset); offset += 4;//index at end of file
+		}
+		return result;
+	}
+
+	packSqlite() {
+		return Buffer.concat([this.sqliteHeader(), ...this.files,]);
+	}
+}
+
+export function packBufferArchive(buffers: Buffer[]) {
+	return new Archive(buffers).packNetwork();
 }
 
 export function unpackBufferArchive(buffer: Buffer, length: number) {

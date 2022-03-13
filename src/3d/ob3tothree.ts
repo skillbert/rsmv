@@ -85,7 +85,9 @@ export class ThreejsSceneCache {
 		let file = await this.getFileById(cacheMajors.texturesDds, texid);
 		let parsed = new ParsedTexture(file, allowAlpha);
 		//TODO can also directly load dxt texture here!
-		let texture = new THREE.CanvasTexture(await parsed.toWebgl());
+		// let texture = new THREE.CanvasTexture(await parsed.toWebgl());
+		let data = await parsed.toImageData();
+		let texture = new THREE.DataTexture(data.data, data.width, data.height);
 		this.textureCache.set(texid, texture);
 		return texture;
 	}

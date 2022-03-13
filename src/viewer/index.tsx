@@ -338,9 +338,9 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			let scene = await mapsquareToThree(hackyCacheFileSource, grid, modeldata);
 			renderer.setModels?.([scene], "");
 			// TODO currently parsing this twice
-			let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
-			let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
-			fs.writeFileSync("map.svg", svg);
+			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
+			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
+			// fs.writeFileSync("map.svg", svg);
 			break;
 		default:
 			throw new Error("unknown mode");
