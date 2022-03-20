@@ -16,11 +16,12 @@ import { FlatImageData } from "3d/utils";
 
 window.addEventListener("keydown", e => {
 	if (e.key == "F5") { document.location.reload(); }
-	if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
+	// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 });
 
+import * as THREE from "three";
 //can't use module import syntax because es6 wants to be more es6 than es6
-const THREE = require("three/build/three.js") as typeof import("three");
+// const THREE = require("three/build/three.js") as typeof import("three");
 const watermarkfile = fs.readFileSync(__dirname + "/../assets/watermark.png");
 
 type Mapconfig = {
@@ -320,7 +321,7 @@ export class MapRenderer {
 			]);
 			console.log(`context restore detection ${isrestored ? "restored before trigger" : "triggered and focusing window"}`);
 			if (!isrestored) {
-				electron.remote.getCurrentWebContents().focus();
+				// electron.remote.getCurrentWebContents().focus();
 			}
 		});
 	}

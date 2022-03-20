@@ -3,13 +3,12 @@ import * as updater from "./updater";
 import * as downloader from "./downloader";
 import * as gamecache from "./cache";
 import { GameCacheLoader } from "./cacheloader";
-import * as path from "path";
 import * as argparser from "./cliparser";
 import { command } from "cmd-ts";
 
 //having reused renderen processes breaks the node fs module
 //this still hasn't been fixed in electron
-app.allowRendererProcessReuse = false;
+// app.allowRendererProcessReuse = false;
 
 //don't use browser behavoir of blocking gpu access after a opengl crash
 app.disableDomainBlockingFor3DAPIs();
@@ -77,9 +76,9 @@ let cmd = command({
 		});
 
 		var index = await createWindow(`assets/index.html`, {
-			width: 800, height: 600, frame: false,
+			width: 800, height: 600,// frame: false,
 			webPreferences: {
-				enableRemoteModule: true,
+				// enableRemoteModule: true,
 				nodeIntegration: true,
 				contextIsolation: false,
 			}
@@ -89,6 +88,7 @@ let cmd = command({
 
 async function createWindow(page: string, options: Electron.BrowserWindowConstructorOptions) {
 	const window = new BrowserWindow(options);
+	window.webContents.openDevTools();
 	await window.loadFile(page);
 	return window;
 }

@@ -2,7 +2,7 @@
 import { app, BrowserWindow, powerSaveBlocker } from "electron";
 import { runCliApplication, mapareasource } from "../cliparser";
 
-app.allowRendererProcessReuse = false;
+// app.allowRendererProcessReuse = false;
 
 //don't use browser behavoir of blocking gpu access after a opengl crash
 app.disableDomainBlockingFor3DAPIs();
@@ -32,7 +32,7 @@ function btoa(str: string) {
 	var index = new BrowserWindow({
 		width: 800, height: 600,
 		webPreferences: {
-			enableRemoteModule: true,
+			// enableRemoteModule: true,
 			nodeIntegration: true,
 			contextIsolation: false
 		}

@@ -18,10 +18,12 @@ import { BufferAttribute, DataTexture, MeshBasicMaterial, Object3D, Quaternion, 
 import { materialCacheKey } from "./jmat";
 import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
+import * as THREE from "three";
+import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
-const THREE = require("three/build/three.js") as typeof import("three");
-require("three/examples/js/utils/BufferGeometryUtils");
+// const THREE = require("three/build/three.js") as typeof import("three");
+// require("three/examples/js/utils/BufferGeometryUtils");
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
@@ -1754,7 +1756,7 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		geo.index = transformed.indices;
 		return geo;
 	});
-	let mergedgeo = THREE.BufferGeometryUtils.mergeBufferGeometries(geos);
+	let mergedgeo = mergeBufferGeometries(geos);
 	let mesh = new THREE.Mesh(mergedgeo, meshgroup.material);
 
 	let count = 0;

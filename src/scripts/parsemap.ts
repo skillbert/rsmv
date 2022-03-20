@@ -1,7 +1,6 @@
 import { filesource, cliArguments, mapareasource } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import * as fs from "fs";
-import * as path from "path";
 import { cacheMajors } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareLocations } from "../opdecoder";
 import { mapConfigData, mapsquareModels, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";

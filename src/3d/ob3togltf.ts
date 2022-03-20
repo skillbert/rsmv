@@ -5,10 +5,10 @@ import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
-import * as fs from "fs";
+import * as THREE from "three";
 
 //can't use module import syntax because es6 wants to be more es6 than es6
-const THREE = require("three/build/three.js") as typeof import("three");
+// const THREE = require("three/build/three.js") as typeof import("three");
 
 export type FileGetter = (major: number, minor: number) => Promise<Buffer>;
 

@@ -1,6 +1,4 @@
 
-import * as fs from "fs";
-import * as electron from "electron";
 import { parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
@@ -8,47 +6,80 @@ import * as ob3Renderer from "./ob3render";
 import { ThreeJsRenderer } from "./threejsrender";
 import { cacheMajors } from "../constants";
 import * as React from "react";
-import { useState, useRef, useEffect } from "react";
 import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { ModelModifications } from "3d/utils";
-import { mapsquareModels, mapsquareObjects, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
-import { GameCacheLoader } from "../cacheloader";
+import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
+import { WasmGameCacheLoader as GameCacheLoader } from "../cacheloaderwasm";
 import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
-import { cachingFileSourceMixin } from "../cache";
-import { Downloader } from "../downloader";
-import { svgfloor } from "../map/svgrender";
+import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
 type CacheGetter = (m: number, id: number) => Promise<Buffer>;
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
 type RenderMode = "gltf" | "ob3" | "three";
 
-const vertexShader = fs.readFileSync(__dirname + "/../assets/shader_vertex.glsl", "utf-8");
-const fragmentShader = fs.readFileSync(__dirname + "/../assets/shader_fragment.glsl", "utf-8");
-const ipc = electron.ipcRenderer;
+// const vertexShader = fs.readFileSync(__dirname + "/assets/shader_vertex.glsl", "utf-8");
+// const fragmentShader = fs.readFileSync(__dirname + "/assets/shader_fragment.glsl", "utf-8");
+// const ipc = electron.ipcRenderer;
 
 function start() {
 	window.addEventListener("keydown", e => {
 		if (e.key == "F5") { document.location.reload(); }
-		if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
+		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 	});
 
 	ReactDOM.render(<App />, document.getElementById("app"));
 }
 
-(window as any).getFile = getFile;
-(window as any).fs = fs;
+// (window as any).getFile = getFile;
+// (window as any).fs = fs;
 
-async function getFile(major: number, minor: number) {
-	let buffarray: Uint8Array = await ipc.invoke("load-cache-file", major, minor);
-	return Buffer.from(buffarray.buffer, buffarray.byteOffset, buffarray.byteLength);
-}
+// async function getFile(major: number, minor: number) {
+// 	let buffarray: Uint8Array = await ipc.invoke("load-cache-file", major, minor);
+// 	return Buffer.from(buffarray.buffer, buffarray.byteOffset, buffarray.byteLength);
+// }
 
 //TODO remove this hack
 let CachedHacky = cachingFileSourceMixin(GameCacheLoader);
-const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
+const hackyCacheFileSource = new CachedHacky();
+
+if (typeof window != "undefined") {
+	document.body.ondragover = e => e.preventDefault();
+	document.body.ondrop = async e => {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			let files: Record<string, Blob> = {};
+			let items: DataTransferItem[] = [];
+			for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
+			//needs to start synchronously as the list is cleared after the event
+			await Promise.all(items.map(async item => {
+				//@ts-ignore
+				if (item.getAsFileSystemHandle) {
+					//@ts-ignore
+					let folderhandle = await item.getAsFileSystemHandle();
+					if (folderhandle.kind == "file") {
+						files[folderhandle.name] = await folderhandle.getFile();
+					} else {
+						for await (let handle of folderhandle.values()) {
+							if (handle.kind == "file") {
+								files[handle.name] = await handle.getFile();
+							}
+						}
+					}
+				} else if (item.kind == "file") {
+					let file = item.getAsFile()!;
+					files[file.name] = file;
+				}
+			}));
+			console.log(`added ${Object.keys(files).length} files`);
+			hackyCacheFileSource.giveBlobs(files);
+		}
+	}
+}
+
+// const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
 // let CachedHacky = cachingFileSourceMixin(Downloader);
 // const hackyCacheFileSource = new CachedHacky();
 
@@ -234,32 +265,33 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 }
 
 //cache the file loads a little bit as the model loader tend to request the same texture a bunch of times
-export class MiniCache {
-	sectors = new Map<number, Map<number, Promise<Buffer>>>();
-	getRaw: CacheGetter;
-	get: CacheGetter;
-	constructor(getRaw: CacheGetter) {
-		this.getRaw = getRaw;
+//TODO is now obsolete?
+// export class MiniCache {
+// 	sectors = new Map<number, Map<number, Promise<Buffer>>>();
+// 	getRaw: CacheGetter;
+// 	get: CacheGetter;
+// 	constructor(getRaw: CacheGetter) {
+// 		this.getRaw = getRaw;
 
-		//use assignment instead of class method so the "this" argument is bound
-		this.get = async (major: number, fileid: number) => {
-			let sector = this.sectors.get(major);
-			if (!sector) {
-				sector = new Map();
-				this.sectors.set(major, sector);
-			}
-			let file = sector.get(fileid);
-			if (!file) {
-				file = this.getRaw(major, fileid);
-				sector.set(fileid, file)
-			}
-			return file;
-		}
-	}
-}
+// 		//use assignment instead of class method so the "this" argument is bound
+// 		this.get = async (major: number, fileid: number) => {
+// 			let sector = this.sectors.get(major);
+// 			if (!sector) {
+// 				sector = new Map();
+// 				this.sectors.set(major, sector);
+// 			}
+// 			let file = sector.get(fileid);
+// 			if (!file) {
+// 				file = this.getRaw(major, fileid);
+// 				sector.set(fileid, file)
+// 			}
+// 			return file;
+// 		}
+// 	}
+// }
 
 export async function requestLoadModel(searchid: string, mode: LookupMode, renderer: ModelSink) {
-	let cache = new MiniCache(getFile);
+	// let cache = new MiniCache(getFile);
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
 	let models: Buffer[] = [];
@@ -269,18 +301,18 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			modelids = [+searchid];
 			break;
 		case "item":
-			let item = parseItem.read(await cache.get(cacheMajors.items, +searchid));
+			let item = parseItem.read(await hackyCacheFileSource.getFileById(cacheMajors.items, +searchid));
 			console.log(item);
 			metatext = JSON.stringify(item, undefined, 2);
 			if (!item.baseModel && item.noteTemplate) {
-				item = parseItem.read(await cache.get(cacheMajors.items, item.noteTemplate));
+				item = parseItem.read(await hackyCacheFileSource.getFileById(cacheMajors.items, item.noteTemplate));
 			}
 			if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
 			if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
 			modelids = item.baseModel ? [item.baseModel] : [];
 			break;
 		case "npc":
-			let npc = parseNpc.read(await cache.get(cacheMajors.npcs, +searchid));
+			let npc = parseNpc.read(await hackyCacheFileSource.getFileById(cacheMajors.npcs, +searchid));
 			console.log(npc);
 			metatext = JSON.stringify(npc, undefined, 2);
 			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
@@ -297,10 +329,10 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			// mods.replaceMaterials = [
 			// 	[8868, +searchid]
 			// ];
-			let mat = await getMaterialData(cache.getRaw, +searchid);
+			let mat = await getMaterialData(hackyCacheFileSource.getFile, +searchid);
 			let info: any = { mat };
 			let addtex = async (name: string, texid: number) => {
-				let file = await cache.getRaw(cacheMajors.texturesDds, texid);
+				let file = await hackyCacheFileSource.getFile(cacheMajors.texturesDds, texid);
 				let parsed = new ParsedTexture(file, false);
 				//bit of a waste to get decode the whole thing just to get meta data, but w/e
 				let img0 = await parsed.toImageData(0);
@@ -347,8 +379,8 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 	}
 
 	if (modelids.length != 0) {
-		models.push(...await Promise.all(modelids.map(id => cache.get(cacheMajors.models, id))));
-		renderer.setOb3Models(models, cache, mods, metatext);
+		models.push(...await Promise.all(modelids.map(id => hackyCacheFileSource.getFileById(cacheMajors.models, id))));
+		renderer.setOb3Models(models, hackyCacheFileSource, mods, metatext);
 	}
 }
 
@@ -358,7 +390,7 @@ export type ModelViewerState = {
 }
 
 export interface ModelSink {
-	setOb3Models: (models: Buffer[], cache: MiniCache, mods: ModelModifications, meta: string) => void
+	setOb3Models: (models: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string) => void
 	setGltfModels?: (models: Buffer[]) => void,
 	setModels?: (models: THREE.Object3D[], metastr?: string) => void,
 	setValue?: (key: string, value: boolean) => void
@@ -370,14 +402,15 @@ class Ob3Renderer implements ModelSink {
 		this.cnv = cnv;
 		this.metacb = metacb;
 	}
-	setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, meta: string) {
+	setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string) {
 		let models = modelfiles.map(file => {
-			let m = new OB3(cache.get);
+			let m = new OB3(cache.getFileById);
 			m.setData(file);
 			this.metacb({ meta, toggles: {} });
 			return m;
 		});
-		ob3Renderer.init(this.cnv, models, vertexShader, fragmentShader);
+		throw new Error("currently broken");
+		// ob3Renderer.init(this.cnv, models, vertexShader, fragmentShader);
 	}
 }
 

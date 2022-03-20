@@ -90,10 +90,12 @@ var _lzma = function (input: Buffer) {
 	processed.writeUInt32LE(uncompressed, 0x5);
 	processed.writeUInt32LE(0, 0x5 + 0x4);
 	input.copy(processed, 0xD, 0xE);
-	// var lzma = require("lzma");
-	// return Buffer.from(lzma.decompress(processed));
-	var lzma = require("lzma-native").LZMA();
-	return lzma.decompress(processed) as Buffer;
+	//need to do this weird import directly because of webpack
+	//this lib also seems set "self.onMessage" when in a worker, but doesn't seem to collide with the messages we send
+	var lzma = require("lzma/src/lzma_worker.js").LZMA;
+	return Buffer.from(lzma.decompress(processed));
+	// var lzma = require("lzma-native").LZMA();
+	// return lzma.decompress(processed) as Buffer;
 }
 
 

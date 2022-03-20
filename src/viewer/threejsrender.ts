@@ -1,26 +1,35 @@
 
-//yay, three is now using modules so i can no longer use modules myself.....
-//requirejs cant load modules since all modules are now promises (in case they want
-//to use top level await).
-const THREE = require("three/build/three.js") as typeof import("three");
-//i have to also put it in the global scope for the other libs...
-global.THREE = THREE;
-require('three/examples/js/controls/OrbitControls');
-require('three/examples/js/loaders/GLTFLoader.js');
-require('three/examples/js/loaders/RGBELoader.js');
-require("three/examples/js/renderers/SVGRenderer.js");
-require("three/examples/js/renderers/Projector");//needed by svgrenderer
-//this is the dumbest thing i've ever writter and there is no better way, i tried
-const GLTFLoader = (THREE as any).GLTFLoader as typeof import('three/examples/jsm/loaders/GLTFLoader').GLTFLoader;
-const OrbitControls = (THREE as any).OrbitControls as typeof import('three/examples/jsm/controls/OrbitControls').OrbitControls;
-const SVGRenderer = (THREE as any).SVGRenderer as typeof import('three/examples/jsm/renderers/SVGRenderer.js').SVGRenderer;
+
+
+import * as THREE from "three";
+
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
+
+
+// //yay, three is now using modules so i can no longer use modules myself.....
+// //requirejs cant load modules since all modules are now promises (in case they want
+// //to use top level await).
+// const THREE = require("three/build/three.js") as typeof import("three");
+// //i have to also put it in the global scope for the other libs...
+// global.THREE = THREE;
+// require('three/examples/js/controls/OrbitControls');
+// require('three/examples/js/loaders/GLTFLoader.js');
+// require('three/examples/js/loaders/RGBELoader.js');
+// require("three/examples/js/renderers/SVGRenderer.js");
+// require("three/examples/js/renderers/Projector");//needed by svgrenderer
+// //this is the dumbest thing i've ever writter and there is no better way, i tried
+// const GLTFLoader = (THREE as any).GLTFLoader as typeof import('three/examples/jsm/loaders/GLTFLoader').GLTFLoader;
+// const OrbitControls = (THREE as any).OrbitControls as typeof import('three/examples/jsm/controls/OrbitControls').OrbitControls;
+// const SVGRenderer = (THREE as any).SVGRenderer as typeof import('three/examples/jsm/renderers/SVGRenderer.js').SVGRenderer;
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode } from '../3d/ob3tothree';
 import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 
-import { ModelViewerState, ModelSink, MiniCache } from "./index";
+import { ModelViewerState, ModelSink } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 
@@ -306,13 +315,13 @@ export class ThreeJsRenderer implements ModelSink {
 		this.stateChangeCallback(this.uistate);
 	}
 
-	async setOb3Models(modelfiles: Buffer[], cache: MiniCache, mods: ModelModifications, metastr: string) {
+	async setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, metastr: string) {
 		if (this.unpackOb3WithGltf) {
 			//TODO
 			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
 			// return this.setGltfModels(models, metastr);
 		} else {
-			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.get.bind(cache), m, mods)));
+			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.getFileById.bind(cache), m, mods)));
 			console.log(models);
 			return this.setModels(models, metastr);
 		}

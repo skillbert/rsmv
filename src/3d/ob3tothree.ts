@@ -6,15 +6,15 @@ import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 import { GLTFSceneCache, ModelData, ModelMeshData, FileGetter, parseOb3Model, getMaterialData } from '../3d/ob3togltf';
 import { boundMethod } from 'autobind-decorator';
-import * as fs from "fs";
 import { materialCacheKey } from "./jmat";
 import { modifyMesh } from "./mapsquare";
+import * as THREE from "three";
 
 //yay, three is now using modules so i can no longer use modules myself.....
 //requirejs cant load modules since all modules are now promises (in case they want
 //to use top level await).
-const THREE = require("three/build/three.js") as typeof import("three");
-global.THREE = THREE;
+// const THREE = require("three/build/three.js") as typeof import("three");
+// global.THREE = THREE;
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));

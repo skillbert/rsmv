@@ -6,7 +6,9 @@
 	<title>RuneScape Model Viewer</title>
 	<!-- https://electronjs.org/docs/tutorial/security#csp-meta-tag -->
 	<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
-	<script>require('electron-titlebar');</script>
+	<script>
+	//require('electron-titlebar');
+	</script>
 	<link rel="stylesheet" href="index.css" />
 </head>
 
@@ -16,7 +18,7 @@
 		<div style="background-image: url('background.png'); filter: brightness(0.75) saturate(0.5);"></div>
 		<div style="background-color: inherit; height: 30px; filter: saturate(0.5);"></div>
 	</div>
-    <div id="electron-titlebar" class="drag">
+	<div id="electron-titlebar" class="drag">
 	</div>
 	<div class="top-bar">
 		<div id="top-bar-icon">RS</div>
@@ -24,8 +26,9 @@
 	</div>
 	<div id="app"></div>
 	<script>
-		const viewer = require("../viewer");
+		// const viewer = require("../viewer");
 	</script>
+	<script src="../viewer.js"></script>
 </body>
 
 </html>
