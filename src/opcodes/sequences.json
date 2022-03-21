@@ -1,0 +1,37 @@
+{
+	"0x01": { "name":                          "unknown_01", "read": ["chunkedarray","unsigned short",
+																["struct",
+																	["int1","unsigned short"],
+																	["int2","unsigned short"]
+																],
+																["struct",
+																	["otherint","unsigned short"]
+																]] },
+	"0x02": { "name":                          "unknown_02", "read": "unsigned short" },
+	"0x05": { "name":                          "unknown_05", "read": "unsigned byte" },
+	"0x06": { "name":                          "unknown_06", "read": "short" },
+	"0x07": { "name":                          "unknown_07", "read": "short" },
+	"0x08": { "name":                          "unknown_08", "read": "unsigned byte" },
+	"0x09": { "name":                          "unknown_09", "read": "unsigned byte" },
+	"0x0A": { "name":                          "unknown_0A", "read": "unsigned byte" },
+	"0x0B": { "name":                          "unknown_0B", "read": "unsigned byte" },
+	"0x0D": { "name":                          "unknown_0D", "read": ["array","unsigned short",["struct",
+																["$keys","unsigned byte"],
+																["default",["opt",["$keys",0,"eqnot"],"unsigned short"]],
+																["weirdbyte",["opt",["$keys",0,"eqnot"],"unsigned byte"]],
+																["extras",["array",["ref","$keys",null,-1],"unsigned short"]]]]},
+	"0x0E": { "name":                          "unknown_0E", "read": "true" },
+	"0x0F": { "name":                          "unknown_0F", "read": "true" },
+	"0x10": { "name":                          "unknown_10", "read": "true" },
+	"0x12": { "name":                          "unknown_12", "read": "true" },
+	"0x16": { "name":                          "unknown_16", "read": "unsigned byte" },
+	"0x18": { "name":                          "unknown_18", "read": "unsigned short" },
+	"0x19": { "name":                          "unknown_19", "read": "unsigned short" },	
+
+	"0x70": { "name":                          "unknown_70", "read": ["array","unsigned short",["unsigned short","unsigned short"]] },
+	"0x77": { "name":                          "unknown_77", "read": ["unsigned byte","unsigned byte","unsigned byte"] },
+	"0x78": { "name":                          "unknown_78", "read": ["unsigned short","unsigned short","unsigned short"] },
+	"0x7A": { "name":                          "unknown_7A", "read": ["unsigned short","unsigned short"] },
+
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
+}

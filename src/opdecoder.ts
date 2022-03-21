@@ -24,6 +24,7 @@ export class FileParser<T> {
 		let res = this.parser.read(scanbuf, {});
 		if (scanbuf.scan != scanbuf.length) {
 			bytesleftoverwarncount++;
+			throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 			if (bytesleftoverwarncount < 100) {
 				console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 				// let name = `cache/bonusbytes-${Date.now()}.bin`;
@@ -60,5 +61,7 @@ export const parseMapZones = new FileParser<import("../generated/mapzones").mapz
 export const parseEnums = new FileParser<import("../generated/enums").enums>(require("./opcodes/enums.json"));
 export const parseMapscenes = new FileParser<import("../generated/mapscenes").mapscenes>(require("./opcodes/mapscenes.json"));
 export const parseAnimations = new FileParser<import("../generated/mapscenes").mapscenes>(require("./opcodes/anims.json"));
+export const parseSequences = new FileParser<any>(require("./opcodes/sequences.json"));
+
 
 

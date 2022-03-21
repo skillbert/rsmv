@@ -7,6 +7,7 @@ export const cacheMajors = {
 	enums: 17,
 	npcs: 18,
 	items: 19,
+	sequences: 20,
 	materials: 26,
 	worldmap: 23,
 	models: 47,
@@ -21,10 +22,10 @@ export const cacheMajors = {
 	index: 255
 }
 
-export const cacheMapFiles={
-	locations:0,
-	squares:3,
-	squaresWater:4
+export const cacheMapFiles = {
+	locations: 0,
+	squares: 3,
+	squaresWater: 4
 }
 
 export const cacheConfigPages = {

@@ -39,7 +39,7 @@ const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Promise<C
 					await loadingIndicator.done();
 					return updater.fileSource;
 				case "cache":
-					return new GameCacheLoader(arg || path.resolve(process.env.ProgramData!, "jagex/runescape"), !!opts?.writable);
+					return new GameCacheLoader(arg, !!opts?.writable);
 				default:
 					throw new Error("unknown mode");
 			}

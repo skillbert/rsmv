@@ -3,6 +3,7 @@ import { compressSqlite, decompress, decompressSqlite } from "./decompress";
 import * as path from "path";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type * as sqlite3 from "sqlite3";
+import * as fs from "fs";
 
 type CacheTable = {
 	db: sqlite3.Database,
@@ -17,10 +18,22 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	writable: boolean;
 	opentables = new Map<number, CacheTable>();
 
-	constructor(cachedir: string, writable?: boolean) {
+	constructor(cachedir?: string, writable?: boolean) {
 		super();
-		this.cachedir = cachedir;
+		this.cachedir = cachedir || path.resolve(process.env.ProgramData!, "jagex/runescape");
 		this.writable = !!writable;
+	}
+
+	scanMajors() {
+		let files = fs.readdirSync(path.resolve(this.cachedir));
+
+		let majors: number[] = [];
+		for (let file of files) {
+			let m = file.match(/js5-(\d+)\.jcache$/);
+			if (m) { majors.push(+m[1]); }
+		}
+
+		return majors.sort((a, b) => a - b);
 	}
 
 	openTable(major: number) {

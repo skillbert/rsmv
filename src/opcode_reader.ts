@@ -23,7 +23,7 @@ type PrimitiveString = {
 }
 export type ScanBuffer = Buffer & { scan: number };
 
-type CompareMode = "eq" | "bitflag" | "bitflagnot";
+type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot";
 
 export type Primitive<T> = PrimitiveInt | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
@@ -35,7 +35,7 @@ export type ComposedChunk = string
 	| ["chunkedarray", ComposedChunk | number, ...ComposedChunk[]]
 	| ["array", ComposedChunk | number, ComposedChunk]
 	| ["nullarray", ComposedChunk, ComposedChunk]
-	| [type: "ref", ref: string, bitrange?: [number, number]]
+	| [type: "ref", ref: string, bitrange?: [number, number], offset?: number]
 	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
 	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
@@ -46,6 +46,14 @@ export type ComposedChunk = string
 type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
 
 type ParserContext = Record<string, number>;
+
+
+var debugdata: null | { opcodes: { op: number, index: number }[] } = null;
+export function getDebug(trigger: boolean) {
+	let ret = debugdata;
+	debugdata = trigger ? { opcodes: [] } : null;
+	return ret;
+}
 
 export type ChunkParser<T> = {
 	read(buf: ScanBuffer, ctx: ParserContext): T,
@@ -97,7 +105,8 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					case "ref": {
 						if (chunkdef.length < 2) throw new Error(`2 arguments exptected for proprety with type ref`);
 						let [minbit, bitlength] = chunkdef[2] ?? [-1, -1];
-						return referenceValueParser(chunkdef[1], minbit, bitlength);
+						let offset = chunkdef[3] ?? 0;
+						return referenceValueParser(chunkdef[1], minbit, bitlength, offset);
 					}
 					case "accum": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type accum`);
@@ -200,14 +209,18 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 			let r: Partial<T> = {};
 			while (true) {
 				if (buffer.scan == buffer.length) {
+					throw new Error("ended reading opcode struct at end of file without 0x00 opcode");
 					console.log("ended reading opcode struct at end of file without 0x00 opcode");
 					break;
 				}
 				let opt = opcodetype.read(buffer, ctx);
 				ctx.opcode = opt;
 				if (opt == 0) { break; }
+				if (debugdata) {
+					debugdata.opcodes.push({ op: opt, index: buffer.scan - 1 });
+				}
 				let parser = map.get(opt);
-				if (!parser) { throw new Error("unknown chunk " + opt); }
+				if (!parser) { throw new Error("unknown chunk 0x" + opt.toString(16).toUpperCase()); }
 				r[parser.key] = parser.parser.read(buffer, ctx);
 			}
 			return r;
@@ -346,12 +359,14 @@ function forceCondition(parser: ChunkParser<any>, oldvalue: number, state: boole
 	switch (parser.condMode!) {
 		case "eq":
 			return state ? parser.condValue! : oldvalue;
+		case "eqnot":
+			return state ? oldvalue : parser.condValue!;
 		case "bitflag":
 			return (state ? oldvalue | (1 << parser.condValue!) : oldvalue & ~(1 << parser.condValue!));
 		case "bitflagnot":
 			return (state ? oldvalue & ~(1 << parser.condValue!) : oldvalue | (1 << parser.condValue!));
 		default:
-			throw new Error("unkown condition " + parser.condMode);
+			throw new Error("unknown condition " + parser.condMode);
 	}
 }
 
@@ -359,6 +374,8 @@ function checkCondition(parser: ChunkParser<any>, v: number) {
 	switch (parser.condMode!) {
 		case "eq":
 			return v == parser.condValue!;
+		case "eqnot":
+			return v != parser.condValue!;
 		case "bitflag":
 			return (v & (1 << parser.condValue!)) != 0;
 		case "bitflagnot":
@@ -619,14 +636,14 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 		}
 	}
 }
-function referenceValueParser(propname: string, minbit: number, bitlength: number): ChunkParser<number> {
+function referenceValueParser(propname: string, minbit: number, bitlength: number, offset: number): ChunkParser<number> {
 	return {
 		read(buffer, ctx) {
 			let v = ctx[propname];
 			if (minbit != -1) {
 				v = (v >> minbit) & ~((~0) << bitlength);
 			}
-			return v;
+			return v + offset;
 		},
 		write(buffer, value) {
 			//nop, value is written elsewhere

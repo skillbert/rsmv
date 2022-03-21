@@ -10,7 +10,9 @@ module.exports = {
 	entry: {
 		main: "./src/main.ts",
 		// viewer: "./src/viewer/",
-		extract: "./src/scripts/extractfiles.ts"
+		extract: "./src/scripts/extractfiles.ts",
+		indexoverview: "./src/scripts/indexoverview.ts",
+		testdecode: "./src/scripts/testdecode.ts"
 	},
 	module: {
 		rules: [

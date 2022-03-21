@@ -189,6 +189,7 @@ const mappedFileIds = {
 	[cacheMajors.npcs]: 256,//not sure
 	[cacheMajors.enums]: 256,
 	[cacheMajors.objects]: 256,
+	[cacheMajors.sequences]: 128,
 	[cacheMajors.achievements]: 128,
 	[cacheMajors.materials]: Infinity
 }

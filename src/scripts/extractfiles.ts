@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseAnimations, parseEnums, parseMapscenes, parseMapsquareLocations } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseAnimations, parseEnums, parseMapscenes, parseMapsquareLocations, parseSequences } from "../opdecoder";
 import { achiveToFileId, CacheFileSource, CacheIndex, CacheIndexStub, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -122,7 +122,7 @@ function standardIndex(major: number): DecodeLookup {
 }
 
 function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeModeFactory {
-	let constr: DecodeModeFactory = (outdir) => {
+	let constr: DecodeModeFactory = (outdir, args: Record<string, string>) => {
 		let name = Object.entries(modes).find(q => q[1] == constr);
 		if (!name) { throw new Error(); }
 		let schema = parser.parser.getJsonSChema();
@@ -131,20 +131,27 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 		return {
 			...lookup,
 			ext: "json",
-			read(b) {
+			read(b, id) {
 				let obj = parser.read(b);
-				obj.$schema = relurl;
+				if (args.batched) {
+					obj.$fileid = (id.length == 1 ? id[0] : id);
+				} else {
+					obj.$schema = relurl;
+				}
 				return JSON.stringify(obj, undefined, "\t");
 			},
 			write(b) {
 				return parser.write(JSON.parse(b.toString("utf8")));
+			},
+			combineSubs(b) {
+				return "[\n\n" + b.join("\n,\n\n") + "]";
 			}
 		}
 	}
 	return constr;
 }
 
-type DecodeModeFactory = (outdir: string) => DecodeMode;
+type DecodeModeFactory = (outdir: string, flags: Record<string, string>) => DecodeMode;
 
 type FileId = { major: number, minor: number, subindex: number };
 
@@ -155,10 +162,11 @@ type DecodeLookup = {
 	logicalToFile(id: LogicalIndex): FileId,
 }
 
-type DecodeMode = {
+type DecodeMode<T = Buffer | string> = {
 	ext: string,
-	read(buf: Buffer): (Buffer | string),
-	write(files: Buffer): Buffer
+	read(buf: Buffer, fileid: LogicalIndex): T,
+	write(files: Buffer): Buffer,
+	combineSubs(files: T[]): T
 } & DecodeLookup;
 
 const decodeBinary: DecodeModeFactory = () => {
@@ -173,7 +181,8 @@ const decodeBinary: DecodeModeFactory = () => {
 			return filerange(source, { major, minor: start[1], subindex: start[2] }, { major, minor: end[1], subindex: end[2] });
 		},
 		read(b) { return b; },
-		write(b) { return b; }
+		write(b) { return b; },
+		combineSubs(b: Buffer[]) { return Buffer.concat(b); }
 	}
 }
 
@@ -185,6 +194,7 @@ const modes: Record<string, DecodeModeFactory> = {
 	npcs: standardFile(parseNpc, chunkedIndex(cacheMajors.npcs)),
 	objects: standardFile(parseObject, chunkedIndex(cacheMajors.objects)),
 	achievements: standardFile(parseAchievement, chunkedIndex(cacheMajors.achievements)),
+	sequences: standardFile(parseSequences, chunkedIndex(cacheMajors.sequences)),
 
 	overlays: standardFile(parseMapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
 	underlays: standardFile(parseMapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
@@ -220,25 +230,28 @@ let cmd2 = command({
 		...filesource,
 		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
 		mode: option({ long: "mode", short: "m", type: string }),
-		files: option({ long: "ids", short: "i", type: string }),
+		files: option({ long: "ids", short: "i", type: string, defaultValue: () => "" }),
 		edit: flag({ long: "edit", short: "e" }),
-		fixhash: flag({ long: "fixhash", short: "h" })
+		fixhash: flag({ long: "fixhash", short: "h" }),
+		batched: flag({ long: "batched", short: "b" })
 	},
 	handler: async (args) => {
 		let modeconstr = modes[args.mode];
 		if (!modeconstr) { throw new Error("unknown mode"); }
 		let outdir = path.resolve(args.save);
 		fs.mkdirSync(outdir, { recursive: true });
-		let mode = modeconstr(outdir);
+		let flags: Record<string, string> = {};
+		if (args.batched) { flags.batched = "true"; }
+		let mode = modeconstr(outdir, flags);
 
 		let parts = args.files.split(",");
 		let ranges = parts.map(q => {
 			let ends = q.split("-");
-			let start = ends[0].split(".");
-			let end = (ends[1] ?? ends[0]).split(".");
+			let start = ends[0] ? ends[0].split(".") : [];
+			let end = (ends[0] || ends[1]) ? (ends[1] ?? ends[0]).split(".") : [];
 			return {
-				start: [+start[0], +(start[1] ?? 0)] as [number, number],
-				end: [+end[0], +(end[1] ?? Infinity)] as [number, number]
+				start: [+(start[0] ?? 0), +(start[1] ?? 0)] as [number, number],
+				end: [+(end[0] ?? Infinity), +(end[1] ?? Infinity)] as [number, number]
 			}
 		});
 
@@ -249,22 +262,34 @@ let cmd2 = command({
 			.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subfile - b.subfile);
 
 
-		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
+		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[], outputs: (string | Buffer)[] } = null;
+		let flushbatch = () => {
+			if (lastarchive && args.batched) {
+				let filename = path.resolve(outdir, `${args.mode}-${lastarchive.index.major}_${lastarchive.index.minor}.batch.${mode.ext}`);
+				fs.writeFileSync(filename, mode.combineSubs(lastarchive.outputs));
+			}
+		}
 		for (let fileid of allfiles) {
 			let arch: SubFile[];
 			if (lastarchive && lastarchive.index == fileid.index) {
 				arch = lastarchive.subfiles;
 			} else {
 				// console.log(fileid.index);
+				flushbatch();
 				arch = await source.getFileArchive(fileid.index);
-				lastarchive = { index: fileid.index, subfiles: arch };
+				lastarchive = { index: fileid.index, subfiles: arch, outputs: [] };
 			}
 			let file = arch[fileid.subfile].buffer;
-			let res = mode.read(file);
 			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
-			let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
-			fs.writeFileSync(filename, res);
+			let res = mode.read(file, logicalid);
+			if (args.batched) {
+				lastarchive.outputs.push(res);
+			} else {
+				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
+				fs.writeFileSync(filename, res);
+			}
 		}
+		flushbatch();
 
 
 		if (args.edit) {
@@ -289,7 +314,7 @@ let cmd2 = command({
 				} else {
 					await archedited();
 					arch = await source.getFileArchive(fileid.index);
-					lastarchive = { index: fileid.index, subfiles: arch };
+					lastarchive = { index: fileid.index, subfiles: arch, outputs: [] };
 				}
 				let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
 				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
