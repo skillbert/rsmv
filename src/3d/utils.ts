@@ -14,14 +14,18 @@ export type Stream = {
 	scanloc(): number;
 	readByte(): number;
 	readUByte(): number;
+	readUShortSmart(): number;
+	readShortSmart(): number;
 	readShort(flip?: boolean): number;
 	readUShort(flip?: boolean): number;
-	readUInt(flip?: boolean): number
+	readUInt(flip?: boolean): number;
+	readUIntSmart(): number;
 	readFloat(flip?: boolean, signage?: boolean): number;
 	readHalf(flip?: boolean): number;
+	eof(): boolean;
 }
 
-export function Stream(data: Buffer) {
+export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function Stream(this: Stream, data: Buffer) {
 	// Double check the mime type
 	/*if (data[data.length - 4] != 0x4F) // O
 		return null;
@@ -52,6 +56,35 @@ export function Stream(data: Buffer) {
 		if (val > 127)
 			return val - 256;
 		return val;
+	}
+	this.readUShortSmart = function () {
+		let byte0 = this.readUByte();
+		if ((byte0 & 0x80) == 0) {
+			return byte0;
+		}
+		let byte1 = this.readUByte();
+		return ((byte0 & 0x7f) << 8) | byte1;
+	}
+	this.readShortSmart = function () {
+		let byte0 = this.readUByte();
+		let byte0val = byte0 & 0x7f;
+		byte0val = (byte0 < 0x40 ? byte0 : byte0 - 0x80);
+		if ((byte0 & 0x80) == 0) {
+			return byte0val;
+		}
+		let byte1 = this.readUByte();
+		return (byte0val << 8) | byte1;
+	}
+
+	this.readUIntSmart = function () {
+		let byte0 = this.readUByte();
+		let byte1 = this.readUByte();
+		if ((byte0 & 0x80) == 0) {
+			return (byte0 << 8) | byte1;
+		}
+		let byte2 = this.readUByte();
+		let byte3 = this.readUByte();
+		return ((byte0 & 0x7f) << 24) | (byte1 << 16) | (byte2 << 8) | byte3;
 	}
 
 	this.readUByte = function () {
@@ -123,7 +156,7 @@ export function Stream(data: Buffer) {
 	var metadataScan = this.readInt();
 	var modelScan = this.readInt();
 	scan = modelScan;*/
-}
+} as any
 
 // https://stackoverflow.com/a/9493060
 export function HSL2RGB(hsl: number[]): [number, number, number] {
@@ -136,7 +169,7 @@ export function HSL2RGB(hsl: number[]): [number, number, number] {
 		r = g = b = l; // achromatic
 	}
 	else {
-		var hue2rgb = function hue2rgb(p, q, t) {
+		var hue2rgb = function hue2rgb(p: number, q: number, t: number) {
 			if (t < 0) t += 1;
 			if (t > 1) t -= 1;
 			if (t < 1 / 6) return p + (q - p) * 6 * t;

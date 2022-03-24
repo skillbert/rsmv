@@ -1,4 +1,5 @@
 export const cacheMajors = {
+	framemaps: 1,
 	config: 2,
 	mapsquares: 5,
 
@@ -8,10 +9,11 @@ export const cacheMajors = {
 	npcs: 18,
 	items: 19,
 	sequences: 20,
+	spotanims: 21,
 	materials: 26,
 	worldmap: 23,
 	models: 47,
-	anims: 48,
+	frames: 48,
 
 	texturesDds: 52,
 	texturesPng: 53,
@@ -31,5 +33,6 @@ export const cacheMapFiles = {
 export const cacheConfigPages = {
 	mapunderlays: 1,
 	mapoverlays: 4,
+	animgroups: 32,
 	mapscenes: 34
 }

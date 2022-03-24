@@ -8,7 +8,6 @@ const typedef = require("./opcodes/typedef.json");
 //the buffer is reused so it saves a ton of buffer allocs
 const scratchbuf = Object.assign(Buffer.alloc(1024 * 100), { scan: 0 });
 
-
 let bytesleftoverwarncount = 0;
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser<T>;
@@ -24,14 +23,17 @@ export class FileParser<T> {
 		let res = this.parser.read(scanbuf, {});
 		if (scanbuf.scan != scanbuf.length) {
 			bytesleftoverwarncount++;
-			throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 			if (bytesleftoverwarncount < 100) {
 				console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 				// let name = `cache/bonusbytes-${Date.now()}.bin`;
-				// fs.writeFileSync(name, scanbuf.slice(scanbuf.scan));
+				// require("fs").writeFileSync(name, scanbuf.slice(scanbuf.scan));
 			}
 			if (bytesleftoverwarncount == 100) {
 				console.log("too many bytes left over warning, no more warnings will be logged");
+			}
+			//TODO remove this stupid condition, needed this to fail only in some situations
+			if (buffer.byteLength < 10000) {
+				// throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 			}
 		}
 		return res;
@@ -60,8 +62,12 @@ export const parseMapsquareLocations = new FileParser<import("../generated/mapsq
 export const parseMapZones = new FileParser<import("../generated/mapzones").mapzones>(require("./opcodes/mapzones.json"));
 export const parseEnums = new FileParser<import("../generated/enums").enums>(require("./opcodes/enums.json"));
 export const parseMapscenes = new FileParser<import("../generated/mapscenes").mapscenes>(require("./opcodes/mapscenes.json"));
-export const parseAnimations = new FileParser<import("../generated/mapscenes").mapscenes>(require("./opcodes/anims.json"));
-export const parseSequences = new FileParser<any>(require("./opcodes/sequences.json"));
+export const parseSequences = new FileParser<import("../generated/sequences").sequences>(require("./opcodes/sequences.json"));
+export const parseFramemaps = new FileParser<import("../generated/framemaps").framemaps>(require("./opcodes/framemaps.json"));
+export const parseFrames = new FileParser<import("../generated/frames").frames>(require("./opcodes/frames.json"));
+export const parseAnimgroupConfigs = new FileParser<import("../generated/animgroupconfigs").animgroupconfigs>(require("./opcodes/animgroupconfigs.json"));
+export const parseModels = new FileParser<import("../generated/models").models>(require("./opcodes/models.json"));
+export const parseSpotAnims = new FileParser<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json"));
 
 
 

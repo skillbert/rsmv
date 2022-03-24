@@ -28,6 +28,8 @@
 	"uint":             "unsigned int",
 	"varushort":        "variable unsigned short",
 	"varuint":          "variable unsigned int",
+	"varshort":         "variable short",
+	"varint":           "variable int",
 
     "unsigned tribyte": { "primitive": "int", "unsigned": true, "bytes": 3, "readmode": "fixed", "endianness": "big" },
 	

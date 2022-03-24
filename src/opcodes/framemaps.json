@@ -1,0 +1,13 @@
+["struct",
+	["data",["chunkedarray","ushort",
+		["struct",["type","ubyte"]],
+		["struct",["unknown","bool"]],
+		["struct",["unknown_always_FFFF","ushort"]],
+		["struct",["length","varushort"]],
+		["struct",["data",["array",["ref","length"],"varushort"]]]
+	]],
+	["footchunks",["array","ushort",["array",4,["array",20,"ubyte"]]]],
+
+	["bool0","bool"],
+	["always0","ushort"]
+]

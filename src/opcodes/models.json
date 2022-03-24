@@ -1,0 +1,40 @@
+["struct",
+	["format","ubyte"],
+	["unk1","ubyte"],
+	["version","ubyte"],
+
+	["meshCount","ubyte"],
+	["unkCount0","ubyte"],
+	["unkCount1","ubyte"],
+	["unkCount2","ubyte"],
+	["unkCount3","ubyte"],
+
+	["meshes",["array",["ref","meshCount"],["struct",
+		["groupFlags","uint"],
+		["materialArgument","ushort"],
+		["hasVertices",["ref","groupFlags",[0,1]]],
+		["hasVertexAlpha",["ref","groupFlags",[1,1]]],
+		["hasFaceBones",["ref","groupFlags",[2,1]]],
+		["hasBoneIds",["ref","groupFlags",[3,1]]],
+		["isHidden",["ref","groupFlags",[4,1]]],
+		["hasFlaf20",["ref","groupFlags",[5,1]]],
+
+		["colourBuffer",["opt",["hasVertices",1],["array",["ref","faceCount","ushort"]]]],
+		["alphaBuffer",["opt",["hasVertexAlpha",1],["array",["ref","faceCount","ubyte"]]]],
+		["faceboneidBuffer",["opt",["hasFaceBones",1],["array",["ref","faceCount","ushort"]]]],
+
+		["indexBuffers",["array","ubyte",["array","ushort","ushort"]]],
+
+		["vertexCount",["opt",["hasVertices",1],"ushort"],
+		["positionBuffer",["opt",["hasVertices",1],["array",["ref","vertexCount"],["ushort","ushort","ushort"]]]],
+		["normalBuffer",["opt",["hasVertices",1],["array",["ref","vertexCount"],["byte","byte","byte"]]]],
+		["tagentBuffer",["opt",["hasVertices",1],["array",["ref","vertexCount"],["byte","byte","byte","byte"]]]],
+		["boneidBuffer",["opt",["hasBoneIds",1],["array",["ref","vertexCount"],"ushort"]]],
+		
+		["flag20Buffer",["opt",["hasFlaf20",1],["array","uint",["ubyte","ubyte","ubyte"]]]]
+	]]]],
+
+	["unk1Buffer",["array",["ref","unkCount1"],["array",37,"ubyte"]]],
+	["unk2Buffer",["array",["ref","unkCount2"],["array",46,"ubyte"]]],
+	["unk3Buffer",["array",["ref","unkCount3"],["array",16,"ubyte"]]]
+]

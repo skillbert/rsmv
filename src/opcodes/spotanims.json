@@ -1,0 +1,14 @@
+{
+	"0x01": { "name":                           "model", "read": "varuint" },
+	"0x02": { "name":                        "sequence", "read": "varuint" },
+	"0x04": { "name":                          "scaleX", "read": "ushort" },
+	"0x05": { "name":                       "scaleYorZ", "read": "ushort" },
+	"0x06": { "name":                        "rotation", "read": "ushort" },
+	"0x07": { "name":                         "ambient", "read": "ubyte" },
+	"0x08": { "name":                        "contrast", "read": "ubyte" },
+	"0x0a": { "name":                           "unk0a", "read": "true" },
+	"0x28": { "name":                  "replace_colors", "read": ["array","ubyte",["ushort","ushort"]] },
+	"0x29": { "name":               "replace_materials", "read": ["array","ubyte",["ushort","ushort"]] },
+	"0x2c": { "name":                           "unk2c", "read": "ushort" },
+	"0x2e": { "name":                           "unk2e", "read": "true" }
+}

@@ -35,6 +35,7 @@ export type ComposedChunk = string
 	| ["chunkedarray", ComposedChunk | number, ...ComposedChunk[]]
 	| ["array", ComposedChunk | number, ComposedChunk]
 	| ["nullarray", ComposedChunk, ComposedChunk]
+	| ["bytesleft"]
 	| [type: "ref", ref: string, bitrange?: [number, number], offset?: number]
 	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
 	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
@@ -48,10 +49,10 @@ type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
 type ParserContext = Record<string, number>;
 
 
-var debugdata: null | { opcodes: { op: number, index: number }[] } = null;
+var debugdata: null | { rootstruct: null | object, opcodes: { op: number, index: number }[] } = null;
 export function getDebug(trigger: boolean) {
 	let ret = debugdata;
-	debugdata = trigger ? { opcodes: [] } : null;
+	debugdata = trigger ? { rootstruct: null, opcodes: [] } : null;
 	return ret;
 }
 
@@ -138,6 +139,8 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						}
 						return chunkedArrayParser(sizetype, valuetype.map(t => buildParser(t, typedef)));
 					}
+					case "bytesleft":
+						return bytesRemainingParser();
 					case "nullarray":
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
@@ -207,9 +210,12 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 		read(buffer, parentctx) {
 			let ctx = Object.create(parentctx);
 			let r: Partial<T> = {};
+			if (debugdata && !debugdata.rootstruct) {
+				debugdata.rootstruct = r;
+			}
 			while (true) {
 				if (buffer.scan == buffer.length) {
-					throw new Error("ended reading opcode struct at end of file without 0x00 opcode");
+					// throw new Error("ended reading opcode struct at end of file without 0x00 opcode");
 					console.log("ended reading opcode struct at end of file without 0x00 opcode");
 					break;
 				}
@@ -261,6 +267,9 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 	let r: ChunkParser<T> = {
 		read(buffer, parentctx) {
 			let r = (isTuple ? [] : {}) as T;
+			if (debugdata && !debugdata.rootstruct) {
+				debugdata.rootstruct = r;
+			}
 			let ctx: ParserContext = Object.create(parentctx);
 			for (let key of keys) {
 				let v = props[key].read(buffer, ctx);
@@ -430,8 +439,11 @@ function chunkedArrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: Chun
 		},
 		getJsonSChema() {
 			return {
-				allOf: chunktypes.flatMap(chunk => chunk.getJsonSChema())
-			}
+				type: "array",
+				items: {
+					allOf: chunktypes.flatMap(chunk => chunk.getJsonSChema())
+				}
+			};
 		}
 	}
 }
@@ -477,10 +489,10 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			let r: T[] = [];
 			let ctx = Object.create(parentctx);
 			while (true) {
-				if (buffer.scan == buffer.length) {
-					console.log("ended reading nullTerminatedArray at end of file without 0x00 opcode");
-					break;
-				}
+				// if (buffer.scan == buffer.length) {
+				// 	console.log("ended reading nullTerminatedArray at end of file without 0x00 opcode");
+				// 	break;
+				// }
 				let header = lengthtype.read(buffer, ctx);
 				if (header == 0) { break; }
 				ctx.$opcode = header;
@@ -646,7 +658,7 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 			return v + offset;
 		},
 		write(buffer, value) {
-			//nop, value is written elsewhere
+			//nop, value is written elsewhere through bubbleconditionvalue
 		},
 		bubbleConditionValue(state, prop, val) {
 			if (propname == prop) { val |= state << minbit; }
@@ -661,6 +673,22 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 				minimum: 0,
 				maximum: 2 ** (bitlength * 8) - 1
 			}
+		}
+	}
+}
+function bytesRemainingParser(): ChunkParser<number> {
+	return {
+		read(buffer, ctx) {
+			return buffer.byteLength - buffer.scan;
+		},
+		write(buffer, value) {
+			//nop, value exists only in context of output
+		},
+		getTypescriptType() {
+			return "number";
+		},
+		getJsonSChema() {
+			return { type: "integer" };
 		}
 	}
 }

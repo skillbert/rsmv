@@ -12,7 +12,8 @@ module.exports = {
 		// viewer: "./src/viewer/",
 		extract: "./src/scripts/extractfiles.ts",
 		indexoverview: "./src/scripts/indexoverview.ts",
-		testdecode: "./src/scripts/testdecode.ts"
+		testdecode: "./src/scripts/testdecode.ts",
+		opcode_reader: "./src/opcode_reader.ts"
 	},
 	module: {
 		rules: [
@@ -39,6 +40,7 @@ module.exports = {
 	},
 	externalsType: "commonjs",
 	output: {
+		libraryTarget: "commonjs",
 		filename: '[name].js',
 		path: path.resolve(__dirname, 'dist'),
 	},

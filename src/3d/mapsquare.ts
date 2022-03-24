@@ -10,7 +10,7 @@ import { ScanBuffer } from "opcode_reader";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
-import { addOb3Model, parseOb3Model, GLTFSceneCache, ModelMeshData, ModelData, getMaterialData, MaterialData } from "./ob3togltf";
+import { parseOb3Model, GLTFSceneCache, ModelMeshData, ModelData, getMaterialData, MaterialData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree } from "./ob3tothree";
@@ -20,10 +20,6 @@ import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
-
-//can't use module import syntax because es6 wants to be more es6 than es6
-// const THREE = require("three/build/three.js") as typeof import("three");
-// require("three/examples/js/utils/BufferGeometryUtils");
 
 const upvector = new THREE.Vector3(0, 1, 0);
 

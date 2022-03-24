@@ -179,6 +179,7 @@ export function indexBufferToObject(major: number, buffer: Buffer) {
 	let indices = readres.indices;
 	let linear: CacheIndex[] = [];
 	for (let entry of indices) {
+		if (!entry) { debugger; }
 		linear[entry.minor] = Object.assign(entry, { major });
 	}
 	return linear;
@@ -190,6 +191,7 @@ const mappedFileIds = {
 	[cacheMajors.enums]: 256,
 	[cacheMajors.objects]: 256,
 	[cacheMajors.sequences]: 128,
+	[cacheMajors.spotanims]: 256,
 	[cacheMajors.achievements]: 128,
 	[cacheMajors.materials]: Infinity
 }

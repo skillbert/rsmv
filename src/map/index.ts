@@ -4,24 +4,21 @@ import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGr
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
-import * as electron from "electron";
 import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
-import type { Object3D } from "three";
+import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parseEnums, parseMapZones } from "../opdecoder";
 import { FlatImageData } from "3d/utils";
+import * as THREE from "three";
 
 window.addEventListener("keydown", e => {
 	if (e.key == "F5") { document.location.reload(); }
 	// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 });
 
-import * as THREE from "three";
-//can't use module import syntax because es6 wants to be more es6 than es6
-// const THREE = require("three/build/three.js") as typeof import("three");
 const watermarkfile = fs.readFileSync(__dirname + "/../assets/watermark.png");
 
 type Mapconfig = {
@@ -371,7 +368,7 @@ export class MapRenderer {
 function disposeThreeTree(node: THREE.Object3D | null) {
 	if (!node) { return; }
 
-	const cleanMaterial = material => {
+	const cleanMaterial = (material:Material) => {
 		count++;
 		material.dispose();
 
@@ -386,7 +383,7 @@ function disposeThreeTree(node: THREE.Object3D | null) {
 	}
 
 	let count = 0;
-	(node as any).traverse(object => {
+	(node as any).traverse((object: any) => {
 		if (!object.isMesh) return
 
 		count++;

@@ -16,13 +16,10 @@ import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
-type CacheGetter = (m: number, id: number) => Promise<Buffer>;
+import * as datastore from "idb-keyval";
+
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
 type RenderMode = "gltf" | "ob3" | "three";
-
-// const vertexShader = fs.readFileSync(__dirname + "/assets/shader_vertex.glsl", "utf-8");
-// const fragmentShader = fs.readFileSync(__dirname + "/assets/shader_fragment.glsl", "utf-8");
-// const ipc = electron.ipcRenderer;
 
 function start() {
 	window.addEventListener("keydown", e => {
@@ -33,50 +30,123 @@ function start() {
 	ReactDOM.render(<App />, document.getElementById("app"));
 }
 
-// (window as any).getFile = getFile;
-// (window as any).fs = fs;
 
-// async function getFile(major: number, minor: number) {
-// 	let buffarray: Uint8Array = await ipc.invoke("load-cache-file", major, minor);
-// 	return Buffer.from(buffarray.buffer, buffarray.byteOffset, buffarray.byteLength);
-// }
-
-//TODO remove this hack
+//TODO rename this, it's no longer a hack
 let CachedHacky = cachingFileSourceMixin(GameCacheLoader);
 const hackyCacheFileSource = new CachedHacky();
 
-if (typeof window != "undefined") {
-	document.body.ondragover = e => e.preventDefault();
-	document.body.ondrop = async e => {
-		e.preventDefault();
-		if (e.dataTransfer) {
-			let files: Record<string, Blob> = {};
-			let items: DataTransferItem[] = [];
-			for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
-			//needs to start synchronously as the list is cleared after the event
-			await Promise.all(items.map(async item => {
-				//@ts-ignore
-				if (item.getAsFileSystemHandle) {
-					//@ts-ignore
-					let folderhandle = await item.getAsFileSystemHandle();
-					if (folderhandle.kind == "file") {
-						files[folderhandle.name] = await folderhandle.getFile();
-					} else {
-						for await (let handle of folderhandle.values()) {
-							if (handle.kind == "file") {
-								files[handle.name] = await handle.getFile();
-							}
-						}
-					}
-				} else if (item.kind == "file") {
-					let file = item.getAsFile()!;
-					files[file.name] = file;
-				}
-			}));
-			console.log(`added ${Object.keys(files).length} files`);
-			hackyCacheFileSource.giveBlobs(files);
-		}
+declare var FileSystemHandle: {
+	prototype: WebkitFsHandle;
+	new(): WebkitFsHandle;
+};
+
+declare function showSaveFilePicker(options?: any): Promise<WebkitFileHandle>;
+declare function showDirectoryPicker(options?: any): Promise<WebkitDirectoryHandle>;
+
+type WebkitFsHandleBase = {
+	kind: string,
+	name: string,
+
+	requestPermission(): Promise<any>;
+	queryPermission(): Promise<any>;
+}
+type WebkitFsWritable = {
+	write(data: any): Promise<void>,
+	close(): Promise<void>
+}
+type WebkitFsHandle = WebkitDirectoryHandle | WebkitFileHandle;
+type WebkitFileHandle = WebkitFsHandleBase & {
+	kind: "file",
+	createWritable(): Promise<WebkitFsWritable>,
+	getFile(): Promise<File>
+}
+type WebkitDirectoryHandle = WebkitFsHandleBase & {
+	kind: "directory",
+	getFileHandle(name: string, opt?: { create: boolean }): Promise<WebkitFileHandle>,
+	values(): AsyncIterable<WebkitFsHandle>
+}
+
+var cacheDirectoryHandle: WebkitDirectoryHandle | null = null;
+var cacheDirectoryLoaded = false;
+
+async function ensureCachePermission() {
+	if (cacheDirectoryLoaded) { return }
+	if (!cacheDirectoryHandle) {
+		cacheDirectoryHandle = await showDirectoryPicker();
 	}
+	if (cacheDirectoryHandle) {
+		await cacheDirectoryHandle.requestPermission();
+		cacheDirectoryLoaded = true;
+
+		let files: Record<string, Blob> = {};
+		console.log(await cacheDirectoryHandle.queryPermission());
+		await cacheDirectoryHandle.requestPermission();
+		for await (let handle of cacheDirectoryHandle.values()) {
+			if (handle.kind == "file") {
+				files[handle.name] = await handle.getFile();
+			}
+		}
+		hackyCacheFileSource.giveBlobs(files);
+		datastore.set("cachefilehandles", cacheDirectoryHandle);
+	}
+}
+
+if (typeof window != "undefined") {
+	datastore.get("cachefilehandles").then(oldhandle => {
+		if (typeof FileSystemHandle != "undefined" && oldhandle instanceof FileSystemHandle && oldhandle.kind == "directory") {
+			cacheDirectoryHandle = oldhandle;
+			// document.body.addEventListener("click", async () => {
+			// 	let files: Record<string, Blob> = {};
+			// 	console.log(await oldhandle.queryPermission());
+			// 	await oldhandle.requestPermission();
+			// 	for await (let handle of oldhandle.values()) {
+			// 		if (handle.kind == "file") {
+			// 			files[handle.name] = await handle.getFile();
+			// 		}
+			// 	}
+			// 	hackyCacheFileSource.giveBlobs(files);
+			// }, { once: true });
+		}
+	});
+	// document.body.ondragover = e => e.preventDefault();
+	// document.body.ondrop = async e => {
+	// 	e.preventDefault();
+	// 	if (e.dataTransfer) {
+	// 		let files: Record<string, Blob> = {};
+	// 		let items: DataTransferItem[] = [];
+	// 		let folderhandles: WebkitFsHandle[] = [];
+	// 		let filehandles: WebkitFsHandle[] = [];
+	// 		for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
+	// 		//needs to start synchronously as the list is cleared after the event
+	// 		await Promise.all(items.map(async item => {
+	// 			//@ts-ignore
+	// 			if (item.getAsFileSystemHandle) {
+	// 				//@ts-ignore
+	// 				let filehandle: WebkitFsHandle = await item.getAsFileSystemHandle();
+	// 				if (filehandle.kind == "file") {
+	// 					filehandles.push(filehandle);
+	// 					files[filehandle.name] = await filehandle.getFile();
+	// 				} else {
+	// 					folderhandles.push(filehandle);
+	// 					for await (let handle of filehandle.values()) {
+	// 						if (handle.kind == "file") {
+	// 							files[handle.name] = await handle.getFile();
+	// 						}
+	// 					}
+	// 				}
+	// 			} else if (item.kind == "file") {
+	// 				let file = item.getAsFile()!;
+	// 				files[file.name] = file;
+	// 			}
+	// 		}));
+	// 		if (folderhandles.length == 1 && filehandles.length == 0) {
+	// 			datastore.set("cachefilehandles", folderhandles[0]);
+	// 			console.log("stored folder " + folderhandles[0].name);
+	// 		}
+	// 		console.log(`added ${Object.keys(files).length} files`);
+	// 		hackyCacheFileSource.giveBlobs(files);
+	// 	}
+	// }
 }
 
 // const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
@@ -98,7 +168,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	}
 
 	@boundMethod
-	submitSearchIds(value: string) {
+	async submitSearchIds(value: string) {
+		await ensureCachePermission();
 		localStorage.rsmv_lastsearch = value;
 		localStorage.rsmv_lastmode = this.state.mode;
 		if (!this.state.hist.includes(value)) {
@@ -131,6 +202,41 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 		this.submitSearchIds(newvalue + "");
 		e.preventDefault();
 	}
+	@boundMethod
+	async exportModel() {
+		let savehandle = await showSaveFilePicker({
+			id: "savegltf",
+			startIn: "downloads",
+			suggestedName: "model.glb",
+			types: [
+				{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
+			]
+		});
+		let modelexprt = await (this.renderer as any).export();
+		let str = await savehandle.createWritable();
+		await str.write(modelexprt);
+		await str.close();
+		// let dir = await showDirectoryPicker({
+		// 	id: "savegltf",
+		// 	startIn: "downloads",
+		// 	suggestedName: "model.gltf",
+		// 	types: [
+		// 		{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
+		// 	]
+		// });
+		// let modelfiles = await (this.renderer as any).export();
+		// console.log(modelfiles);
+		// let mainfile = await dir.getFileHandle("model.dae", { create: true });
+		// let str = await mainfile.createWritable();
+		// await str.write(modelfiles.data).then(() => str.close());
+
+		// await Promise.all(modelfiles.textures.map(async tex => {
+		// 	let file = await dir.getFileHandle(tex.name + "." + tex.ext, { create: true });
+		// 	let str = await file.createWritable();
+		// 	await str.write(tex.data);
+		// 	await str.close();
+		// }));
+	}
 
 	@boundMethod
 	initCnv(cnv: HTMLCanvasElement | null) {
@@ -140,6 +246,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 			}
 			if (this.state.rendermode == "three") {
 				this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource);
+				(this.renderer as any).automaticFrames = true;
+				console.warn("forcing auto-frames!!");
 			}
 			if (this.state.rendermode == "ob3") {
 				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);
@@ -190,6 +298,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "gltf" })} onClick={() => this.setRenderer("gltf")}><span>GLTF</span></div>
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "ob3" })} onClick={() => this.setRenderer("ob3")}><span>OB3</span></div>
+							<div></div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "ob3" })} onClick={this.exportModel}><span>Export</span></div>
 							<div></div>
 						</div>
 						<div id="sidebar-browser-tab">
@@ -295,6 +405,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
 	let models: Buffer[] = [];
+	let anims: number[] = [];
 	let metatext = "";
 	switch (mode) {
 		case "model":
@@ -347,15 +458,16 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			metatext = JSON.stringify(info, undefined, "\t");
 			break;
 		case "object":
-			//TODO should be using the same file source consistenly
 			let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);
-			// let obj = parseObject.read(await cache.get(cacheMajors.objects, +searchid));
 			console.log(obj);
 			metatext = JSON.stringify(obj, undefined, 2);
 			if (obj) {
 				if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
 				if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
 				modelids = obj.models?.flatMap(m => m.values) ?? [];
+			}
+			if (obj?.probably_animation) {
+				anims.push(obj.probably_animation);
 			}
 			break;
 		case "map":
@@ -380,7 +492,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 
 	if (modelids.length != 0) {
 		models.push(...await Promise.all(modelids.map(id => hackyCacheFileSource.getFileById(cacheMajors.models, id))));
-		renderer.setOb3Models(models, hackyCacheFileSource, mods, metatext);
+		renderer.setOb3Models(models, hackyCacheFileSource, mods, metatext, anims);
 	}
 }
 
@@ -390,7 +502,7 @@ export type ModelViewerState = {
 }
 
 export interface ModelSink {
-	setOb3Models: (models: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string) => void
+	setOb3Models: (models: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string, anims: number[]) => void
 	setGltfModels?: (models: Buffer[]) => void,
 	setModels?: (models: THREE.Object3D[], metastr?: string) => void,
 	setValue?: (key: string, value: boolean) => void
@@ -402,7 +514,7 @@ class Ob3Renderer implements ModelSink {
 		this.cnv = cnv;
 		this.metacb = metacb;
 	}
-	setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string) {
+	setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string, anims: number[]) {
 		let models = modelfiles.map(file => {
 			let m = new OB3(cache.getFileById);
 			m.setData(file);

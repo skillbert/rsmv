@@ -43,7 +43,7 @@ function onWheel(e: any) {
 	module.exports.draw(this);
 }
 
-function onResize(e) {
+function onResize(e: any) {
 	module.exports.draw(document.getElementById("viewer"));
 }
 
@@ -268,7 +268,7 @@ export function draw(element: RenderCanvas) {
 	element.height = element.clientHeight;
 	gl.viewport(0, 0, element.clientWidth, element.clientHeight);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-	
+
 	for (let model of element.gvContext.models) {
 		var materialGroups = model.getMaterialGroups();
 		var shaderProgram = element.gvContext.shaderProgram;

@@ -9,12 +9,9 @@ import { boundMethod } from 'autobind-decorator';
 import { materialCacheKey } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
-
-//yay, three is now using modules so i can no longer use modules myself.....
-//requirejs cant load modules since all modules are now promises (in case they want
-//to use top level await).
-// const THREE = require("three/build/three.js") as typeof import("three");
-// global.THREE = THREE;
+import { parseAnimationSequence2 } from "./animation";
+import { CacheFileSource } from "../cache";
+import { Bone, Matrix4, Skeleton, SkeletonHelper, SkinnedMesh } from "three";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -85,9 +82,9 @@ export class ThreejsSceneCache {
 		let file = await this.getFileById(cacheMajors.texturesDds, texid);
 		let parsed = new ParsedTexture(file, allowAlpha);
 		//TODO can also directly load dxt texture here!
-		// let texture = new THREE.CanvasTexture(await parsed.toWebgl());
-		let data = await parsed.toImageData();
-		let texture = new THREE.DataTexture(data.data, data.width, data.height);
+		let texture = new THREE.CanvasTexture(await parsed.toWebgl());
+		// let data = await parsed.toImageData();
+		// let texture = new THREE.DataTexture(data.data, data.width, data.height);
 		this.textureCache.set(texid, texture);
 		return texture;
 	}
@@ -135,19 +132,84 @@ export class ThreejsSceneCache {
 
 
 
-export async function ob3ModelToThreejsNode(getFile: FileGetter, modelfile: Buffer, mods: ModelModifications) {
-	let scene = new ThreejsSceneCache(getFile);
+export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfile: Buffer, mods: ModelModifications, anims: number[]) {
+	let scene = new ThreejsSceneCache(getFile.getFileById.bind(getFile));
 	let meshdata = parseOb3Model(modelfile);
 	meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
 	let mesh = await ob3ModelToThree(scene, meshdata);
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
+
+	// mesh.animations = await Promise.all(anims.map(anim => parseAnimationSequence2(getFile, anim))) as any;
+	mesh.animations = await Promise.all(anims.map(async animid => {
+		let anim = await parseAnimationSequence2(getFile, animid)!;
+		//remove extra tracks to suppress errors later on
+		let newtracks = anim!.tracks.filter(t => {
+			let m = t.name.match(/.bones\[(\d+)\]/)!;
+			return +m[1] < mesh.skeleton.bones.length;
+		});
+		if (newtracks.length != anim!.tracks.length) {
+			console.log("removed tracks from anim as there aren't enough bones:", anim!.tracks.length - newtracks.length);
+		}
+		anim!.tracks = newtracks;
+		return anim;
+	})) as any;
 	return mesh;
 }
 
 
+function buildSkeleton(model: ModelData) {
+	let nbones = model.bonecount + 1;//TODO find out why this number is wrong
+
+	let bonecenters: { xsum: number, ysum: number, zsum: number, weightsum: number, bone: Bone, inverseBind: Matrix4 }[] = [];
+	for (let i = 0; i < nbones; i++) {
+		let bone = new Bone();
+		bone.name = "bone_" + i;
+		bonecenters.push({ xsum: 0, ysum: 0, zsum: 0, weightsum: 0, bone, inverseBind: new Matrix4() });
+	}
+
+	for (let mesh of model.meshes) {
+		let ids = mesh.attributes.skinids;
+		let weights = mesh.attributes.skinweights;
+		let pos = mesh.attributes.pos;
+		let indices = mesh.indices;
+		if (!ids || !weights) { continue; }
+		for (let i = 0; i < indices.count; i++) {
+			let vert = indices.array[i];
+			for (let skin = 0; skin < ids.itemSize; skin++) {
+				let skinid = ids.array[vert * ids.itemSize + skin];
+				let skinweight = weights.array[vert * weights.itemSize + skin];
+				let center = bonecenters[skinid];
+				center.xsum += pos.array[pos.itemSize * vert + 0] * skinweight;
+				center.ysum += pos.array[pos.itemSize * vert + 1] * skinweight;
+				center.zsum += pos.array[pos.itemSize * vert + 2] * skinweight;
+				center.weightsum += skinweight;
+			}
+		}
+	}
+
+	let rootbones: Bone[] = [];
+	let allbones: Bone[] = [];
+	bonecenters.forEach(b => {
+		let parentbone = new Bone();
+		if (b.weightsum > 0) {
+			parentbone.position.set(b.xsum / b.weightsum, b.ysum / b.weightsum, b.zsum / b.weightsum);
+		}
+		parentbone.updateMatrix();
+		parentbone.updateMatrixWorld();
+		parentbone.add(b.bone);
+		b.bone.updateMatrixWorld();
+		allbones.push(b.bone);
+		rootbones.push(parentbone);
+	});
+
+	return { rootbones, skeleton: new Skeleton(allbones) };
+}
+
 export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData) {
-	let rootnode = new THREE.Group();
+	let rootnode = new SkinnedMesh();
+	// let skeleton: ReturnType<typeof buildSkeleton> | null = null as any;
+	let skeleton = buildSkeleton(model);
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
 		let geo = new THREE.BufferGeometry();
@@ -155,10 +217,25 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		if (attrs.color) { geo.setAttribute("color", attrs.color); }
 		if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
 		if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
+		if (attrs.skinids) { geo.setAttribute("skinIndex", attrs.skinids); }
+		if (attrs.skinweights) { geo.setAttribute("skinWeight", attrs.skinweights); }
 		geo.index = meshdata.indices;
 		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
-		let mesh = new THREE.Mesh(geo, mat);
+		//@ts-ignore
+		mat.wireframe = true;
+		let mesh: THREE.Mesh | THREE.SkinnedMesh;
+		if (skeleton && meshdata.attributes.skinids) {
+			mesh = new THREE.SkinnedMesh(geo, mat);
+			(mesh as SkinnedMesh).bind(skeleton.skeleton);
+			// rootnode.add(new SkeletonHelper(rootnode));
+		} else {
+			mesh = new THREE.Mesh(geo, mat);
+		}
 		rootnode.add(mesh);
 	}
+	if (skeleton && skeleton.rootbones.length != 0) {
+		rootnode.add(...skeleton.rootbones);
+	}
+	rootnode.bind(skeleton.skeleton);
 	return rootnode;
 }

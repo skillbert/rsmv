@@ -7,11 +7,8 @@ import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 import * as THREE from "three";
 
-//can't use module import syntax because es6 wants to be more es6 than es6
-// const THREE = require("three/build/three.js") as typeof import("three");
 
 export type FileGetter = (major: number, minor: number) => Promise<Buffer>;
-
 
 
 //a wrapper around gltfbuilder that ensures that resouces are correctly shared
@@ -121,6 +118,7 @@ export async function ob3ModelToGltfFile(getFile: FileGetter, model: Buffer, mod
 export type ModelData = {
 	maxy: number,
 	miny: number,
+	bonecount: number,
 	meshes: ModelMeshData[]
 }
 
@@ -132,7 +130,9 @@ export type ModelMeshData = {
 		pos: THREE.BufferAttribute,
 		normals?: THREE.BufferAttribute,
 		color?: THREE.BufferAttribute,
-		texuvs?: THREE.BufferAttribute
+		texuvs?: THREE.BufferAttribute,
+		skinids?: THREE.BufferAttribute,
+		skinweights?: THREE.BufferAttribute
 	}
 }
 
@@ -146,10 +146,11 @@ export function parseOb3Model(modelfile: Buffer) {
 	let unkCount1 = model.readUByte();
 	let unkCount2 = model.readUByte();
 	let unkCount3 = model.readUByte();
-	//console.log(unkCount0,unkCount1,unkCount2,unk1)
+	console.log("model unks", unk1, unkCount0, unkCount1, unkCount2, unkCount3);
 
 	let maxy = 0;
 	let miny = 0;
+	let bonecount = 0;
 	let meshes: ModelMeshData[] = [];
 
 	for (var n = 0; n < meshCount; ++n) {
@@ -161,35 +162,31 @@ export function parseOb3Model(modelfile: Buffer) {
 		let materialArgument = model.readUShort();
 		let faceCount = model.readUShort();
 
+		let materialId = materialArgument - 1
+
 		let hasVertices = (groupFlags & 0x01) != 0;
 		let hasVertexAlpha = (groupFlags & 0x02) != 0;
-		let hasFlag4 = (groupFlags & 0x04) != 0;
+		let hasFaceBones = (groupFlags & 0x04) != 0;
 		let hasBoneids = (groupFlags & 0x08) != 0;
 		let isHidden = (groupFlags & 0x10) != 0;
 		let hasFlag20 = (groupFlags & 0x20) != 0;
+		console.log(n, "mat", materialId, "faceCount", faceCount, "hasFaceBones:", hasFaceBones, "ishidden:", isHidden, "hasflag20:", hasFlag20, "unk6:", unk6);
 		if (groupFlags & ~0x2f) {
 			console.log("unknown model flags", groupFlags & ~0x2f);
 		}
 
 		let colourBuffer: Uint8Array | null = null;
 		let alphaBuffer: Uint8Array | null = null;
-		let positionBuffer: Int16Array | null = null;
-		let normalBuffer: Int8Array | null = null;
+		let positionBuffer: ArrayLike<number> | null = null;
+		let normalBuffer: ArrayLike<number> | null = null;
 		let uvBuffer: Float32Array | null = null;
 		let boneidBuffer: Uint16Array | null = null;
+		let faceboneidBuffer: Uint16Array | null = null;
 
 		if (hasVertices) {
-			// let replaces = modifications.replaceColors ?? [];
-			// replaces.push([39834, 43220]);//TODO what is this? found it hard coded in before
 			colourBuffer = new Uint8Array(faceCount * 3);
 			for (var i = 0; i < faceCount; ++i) {
 				var faceColour = model.readUShort();
-				// for (let repl of replaces) {
-				// 	if (faceColour == repl[0]) {
-				// 		faceColour = repl[1];
-				// 		break;
-				// 	}
-				// }
 				var colour = HSL2RGB(packedHSL2HSL(faceColour));
 				colourBuffer[i * 3 + 0] = colour[0];
 				colourBuffer[i * 3 + 1] = colour[1];
@@ -200,10 +197,9 @@ export function parseOb3Model(modelfile: Buffer) {
 			alphaBuffer = streamChunk(Uint8Array, model, faceCount);
 		}
 
-		//(Unknown, flag 0x04)
-		if (hasFlag4) {
-			//apparently these are actually encoded as float16, but we aren't using them anyway
-			let flag4Buffer = streamChunk(Uint16Array, model, faceCount);
+		//bone ids per face, face/vertex color related?
+		if (hasFaceBones) {
+			faceboneidBuffer = streamChunk(Uint16Array, model, faceCount);
 		}
 
 		let indexBufferCount = model.readUByte();
@@ -238,8 +234,8 @@ export function parseOb3Model(modelfile: Buffer) {
 			//models from this update/area also for the first time has some sort of "skybox" material
 			//
 			let count = model.readUInt();
-			let shorts = streamChunk(Uint16Array, model, count);
-			let bytes = streamChunk(Uint8Array, model, count);
+			let bytes = streamChunk(Uint16Array, model, count * 3);
+			console.log("mesh flag20", bytes);
 			let a = 1;
 		}
 
@@ -253,9 +249,11 @@ export function parseOb3Model(modelfile: Buffer) {
 			continue;
 		}
 
+		if (faceboneidBuffer) {
+			console.log("faceboneidBuffer", faceboneidBuffer);
+		}
 
 		//TODO somehow this doesn't always work
-		let materialId = materialArgument - 1
 		if (materialId != -1) {
 			// let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
 			// if (typeof replacedmaterial != "undefined") {
@@ -282,10 +280,28 @@ export function parseOb3Model(modelfile: Buffer) {
 			materialId,
 			hasVertexAlpha,
 			attributes: {
-				pos: new THREE.BufferAttribute(positionBuffer, 3)
+				pos: new THREE.BufferAttribute(new Float32Array(positionBuffer), 3)
 			}
 		};
 		meshes.push(meshdata);
+
+		if (boneidBuffer) {
+			//every modern animation system uses 4 skinned bones per vertex instead of one
+			let quadboneids = new Uint8Array(boneidBuffer.length * 4);
+			let quadboneweights = new Uint8Array(boneidBuffer.length * 4);
+			const maxshort = (1 << 16) - 1;
+			for (let i = 0; i < boneidBuffer.length; i++) {
+				let id = boneidBuffer[i]
+				id = (id == maxshort ? 0 : id + 1);
+				quadboneids[i * 4] = id;
+				quadboneweights[i * 4] = 255;
+				if (id >= bonecount) {
+					bonecount = id + 1;
+				}
+			}
+			meshdata.attributes.skinids = new THREE.BufferAttribute(quadboneids, 4);
+			meshdata.attributes.skinweights = new THREE.BufferAttribute(quadboneweights, 4, true);
+		}
 
 		if (uvBuffer) {
 			meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
@@ -310,9 +326,7 @@ export function parseOb3Model(modelfile: Buffer) {
 		//convert per-face attributes to per-vertex
 		if (colourBuffer) {
 			let vertexcolor = new Uint8Array(vertexCount * 4);
-			//TODO might be able to let three do this for us
 			meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
-			//copy this face color to all vertices on the face
 			for (let i = 0; i < faceCount; i++) {
 				//iterate triangle vertices
 				for (let j = 0; j < 3; j++) {
@@ -331,17 +345,32 @@ export function parseOb3Model(modelfile: Buffer) {
 		}
 		//TODO proper toggle for this or remove
 		//visualize bone ids
-		// materialArgument = 0;
-		// let vertexcolor = new Uint8Array(vertexCount * 4);
-		// attrsources.color = { newtype: "u8", vecsize: 4, source: vertexcolor };
-		// for (let i = 0; i < vertexCount; i++) {
-		// 	let index = i * 4;
-		// 	let boneid = boneidBuffer ? boneidBuffer[i] : 0;
-		// 	vertexcolor[index + 0] = (73 + boneid * 9323) % 256;
-		// 	vertexcolor[index + 1] = (171 + boneid * 1071) % 256;
-		// 	vertexcolor[index + 2] = (23 + boneid * 98537) % 256;
-		// 	vertexcolor[index + 3] = 255;
-		// }
+		materialArgument = 0;
+		let vertexcolor = new Uint8Array(vertexCount * 4);
+		meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
+		let allbones = new Set<number>();
+		const bonecols = [
+			[255, 255, 255],//-1,white no bone
+			[255, 0, 0],//0red
+			[0, 255, 0],//1green
+			[0, 0, 255],//2blue
+			[90, 0, 0],//3red--
+			[0, 90, 0],//green--
+			[0, 0, 90],//blue--
+			[255, 255, 0],//yellow
+			[0, 255, 255],//cyan
+			[255, 0, 255],//purple
+		]
+		for (let i = 0; i < vertexCount; i++) {
+			let index = i * 4;
+			let boneid = meshdata.attributes.skinids?.array[index]!;
+			// let boneid = n;
+			vertexcolor[index + 0] = (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256);
+			vertexcolor[index + 1] = (boneid < bonecols.length ? bonecols[boneid][1] : (171 + boneid * 1071) % 256);
+			vertexcolor[index + 2] = (boneid < bonecols.length ? bonecols[boneid][2] : (23 + boneid * 98537) % 256);
+			vertexcolor[index + 3] = 255;
+			allbones.add(boneid);
+		}
 	}
 	for (let n = 0; n < unkCount1; n++) {
 		model.skip(37);
@@ -359,60 +388,12 @@ export function parseOb3Model(modelfile: Buffer) {
 		model.skip(16);
 	}
 
-	let r: ModelData = { maxy, miny, meshes };
+
+	let r: ModelData = { maxy, miny, meshes, bonecount };
 
 	if (model.scanloc() != model.getData().length) {
 		console.log("extra model bytes", model.getData().length - model.scanloc(), "format", format, "unk1", unk1, "version", version, "unkcounts", unkCount0, unkCount1, unkCount2, unkCount3);
 		// fs.writeFileSync(`cache/particles/${Date.now()}.bin`, model.getData().slice(model.scanloc()));
 	}
 	return r;
-}
-
-//TODO remove or rebuild
-export async function addOb3Model(scenecache: GLTFSceneCache, model: ModelData) {
-	// let gltf = scenecache.gltf;
-	// let primitives: MeshPrimitive[] = [];
-
-	// for (let meshdata of model.meshes) {
-	// 	let { buffer, attributes, bytestride, vertexcount } = buildAttributeBuffer(meshdata.attributes);
-
-	// 	let attrs: MeshPrimitive["attributes"] = {};
-
-	// 	let view = gltf.addBufferWithView(buffer, bytestride, false);
-	// 	attrs.POSITION = gltf.addAttributeAccessor(attributes.pos, view, vertexcount);
-	// 	if (attributes.normals) {
-	// 		attrs.NORMAL = gltf.addAttributeAccessor(attributes.normals, view, vertexcount);
-	// 	}
-	// 	if (attributes.texuvs) {
-	// 		attrs.TEXCOORD_0 = gltf.addAttributeAccessor(attributes.texuvs, view, vertexcount);
-	// 	}
-	// 	if (attributes.color) {
-	// 		attributes.color.normalize = true;
-	// 		attrs.COLOR_0 = gltf.addAttributeAccessor(attributes.color, view, vertexcount);
-	// 	}
-
-	// 	let viewIndex = gltf.addBufferWithView(meshdata.indices, undefined, true);
-
-	// 	let indices = gltf.addAccessor({
-	// 		componentType: glTypeIds.u16.gltype,
-	// 		count: meshdata.indices.length,
-	// 		type: "SCALAR",
-	// 		bufferView: viewIndex
-	// 	});
-
-	// 	let materialNode: number | undefined = undefined;
-	// 	if (meshdata.materialId != -1) {
-	// 		materialNode = await scenecache.getGlTfMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
-	// 	}
-
-	// 	primitives.push({
-	// 		attributes: attrs,
-	// 		indices: indices,
-	// 		material: materialNode
-	// 	});
-	// }
-	// let mesh = gltf.addMesh({ primitives });
-	// //enables use of normalized ints for a couple of attribute types
-	// //gltf.addExtension("KHR_mesh_quantization", true);
-	// return mesh;//gltf.addNode({ mesh });
 }

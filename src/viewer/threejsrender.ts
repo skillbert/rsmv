@@ -4,34 +4,17 @@
 import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader, GLTFParser, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
-
-
-// //yay, three is now using modules so i can no longer use modules myself.....
-// //requirejs cant load modules since all modules are now promises (in case they want
-// //to use top level await).
-// const THREE = require("three/build/three.js") as typeof import("three");
-// //i have to also put it in the global scope for the other libs...
-// global.THREE = THREE;
-// require('three/examples/js/controls/OrbitControls');
-// require('three/examples/js/loaders/GLTFLoader.js');
-// require('three/examples/js/loaders/RGBELoader.js');
-// require("three/examples/js/renderers/SVGRenderer.js");
-// require("three/examples/js/renderers/Projector");//needed by svgrenderer
-// //this is the dumbest thing i've ever writter and there is no better way, i tried
-// const GLTFLoader = (THREE as any).GLTFLoader as typeof import('three/examples/jsm/loaders/GLTFLoader').GLTFLoader;
-// const OrbitControls = (THREE as any).OrbitControls as typeof import('three/examples/jsm/controls/OrbitControls').OrbitControls;
-// const SVGRenderer = (THREE as any).SVGRenderer as typeof import('three/examples/jsm/renderers/SVGRenderer.js').SVGRenderer;
-
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode } from '../3d/ob3tothree';
 import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
-import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
 import { ModelViewerState, ModelSink } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
+import { AnimationClip, AnimationMixer, Clock, Material, Mesh } from "three";
 
 export class ThreeJsRenderer implements ModelSink {
 	renderer: THREE.WebGLRenderer;
@@ -50,6 +33,8 @@ export class ThreeJsRenderer implements ModelSink {
 	contextLossCountLastRender = 0;
 	unpackOb3WithGltf: boolean;
 	filesource: CacheFileSource;
+	clock = new Clock(true);
+	animationMixer: AnimationMixer | null = null;
 
 	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource, unpackOb3WithGltf = false) {
 		(window as any).render = this;//TODO remove
@@ -280,6 +265,10 @@ export class ThreeJsRenderer implements ModelSink {
 			this.camera.aspect = canvas.clientWidth / canvas.clientHeight;
 			this.camera.updateProjectionMatrix();
 		}
+		let delta = this.clock.getDelta();
+		if (this.animationMixer) {
+			this.animationMixer.update(delta);
+		}
 
 		this.renderer.render(this.scene, this.camera);
 		this.contextLossCountLastRender = this.contextLossCount;
@@ -315,13 +304,25 @@ export class ThreeJsRenderer implements ModelSink {
 		this.stateChangeCallback(this.uistate);
 	}
 
-	async setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, metastr: string) {
+	async setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, metastr: string, anims: number[]) {
 		if (this.unpackOb3WithGltf) {
 			//TODO
 			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
 			// return this.setGltfModels(models, metastr);
 		} else {
-			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache.getFileById.bind(cache), m, mods)));
+
+			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache, m, mods, anims)));
+
+			//TODO move this somewhere else
+			this.animationMixer?.stopAllAction();
+			this.animationMixer = null;
+			models.find(m => {
+				if (m.animations.length != 0) {
+					this.animationMixer = new AnimationMixer(m);
+					let anim = this.animationMixer.clipAction(m.animations[0]);
+					anim.play();
+				}
+			})
 			console.log(models);
 			return this.setModels(models, metastr);
 		}
@@ -451,9 +452,8 @@ export class ThreeJsRenderer implements ModelSink {
 
 		if (this.modelnode) { this.scene.remove(this.modelnode); }
 		this.modelnode = combined;
-		//floormesh.visible = !box.intersectsPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0),1));
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
-		this.floormesh.visible = box.min.y > -1;
+		this.floormesh.visible = true;//box.min.y > -1;
 		this.scene.add(this.modelnode);
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
@@ -464,6 +464,22 @@ export class ThreeJsRenderer implements ModelSink {
 
 		this.forceFrame();
 		this.stateChangeCallback(this.uistate);
+	}
+
+	export(type: "gltf") {
+		return new Promise<Buffer>(resolve => {
+			let q = new GLTFExporter();
+			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: true, embedImages: true });
+		});
+		// return new Promise<Buffer>(resolve => {
+		// 	let q = new ColladaExporter();
+		// 	q.parse(this.modelnode!, res => resolve(res as any), {});
+		// });
+
+		// let q = new USDZExporter();
+		// return q.parse(this.modelnode!).then(file => {
+		// 	return file;
+		// });
 	}
 
 	@boundMethod

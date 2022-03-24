@@ -52,6 +52,8 @@
 		"cmd-ts": "^0.7.0",
 		"crc": "^3.8.0",
 		"electron-titlebar": "0.0.3",
+		"idb-keyval": "^6.1.0",
+		"json-stringify-pretty-compact": "^3.0.0",
 		"leaflet": "^1.7.1",
 		"lzma": "^2.3.2",
 		"lzma-native": "^8.0.1",
