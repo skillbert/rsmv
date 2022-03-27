@@ -14,7 +14,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { ModelViewerState, ModelSink } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, Material, Mesh } from "three";
+import { AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
 
 export class ThreeJsRenderer implements ModelSink {
 	renderer: THREE.WebGLRenderer;
@@ -26,6 +26,7 @@ export class ThreeJsRenderer implements ModelSink {
 	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group | null = null;
+	cleanModelCallbacks: (() => void)[] = [];
 	floormesh: THREE.Mesh;
 	queuedFrameId = 0;
 	automaticFrames = false;
@@ -310,20 +311,7 @@ export class ThreeJsRenderer implements ModelSink {
 			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
 			// return this.setGltfModels(models, metastr);
 		} else {
-
 			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache, m, mods, anims)));
-
-			//TODO move this somewhere else
-			this.animationMixer?.stopAllAction();
-			this.animationMixer = null;
-			models.find(m => {
-				if (m.animations.length != 0) {
-					this.animationMixer = new AnimationMixer(m);
-					let anim = this.animationMixer.clipAction(m.animations[0]);
-					anim.play();
-				}
-			})
-			console.log(models);
 			return this.setModels(models, metastr);
 		}
 	}
@@ -435,6 +423,9 @@ export class ThreeJsRenderer implements ModelSink {
 			}
 		});
 
+		//TODO move this somewhere else
+		this.animationMixer?.stopAllAction();
+		this.animationMixer = null;
 		// compute the box that contains all the stuff
 		// from root and below
 		const box = new THREE.Box3().setFromObject(combined);
@@ -451,10 +442,23 @@ export class ThreeJsRenderer implements ModelSink {
 		this.controls.screenSpacePanning = true;
 
 		if (this.modelnode) { this.scene.remove(this.modelnode); }
+		this.cleanModelCallbacks.forEach(q => q());
+		this.cleanModelCallbacks = [];
 		this.modelnode = combined;
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
 		this.floormesh.visible = true;//box.min.y > -1;
 		this.scene.add(this.modelnode);
+
+		models.find(m => {
+			if (m.animations.length != 0) {
+				this.animationMixer = new AnimationMixer(m);
+				let anim = this.animationMixer.clipAction(m.animations[0]);
+				anim.play();
+			}
+			let skelhelper = new SkeletonHelper(m);
+			this.scene.add(skelhelper);
+			this.cleanModelCallbacks.push(() => skelhelper.removeFromParent());
+		});
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
 		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {

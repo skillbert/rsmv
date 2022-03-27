@@ -1,3 +1,4 @@
+import { cacheMajors } from "./constants";
 import * as cache from "./cache";
 import type { WorkerPackets } from "./cacheloaderwasmworker";
 
@@ -16,10 +17,34 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		this.worker = new Worker(new URL("./cacheloaderwasmworker.ts", import.meta.url));
 		this.worker.onmessage = e => {
 			let handler = this.callbacks.get(e.data.id);
-			if (e.data.error) { handler?.reject(e.data.error); } 
+			if (e.data.error) { handler?.reject(e.data.error); }
 			else { handler?.resolve(e.data.packet); }
 			this.callbacks.delete(e.data.id);
 		}
+	}
+
+	async generateRootIndex() {
+		console.log("using generated cache index file meta, crc size and version missing");
+
+		let majors: cache.CacheIndex[] = [];
+		for (let file of Object.keys(this.dbfiles)) {
+			let m = file.match(/js5-(\d+)\.jcache$/);
+			if (m) {
+				majors.push({
+					major: cacheMajors.index,
+					minor: +m[1],
+					crc: 0,
+					size: 0,
+					subindexcount: 1,
+					subindices: [0],
+					version: 0,
+					uncompressed_crc: 0,
+					uncompressed_size: 0
+				});
+			}
+		}
+
+		return majors.sort((a, b) => a.minor - b.minor);
 	}
 
 	sendWorker(packet: WorkerPackets) {
@@ -33,6 +58,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
+		if (major == cacheMajors.index) { return this.getIndex(minor); }
 		let data = await this.sendWorker({ type: "getfile", major, minor, crc }) as Uint8Array;
 		return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 	}
@@ -51,6 +77,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	}
 
 	async getIndexFile(major: number) {
+		if (major == 255) { return this.generateRootIndex(); }
 		let index = this.indices.get(major);
 		if (!index) {
 			index = this.getIndex(major).then(file => cache.indexBufferToObject(major, file));

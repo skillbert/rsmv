@@ -4,13 +4,14 @@ import * as path from "path";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type * as sqlite3 from "sqlite3";
 import * as fs from "fs";
+import { cacheMajors } from "./constants";
+import { CacheIndex } from "./cache";
 
 type CacheTable = {
-	db: sqlite3.Database,
-	ready: Promise<void>,
+	db: sqlite3.Database | null,
 	indices: Promise<cache.CacheIndexFile>,
-	dbget: (q: string, params: any[]) => Promise<any>,
-	dbrun: (q: string, params: any[]) => Promise<any>
+	getFile: (minor: number) => Promise<{ DATA: Buffer, CRC: number }>,
+	getIndexFile: () => Promise<{ DATA: Buffer, CRC: number }>
 }
 
 export class GameCacheLoader extends cache.CacheFileSource {
@@ -24,53 +25,79 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		this.writable = !!writable;
 	}
 
-	scanMajors() {
+	async generateRootIndex() {
 		let files = fs.readdirSync(path.resolve(this.cachedir));
+		console.log("using generated cache index file meta, crc size and version missing");
 
-		let majors: number[] = [];
+		let majors: CacheIndex[] = [];
 		for (let file of files) {
 			let m = file.match(/js5-(\d+)\.jcache$/);
-			if (m) { majors.push(+m[1]); }
+			if (m) {
+				majors.push({
+					major: cacheMajors.index,
+					minor: +m[1],
+					crc: 0,
+					size: 0,
+					subindexcount: 1,
+					subindices: [0],
+					version: 0,
+					uncompressed_crc: 0,
+					uncompressed_size: 0
+				});
+			}
 		}
 
-		return majors.sort((a, b) => a - b);
+		return majors.sort((a, b) => a.minor - b.minor);
 	}
 
 	openTable(major: number) {
 		let sqlite = require("sqlite3") as typeof import("sqlite3");
 		if (!this.opentables.get(major)) {
-			let db = new sqlite.Database(path.resolve(this.cachedir, `js5-${major}.jcache`), this.writable ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY);
-			let ready = new Promise<void>(done => db.once("open", done));
-			let dbget = async (query: string, args: any[]) => {
-				await ready;
-				return new Promise<any>((resolve, reject) => {
-					db.get(query, args, (err, row) => {
-						if (err) { reject(err); }
-						else { resolve(row); }
-					})
-				})
-			}
-			let dbrun = async (query: string, args: any[]) => {
-				await ready;
-				return new Promise<any>((resolve, reject) => {
-					db.run(query, args, (err, res) => {
-						if (err) { reject(err); }
-						else { resolve(res); }
-					})
-				})
-			}
-			let indices = dbget(`SELECT DATA FROM cache_index`, []).then(row => {
-				return cache.indexBufferToObject(major, decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength)));
-			});
+			let db: CacheTable["db"] = null;
+			let indices: CacheTable["indices"];
+			let getFile: CacheTable["getFile"];
+			let getIndexFile: CacheTable["getIndexFile"];
 
-			this.opentables.set(major, { db, ready, dbget, dbrun, indices });
+			if (major == cacheMajors.index) {
+				indices = this.generateRootIndex();
+				getFile = (minor) => this.openTable(minor).getIndexFile();
+				getIndexFile = () => { throw new Error("root index file no accesible for sqlite cache"); }
+			} else {
+				db = new sqlite.Database(path.resolve(this.cachedir, `js5-${major}.jcache`), this.writable ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY);
+				let ready = new Promise<void>(done => db!.once("open", done));
+				let dbget = async (query: string, args: any[]) => {
+					await ready;
+					return new Promise<any>((resolve, reject) => {
+						db!.get(query, args, (err, row) => {
+							if (err) { reject(err); }
+							else { resolve(row); }
+						})
+					})
+				}
+				let dbrun = async (query: string, args: any[]) => {
+					await ready;
+					return new Promise<any>((resolve, reject) => {
+						db!.run(query, args, (err, res) => {
+							if (err) { reject(err); }
+							else { resolve(res); }
+						})
+					})
+				}
+				getFile = (minor) => dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
+				getIndexFile = () => dbget(`SELECT DATA FROM cache_index`, []);
+				indices = getIndexFile().then(row => {
+					return cache.indexBufferToObject(major, decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength)));
+				});
+			}
+			this.opentables.set(major, { db, getFile, getIndexFile, indices });
 		}
 		return this.opentables.get(major)!;
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
-		let { dbget } = this.openTable(major);
-		let row = await dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
+		if (major == cacheMajors.index) { return this.getIndex(minor); }
+		let { getFile } = this.openTable(major);
+		let row = await getFile(minor);
 		if (typeof crc == "number" && row.CRC != crc) {
 			//TODO this is always off by either 1 or 2
 			// console.log(`crc from cache (${row.CRC}) did not match requested crc (${crc}) for ${major}.${minor}`);
@@ -87,31 +114,30 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		return res;
 	}
 
-	writeFile(major: number, minor: number, file: Buffer) {
-		let { dbrun } = this.openTable(major);
-		let compressed = compressSqlite(file, "zlib");
-		return dbrun("UPDATE `cache` SET `DATA`=? WHERE `KEY`=?", [compressed, minor]);
-	}
+	// writeFile(major: number, minor: number, file: Buffer) {
+	// 	let { dbrun } = this.openTable(major);
+	// 	let compressed = compressSqlite(file, "zlib");
+	// 	return dbrun("UPDATE `cache` SET `DATA`=? WHERE `KEY`=?", [compressed, minor]);
+	// }
 
-	writeFileArchive(index: cache.CacheIndex, files: Buffer[]) {
-		let arch = cache.packSqliteBufferArchive(files);
-		return this.writeFile(index.major, index.minor, arch);
-	}
+	// writeFileArchive(index: cache.CacheIndex, files: Buffer[]) {
+	// 	let arch = cache.packSqliteBufferArchive(files);
+	// 	return this.writeFile(index.major, index.minor, arch);
+	// }
 
 	async getIndexFile(major: number) {
 		return this.openTable(major).indices;
 	}
 
 	async getIndex(major: number) {
-		let { dbget } = this.openTable(major);
-		let row = await dbget(`SELECT DATA FROM cache_index`, []);
+		let row = await this.openTable(major).getIndexFile();
 		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
 		return decompressSqlite(file);
 	}
 
 	close() {
 		for (let table of this.opentables.values()) {
-			table.db.close();
+			table.db?.close();
 		}
 	}
 }

@@ -3,8 +3,8 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims } from "../opdecoder";
-import { achiveToFileId, CacheFileSource, CacheIndex, CacheIndexStub, fileIdToArchiveminor, SubFile } from "../cache";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex } from "../opdecoder";
+import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData } from "../3d/utils";
@@ -12,23 +12,25 @@ import * as cache from "../cache";
 import { GameCacheLoader } from "../cacheloader";
 import { crc32_backward, forge } from "../libs/crc32util";
 import { getDebug } from "../opcode_reader";
-import { Buffer } from "buffer";
+import { Downloader } from "../downloader";
+import prettyJson from "json-stringify-pretty-compact";
 
 
 let cmd = command({
 	name: "download",
-	args: {
-	},
+	args: {},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
-		const major = cacheMajors.spotanims;
+		const major = cacheMajors.index;
 		const minor = -1;
-		const decoder = parseSpotAnims;
-		const skipMinorAftError = false;
+		const decoder = parseCacheIndex;
+		const skipMinorAfterError = false;
 		const skipFilesizeAfterError = true;
-		const memlimit = 10e6;
-		
-		let source = new GameCacheLoader();
+		const memlimit = 100e6;
+		const orderBySize = false;
+
+		// let source = new GameCacheLoader();
+		let source = new Downloader();
 		let indices = await source.getIndexFile(major);
 		fs.mkdirSync(errdir, { recursive: true });
 		let olderrfiles = fs.readdirSync(errdir);
@@ -37,35 +39,26 @@ let cmd = command({
 		}
 		olderrfiles.forEach(q => fs.unlinkSync(path.resolve(errdir, q)));
 
+		type DecodeEntry = { major: number, minor: number, subfile: number, file: Buffer }
 		let memuse = 0;
-		let allfiles: { major: number, minor: number, subfile: number, file: Buffer }[] = [];
-		for (let index of indices) {
-			if (!index) { continue; }
-			if (minor != -1 && index.minor != minor) { continue; }
-			let arch = await source.getFileArchive(index);
-			memuse += arch.reduce((a, v) => a + v.size, 0);
-			allfiles.push(...arch.map((q, i) => ({ major: index.major, minor: index.minor, subfile: index.subindices[i], file: q.buffer })));
-			if (memuse > memlimit) {
-				console.log("skipping file because of memory limit", indices.indexOf(index), "/", indices.length);
-				break;
-			}
-		}
-
-		// allfiles.sort((a, b) => a.file.byteLength - b.file.byteLength);
-		console.log("starting files:", allfiles.length);
-		// allfiles = allfiles.filter((q, i) => i % 20 == 0);
-
-
+		let allfiles: DecodeEntry[] = [];
 		let errminors: number[] = [];
 		let errfilesizes: number[] = [];
 		let maxerrs = 20;
 		let nsuccess = 0;
-		for (let file of allfiles) {
-			// if (skipMinorAftError && errminors.indexOf(file.minor) != -1) { continue; }
-			// if (skipFilesizeAfterError && errfilesizes.indexOf(file.file.byteLength) != -1) { continue; }
+		let lastProgress = Date.now();
+
+		function testFile(file: DecodeEntry) {
+			if (skipMinorAfterError && errminors.indexOf(file.minor) != -1) { return true; }
+			if (skipFilesizeAfterError && errfilesizes.indexOf(file.file.byteLength) != -1) { return true; }
+			if (Date.now() - lastProgress > 10000) {
+				console.log("progress, file ", file.major, file.minor, file.subfile);
+				lastProgress = Date.now();
+			}
+
 			getDebug(true);
 			try {
-				decoder.read(file.file);
+				let res = decoder.read(file.file);
 				nsuccess++;
 			} catch (e) {
 				errminors.push(file.minor);
@@ -84,13 +77,11 @@ let cmd = command({
 					outindex += op.index - index;
 					index = op.index;
 					let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + 1) / 16) * 16 - outindex);
-					chunks.push(Buffer.alloc(fillsize, 0xff));
+					if (fillsize > 0) {
+						chunks.push(Buffer.alloc(1, 0xcc));
+						chunks.push(Buffer.alloc(fillsize - 1, 0xff));
+					}
 					outindex += fillsize;
-					chunks.push(file.file.slice(index, op.index + 1));
-					// chunks.push(Buffer.from([0x88]));
-					index = op.index + 1;
-					// outindex += 2;
-					outindex += 1;
 				}
 				chunks.push(file.file.slice(index));
 				outindex += file.file.byteLength - index;
@@ -100,15 +91,57 @@ let cmd = command({
 				chunks.push(Buffer.alloc(fillsize, 0xff));
 				chunks.push(Buffer.from((e as Error).message, "ascii"));
 				chunks.push(Buffer.alloc(5))
-				chunks.push(Buffer.from(JSON.stringify(debugdata.rootstruct), "ascii"));
+				chunks.push(Buffer.from(JSON.stringify(debugdata.structstack[debugdata.structstack.length - 1] ?? null), "ascii"));
 
 				fs.writeFileSync(path.resolve(errdir, `err-${file.major}_${file.minor}_${file.subfile}.bin`), Buffer.concat(chunks));
 
 				maxerrs--;
-				if (maxerrs <= 0) { break; }
+				return maxerrs > 0;
 			}
 		}
-		console.log("completed files: ", nsuccess);
+		function addArchieve(index: CacheIndex, arch: SubFile[]) {
+			let entries = arch.map((q, i) => ({ major: index.major, minor: index.minor, subfile: index.subindices[i], file: q.buffer }));
+			if (orderBySize) {
+				allfiles.push(...entries);
+				if (memuse > memlimit) {
+					console.log("skipping file because of memory limit", indices.indexOf(index), "/", indices.length);
+					return false;
+				}
+			} else {
+				for (let entry of entries) {
+					if (testFile(entry) == false) {
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+
+		//pre-sort to get more small file under mem limit
+		indices.sort((a, b) => (a.size ?? 0) - (b.size ?? 0));
+		for (let index of indices) {
+			if (!index) { continue; }
+			if (minor != -1 && index.minor != minor) { continue; }
+			if (index.crc == 0) { continue }
+			try {
+				let arch = await source.getFileArchive(index);
+				memuse += arch.reduce((a, v) => a + v.size, 0);
+				if (!addArchieve(index, arch)) {
+					break;
+				}
+			} catch (e) {
+				console.log(`file ${index.major}.${index.minor} load failed: `, e.message);
+			}
+		}
+
+		if (allfiles.length != 0) {
+			allfiles.sort((a, b) => a.file.byteLength - b.file.byteLength);
+			console.log("starting files:", allfiles.length);
+			// allfiles = allfiles.filter((q, i) => i % 20 == 0);
+			allfiles.forEach(testFile);
+
+			console.log("completed files: ", nsuccess);
+		}
 	}
 });
 

@@ -3,5 +3,5 @@
 	["probably_framemap_id","ushort"],
 	["header3","ubyte"],
 	["flags",["array","ubyte","ubyte"]],
-	["animdata",["nullarray",["bytesleft"],"ubyte"]]
+	["animdata",["buffer",["bytesleft"],"ubyte"]]
 ]

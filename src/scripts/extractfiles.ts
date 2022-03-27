@@ -1,10 +1,10 @@
 import { filesource, cliArguments } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
+import { run, command, number, option, string, boolean, Type, flag, oneOf, optional } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseSpotAnims } from "../opdecoder";
-import { achiveToFileId, CacheFileSource, CacheIndex, CacheIndexStub, fileIdToArchiveminor, SubFile } from "../cache";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex } from "../opdecoder";
+import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData } from "../3d/utils";
@@ -121,6 +121,32 @@ function standardIndex(major: number): DecodeLookup {
 		}
 	}
 }
+function indexfileIndex(): DecodeLookup {
+	return {
+		major: cacheMajors.index,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major: cacheMajors.index, minor: id[0], subindex: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let indices = await source.getIndexFile(cacheMajors.index);
+			return indices
+				.filter(index => index.minor >= start[0] && index.minor <= end[0])
+				.map(index => ({ index, subfile: 0 }));
+		}
+	}
+}
+
+function rootindexfileIndex(): DecodeLookup {
+	return {
+		major: cacheMajors.index,
+		fileToLogical(major, minor, subfile) { return []; },
+		logicalToFile(id) { return { major: cacheMajors.index, minor: 255, subindex: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			return [
+				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, subindexcount: 1, subindices: [0] }, subfile: 0 }
+			];
+		}
+	}
+}
 
 function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeModeFactory {
 	let constr: DecodeModeFactory = (outdir, args: Record<string, string>) => {
@@ -208,7 +234,10 @@ const modes: Record<string, DecodeModeFactory> = {
 	maplocations: standardFile(parseMapsquareLocations, worldmapIndex(cacheMapFiles.locations)),
 
 	frames: standardFile(parseFrames, standardIndex(cacheMajors.frames)),
-	models: standardFile(parseModels, standardIndex(cacheMajors.models))
+	models: standardFile(parseModels, standardIndex(cacheMajors.models)),
+
+	indices: standardFile(parseCacheIndex, indexfileIndex()),
+	rootindex:standardFile(parseRootCacheIndex,rootindexfileIndex())
 }
 
 let cmd2 = command({
@@ -220,7 +249,8 @@ let cmd2 = command({
 		files: option({ long: "ids", short: "i", type: string, defaultValue: () => "" }),
 		edit: flag({ long: "edit", short: "e" }),
 		fixhash: flag({ long: "fixhash", short: "h" }),
-		batched: flag({ long: "batched", short: "b" })
+		batched: flag({ long: "batched", short: "b" }),
+		batchlimit: option({ long: "batchsize", type: number, defaultValue: () => -1 })
 	},
 	handler: async (args) => {
 		let modeconstr = modes[args.mode];
@@ -228,8 +258,11 @@ let cmd2 = command({
 		let outdir = path.resolve(args.save);
 		fs.mkdirSync(outdir, { recursive: true });
 		let flags: Record<string, string> = {};
-		if (args.batched) { flags.batched = "true"; }
+		if (args.batched || args.batchlimit != -1) { flags.batched = "true"; }
 		let mode = modeconstr(outdir, flags);
+
+		let batchMaxFiles = args.batchlimit;
+		let batchSubfile = args.batched;
 
 		let parts = args.files.split(",");
 		let ranges = parts.map(q => {
@@ -249,11 +282,13 @@ let cmd2 = command({
 			.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subfile - b.subfile);
 
 
-		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[], outputs: (string | Buffer)[] } = null;
+		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
+		let currentBatch: { name: string, startIndex: CacheIndex, arch: SubFile[], outputs: (string | Buffer)[] } | null = null;
 		let flushbatch = () => {
-			if (lastarchive && args.batched) {
-				let filename = path.resolve(outdir, `${args.mode}-${lastarchive.index.major}_${lastarchive.index.minor}.batch.${mode.ext}`);
-				fs.writeFileSync(filename, mode.combineSubs(lastarchive.outputs));
+			if (currentBatch) {
+				let filename = path.resolve(outdir, `${args.mode}-${currentBatch.startIndex.major}_${currentBatch.startIndex.minor}.batch.${mode.ext}`);
+				fs.writeFileSync(filename, mode.combineSubs(currentBatch.outputs));
+				currentBatch = null;
 			}
 		}
 		for (let fileid of allfiles) {
@@ -261,16 +296,18 @@ let cmd2 = command({
 			if (lastarchive && lastarchive.index == fileid.index) {
 				arch = lastarchive.subfiles;
 			} else {
-				// console.log(fileid.index);
-				flushbatch();
 				arch = await source.getFileArchive(fileid.index);
-				lastarchive = { index: fileid.index, subfiles: arch, outputs: [] };
+				lastarchive = { index: fileid.index, subfiles: arch };
 			}
 			let file = arch[fileid.subfile].buffer;
 			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
 			let res = mode.read(file, logicalid);
 			if (args.batched) {
-				lastarchive.outputs.push(res);
+				if (!currentBatch || (batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles) || (batchSubfile && currentBatch.arch != arch)) {
+					flushbatch();
+					currentBatch = { name: "", startIndex: fileid.index, arch, outputs: [] };
+				}
+				currentBatch.outputs.push(res);
 			} else {
 				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
 				fs.writeFileSync(filename, res);
@@ -301,7 +338,7 @@ let cmd2 = command({
 				} else {
 					await archedited();
 					arch = await source.getFileArchive(fileid.index);
-					lastarchive = { index: fileid.index, subfiles: arch, outputs: [] };
+					lastarchive = { index: fileid.index, subfiles: arch };
 				}
 				let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
 				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);

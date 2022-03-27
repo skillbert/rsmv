@@ -1,0 +1,12 @@
+["struct",
+	["$minorindex","-1"],
+	["cachemajors",["array","ubyte",["struct",
+		["minor",["accum","$minorindex","1"]],
+		["crc","uint"],
+		["version","uint"],
+		["subindexcount","uint"],
+		["integer_10","uint"],
+		["maybe_checksum1",["buffer",64,"hex"]]
+	]]],
+	["maybe_proper_checksum",["buffer",512,"hex"]]
+]

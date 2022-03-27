@@ -30,12 +30,11 @@ export type ChunkType<T> = Primitive<T> | string;
 
 export type ComposedChunk = string
 	| [type: "array", props: ComposedChunk]
-	//cant be labaled or typescript craps its pants
-	//| [type: "array", lengthTypeOrConst: string | number, ...chunkedprops: ComposedChunk[]]
-	| ["chunkedarray", ComposedChunk | number, ...ComposedChunk[]]
-	| ["array", ComposedChunk | number, ComposedChunk]
-	| ["nullarray", ComposedChunk, ComposedChunk]
-	| ["bytesleft"]
+	| [type: "chunkedarray", length: ComposedChunk | number, ...chunks: ComposedChunk[]]
+	| [type: "array", length: ComposedChunk | number, valueType: ComposedChunk]
+	| ["buffer", ComposedChunk | number, keyof typeof BufferTypes, number]
+	| [type: "nullarray", optcodeType: ComposedChunk, valueType: ComposedChunk]
+	| [type: "bytesleft"]
 	| [type: "ref", ref: string, bitrange?: [number, number], offset?: number]
 	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
 	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
@@ -48,11 +47,20 @@ type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
 
 type ParserContext = Record<string, number>;
 
+const BufferTypes = {
+	hex: { constr: Uint8Array },//used to debug into json file
+	byte: { constr: Int8Array },
+	ubyte: { constr: Uint8Array },
+	short: { constr: Int16Array },
+	ushort: { constr: Uint16Array },
+	int: { constr: Int32Array },
+	uint: { constr: Uint32Array },
+};
 
-var debugdata: null | { rootstruct: null | object, opcodes: { op: number, index: number }[] } = null;
+var debugdata: null | { structstack: object[], opcodes: { op: number | string, index: number }[] } = null;
 export function getDebug(trigger: boolean) {
 	let ret = debugdata;
-	debugdata = trigger ? { rootstruct: null, opcodes: [] } : null;
+	debugdata = trigger ? { structstack: [], opcodes: [] } : null;
 	return ret;
 }
 
@@ -141,6 +149,11 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					}
 					case "bytesleft":
 						return bytesRemainingParser();
+					case "buffer":
+						if (chunkdef.length < 3) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
+						let sizearg = chunkdef[1];
+						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						return bufferParser(sizetype, chunkdef[2], chunkdef[3] ?? 1);
 					case "nullarray":
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
@@ -210,9 +223,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 		read(buffer, parentctx) {
 			let ctx = Object.create(parentctx);
 			let r: Partial<T> = {};
-			if (debugdata && !debugdata.rootstruct) {
-				debugdata.rootstruct = r;
-			}
+			if (debugdata) { debugdata.structstack.push(r); }
 			while (true) {
 				if (buffer.scan == buffer.length) {
 					// throw new Error("ended reading opcode struct at end of file without 0x00 opcode");
@@ -229,6 +240,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 				if (!parser) { throw new Error("unknown chunk 0x" + opt.toString(16).toUpperCase()); }
 				r[parser.key] = parser.parser.read(buffer, ctx);
 			}
+			if (debugdata) { debugdata.structstack.pop(); }
 			return r;
 		},
 		write(buffer, value) {
@@ -267,11 +279,10 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 	let r: ChunkParser<T> = {
 		read(buffer, parentctx) {
 			let r = (isTuple ? [] : {}) as T;
-			if (debugdata && !debugdata.rootstruct) {
-				debugdata.rootstruct = r;
-			}
+			if (debugdata && !isTuple) { debugdata.structstack.push(r); }
 			let ctx: ParserContext = Object.create(parentctx);
 			for (let key of keys) {
+				if (debugdata && !isTuple) { debugdata.opcodes.push({ op: key, index: buffer.scan }); }
 				let v = props[key].read(buffer, ctx);
 				if (v !== undefined && key[0] != "$") {
 					r[key] = v;
@@ -280,6 +291,7 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 					ctx[key as string] = v;
 				}
 			}
+			if (debugdata && !isTuple) { debugdata.structstack.pop(); }
 			return r;
 		},
 		write(buffer, value) {
@@ -446,6 +458,39 @@ function chunkedArrayParser<T>(lengthtype: ChunkParser<number>, chunktypes: Chun
 			};
 		}
 	}
+}
+
+function bufferParser(lengthtype: ChunkParser<number>, scalartype: keyof typeof BufferTypes, vectorLength: number): ChunkParser<ArrayLike<number>> {
+	const type = BufferTypes[scalartype];
+	return {
+		read(buffer, parentctx) {
+			let len = lengthtype.read(buffer, parentctx);
+			let bytelen = len * vectorLength * type.constr.BYTES_PER_ELEMENT;
+			let backing = new ArrayBuffer(bytelen);
+			let bytes = Buffer.from(backing);
+			bytes.set(buffer.subarray(buffer.scan, buffer.scan + bytelen));
+			buffer.scan += bytelen;
+			let array = new type.constr(backing);
+			if (scalartype == "hex") { (array as any).toJSON = () => bytes.toString("hex"); }
+			else { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
+			return array;
+		},
+		write(buffer, value) {
+			if (!(value instanceof type.constr)) { throw new Error("arraybuffer expected"); }
+			if (value.length % vectorLength != 0) { throw new Error("araybuffer is not integer multiple of vectorlength"); }
+			lengthtype.write(buffer, value.length / vectorLength);
+
+			let bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+			buffer.set(bytes, buffer.scan);
+			buffer.scan += buffer.byteLength;
+		},
+		getTypescriptType(indent) {
+			return type.constr.name;
+		},
+		getJsonSChema() {
+			return { type: "string" };
+		}
+	};
 }
 
 function arrayParser<T>(lengthtype: ChunkParser<number>, subtype: ChunkParser<T>): ChunkParser<T[]> {

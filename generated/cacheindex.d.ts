@@ -13,15 +13,19 @@ export type cacheindex = {
 	} & {
 		crc: number,
 	} & {
-		uncompressed_crc: number,
+		uncompressed_crc: number | null,
 	} & {
-		size: number,
-		uncompressed_size: number,
+		size: number | null,
+		uncompressed_size: number | null,
+	} & {
+		encryption_or_hash: Uint8Array | null,
 	} & {
 		version: number,
 	} & {
 		subindexcount: number,
 	} & {
 		subindices: number[],
+	} & {
+		subnames: number[] | null,
 	})[],
 };

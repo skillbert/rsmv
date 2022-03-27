@@ -112,7 +112,7 @@ export class Downloader extends CacheFileSource {
 	indexMap = new Map<number, CacheIndexFile>();
 
 	async getFile(major: number, minor: number, crc?: number) {
-		return decompress(await this.downloadFile(major, minor, crc));
+		return decompress(await this.downloadFile(major, minor, (major == 255 && minor == 255 ? undefined : crc)));
 	}
 	async getFileArchive(meta: CacheIndex) {
 		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindexcount);
@@ -149,7 +149,7 @@ class State<T> {
 	onConnect() { }
 	onData(data: Buffer) { }
 	onEnd() { }
-	onClose() { }
+	onClose() { this.reject(new Error("connection closed")); }
 }
 
 class ConnectionState extends State<void> {

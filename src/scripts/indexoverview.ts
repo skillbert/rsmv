@@ -10,10 +10,10 @@ let cmd2 = command({
 	},
 	handler: async (args) => {
 		let source = new GameCacheLoader();
-		let majors = source.scanMajors();
+		let rootindex = await source.getIndexFile(cacheMajors.index);
 		console.log("[");
-		for (let major of majors) {
-			let index = await source.getIndexFile(major);
+		for (let indexfile of rootindex) {
+			let index = await source.getIndexFile(indexfile.minor);
 			let minorcount = index.reduce((a, v) => a + 1, 0);
 			let subfilecount = index.reduce((a, v) => a + v.subindexcount, 0);
 			let maxsubfiles = index.reduce((a, v) => Math.max(a, v.subindexcount), 0);
@@ -22,9 +22,9 @@ let cmd2 = command({
 			let missingminors = highestindex + 1 - minorcount;
 			let avgsubfiles = subfilecount / minorcount;
 
-			let name = Object.entries(cacheMajors).find(([name, id]) => id == major)?.[0] ?? `unknown`;
+			let name = Object.entries(cacheMajors).find(([name, id]) => id == indexfile.minor)?.[0] ?? `unknown`;
 
-			console.log(JSON.stringify({ major, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles }, null, "  "), ",");
+			console.log(JSON.stringify({ major: indexfile.minor, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles }, null, "  "), ",");
 		}
 		let configindices = await source.getIndexFile(cacheMajors.config);
 		// console.log("/////////////////   CONFIG SUBFILES  ////////////////////////////");

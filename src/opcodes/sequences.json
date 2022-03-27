@@ -1,5 +1,5 @@
 {
-	"0x01": { "name":                          "unknown_01", "read": ["chunkedarray","unsigned short",
+	"0x01": { "name":                              "frames", "read": ["chunkedarray","unsigned short",
 																["struct",["framelength","unsigned short"]],
 																["struct",["frameidlow","unsigned short"]],
 																["struct",["frameidhi","unsigned short"]] ]},
@@ -22,7 +22,7 @@
 	"0x12": { "name":                          "unknown_12", "read": "true" },
 	"0x16": { "name":                          "unknown_16", "read": "unsigned byte" },
 	"0x18": { "name":                          "unknown_18", "read": "unsigned short" },
-	"0x19": { "name":                          "unknown_19", "read": "unsigned short" },	
+	"0x19": { "name":                  "skeletal_animation", "read": "unsigned short" },	
 
 	"0x70": { "name":                          "unknown_70", "read": ["chunkedarray","unsigned short",
 																["struct",["intlow","unsigned short"]],

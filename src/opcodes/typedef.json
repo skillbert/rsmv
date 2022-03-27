@@ -22,6 +22,9 @@
     "int":              { "primitive": "int", "unsigned": false, "bytes": 4, "readmode": "fixed", "endianness": "big" },
     "short":            { "primitive": "int", "unsigned": false, "bytes": 2, "readmode": "fixed", "endianness": "big" },
     "byte":             { "primitive": "int", "unsigned": false, "bytes": 1, "readmode": "fixed", "endianness": "big" },
+	
+    "ushort le":        { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "fixed", "endianness": "little" },
+    "uint le":          { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "fixed", "endianness": "little" },
 
 	"ubyte":            "unsigned byte",
 	"ushort":           "unsigned short",
@@ -41,14 +44,12 @@
     "true":             { "primitive": "value", "value": true },
     "false":            { "primitive": "value", "value": false },
     "0":                { "primitive": "value", "value": 0 },
+    "1":                { "primitive": "value", "value": 1 },
     "-1":               { "primitive": "value", "value": -1 },
 
     "string":           { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[] },
     "paddedstring":     { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[0] },
 
-    "extras value":     { "primitive": "switch", "offset": -4, "switch": { "0": "unsigned int", "1": "string" } },
-
-    "model":            { "primitive": "switch", "opcode": "aByte3076_set_0", "switch": { "0": "unsigned int", "1": "string" } },
 	"extrasmap":        [ "array",["struct",
 		["$type","unsigned byte"],
 		["prop","unsigned tribyte"],

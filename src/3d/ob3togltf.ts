@@ -146,7 +146,7 @@ export function parseOb3Model(modelfile: Buffer) {
 	let unkCount1 = model.readUByte();
 	let unkCount2 = model.readUByte();
 	let unkCount3 = model.readUByte();
-	console.log("model unks", unk1, unkCount0, unkCount1, unkCount2, unkCount3);
+	// console.log("model unks", unk1, unkCount0, unkCount1, unkCount2, unkCount3);
 
 	let maxy = 0;
 	let miny = 0;
@@ -155,7 +155,7 @@ export function parseOb3Model(modelfile: Buffer) {
 
 	for (var n = 0; n < meshCount; ++n) {
 		// Flag 0x10 is currently used, but doesn't appear to change the structure or data in any way
-		let groupFlags = model.readUInt();
+		let groupFlags =model.readUInt();
 
 		// Unknown, probably pertains to materials transparency maybe?
 		let unk6 = model.readUByte();
@@ -170,7 +170,7 @@ export function parseOb3Model(modelfile: Buffer) {
 		let hasBoneids = (groupFlags & 0x08) != 0;
 		let isHidden = (groupFlags & 0x10) != 0;
 		let hasFlag20 = (groupFlags & 0x20) != 0;
-		console.log(n, "mat", materialId, "faceCount", faceCount, "hasFaceBones:", hasFaceBones, "ishidden:", isHidden, "hasflag20:", hasFlag20, "unk6:", unk6);
+		// console.log(n, "mat", materialId, "faceCount", faceCount, "hasFaceBones:", hasFaceBones, "ishidden:", isHidden, "hasflag20:", hasFlag20, "unk6:", unk6);
 		if (groupFlags & ~0x2f) {
 			console.log("unknown model flags", groupFlags & ~0x2f);
 		}
@@ -234,7 +234,7 @@ export function parseOb3Model(modelfile: Buffer) {
 			//models from this update/area also for the first time has some sort of "skybox" material
 			//
 			let count = model.readUInt();
-			let bytes = streamChunk(Uint16Array, model, count * 3);
+			let bytes = streamChunk(Uint8Array, model, count * 3);
 			console.log("mesh flag20", bytes);
 			let a = 1;
 		}
@@ -249,9 +249,9 @@ export function parseOb3Model(modelfile: Buffer) {
 			continue;
 		}
 
-		if (faceboneidBuffer) {
-			console.log("faceboneidBuffer", faceboneidBuffer);
-		}
+		// if (faceboneidBuffer) {
+		// 	console.log("faceboneidBuffer", faceboneidBuffer);
+		// }
 
 		//TODO somehow this doesn't always work
 		if (materialId != -1) {
@@ -350,16 +350,16 @@ export function parseOb3Model(modelfile: Buffer) {
 		meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
 		let allbones = new Set<number>();
 		const bonecols = [
-			[255, 255, 255],//-1,white no bone
-			[255, 0, 0],//0red
-			[0, 255, 0],//1green
-			[0, 0, 255],//2blue
-			[90, 0, 0],//3red--
-			[0, 90, 0],//green--
-			[0, 0, 90],//blue--
-			[255, 255, 0],//yellow
-			[0, 255, 255],//cyan
-			[255, 0, 255],//purple
+			[255, 255, 255],//0 white no bone
+			[255, 0, 0],//1 red
+			[0, 255, 0],//2 green
+			[0, 0, 255],//3 blue
+			[90, 0, 0],//4 red--
+			[0, 90, 0],//5 green--
+			[0, 0, 90],//6 blue--
+			[255, 255, 0],//7 yellow
+			[0, 255, 255],//8 cyan
+			[255, 0, 255],//9 purple
 		]
 		for (let i = 0; i < vertexCount; i++) {
 			let index = i * 4;

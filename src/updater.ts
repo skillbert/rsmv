@@ -1,8 +1,9 @@
 import { Downloader, downloadServerConfig } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
-import { CacheIndex, CacheFileSource, CacheIndexStub, unpackBufferArchive, rootIndexBufferToObject, indexBufferToObject } from "./cache";
+import { CacheIndex, CacheFileSource, unpackBufferArchive, indexBufferToObject } from "./cache";
 import { ParsedTexture } from "./3d/textures";
+import { cacheMajors } from "./constants";
 
 var cachedir: string;
 var progressDelay = 20;
@@ -26,7 +27,7 @@ export type SaveFileArguments = {
 }
 
 type CacheUpdateHook = {
-	callback: (downloader: Downloader, index: CacheIndexStub & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) => Promise<void>;
+	callback: (downloader: Downloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) => Promise<void>;
 	staticArguments: SaveFileArguments
 }
 
@@ -108,7 +109,7 @@ function prepareFolder(dir: string) {
 	return false;
 }
 
-function findMissingIndices<T extends CacheIndexStub>(db_state: DatabaseState, indices: T[]) {
+function findMissingIndices<T extends CacheIndex>(db_state: DatabaseState, indices: T[]) {
 	var pile: (T & { isNew: boolean })[] = [];
 
 	// Loop through our indices and check the database for updates
@@ -125,7 +126,7 @@ function findMissingIndices<T extends CacheIndexStub>(db_state: DatabaseState, i
 	return pile;
 }
 
-async function updateRecords(downloader: Downloader, index: CacheIndexStub & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
+async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
 	var singular = staticArguments.singular;
 	var plural = staticArguments.plural;
 	var folder = staticArguments.folder;
@@ -267,10 +268,7 @@ export async function run(cachedirarg: string, progressDebounceDelay?: number) {
 	var downloader = new Downloader(config);
 
 	progress("Downloading index...");
-	var metaindex = await downloader.getFile(255, 255);
-
-	progress("Processing index...");
-	var indices = rootIndexBufferToObject(metaindex);
+	let indices = downloader.getIndexFile(cacheMajors.index);
 
 	progress("Finding updates...");
 	for (let i in indices) {

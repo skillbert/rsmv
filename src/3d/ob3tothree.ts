@@ -9,9 +9,9 @@ import { boundMethod } from 'autobind-decorator';
 import { materialCacheKey } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
-import { parseAnimationSequence2 } from "./animation";
+import { parseAnimationSequence2, ParsedAnimation } from "./animation";
 import { CacheFileSource } from "../cache";
-import { Bone, Matrix4, Skeleton, SkeletonHelper, SkinnedMesh } from "three";
+import { Bone, Matrix4, Object3D, Skeleton, SkeletonHelper, SkinnedMesh } from "three";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -132,40 +132,27 @@ export class ThreejsSceneCache {
 
 
 
-export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfile: Buffer, mods: ModelModifications, anims: number[]) {
+export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfile: Buffer, mods: ModelModifications, animids: number[]) {
 	let scene = new ThreejsSceneCache(getFile.getFileById.bind(getFile));
 	let meshdata = parseOb3Model(modelfile);
 	meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
-	let mesh = await ob3ModelToThree(scene, meshdata);
+
+
+	let anims = await Promise.all(animids.map(q => parseAnimationSequence2(getFile, q)));
+	let mesh = await ob3ModelToThree(scene, meshdata, anims);
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
-
-	// mesh.animations = await Promise.all(anims.map(anim => parseAnimationSequence2(getFile, anim))) as any;
-	mesh.animations = await Promise.all(anims.map(async animid => {
-		let anim = await parseAnimationSequence2(getFile, animid)!;
-		//remove extra tracks to suppress errors later on
-		let newtracks = anim!.tracks.filter(t => {
-			let m = t.name.match(/.bones\[(\d+)\]/)!;
-			return +m[1] < mesh.skeleton.bones.length;
-		});
-		if (newtracks.length != anim!.tracks.length) {
-			console.log("removed tracks from anim as there aren't enough bones:", anim!.tracks.length - newtracks.length);
-		}
-		anim!.tracks = newtracks;
-		return anim;
-	})) as any;
+	(window as any).mesh = mesh;
 	return mesh;
 }
 
 
-function buildSkeleton(model: ModelData) {
+function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 	let nbones = model.bonecount + 1;//TODO find out why this number is wrong
 
-	let bonecenters: { xsum: number, ysum: number, zsum: number, weightsum: number, bone: Bone, inverseBind: Matrix4 }[] = [];
+	let bonecenters: { xsum: number, ysum: number, zsum: number, weightsum: number }[] = [];
 	for (let i = 0; i < nbones; i++) {
-		let bone = new Bone();
-		bone.name = "bone_" + i;
-		bonecenters.push({ xsum: 0, ysum: 0, zsum: 0, weightsum: 0, bone, inverseBind: new Matrix4() });
+		bonecenters.push({ xsum: 0, ysum: 0, zsum: 0, weightsum: 0 });
 	}
 
 	for (let mesh of model.meshes) {
@@ -188,28 +175,64 @@ function buildSkeleton(model: ModelData) {
 		}
 	}
 
-	let rootbones: Bone[] = [];
-	let allbones: Bone[] = [];
-	bonecenters.forEach(b => {
-		let parentbone = new Bone();
-		if (b.weightsum > 0) {
-			parentbone.position.set(b.xsum / b.weightsum, b.ysum / b.weightsum, b.zsum / b.weightsum);
-		}
-		parentbone.updateMatrix();
-		parentbone.updateMatrixWorld();
-		parentbone.add(b.bone);
-		b.bone.updateMatrixWorld();
-		allbones.push(b.bone);
-		rootbones.push(parentbone);
-	});
 
-	return { rootbones, skeleton: new Skeleton(allbones) };
+	anim.rootbones.forEach(bone => bone.traverse(bone => {
+		let boneids: number[] | null = bone.userData.boneposids;
+		if (boneids) {
+			let x = 0, y = 0, z = 0;
+			let sum = 0;
+			for (let id of boneids) {
+				let b = bonecenters[id];
+				if (b) {
+					x += b.xsum; y += b.ysum; z += b.zsum;
+					sum += b.weightsum;
+				}
+			}
+			if (sum != 0) { bone.position.set(x / sum, y / sum, z / sum); }
+			else { bone.position.set(0, 0, 0); }
+		}
+	}));
+	function traverseSweep(obj: Object3D, precall: (obj: Object3D) => void, aftercall: (obj: Object3D) => void) {
+		precall(obj);
+		for (let c of obj.children) { traverseSweep(c, precall, aftercall); }
+		aftercall(obj);
+	}
+	anim.rootbones.forEach(root => {
+		traverseSweep(root, bone => {
+			let boneids: number[] = bone.userData.boneposids;
+			if (boneids) {
+				bone.position.set(0, 0, 0);
+				let x = 0, y = 0, z = 0;
+				let sum = 0;
+				for (let id of boneids) {
+					let b = bonecenters[id];
+					if (b) {
+						x += b.xsum; y += b.ysum; z += b.zsum;
+						sum += b.weightsum
+					}
+				}
+				if (sum != 0) { bone.position.set(x / sum, y / sum, z / sum); }
+				else { bone.position.set(0, 0, 0); }
+			} else if (bone.parent) {
+				bone.position.copy(bone.parent.position);
+			}
+		}, bone => {
+			if (bone.parent && bone != root) {
+				bone.position.sub(bone.parent.position);
+			}
+			bone.updateMatrix();
+			bone.updateMatrixWorld();
+		})
+	});
+	// anim.rootbone.traverse(b => {
+	// 	console.log(b.name, b.position);
+	// })
 }
 
-export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData) {
-	let rootnode = new SkinnedMesh();
-	// let skeleton: ReturnType<typeof buildSkeleton> | null = null as any;
-	let skeleton = buildSkeleton(model);
+export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData, anims: ParsedAnimation[]) {
+	let rootnode = (anims.length == 0 ? new Object3D() : new SkinnedMesh());
+
+
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
 		let geo = new THREE.BufferGeometry();
@@ -222,20 +245,25 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		geo.index = meshdata.indices;
 		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
 		//@ts-ignore
-		mat.wireframe = true;
+		// mat.wireframe = true;
 		let mesh: THREE.Mesh | THREE.SkinnedMesh;
-		if (skeleton && meshdata.attributes.skinids) {
+		if (anims.length != 0) {
 			mesh = new THREE.SkinnedMesh(geo, mat);
-			(mesh as SkinnedMesh).bind(skeleton.skeleton);
-			// rootnode.add(new SkeletonHelper(rootnode));
 		} else {
 			mesh = new THREE.Mesh(geo, mat);
 		}
 		rootnode.add(mesh);
 	}
-	if (skeleton && skeleton.rootbones.length != 0) {
-		rootnode.add(...skeleton.rootbones);
+	if (anims.length != 0) {
+		let anim = anims[0];
+		mountAnimation(model, anim);
+		if (anim.rootbones) { rootnode.add(...anim.rootbones); }
+		rootnode.traverse(node => {
+			if (node instanceof SkinnedMesh) {
+				node.bind(anim!.skeleton);
+			}
+		});
+		rootnode.animations = [anim.clip];
 	}
-	rootnode.bind(skeleton.skeleton);
 	return rootnode;
 }

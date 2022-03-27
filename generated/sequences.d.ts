@@ -3,7 +3,7 @@
 // run `npm run filetypes` to rebuild
 
 export type sequences = {
-	unknown_01?: ({
+	frames?: ({
 		framelength: number,
 	} & {
 		frameidlow: number,
@@ -29,7 +29,7 @@ export type sequences = {
 	unknown_12?: true | null
 	unknown_16?: number | null
 	unknown_18?: number | null
-	unknown_19?: number | null
+	skeletal_animation?: number | null
 	unknown_70?: ({
 		intlow: number,
 	} & {

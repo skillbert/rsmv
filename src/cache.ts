@@ -1,7 +1,6 @@
 import { crc32, crc32_backward, forge_crcbytes } from "./libs/crc32util";
 import { cacheMajors } from "./constants";
-import { parseCacheIndex } from "./opdecoder";
-
+import { parseCacheIndex, parseRootCacheIndex } from "./opdecoder";
 
 export type SubFile = {
 	offset: number,
@@ -9,19 +8,16 @@ export type SubFile = {
 	buffer: Buffer
 }
 
-export type CacheIndexStub = {
+export type CacheIndex = {
 	major: number,
 	minor: number,
 	crc: number,
-	version: number
-}
-
-export type CacheIndex = CacheIndexStub & {
-	uncompressed_crc: number,
-	size: number,
-	uncompressed_size: number,
+	version: number,
 	subindexcount: number,
 	subindices: number[]
+	uncompressed_crc?: number | null,
+	size?: number | null,
+	uncompressed_size?: number | null,
 }
 
 export type CacheIndexFile = CacheIndex[];
@@ -126,6 +122,9 @@ export function packBufferArchive(buffers: Buffer[]) {
 }
 
 export function unpackBufferArchive(buffer: Buffer, length: number) {
+	// if (length == 1) {
+	// 	return [{ buffer, offset: 0, size: buffer.byteLength }];
+	// }
 	var subbufs: SubFile[] = [];
 	var scan = 0x0;
 	//whats in our missing byte?
@@ -154,27 +153,50 @@ export function unpackBufferArchive(buffer: Buffer, length: number) {
 	}
 	return subbufs;
 }
+// export function rootIndexBufferToObject(metaindex: Buffer) {
+// 	var indices: CacheIndexStub[];
+// 	var offset = 0x0;
+// 	var elements = metaindex.readUInt8(offset++);
+// 	for (var i = 0; i < elements; ++i, offset += 0x50) {
+// 		var element = metaindex.slice(offset, offset + 0x50);
+// 		//skip empty indices
+// 		if (Math.max.apply(null, element) == 0) {
+// 			continue;
+// 		}
+// 		indices.push({
+// 			major: 255,
+// 			minor: i,
+// 			crc: element.readUInt32BE(0),
+// 			version: element.readUInt32BE(0x4)
+// 		};
+// 	}
+// 	return indices;
+// }
+
 export function rootIndexBufferToObject(metaindex: Buffer) {
-	var indices: { [key: number]: CacheIndexStub } = {};
-	var offset = 0x0;
-	var elements = metaindex.readUInt8(offset++);
-	for (var i = 0; i < elements; ++i, offset += 0x50) {
-		var element = metaindex.slice(offset, offset + 0x50);
-		//skip empty indices
-		if (Math.max.apply(null, element) == 0) {
-			continue;
-		}
-		indices[i] = {
-			major: 255,
-			minor: i,
-			crc: element.readUInt32BE(0),
-			version: element.readUInt32BE(0x4)
-		};
-	}
-	return indices;
+	let index = parseRootCacheIndex.read(metaindex);
+	return index.cachemajors
+		//.filter(q => q.crc != 0)
+		.map(q => {
+			let r: CacheIndex = {
+				major: 255,
+				minor: q.minor,
+				crc: q.crc,
+				version: q.version,
+				size: 0,
+				subindexcount: 1,
+				subindices: [0],
+				uncompressed_crc: 0,
+				uncompressed_size: 0,
+			}
+			return r;
+		});
 }
 
 export function indexBufferToObject(major: number, buffer: Buffer) {
+	if (major == cacheMajors.index) {
+		return rootIndexBufferToObject(buffer);
+	}
 	let readres = parseCacheIndex.read(buffer);
 	let indices = readres.indices;
 	let linear: CacheIndex[] = [];
@@ -215,6 +237,14 @@ export class CacheFileSource {
 		throw new Error("not implemented");
 	}
 	getIndexFile(major: number): Promise<CacheIndexFile> {
+		throw new Error("not implemented");
+	}
+
+	writeFile(major: number, minor: number, file: Buffer) {
+		throw new Error("not implemented");
+	}
+
+	writeFileArchive(index: CacheIndex, files: Buffer[]) {
 		throw new Error("not implemented");
 	}
 

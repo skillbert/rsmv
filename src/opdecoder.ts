@@ -31,9 +31,9 @@ export class FileParser<T> {
 			if (bytesleftoverwarncount == 100) {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
-			//TODO remove this stupid condition, needed this to fail only in some situations
+			// TODO remove this stupid condition, needed this to fail only in some situations
 			if (buffer.byteLength < 10000) {
-				// throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+				throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 			}
 		}
 		return res;
@@ -68,6 +68,6 @@ export const parseFrames = new FileParser<import("../generated/frames").frames>(
 export const parseAnimgroupConfigs = new FileParser<import("../generated/animgroupconfigs").animgroupconfigs>(require("./opcodes/animgroupconfigs.json"));
 export const parseModels = new FileParser<import("../generated/models").models>(require("./opcodes/models.json"));
 export const parseSpotAnims = new FileParser<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json"));
-
+export const parseRootCacheIndex = new FileParser<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json"));
 
 

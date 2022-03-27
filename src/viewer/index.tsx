@@ -1,10 +1,10 @@
 
-import { parseItem, parseNpc, parseObject } from "../opdecoder";
+import { parseAnimgroupConfigs, parseItem, parseNpc, parseObject } from "../opdecoder";
 import * as path from "path";
 import { OB3 } from "../3d/ob3";
 import * as ob3Renderer from "./ob3render";
 import { ThreeJsRenderer } from "./threejsrender";
-import { cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import classNames from "classnames";
@@ -424,12 +424,34 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			break;
 		case "npc":
 			let npc = parseNpc.read(await hackyCacheFileSource.getFileById(cacheMajors.npcs, +searchid));
+			metatext = JSON.stringify(npc, undefined, 2)
+			if (npc.animation_group) {
+				let index = await hackyCacheFileSource.getIndexFile(cacheMajors.config);
+				let arch = await hackyCacheFileSource.getFileArchive(index.find(q => q?.minor == cacheConfigPages.animgroups)!);
+				let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
+				console.log(animgroup);
+				let forcedanim = (window as any).forcedanim;
+				anims.push(forcedanim ?? animgroup.unknown_26 ?? animgroup.unknown_01?.[1]);
+				metatext += "\n\n" + JSON.stringify(animgroup, undefined, "\t");
+			}
 			console.log(npc);
-			metatext = JSON.stringify(npc, undefined, 2);
 			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 			modelids = npc.models ?? [];
 			console.log(npc);
+			break;
+		case "object":
+			let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);
+			console.log(obj);
+			metatext = JSON.stringify(obj, undefined, 2);
+			if (obj) {
+				if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
+				if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
+				modelids = obj.models?.flatMap(m => m.values) ?? [];
+			}
+			if (obj?.probably_animation) {
+				anims.push(obj.probably_animation);
+			}
 			break;
 		case "material":
 			modelids = [93776];//"RuneTek_Asset" jagex test model
@@ -457,19 +479,6 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 
 			metatext = JSON.stringify(info, undefined, "\t");
 			break;
-		case "object":
-			let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);
-			console.log(obj);
-			metatext = JSON.stringify(obj, undefined, 2);
-			if (obj) {
-				if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
-				if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
-				modelids = obj.models?.flatMap(m => m.values) ?? [];
-			}
-			if (obj?.probably_animation) {
-				anims.push(obj.probably_animation);
-			}
-			break;
 		case "map":
 			let [x, z, xsize, zsize] = searchid.split(/[,\.\/:;]/).map(n => +n);
 			xsize = xsize ?? 1;
@@ -492,6 +501,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 
 	if (modelids.length != 0) {
 		models.push(...await Promise.all(modelids.map(id => hackyCacheFileSource.getFileById(cacheMajors.models, id))));
+		console.log("loading models", ...modelids);
 		renderer.setOb3Models(models, hackyCacheFileSource, mods, metatext, anims);
 	}
 }
