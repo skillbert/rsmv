@@ -12,6 +12,9 @@ import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix4, Object3D, Quaternio
 //28351 pet shop sign
 //13655 large orrery
 //9101  conveyer belt
+//470   ivy shaking
+//860   waving flag
+//3484  dg door
 
 const framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
 let loaded = false;
@@ -30,13 +33,107 @@ async function getFramemap(loader: CacheFileSource, id: number) {
 	return loader.getFileById(cacheMajors.framemaps, id);
 }
 
+
+type TransformBase = { type: string, inverse: boolean };
+type TransformTranslateConst = TransformBase & { type: "translateconst", data: number[] }
+type TransformTranslate = TransformBase & { type: "translate", data: Float32Array }
+type TransformRotate = TransformBase & { type: "rotate", data: Float32Array }
+type TransformScale = TransformBase & { type: "scale", data: Float32Array }
+type Transform = TransformTranslateConst | TransformTranslate | TransformRotate | TransformScale;
+
+export type BoneInit = {
+	translateconst: TransformTranslateConst[],
+	translate: TransformTranslate[],
+	rotate: TransformRotate[],
+	scale: TransformScale[],
+	children: BoneInit[],
+	boneid: number
+}
 export type ParsedAnimation = {
-	rootbones: Bone[],
-	clip: AnimationClip,
-	skeleton: Skeleton
+	rootboneinits: BoneInit[],
+	keyframetimes: Float32Array,
+	animid: number,
+	endtime: number
 }
 
-export async function parseAnimationSequence2(loader: CacheFileSource, id: number): Promise<ParsedAnimation> {
+function isEqualTr(a: Transform, b: Transform) {
+	return a.type == b.type && a.data == b.data && a.inverse == b.inverse;
+}
+
+function isInverseTr(a: Transform, b: Transform) {
+	return a.type == b.type && a.data == b.data && a.inverse != b.inverse;
+}
+
+class TransformStack {
+	boneids: number[];
+	stack: Transform[] = [];
+	constructor(boneids: number[]) {
+		this.addTransform({ type: "translateconst", data: boneids, inverse: false });
+		this.boneids = boneids;
+	}
+	cleanStack() {
+		while (this.stack.length >= 2 && isInverseTr(this.stack[this.stack.length - 1], this.stack[this.stack.length - 2])) {
+			this.stack.splice(this.stack.length - 2, 2);
+		}
+	}
+	addTransform(trans: Transform) {
+		this.stack.push(trans);
+		this.cleanStack();
+	}
+	addFromOther(other: Transform[]) {
+		for (let i = 0; i < other.length; i++) {
+			this.addTransform(other[i]);
+		}
+	}
+	getInverse() {
+		let cpy: Transform[] = [];
+		for (let i = this.stack.length - 1; i >= 0; i--) {
+			cpy.push({ ...this.stack[i], inverse: !this.stack[i].inverse })
+		}
+		return cpy;
+	}
+}
+
+function findSharedPivot(bones: TransformStack[]) {
+	let len = bones[0].stack.length;
+	let passed = true;
+	for (let bone of bones) {
+		if (bone.stack.length != len) {
+			console.log("different stack lenghs");
+			passed = false;
+			break;
+		}
+		if (bone.stack[0].type != "translateconst") {
+			console.log("stack doesn't start with translateconst");
+			passed = false;
+			break;
+		}
+	}
+	//skip first bone since it's the slightly different translate
+	if (passed) {
+		outerloop: for (let i = 1; i < len; i++) {
+			let tr0 = bones[0].stack[i];
+			for (let boneindex = 1; boneindex < bones.length; boneindex++) {
+				let tr1 = bones[boneindex].stack[i];
+				if (!isEqualTr(tr0, tr1)) {
+					console.log("non-equal transform stack")
+					passed = false;
+					break outerloop;
+				}
+			}
+		}
+	}
+	if (passed) {
+		let ret = new TransformStack(bones.flatMap(q => q.boneids));
+		ret.addFromOther(bones[0].stack.slice(1));
+		return ret;
+	} else {
+		console.log("failed bone merge, using first bone");
+		return bones[bones.length - 1];
+	}
+}
+
+export async function parseAnimationSequence3(loader: CacheFileSource, id: number): Promise<ParsedAnimation> {
 
 	let seqfile = await loader.getFileById(cacheMajors.sequences, id);
 
@@ -49,7 +146,7 @@ export async function parseAnimationSequence2(loader: CacheFileSource, id: numbe
 	}
 
 	let frameindices = await loader.getIndexFile(cacheMajors.frames);
-	let frameindex = frameindices.find(q => q.minor == secframe0!.frameidhi);
+	let frameindex = frameindices.find((q, i) => q.minor == secframe0!.frameidhi);
 	if (!frameindex) {
 		throw new Error("frame not found " + secframe0.frameidhi);
 	}
@@ -72,153 +169,49 @@ export async function parseAnimationSequence2(loader: CacheFileSource, id: numbe
 
 	//calculate frame times
 	let endtime = 0;
-	let times = new Float32Array(sequenceframes.length);
+	let keyframetimes = new Float32Array(sequenceframes.length);
 	for (let i = 0; i < sequenceframes.length; i++) {
-		times[i] = endtime;
+		keyframetimes[i] = endtime;
 		endtime += sequenceframes[i].framelength * 0.020;
 	}
 
 	let maxbone = Math.max(...framebase.data.flatMap(q => q.data));
 
 
-	type Joint = { posbind: number, transform: number };
-
-	let bones: Joint[][] = [];
-	let combinedbases: number[][] = [];
+	let bones: TransformStack[] = [];
 	for (let i = 0; i <= maxbone + 1; i++) {
-		bones.push([]);
-		combinedbases.push([i]);
+		bones.push(new TransformStack([i]));
 	}
 
+	type RsTransform = { index: number, type: number, data: Float32Array, nodes: number[] };
+	let pivot = bones[0];
+	let actions: RsTransform[] = [];//TODO remove
 
-	type RsTransform = { base: number, type: number, originalindex: number, nodes: number[] };
-	let base = -1;
-	let actions: RsTransform[] = [];
-	for (let [index, op] of framebase.data.entries()) {
-		if (op.type == 0) {
-			if (op.data.length == 1) {
-				base = op.data[0] + 1;
+	for (let [index, base] of framebase.data.entries()) {
+		if (base.type == 0) {
+			if (base.data.length == 0) {
+				pivot = new TransformStack([]);
+			} else if (base.data.length == 1) {
+				pivot = bones[base.data[0] + 1]
 			} else {
-				//assign an id to each encountered combination of bases
-				//bit of extra effort here but saves a lot of trouble later
-				let found = false;
-				for (let [i, other] of combinedbases.entries()) {
-					if (other.length == op.data.length && other.every((v, i) => v == op.data[i] + 1)) {
-						found = true;
-						base = i;
-						break;
-					}
-				}
-				if (!found) {
-					base = combinedbases.push(op.data.sort((a, b) => a - b).map(q => q + 1)) - 1;
-				}
-			}
-			continue;
-		}
-		actions.push({ base, nodes: op.data, type: op.type, originalindex: index });
-	}
-	console.log(actions.slice());
-	actions.sort((a, b) => {
-		if (a.type == b.type) { return b.nodes.length - a.nodes.length; }
-		if (a.type == 1) { return 1; }
-		if (b.type == 1) { return -1; }
-		return 0;
-	});
-	console.log(actions);
-
-	for (let op of actions) {
-		for (let boneid of op.nodes) {
-			let boneactions = bones[boneid + 1];
-			if (op.type == 1) {
-				boneactions.unshift({ posbind: -1, transform: op.originalindex });
-			} else {
-				boneactions.push({ posbind: op.base, transform: op.originalindex });
+				let pivot = findSharedPivot(base.data.map(q => bones[q + 1]));
+				if (!pivot) { throw new Error("no shared pivot found"); }
 			}
 		}
-	}
 
-	console.log(bones);
-
-	//make sure translation actions have a 0 original trasnlate
-	for (let bone of bones) {
-		let lastbound = -1;
-		let bindfree = false;
-		for (let i = 0; i < bone.length; i++) {
-			let action = bone[i];
-			if (action.posbind == lastbound) {
-				bindfree = true;
-			} else {
-				lastbound = action.posbind;
-				bindfree = false;
-			}
-			if (action.transform != -1 && !bindfree) {
-				let type = framebase.data[action.transform].type;
-				if (type == 1) {
-					bone.splice(i, 0, { posbind: action.posbind, transform: -1 });
-				}
-			}
-		}
-	}
-
-	type ParsedJoint = Joint & { boneid: number, children: ParsedJoint[] };
-
-
-	function iter(joint: ParsedJoint, bones: { joints: Joint[], id: number }[], depth: number) {
-		for (let i = 0; i < bones.length; i++) {
-			let bone1 = bones[i];
-			let action1 = bone1.joints[depth];
-			if (!action1) {
-				joint.children.push({ posbind: -1, transform: -1, boneid: bone1.id, children: [] });
-				continue;
-			}
-			let subbones = [bone1];
-			for (let j = i + 1; j < bones.length; j++) {
-				let bone2 = bones[j];
-				let action2 = bone2.joints[depth];
-				if (action2 && action1.posbind == action2.posbind && action1.transform == action2.transform) {
-					subbones.push(bone2);
-					bones.splice(j, 1);
-					j--;
-				}
-			}
-			let childjoint: ParsedJoint = { posbind: action1.posbind, transform: action1.transform, boneid: -1, children: [] };
-			joint.children.push(childjoint);
-			iter(childjoint, subbones, depth + 1);
-		}
-	}
-
-	let rootJoint: ParsedJoint = { posbind: -1, transform: -1, boneid: -1, children: [] };
-	iter(rootJoint, bones.map((v, i) => ({ joints: v, id: i })), 0);
-	let logiter = (joint: ParsedJoint, depth: number) => {
-		let transnames = ["anchor", "translate", "rotate", "scale?", "anim5", "anim6", "anim7", "anim8", "anim9"];
-		console.log(`${"  ".repeat(depth)} = ${joint.boneid}${joint.transform == -1 ? "" : ` ${joint.posbind}.${joint.transform} ${transnames[framebase.data[joint.transform].type]}`}`);
-		for (let sub of joint.children) { logiter(sub, depth + 1); }
-	}
-	// logiter(rootJoint, 0);
-
-	let tracksTemplates: ((name: string) => KeyframeTrack)[] = [];
-
-	for (let [i, base] of framebase.data.entries()) {
-
-		//type 0 unknown, usually on root
-		//type 1 probably translate
-		//type 2 probably rotation
-		//type 5 defaults to 64?
-
-		let nfields = [3, 3, 4, 3, 3, 3, 3][base.type];
+		let nfields = [3, 3, 4, 3, 3, 4, 3, 3, 3, 3, 3][base.type];
 		let rawclip = new Float32Array(nfields * frames.length);
 		let clipindex = 0;
 		let tempquat = new Quaternion();
 		let tempEuler = new Euler();
 		for (let frame of frames) {
-			let flag = frame?.flags[i] ?? 0;
+			let flag = frame?.flags[index] ?? 0;
 
-			//TODO probly remove
-			//???
+			//there seems to actually be data here
 			if (base.type == 0) {
-				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
+				rawclip[clipindex++] = (flag & 1 ? readAnimTranslate(frame?.stream) : 0);
+				rawclip[clipindex++] = (flag & 2 ? readAnimTranslate(frame?.stream) : 0);
+				rawclip[clipindex++] = (flag & 4 ? readAnimTranslate(frame?.stream) : 0);
 			}
 			//translate
 			if (base.type == 1) {
@@ -259,12 +252,32 @@ export async function parseAnimationSequence2(loader: CacheFileSource, id: numbe
 			}
 			//scale?
 			if (base.type == 3) {
-				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
+				// if (flag & 1) {
+				// 	let i = frame.stream.scanloc();
+
+				// 	let q1 = readAnimFraction(frame.stream);
+				// 	frame.stream.skip(i - frame.stream.scanloc());
+				// 	let q2 = readAnimTranslate(frame.stream);
+				// 	frame.stream.skip(i - frame.stream.scanloc());
+				// 	let q3 = frame.stream.readUShortSmart();
+				// 	frame.stream.skip(i - frame.stream.scanloc());
+				// 	let q4 = frame.stream.readShortSmart();
+				// 	console.log(q1, q2, q3, q4);
+				// 	rawclip[clipindex++] = q2 / 128;
+				// }
+				rawclip[clipindex++] = (flag & 1 ?  readAnimFraction(frame.stream) : 128) / 128;
+				rawclip[clipindex++] = (flag & 2 ? readAnimTranslate(frame.stream) : 128) / 128;
+				rawclip[clipindex++] = (flag & 4 ? readAnimTranslate(frame.stream) : 128) / 128;
 			}
 			//others todo
-			if (base.type >= 4) {
+			if (base.type == 5) {
+				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
+				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
+				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
+				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
+				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
+				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
+			} else if (base.type >= 4) {
 				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
 				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
 				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
@@ -279,65 +292,135 @@ export async function parseAnimationSequence2(loader: CacheFileSource, id: numbe
 				clip[i * nfields + j] = rawclip[frameid * nfields + j];
 			}
 		}
-		if (base.type == 0) {
-			// tracks.push(new VectorKeyframeTrack(`bone_${base.data[0] + 1}.scale`, times as any, clip as any));
-		}
-		if (base.type == 1) {
-			tracksTemplates[i] = (name => new VectorKeyframeTrack(`${name}.position`, times as any, clip as any));
-		}
-		if (base.type == 2) {
-			tracksTemplates[i] = (name => new QuaternionKeyframeTrack(`${name}.quaternion`, times as any, clip as any));
-		}
-		if (base.type == 3) {
-			// console.log("type3", (Math.max(...clip) == Math.min(...clip) ? Math.min(...clip) : [...clip]));
-		}
-		if (base.type == 5) {
-			// console.log("type5", (Math.max(...clip) == Math.min(...clip) ? Math.min(...clip) : [...clip]));
+
+		actions.push({
+			index,
+			data: clip,
+			nodes: base.data.map(q => q + 1),
+			type: base.type
+		});
+
+
+		let inverse = pivot.getInverse();
+		let forward = pivot.stack.slice();
+		for (let boneid of base.data) {
+			let stack = bones[boneid + 1];
+			if (base.type == 1) {
+				stack.addTransform({ type: "translate", data: clip, inverse: false });
+			} else if (base.type == 2) {
+				stack.addFromOther(inverse);
+				stack.addTransform({ type: "rotate", data: clip, inverse: false });
+				stack.addFromOther(forward);
+			} else if (base.type == 3) {
+				stack.addFromOther(inverse);
+				stack.addTransform({ type: "scale", data: clip, inverse: false });
+				stack.addFromOther(forward);
+			}
 		}
 	}
-	// for (let frame of frames) {
-	// 	console.log(frames.indexOf(frame), framebase.data.map(q => q.type), frame.flags, [...frame.stream.getData()].map(q => q.toString(16).padStart(2, "0")).join(","));
-	// }
 
 
 	frames.forEach((q, i) => {
-		// if (q.dataindex != q.animdata.length) {
-		// 	throw new Error("ints left in anim decode: " + (q.animdata.length - q.dataindex));
-		// }
 		if (!q.stream.eof()) {
 			console.warn("ints left in anim decode: " + (q.stream.getData().byteLength - q.stream.scanloc()), i);
+			framebase.data.map((fr, i) => {
+				console.log(fr.type, q.flags[i]);
+			});
 		}
 	});
-
-
-	let resultbones: Bone[] = [];
-	let extraboneCounter = 0;
-	let tracks: KeyframeTrack[] = [];
-	let iterskel = (parsed: ParsedJoint) => {
-		let bone = new Bone();
-		if (parsed.boneid != -1) {
-			resultbones[parsed.boneid] = bone;
-			bone.name = "bone_" + parsed.boneid;
-		} else {
-			bone.name = "extrabone_" + (extraboneCounter++);
-		}
-		if (parsed.posbind != -1) { bone.userData.boneposids = combinedbases[parsed.posbind]; }
-		if (parsed.transform != -1) {
-			if (!tracksTemplates[parsed.transform]) {
-				//TODO
-				// console.log("animation index", parsed.transform, "missing");
-			} else {
-				tracks.push(tracksTemplates[parsed.transform](bone.name));
+	let buildskeleton = function (bones: Set<TransformStack>, transSkip: number) {
+		let children: BoneInit[] = [];
+		while (bones.size != 0) {
+			let friends = new Set(bones);
+			let hadnonconst = false;
+			let newskip = transSkip;
+			let resultbone: BoneInit = {
+				translateconst: [],
+				translate: [],
+				rotate: [],
+				scale: [],
+				children: [],
+				boneid: -1
 			}
+			let ownerbone: TransformStack | null = null;
+			digloop: for (; !ownerbone; newskip++) {
+				let tr: Transform | null = null;
+
+				for (let friend of friends) {
+					let actionindex = friend.stack.length - 1 - newskip;
+					if (actionindex < 0) {
+						debugger;
+					}
+					if (actionindex == 0) {
+						if (!hadnonconst && friends.size > 1) {
+							friends.delete(friend);
+							continue;
+						} else {
+							ownerbone = friend;
+						}
+					}
+					if (!tr) {
+						tr = friend.stack[actionindex];
+						//can only stack transforms into the same bone when in compatible order
+						if (tr.type == "translate" && (resultbone.rotate.length != 0 || resultbone.scale.length != 0)) { break digloop }
+						if (tr.type == "translateconst" && (resultbone.rotate.length != 0 || resultbone.scale.length != 0)) { break digloop; }
+						if (tr.type == "rotate" && resultbone.scale.length != 0) { break digloop; }
+					} else {
+						let match = isEqualTr(tr, friend.stack[actionindex]);
+						if (!match) {
+							if (!hadnonconst) {
+								friends.delete(friend);
+							} else {
+								break digloop;
+							}
+						}
+					}
+				}
+
+				if (tr) {
+					if (tr.type == "translateconst") { resultbone.translateconst.push(tr); }
+					if (tr.type == "translate") { resultbone.translate.push(tr); }
+					if (tr.type == "rotate") { resultbone.rotate.push(tr); }
+					if (tr.type == "scale") { resultbone.scale.push(tr); }
+
+					if (tr.type != "translateconst") { hadnonconst = true; }
+				}
+			}
+			if (resultbone.translateconst.length == 0 && resultbone.translate.length == 0 && resultbone.rotate.length == 0 && resultbone.scale.length == 0) {
+				console.log("useless bone");
+				debugger;
+			}
+			friends.forEach(q => bones.delete(q));
+			if (ownerbone) {
+				if (ownerbone.boneids.length != 1) { throw new Error("ownerbone with id length 1 expected"); }
+				resultbone.boneid = ownerbone.boneids[0];
+				friends.delete(ownerbone);
+			}
+			resultbone.children = buildskeleton(friends, newskip);
+			children.push(resultbone);
 		}
-		for (let child of parsed.children) {
-			bone.add(iterskel(child));
-		}
-		return bone;
+		return children;
 	}
-	let rootbones = rootJoint.children.map(iterskel);
-	let skeleton = new Skeleton(resultbones);
-	let clip = new AnimationClip(`sequence_${id}`, endtime, tracks);
+
+	let rootboneinits = buildskeleton(new Set(bones), 0);
+
+	let logboneinit = (bone: BoneInit, indent: number) => {
+		let actionmap = (tr: Transform[]) => tr.map(q => actions.find(w => w.data == q.data)?.index + (q.inverse ? "!" : ""));
+		let str = "  ".repeat(indent);
+		str += (bone.boneid != -1 ? bone.boneid : "x");
+		str += ") " + bone.translateconst.map(q => q.data + (q.inverse ? "!" : ""));
+		str += " - " + actionmap(bone.translate);
+		str += " - " + actionmap(bone.rotate);
+		str += " - " + actionmap(bone.scale);
+		console.log(str);
+		bone.children.forEach(q => logboneinit(q, indent + 1));
+	}
+
+	console.log(bones);
+	rootboneinits.forEach(q => logboneinit(q, 0));
+
+	// let skeleton = new Skeleton(resultbones);
+	// let clip = new AnimationClip(`sequence_${id}`, endtime, tracks);
 
 
 	// console.log("sequence id:", id, "framebase id:", frames[0].baseid, "framesid:", sequenceframes[0].frameidhi, "framecount:", sequenceframes.length);
@@ -346,12 +429,13 @@ export async function parseAnimationSequence2(loader: CacheFileSource, id: numbe
 
 	console.log(framebase.data.map(q => [q.type, "", ...q.data.map(q => q + 1)]));
 
-	//TODO remove mockup
+	// //TODO remove mockup
 	// let rootbone = new Bone();
-	// let skeleton = new Skeleton([rootbone]);
+	// let rootbones = [rootbone];
+	// let skeleton = new Skeleton(rootbones);
 	// let clip = new AnimationClip(`sequence_${id}`, endtime, []);
 
-	return { clip, skeleton, rootbones };
+	return { rootboneinits, keyframetimes, animid: id, endtime };
 }
 
 function readAnimTranslate(str: Stream) {

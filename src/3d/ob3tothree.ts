@@ -9,9 +9,9 @@ import { boundMethod } from 'autobind-decorator';
 import { materialCacheKey } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
-import { parseAnimationSequence2, ParsedAnimation } from "./animation";
+import { BoneInit, parseAnimationSequence3, ParsedAnimation } from "./animation";
 import { CacheFileSource } from "../cache";
-import { Bone, Matrix4, Object3D, Skeleton, SkeletonHelper, SkinnedMesh } from "three";
+import { AnimationClip, Bone, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -138,7 +138,7 @@ export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfile:
 	meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
 
 
-	let anims = await Promise.all(animids.map(q => parseAnimationSequence2(getFile, q)));
+	let anims = await Promise.all(animids.map(q => parseAnimationSequence3(getFile, q)));
 	let mesh = await ob3ModelToThree(scene, meshdata, anims);
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
@@ -176,58 +176,139 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 	}
 
 
-	anim.rootbones.forEach(bone => bone.traverse(bone => {
-		let boneids: number[] | null = bone.userData.boneposids;
-		if (boneids) {
-			let x = 0, y = 0, z = 0;
-			let sum = 0;
-			for (let id of boneids) {
-				let b = bonecenters[id];
-				if (b) {
-					x += b.xsum; y += b.ysum; z += b.zsum;
-					sum += b.weightsum;
-				}
-			}
-			if (sum != 0) { bone.position.set(x / sum, y / sum, z / sum); }
-			else { bone.position.set(0, 0, 0); }
+	let nframes = anim.keyframetimes.length;
+	let keyframetracks: KeyframeTrack[] = [];
+	let extrabonecounter = 0;
+	let indexedbones: Bone[] = [];
+	function iter(init: BoneInit, quaternionstack: Float32Array[]) {
+		let nextquaternionstack = quaternionstack;
+		let bone = new Bone();
+		if (init.boneid != -1) {
+			indexedbones[init.boneid] = bone;
+			bone.name = "bone_" + init.boneid;
+		} else {
+			bone.name = "extra_" + (extrabonecounter++);
 		}
-	}));
-	function traverseSweep(obj: Object3D, precall: (obj: Object3D) => void, aftercall: (obj: Object3D) => void) {
-		precall(obj);
-		for (let c of obj.children) { traverseSweep(c, precall, aftercall); }
-		aftercall(obj);
-	}
-	anim.rootbones.forEach(root => {
-		traverseSweep(root, bone => {
-			let boneids: number[] = bone.userData.boneposids;
-			if (boneids) {
-				bone.position.set(0, 0, 0);
-				let x = 0, y = 0, z = 0;
-				let sum = 0;
-				for (let id of boneids) {
-					let b = bonecenters[id];
-					if (b) {
-						x += b.xsum; y += b.ysum; z += b.zsum;
-						sum += b.weightsum
-					}
+		for (let tr of init.translateconst) {
+			let totalweight = 0;
+			let xsum = 0, ysum = 0, zsum = 0;
+			for (let boneid of tr.data) {
+				let center = bonecenters[boneid];
+				if (!center) {
+					console.log("bone center not found", tr.data);
+					continue;
 				}
-				if (sum != 0) { bone.position.set(x / sum, y / sum, z / sum); }
-				else { bone.position.set(0, 0, 0); }
-			} else if (bone.parent) {
-				bone.position.copy(bone.parent.position);
+				let factor = (tr.inverse ? -1 : 1);
+				xsum += center.xsum * factor;
+				ysum += center.ysum * factor;
+				zsum += center.zsum * factor;
+				totalweight += center.weightsum;
 			}
-		}, bone => {
-			if (bone.parent && bone != root) {
-				bone.position.sub(bone.parent.position);
+			if (totalweight != 0) {
+				bone.position.set(
+					bone.position.x + xsum / totalweight,
+					bone.position.y + ysum / totalweight,
+					bone.position.z + zsum / totalweight
+				)
 			}
-			bone.updateMatrix();
-			bone.updateMatrixWorld();
-		})
-	});
-	// anim.rootbone.traverse(b => {
-	// 	console.log(b.name, b.position);
-	// })
+			if (isNaN(bone.position.x)) {
+				debugger;//TODO remove
+			}
+		}
+
+		if (init.translate.length != 0) {
+			let track = new Float32Array(nframes * 3);
+			let sum = new Vector3();
+			let tmp = new Vector3();
+			let quatsum = new Quaternion();
+			let quattmp = new Quaternion();
+			for (let i = 0; i < nframes; i++) {
+				sum.set(0, 0, 0);
+				quatsum.identity();
+				//add all translations of this bone in the global frame
+				for (let track of init.translate) {
+					tmp.fromArray(track.data, i * 3);
+					sum.add(tmp);
+				}
+				//add all rotations on this bone
+				for (let rot of quaternionstack) {
+					quattmp.fromArray(rot, i * 4);
+					quatsum.multiply(quattmp);
+				}
+
+				//apply inverse of rotations on this bone
+				quatsum.invert();
+				sum.applyQuaternion(quatsum);
+
+				//add the translations of the bone in bone frame
+				sum.add(bone.position);
+
+				//save the baked translation
+				sum.toArray(track, i * 3);
+			}
+
+			keyframetracks.push(new VectorKeyframeTrack(`${bone.name}.position`, anim.keyframetimes as any, track as any));
+		}
+
+		if (init.rotate.length != 0) {
+			let track = new Float32Array(nframes * 4);
+			let sum = new Quaternion();
+			let tmp = new Quaternion();
+			for (let i = 0; i < nframes; i++) {
+				sum.identity();
+				for (let track of init.rotate) {
+					tmp.fromArray(track.data, i * 4);
+					sum.multiply(tmp);
+				}
+				sum.toArray(track, i * 4);
+			}
+
+			keyframetracks.push(new QuaternionKeyframeTrack(`${bone.name}.quaternion`, anim.keyframetimes as any, track as any));
+
+			//new quaternionstack for child bones
+			nextquaternionstack = quaternionstack.concat(init.rotate.map(q => q.data));
+		}
+
+		if (init.scale.length != 0) {
+			let track = new Float32Array(nframes * 3);
+			let sum = new Vector3();
+			let tmp = new Vector3();
+			for (let i = 0; i < nframes; i++) {
+				sum.set(1, 1, 1);
+				for (let track of init.scale) {
+					tmp.fromArray(track.data, i * 3);
+					sum.multiply(tmp);
+				}
+				sum.toArray(track, i * 3);
+			}
+
+			keyframetracks.push(new VectorKeyframeTrack(`${bone.name}.scale`, anim.keyframetimes as any, track as any));
+		}
+
+		if (init.children.length != 0) {
+			bone.add(...init.children.map(q => iter(q, nextquaternionstack)));
+		}
+
+		return bone;
+	}
+
+	let rootangle = []
+	let rootbones = anim.rootboneinits.map(b => iter(b, rootangle));
+
+	let skeleton = new Skeleton(indexedbones);
+	let clip = new AnimationClip(`sequence_${anim.animid}`, anim.endtime, keyframetracks);
+
+
+	return { skeleton, clip, rootbones };
 }
+
+
+function traverseSweep(obj: Object3D, precall: (obj: Object3D) => void, aftercall: (obj: Object3D) => void) {
+	precall(obj);
+	for (let c of obj.children) { traverseSweep(c, precall, aftercall); }
+	aftercall(obj);
+}
+
 
 export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData, anims: ParsedAnimation[]) {
 	let rootnode = (anims.length == 0 ? new Object3D() : new SkinnedMesh());
@@ -256,14 +337,14 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 	}
 	if (anims.length != 0) {
 		let anim = anims[0];
-		mountAnimation(model, anim);
-		if (anim.rootbones) { rootnode.add(...anim.rootbones); }
+		let mount = mountAnimation(model, anim);
+		if (mount.rootbones) { rootnode.add(...mount.rootbones); }
 		rootnode.traverse(node => {
 			if (node instanceof SkinnedMesh) {
-				node.bind(anim!.skeleton);
+				node.bind(mount.skeleton);
 			}
 		});
-		rootnode.animations = [anim.clip];
+		rootnode.animations = [mount.clip];
 	}
 	return rootnode;
 }

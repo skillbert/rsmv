@@ -68,14 +68,6 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		return cache.unpackSqliteBufferArchive(arch, index.subindexcount);
 	}
 
-	writeFile(major: number, minor: number, file: Buffer) {
-		throw new Error("not implemented");
-	}
-
-	writeFileArchive(index: cache.CacheIndex, files: Buffer[]) {
-		throw new Error("not implemented");
-	}
-
 	async getIndexFile(major: number) {
 		if (major == 255) { return this.generateRootIndex(); }
 		let index = this.indices.get(major);

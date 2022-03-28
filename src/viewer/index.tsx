@@ -1,8 +1,5 @@
 
 import { parseAnimgroupConfigs, parseItem, parseNpc, parseObject } from "../opdecoder";
-import * as path from "path";
-import { OB3 } from "../3d/ob3";
-import * as ob3Renderer from "./ob3render";
 import { ThreeJsRenderer } from "./threejsrender";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
@@ -19,7 +16,7 @@ import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 import * as datastore from "idb-keyval";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
-type RenderMode = "gltf" | "ob3" | "three";
+type RenderMode = "gltf" | "three";
 
 function start() {
 	window.addEventListener("keydown", e => {
@@ -249,9 +246,6 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 				(this.renderer as any).automaticFrames = true;
 				console.warn("forcing auto-frames!!");
 			}
-			if (this.state.rendermode == "ob3") {
-				this.renderer = new Ob3Renderer(cnv, this.viewerStateChanged);
-			}
 		}
 	}
 
@@ -297,9 +291,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "gltf" })} onClick={() => this.setRenderer("gltf")}><span>GLTF</span></div>
 							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "ob3" })} onClick={() => this.setRenderer("ob3")}><span>OB3</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "ob3" })} onClick={this.exportModel}><span>Export</span></div>
+							<div className={classNames("rsmv-icon-button", { active: false })} onClick={this.exportModel}><span>Export</span></div>
 							<div></div>
 						</div>
 						<div id="sidebar-browser-tab">
@@ -517,23 +509,5 @@ export interface ModelSink {
 	setModels?: (models: THREE.Object3D[], metastr?: string) => void,
 	setValue?: (key: string, value: boolean) => void
 };
-class Ob3Renderer implements ModelSink {
-	cnv: any;
-	metacb: (meta: ModelViewerState) => void;
-	constructor(cnv: HTMLCanvasElement, metacb: (meta: ModelViewerState) => void) {
-		this.cnv = cnv;
-		this.metacb = metacb;
-	}
-	setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string, anims: number[]) {
-		let models = modelfiles.map(file => {
-			let m = new OB3(cache.getFileById);
-			m.setData(file);
-			this.metacb({ meta, toggles: {} });
-			return m;
-		});
-		throw new Error("currently broken");
-		// ob3Renderer.init(this.cnv, models, vertexShader, fragmentShader);
-	}
-}
 
 start();

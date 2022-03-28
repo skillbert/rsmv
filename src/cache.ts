@@ -176,7 +176,7 @@ export function unpackBufferArchive(buffer: Buffer, length: number) {
 export function rootIndexBufferToObject(metaindex: Buffer) {
 	let index = parseRootCacheIndex.read(metaindex);
 	return index.cachemajors
-		//.filter(q => q.crc != 0)
+		.filter(q => q.crc != 0)
 		.map(q => {
 			let r: CacheIndex = {
 				major: 255,
@@ -193,18 +193,16 @@ export function rootIndexBufferToObject(metaindex: Buffer) {
 		});
 }
 
-export function indexBufferToObject(major: number, buffer: Buffer) {
+export function indexBufferToObject(major: number, buffer: Buffer): CacheIndex[] {
 	if (major == cacheMajors.index) {
 		return rootIndexBufferToObject(buffer);
 	}
 	let readres = parseCacheIndex.read(buffer);
-	let indices = readres.indices;
-	let linear: CacheIndex[] = [];
+	let indices = readres.indices as any as CacheIndex[];
 	for (let entry of indices) {
-		if (!entry) { debugger; }
-		linear[entry.minor] = Object.assign(entry, { major });
+		entry.major = major;
 	}
-	return linear;
+	return indices;
 }
 
 const mappedFileIds = {
@@ -240,11 +238,11 @@ export class CacheFileSource {
 		throw new Error("not implemented");
 	}
 
-	writeFile(major: number, minor: number, file: Buffer) {
+	writeFile(major: number, minor: number, file: Buffer): Promise<void> {
 		throw new Error("not implemented");
 	}
 
-	writeFileArchive(index: CacheIndex, files: Buffer[]) {
+	writeFileArchive(index: CacheIndex, files: Buffer[]): Promise<void> {
 		throw new Error("not implemented");
 	}
 

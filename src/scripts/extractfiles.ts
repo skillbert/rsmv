@@ -13,14 +13,6 @@ import { GameCacheLoader } from "../cacheloader";
 import { crc32_backward, forge } from "../libs/crc32util";
 import prettyJson from "json-stringify-pretty-compact";
 
-type KnownType = {
-	index: number,
-	subfile?: number,
-	minor?: number,
-	parser?: FileParser<any>,
-	gltf?: (b: Buffer, source: CacheFileSource) => Promise<Uint8Array>,
-	img?: (b: Buffer, source: CacheFileSource) => Promise<FlatImageData[]>
-}
 
 type CacheFileId = {
 	index: CacheIndex,
@@ -237,7 +229,7 @@ const modes: Record<string, DecodeModeFactory> = {
 	models: standardFile(parseModels, standardIndex(cacheMajors.models)),
 
 	indices: standardFile(parseCacheIndex, indexfileIndex()),
-	rootindex:standardFile(parseRootCacheIndex,rootindexfileIndex())
+	rootindex: standardFile(parseRootCacheIndex, rootindexfileIndex())
 }
 
 let cmd2 = command({
@@ -309,7 +301,7 @@ let cmd2 = command({
 				}
 				currentBatch.outputs.push(res);
 			} else {
-				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
+				let filename = path.resolve(outdir, `${args.mode}${logicalid.length == 0 ? "" : "-" + logicalid.join("_")}.${mode.ext}`);
 				fs.writeFileSync(filename, res);
 			}
 		}
