@@ -11,7 +11,7 @@ import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, parseAnimationSequence3, ParsedAnimation } from "./animation";
 import { CacheFileSource } from "../cache";
-import { AnimationClip, Bone, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
+import { AnimationClip, Bone, Group, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -132,14 +132,17 @@ export class ThreejsSceneCache {
 
 
 
-export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfile: Buffer, mods: ModelModifications, animids: number[]) {
+export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfiles: Buffer[], mods: ModelModifications, animids: number[]) {
 	let scene = new ThreejsSceneCache(getFile.getFileById.bind(getFile));
-	let meshdata = parseOb3Model(modelfile);
-	meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
+	let meshdatas = modelfiles.map(file => {
+		let meshdata = parseOb3Model(file);
+		meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
+		return meshdata;
+	});
 
 
 	let anims = await Promise.all(animids.map(q => parseAnimationSequence3(getFile, q)));
-	let mesh = await ob3ModelToThree(scene, meshdata, anims);
+	let mesh = await ob3ModelToThree(scene, mergeModelDatas(meshdatas), anims.filter((q): q is ParsedAnimation => !!q));
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
 	(window as any).mesh = mesh;
@@ -180,8 +183,10 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 	let keyframetracks: KeyframeTrack[] = [];
 	let extrabonecounter = 0;
 	let indexedbones: Bone[] = [];
+	let missingpivots = 0;
 	function iter(init: BoneInit, quaternionstack: Float32Array[]) {
 		let nextquaternionstack = quaternionstack;
+
 		let bone = new Bone();
 		if (init.boneid != -1) {
 			indexedbones[init.boneid] = bone;
@@ -195,7 +200,6 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 			for (let boneid of tr.data) {
 				let center = bonecenters[boneid];
 				if (!center) {
-					console.log("bone center not found", tr.data);
 					continue;
 				}
 				let factor = (tr.inverse ? -1 : 1);
@@ -210,9 +214,8 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 					bone.position.y + ysum / totalweight,
 					bone.position.z + zsum / totalweight
 				)
-			}
-			if (isNaN(bone.position.x)) {
-				debugger;//TODO remove
+			} else {
+				missingpivots++;
 			}
 		}
 
@@ -228,7 +231,8 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 				//add all translations of this bone in the global frame
 				for (let track of init.translate) {
 					tmp.fromArray(track.data, i * 3);
-					sum.add(tmp);
+					if (track.inverse) { sum.sub(tmp); }
+					else { sum.add(tmp); }
 				}
 				//add all rotations on this bone
 				for (let rot of quaternionstack) {
@@ -258,6 +262,7 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 				sum.identity();
 				for (let track of init.rotate) {
 					tmp.fromArray(track.data, i * 4);
+					if (track.inverse) { tmp.invert(); }
 					sum.multiply(tmp);
 				}
 				sum.toArray(track, i * 4);
@@ -266,7 +271,7 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 			keyframetracks.push(new QuaternionKeyframeTrack(`${bone.name}.quaternion`, anim.keyframetimes as any, track as any));
 
 			//new quaternionstack for child bones
-			nextquaternionstack = quaternionstack.concat(init.rotate.map(q => q.data));
+			nextquaternionstack = quaternionstack.concat([track]);
 		}
 
 		if (init.scale.length != 0) {
@@ -298,6 +303,9 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 	let skeleton = new Skeleton(indexedbones);
 	let clip = new AnimationClip(`sequence_${anim.animid}`, anim.endtime, keyframetracks);
 
+	if (missingpivots != 0) {
+		console.log("missing pivots during mountanimation", missingpivots);
+	}
 
 	return { skeleton, clip, rootbones };
 }
@@ -309,10 +317,18 @@ function traverseSweep(obj: Object3D, precall: (obj: Object3D) => void, aftercal
 	aftercall(obj);
 }
 
+function mergeModelDatas(models: ModelData[]) {
+	let r: ModelData = {
+		bonecount: Math.max(...models.map(q => q.bonecount)),
+		maxy: Math.max(...models.map(q => q.maxy)),
+		miny: Math.max(...models.map(q => q.miny)),
+		meshes: models.flatMap(q => q.meshes)
+	}
+	return r;
+}
 
 export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData, anims: ParsedAnimation[]) {
 	let rootnode = (anims.length == 0 ? new Object3D() : new SkinnedMesh());
-
 
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
@@ -341,9 +357,11 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		if (mount.rootbones) { rootnode.add(...mount.rootbones); }
 		rootnode.traverse(node => {
 			if (node instanceof SkinnedMesh) {
+				// node.bindMode = "detached";
 				node.bind(mount.skeleton);
 			}
 		});
+		(rootnode as SkinnedMesh).bind(mount.skeleton);
 		rootnode.animations = [mount.clip];
 	}
 	return rootnode;

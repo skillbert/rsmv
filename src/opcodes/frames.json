@@ -1,7 +1,6 @@
 ["struct",
 	["header_always_2","ubyte"],
 	["probably_framemap_id","ushort"],
-	["header3","ubyte"],
-	["flags",["array","ubyte","ubyte"]],
+	["flags",["array","ushort","ubyte"]],
 	["animdata",["buffer",["bytesleft"],"ubyte"]]
 ]

@@ -267,6 +267,7 @@ export class ThreeJsRenderer implements ModelSink {
 			this.camera.updateProjectionMatrix();
 		}
 		let delta = this.clock.getDelta();
+		delta *= ((window as any).speed ?? 100) / 100;//TODO remove
 		if (this.animationMixer) {
 			this.animationMixer.update(delta);
 		}
@@ -311,8 +312,8 @@ export class ThreeJsRenderer implements ModelSink {
 			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
 			// return this.setGltfModels(models, metastr);
 		} else {
-			let models = await Promise.all(modelfiles.map(m => ob3ModelToThreejsNode(cache, m, mods, anims)));
-			return this.setModels(models, metastr);
+			let model = await ob3ModelToThreejsNode(cache, modelfiles, mods, anims);
+			return this.setModels([model], metastr);
 		}
 	}
 	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
@@ -473,7 +474,7 @@ export class ThreeJsRenderer implements ModelSink {
 	export(type: "gltf") {
 		return new Promise<Buffer>(resolve => {
 			let q = new GLTFExporter();
-			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: true, embedImages: true });
+			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: false, embedImages: true, animations: this.modelnode?.children[0].animations });
 		});
 		// return new Promise<Buffer>(resolve => {
 		// 	let q = new ColladaExporter();

@@ -64,11 +64,8 @@ let cmd = command({
 				errminors.push(file.minor);
 				errfilesizes.push(file.file.byteLength);
 				let debugdata = getDebug(false)!;
-				// if (!debugdata?.opcodes.find(q => q.op == 0x1d)) { continue; }
-				// if (debugdata?.opcodes.find(q => q.op == 0x0d)) { continue; }
 				console.log("decode", file.minor, file.subfile, (e as Error).message);
 
-				// fs.writeFileSync(path.resolve(errdir, `err-${file.major}_${file.minor}_${file.subfile}.bin`), file.file);
 				let chunks: Buffer[] = [];
 				let index = 0;
 				let outindex = 0;

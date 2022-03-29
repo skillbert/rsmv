@@ -171,7 +171,7 @@ let cmd = cmdts.command({
 				let mapenum = parseEnums.read(file);
 
 				let indexmeta = await filesource.getIndexFile(cacheMajors.worldmap);
-				let index = indexmeta.find(q => q.minor == 0)!;
+				let index = indexmeta[0];
 				let files = await filesource.getFileArchive(index);
 				mask = mapenum.intArrayValue2!.values
 					.map(q => parseMapZones.read(files[q[1]].buffer))

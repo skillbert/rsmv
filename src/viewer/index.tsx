@@ -419,7 +419,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			metatext = JSON.stringify(npc, undefined, 2)
 			if (npc.animation_group) {
 				let index = await hackyCacheFileSource.getIndexFile(cacheMajors.config);
-				let arch = await hackyCacheFileSource.getFileArchive(index.find(q => q?.minor == cacheConfigPages.animgroups)!);
+				let arch = await hackyCacheFileSource.getFileArchive(index[cacheConfigPages.animgroups]);
 				let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
 				console.log(animgroup);
 				let forcedanim = (window as any).forcedanim;
@@ -430,7 +430,6 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 			modelids = npc.models ?? [];
-			console.log(npc);
 			break;
 		case "object":
 			let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);

@@ -176,8 +176,8 @@ export function unpackBufferArchive(buffer: Buffer, length: number) {
 export function rootIndexBufferToObject(metaindex: Buffer) {
 	let index = parseRootCacheIndex.read(metaindex);
 	return index.cachemajors
-		.filter(q => q.crc != 0)
 		.map(q => {
+			if (q.crc == 0) { return undefined!; }
 			let r: CacheIndex = {
 				major: 255,
 				minor: q.minor,
@@ -198,16 +198,18 @@ export function indexBufferToObject(major: number, buffer: Buffer): CacheIndex[]
 		return rootIndexBufferToObject(buffer);
 	}
 	let readres = parseCacheIndex.read(buffer);
-	let indices = readres.indices as any as CacheIndex[];
+	let indices = readres.indices;
+	let linear: CacheIndex[] = [];
 	for (let entry of indices) {
-		entry.major = major;
+		if (!entry) { debugger; }
+		linear[entry.minor] = Object.assign(entry, { major });
 	}
-	return indices;
+	return linear;
 }
 
 const mappedFileIds = {
 	[cacheMajors.items]: 256,//not sure
-	[cacheMajors.npcs]: 256,//not sure
+	[cacheMajors.npcs]: 128,
 	[cacheMajors.enums]: 256,
 	[cacheMajors.objects]: 256,
 	[cacheMajors.sequences]: 128,

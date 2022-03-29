@@ -162,7 +162,7 @@ export function parseOb3Model(modelfile: Buffer) {
 		let materialArgument = model.readUShort();
 		let faceCount = model.readUShort();
 
-		let materialId = materialArgument - 1
+		let materialId = materialArgument - 1;
 
 		let hasVertices = (groupFlags & 0x01) != 0;
 		let hasVertexAlpha = (groupFlags & 0x02) != 0;
@@ -343,34 +343,34 @@ export function parseOb3Model(modelfile: Buffer) {
 			}
 
 		}
-		//TODO proper toggle for this or remove
-		//visualize bone ids
-		materialArgument = 0;
-		let vertexcolor = new Uint8Array(vertexCount * 4);
-		meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
-		let allbones = new Set<number>();
-		const bonecols = [
-			[255, 255, 255],//0 white no bone
-			[255, 0, 0],//1 red
-			[0, 255, 0],//2 green
-			[0, 0, 255],//3 blue
-			[90, 0, 0],//4 red--
-			[0, 90, 0],//5 green--
-			[0, 0, 90],//6 blue--
-			[255, 255, 0],//7 yellow
-			[0, 255, 255],//8 cyan
-			[255, 0, 255],//9 purple
-		]
-		for (let i = 0; i < vertexCount; i++) {
-			let index = i * 4;
-			let boneid = meshdata.attributes.skinids?.array[index]!;
-			// let boneid = n;
-			vertexcolor[index + 0] = (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256);
-			vertexcolor[index + 1] = (boneid < bonecols.length ? bonecols[boneid][1] : (171 + boneid * 1071) % 256);
-			vertexcolor[index + 2] = (boneid < bonecols.length ? bonecols[boneid][2] : (23 + boneid * 98537) % 256);
-			vertexcolor[index + 3] = 255;
-			allbones.add(boneid);
-		}
+		// // TODO proper toggle for this or remove
+		// // visualize bone ids
+		// materialArgument = 0;
+		// let vertexcolor = new Uint8Array(vertexCount * 4);
+		// meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
+		// let allbones = new Set<number>();
+		// const bonecols = [
+		// 	[255, 255, 255],//0 white no bone
+		// 	[255, 0, 0],//1 red
+		// 	[0, 255, 0],//2 green
+		// 	[0, 0, 255],//3 blue
+		// 	[90, 0, 0],//4 red--
+		// 	[0, 90, 0],//5 green--
+		// 	[0, 0, 90],//6 blue--
+		// 	[255, 255, 0],//7 yellow
+		// 	[0, 255, 255],//8 cyan
+		// 	[255, 0, 255],//9 purple
+		// ]
+		// for (let i = 0; i < vertexCount; i++) {
+		// 	let index = i * 4;
+		// 	let boneid = meshdata.attributes.skinids?.array[index]!;
+		// 	// let boneid = n;
+		// 	vertexcolor[index + 0] = (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256);
+		// 	vertexcolor[index + 1] = (boneid < bonecols.length ? bonecols[boneid][1] : (171 + boneid * 1071) % 256);
+		// 	vertexcolor[index + 2] = (boneid < bonecols.length ? bonecols[boneid][2] : (23 + boneid * 98537) % 256);
+		// 	vertexcolor[index + 3] = 255;
+		// 	allbones.add(boneid);
+		// }
 	}
 	for (let n = 0; n < unkCount1; n++) {
 		model.skip(37);

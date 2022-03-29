@@ -4,17 +4,19 @@ import { CacheFileSource } from "../cache";
 import { parseFrames, parseFramemaps, parseSequences } from "../opdecoder";
 import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, Vector3, VectorKeyframeTrack } from "three";
 
-//test  anim ids
-//3577  falling plank
-//3567  sawblade
-//4013  agi pendulum
-//907   wind chimes turning
-//28351 pet shop sign
-//13655 large orrery
-//9101  conveyer belt
-//470   ivy shaking
-//860   waving flag
-//3484  dg door
+//test    anim ids
+//3577    falling plank
+//3567    sawblade
+//4013    agi pendulum
+//907     wind chimes turning
+//28351   pet shop sign
+//13655   large orrery
+//9101    conveyer belt
+//470     ivy shaking
+//860     waving flag
+//3484    dg door
+//114132  weird bugged balloon
+//43      fishing spot
 
 const framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
 let loaded = false;
@@ -98,11 +100,6 @@ function findSharedPivot(bones: TransformStack[]) {
 	let len = bones[0].stack.length;
 	let passed = true;
 	for (let bone of bones) {
-		if (bone.stack.length != len) {
-			console.log("different stack lenghs");
-			passed = false;
-			break;
-		}
 		if (bone.stack[0].type != "translateconst") {
 			console.log("stack doesn't start with translateconst");
 			passed = false;
@@ -128,25 +125,29 @@ function findSharedPivot(bones: TransformStack[]) {
 		ret.addFromOther(bones[0].stack.slice(1));
 		return ret;
 	} else {
-		console.log("failed bone merge, using first bone");
-		return bones[bones.length - 1];
+		console.log("failed bone merge, using longest bone");
+		bones.sort((a, b) => a.stack.length - b.stack.length);
+		return bones[0];
 	}
 }
 
-export async function parseAnimationSequence3(loader: CacheFileSource, id: number): Promise<ParsedAnimation> {
+export async function parseAnimationSequence3(loader: CacheFileSource, id: number): Promise<ParsedAnimation | null> {
 
 	let seqfile = await loader.getFileById(cacheMajors.sequences, id);
 
 	let seq = parseSequences.read(seqfile);
 
-	let sequenceframes = seq.frames!;
+	let sequenceframes = seq.frames;
+	if (!sequenceframes) {
+		return null;
+	}
 	let secframe0 = sequenceframes[0];
 	if (!secframe0) {
 		throw new Error("animation has no frames");
 	}
 
 	let frameindices = await loader.getIndexFile(cacheMajors.frames);
-	let frameindex = frameindices.find((q, i) => q.minor == secframe0!.frameidhi);
+	let frameindex = frameindices[secframe0!.frameidhi];
 	if (!frameindex) {
 		throw new Error("frame not found " + secframe0.frameidhi);
 	}
@@ -187,6 +188,12 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 	let pivot = bones[0];
 	let actions: RsTransform[] = [];//TODO remove
 
+
+	//TODO remove
+	if (typeof (window as any).partialanim == "number") {
+		framebase.data = framebase.data.slice(0, (window as any).partialanim);
+	}
+
 	for (let [index, base] of framebase.data.entries()) {
 		if (base.type == 0) {
 			if (base.data.length == 0) {
@@ -194,7 +201,7 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 			} else if (base.data.length == 1) {
 				pivot = bones[base.data[0] + 1]
 			} else {
-				let pivot = findSharedPivot(base.data.map(q => bones[q + 1]));
+				pivot = findSharedPivot(base.data.map(q => bones[q + 1]));
 				if (!pivot) { throw new Error("no shared pivot found"); }
 			}
 		}
@@ -212,12 +219,15 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 				rawclip[clipindex++] = (flag & 1 ? readAnimTranslate(frame?.stream) : 0);
 				rawclip[clipindex++] = (flag & 2 ? readAnimTranslate(frame?.stream) : 0);
 				rawclip[clipindex++] = (flag & 4 ? readAnimTranslate(frame?.stream) : 0);
+				if (flag != 0) {
+					console.log("type 0 data", flag, [...rawclip.slice(clipindex - 3, clipindex)]);
+				}
 			}
 			//translate
 			if (base.type == 1) {
-				rawclip[clipindex++] = (flag & 1 ? readAnimTranslate(frame?.stream) : 0);
-				rawclip[clipindex++] = -(flag & 2 ? readAnimTranslate(frame?.stream) : 0);
-				rawclip[clipindex++] = (flag & 4 ? readAnimTranslate(frame?.stream) : 0);
+				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame?.stream) : 0);
+				rawclip[clipindex++] = -(flag & 2 ? readAnimFraction(frame?.stream) : 0);
+				rawclip[clipindex++] = (flag & 4 ? readAnimFraction(frame?.stream) : 0);
 			}
 			//rotate
 			if (base.type == 2) {
@@ -265,17 +275,14 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 				// 	console.log(q1, q2, q3, q4);
 				// 	rawclip[clipindex++] = q2 / 128;
 				// }
-				rawclip[clipindex++] = (flag & 1 ?  readAnimFraction(frame.stream) : 128) / 128;
+				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame.stream) : 128) / 128;
 				rawclip[clipindex++] = (flag & 2 ? readAnimTranslate(frame.stream) : 128) / 128;
 				rawclip[clipindex++] = (flag & 4 ? readAnimTranslate(frame.stream) : 128) / 128;
 			}
 			//others todo
 			if (base.type == 5) {
 				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
 				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 2 ? frame.stream.readUShortSmart() : 0);
-				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
 				rawclip[clipindex++] = (flag & 4 ? frame.stream.readUShortSmart() : 0);
 			} else if (base.type >= 4) {
 				rawclip[clipindex++] = (flag & 1 ? frame.stream.readUShortSmart() : 0);
@@ -321,11 +328,17 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 
 
 	frames.forEach((q, i) => {
-		if (!q.stream.eof()) {
-			console.warn("ints left in anim decode: " + (q.stream.getData().byteLength - q.stream.scanloc()), i);
+		let bytes = q.stream.bytesLeft();
+		if (bytes != 0) {
+			console.warn("ints left in anim decode: " + bytes, i);
+			let counts: Record<number, number> = {};
 			framebase.data.map((fr, i) => {
-				console.log(fr.type, q.flags[i]);
+				// if ([0, 1, 2, 3].indexOf(fr.type) == -1 && (q.flags[i] ?? 0) != 0) {
+				// console.log(fr.type, q.flags[i]);
+				counts[fr.type] = (counts[fr.type] ?? 0) + (q.flags[i] ?? 0).toString(2).replaceAll("0", "").length;
+				// }
 			});
+			console.log(counts);
 		}
 	});
 	let buildskeleton = function (bones: Set<TransformStack>, transSkip: number) {

@@ -896,11 +896,11 @@ type MapConfigData = typeof mapConfigData extends ((...a: any[]) => Promise<infe
 export async function mapConfigData(source: CacheFileSource) {
 	//TODO proper erroring on nulls
 	let configindex = await source.getIndexFile(cacheMajors.config);
-	let underlays = (await source.getFileArchive(configindex.find(q => q && q.minor == cacheConfigPages.mapunderlays)!))
+	let underlays = (await source.getFileArchive(configindex[cacheConfigPages.mapunderlays]))
 		.map(q => parseMapsquareUnderlays.read(q.buffer));
-	let overlays = (await source.getFileArchive(configindex.find(q => q && q.minor == cacheConfigPages.mapoverlays)!))
+	let overlays = (await source.getFileArchive(configindex[cacheConfigPages.mapoverlays]))
 		.map(q => parseMapsquareOverlays.read(q.buffer));
-	let mapscenes = (await source.getFileArchive(configindex.find(q => q && q.minor == cacheConfigPages.mapscenes)!))
+	let mapscenes = (await source.getFileArchive(configindex[cacheConfigPages.mapscenes]))
 		.map(q => parseMapscenes.read(q.buffer));
 
 	return { underlays, overlays, mapscenes };

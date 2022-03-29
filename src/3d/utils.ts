@@ -23,6 +23,7 @@ export type Stream = {
 	readFloat(flip?: boolean, signage?: boolean): number;
 	readHalf(flip?: boolean): number;
 	eof(): boolean;
+	bytesLeft(): number;
 }
 
 export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function Stream(this: Stream, data: Buffer) {
@@ -41,7 +42,11 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 	this.getData = function () {
 		return data;
 	}
+	this.bytesLeft = function () {
+		return data.length - scan;
+	}
 	this.eof = function () {
+		if (scan > data.length) { throw new Error("reading past end of buffer"); }
 		return scan >= data.length;
 	}
 	this.skip = function (n: number) {
