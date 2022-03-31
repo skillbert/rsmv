@@ -13,7 +13,7 @@
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",
 		"ts": "tsc",
 		"webpack": "webpack --watch",
-		"web": "webpack --watch --config webpack.config.web.js"
+		"web": "webpack serve --config webpack.config.web.js"
 	},
 	"author": "Skillbert",
 	"license": "GPL-4",
@@ -26,6 +26,7 @@
 		"@types/sharp": "^0.29.2",
 		"@types/sqlite3": "^3.1.8",
 		"@types/three": "^0.133.1",
+		"@types/webpack-env": "^1.16.3",
 		"assert": "^2.0.0",
 		"autobind-decorator": "^2.4.0",
 		"browserify-zlib": "^0.2.0",
@@ -43,7 +44,8 @@
 		"typescript": "^4.6.2",
 		"util": "^0.12.4",
 		"webpack": "^5.70.0",
-		"webpack-cli": "^4.9.2"
+		"webpack-cli": "^4.9.2",
+		"webpack-dev-server": "^4.7.4"
 	},
 	"dependencies": {
 		"@types/sql.js": "^1.4.3",

@@ -32,7 +32,7 @@ export class FileParser<T> {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
-			if (buffer.byteLength < 10000) {
+			if (buffer.byteLength < 100000) {
 				throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
 			}
 		}
@@ -69,5 +69,6 @@ export const parseAnimgroupConfigs = new FileParser<import("../generated/animgro
 export const parseModels = new FileParser<import("../generated/models").models>(require("./opcodes/models.json"));
 export const parseSpotAnims = new FileParser<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json"));
 export const parseRootCacheIndex = new FileParser<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json"));
+export const parseSkeletalAnim = new FileParser<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.json"));
 
 

@@ -26,6 +26,8 @@
     "ushort le":        { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "fixed", "endianness": "little" },
     "uint le":          { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "fixed", "endianness": "little" },
 
+    "float":            { "primitive": "float", "bytes": 4, "endianness": "big" },
+
 	"ubyte":            "unsigned byte",
 	"ushort":           "unsigned short",
 	"uint":             "unsigned int",

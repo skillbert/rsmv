@@ -6,7 +6,17 @@
 		["struct",["length","varushort"]],
 		["struct",["data",["array",["ref","length"],"varushort"]]]
 	]],
-	["footchunks",["array","ushort",["array",4,["array",20,"ubyte"]]]],
+	["skeleton",["chunkedarray","ushort",
+		["struct",
+			["parentbone","ubyte"],
+			["nonskinboneid","ushort"],
+			["bonematrix",["array",16,"float"]],
+			["dataq",["buffer",11,"hex"]]
+		],
+		["struct",
+			["skinid","ushort le"]
+		]
+	]],
 
 	["bool0","bool"],
 	["always0","ushort"]

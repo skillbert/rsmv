@@ -8,6 +8,11 @@ type PrimitiveInt = {
 	readmode: "fixed" | "smart" | "sumtail",
 	endianness: "big" | "little"
 };
+type PrimitiveFloat = {
+	primitive: "float",
+	bytes: number,
+	endianness: "big" | "little"
+};
 type PrimitiveBool = {
 	primitive: "bool"
 }
@@ -25,7 +30,7 @@ export type ScanBuffer = Buffer & { scan: number };
 
 type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot";
 
-export type Primitive<T> = PrimitiveInt | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
+export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
 
 export type ComposedChunk = string
@@ -191,6 +196,14 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 	}
 }
 
+function validateFloatType(primitive: PrimitiveFloat) {
+	let hasBytes = "bytes" in primitive;
+	let hasEndianness = "endianness" in primitive;
+	if (!(hasBytes && hasEndianness)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'float' variables need to specify 'bytes' and 'endianness'`);
+	if (typeof primitive.bytes !== "number" || primitive.bytes != 4) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'bytes' must be an integer 4`);
+	if (primitive.endianness !== "big" && primitive.endianness !== "little") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'endianness' must be "big" or "little"`);
+}
+
 function validateIntType(primitive: PrimitiveInt) {
 	let hasUnsigned = "unsigned" in primitive;
 	let hasBytes = "bytes" in primitive;
@@ -329,9 +342,10 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 		getJsonSChema() {
 			return {
 				type: "object",
-				properties: Object.fromEntries([...Object.entries(props)].map(([key, prop]) => {
-					return [key, (prop as ChunkParser<any>).getJsonSChema()];
-				})),
+				properties: Object.fromEntries([...Object.entries(props)]
+					.filter(([key]) => !key.startsWith("$"))
+					.map(([key, prop]) => [key, (prop as ChunkParser<any>).getJsonSChema()])
+				),
 				required: keys
 			}
 		}
@@ -570,6 +584,38 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			};
 		}
 	};
+}
+
+function floatParser(primitive: PrimitiveFloat): ChunkParser<number> {
+	validateFloatType(primitive);
+	let parser: ChunkParser<number> = {
+		read(buffer, ctx) {
+			let bytes = primitive.bytes;
+			if (primitive.bytes == 4) {
+				let r = (primitive.endianness == "big" ? buffer.readFloatBE(buffer.scan) : buffer.readFloatLE(buffer.scan));
+				buffer.scan += 4;
+				return r;
+			} else {
+				throw new Error("only 4 byte floats supported");
+			}
+		},
+		write(buf, v) {
+			if (typeof v != "number") { throw new Error("number expected"); }
+			if (primitive.bytes == 4) {
+				if (primitive.endianness == "big") { buf.writeFloatBE(v, buf.scan); }
+				else { buf.writeFloatLE(v, buf.scan); }
+			} else {
+				throw new Error("only 4 byte flaots supported");
+			}
+		},
+		getTypescriptType() {
+			return "number";
+		},
+		getJsonSChema() {
+			return { type: "number" };
+		}
+	}
+	return parser;
 }
 
 function intParser(primitive: PrimitiveInt): ChunkParser<number> {
@@ -844,6 +890,8 @@ function primitiveParser(primitive: Primitive<any>): ChunkParser<any> {
 			return booleanParser();
 		case "int":
 			return intParser(primitive);
+		case "float":
+			return floatParser(primitive);
 		case "string":
 			return stringParser(primitive);
 		case "value":

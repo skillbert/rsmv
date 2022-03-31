@@ -5,7 +5,8 @@ import { parseCacheIndex, parseRootCacheIndex } from "./opdecoder";
 export type SubFile = {
 	offset: number,
 	size: number,
-	buffer: Buffer
+	buffer: Buffer,
+	fileid: number
 }
 
 export type CacheIndex = {
@@ -26,9 +27,9 @@ export function packSqliteBufferArchive(buffers: Buffer[]) {
 	return new Archive(buffers).packSqlite();
 }
 
-export function unpackSqliteBufferArchive(buffer: Buffer, length: number) {
-	if (length == 1) {
-		return [{ buffer, offset: 0, size: buffer.byteLength }];
+export function unpackSqliteBufferArchive(buffer: Buffer, subids: number[]) {
+	if (subids.length == 1) {
+		return [{ buffer, offset: 0, size: buffer.byteLength, fileid: subids[0] } as SubFile];
 	}
 	let index = 0;
 	let unknownbyte = buffer.readUInt8(index); index++;
@@ -36,12 +37,13 @@ export function unpackSqliteBufferArchive(buffer: Buffer, length: number) {
 	let fileoffset = buffer.readUInt32BE(index); index += 4;
 
 	let files: SubFile[] = [];
-	for (let filenr = 0; filenr < length; filenr++) {
+	for (let filenr = 0; filenr < subids.length; filenr++) {
 		let endoffset = buffer.readUInt32BE(index); index += 4;
 		files.push({
 			buffer: buffer.slice(fileoffset, endoffset),
 			offset: fileoffset,
-			size: endoffset - fileoffset
+			size: endoffset - fileoffset,
+			fileid: subids[filenr]
 		});
 		fileoffset = endoffset;
 	}
@@ -121,21 +123,21 @@ export function packBufferArchive(buffers: Buffer[]) {
 	return new Archive(buffers).packNetwork();
 }
 
-export function unpackBufferArchive(buffer: Buffer, length: number) {
-	// if (length == 1) {
-	// 	return [{ buffer, offset: 0, size: buffer.byteLength }];
-	// }
+export function unpackBufferArchive(buffer: Buffer, subids: number[]) {
 	var subbufs: SubFile[] = [];
 	var scan = 0x0;
-	//whats in our missing byte?
-	let endbyte = buffer.readUInt8(buffer.length - 1);
-	if (endbyte != 1) { console.log("unexpected archive end byte", endbyte) }
-	var suboffsetScan = buffer.length - 0x1 - (0x4 * length);
+	if (subids.length != 1) {
+		//TODO i think this endbyte thing is bullshit?
+		//whats in our missing byte?
+		let endbyte = buffer.readUInt8(buffer.length - 1);
+		if (endbyte != 1) { console.log("unexpected archive end byte", endbyte) }
+	}
+	var suboffsetScan = buffer.length - 1 - (4 * subids.length);
 	var lastRecordSize = 0;
 
-	for (var j = 0; j < length; ++j) {
+	for (var j = 0; j < subids.length; ++j) {
 		let size: number;
-		if (length == 1) {
+		if (subids.length == 1) {
 			size = buffer.byteLength;
 		} else {
 			//the field contains the difference in size from the last record?
@@ -148,7 +150,8 @@ export function unpackBufferArchive(buffer: Buffer, length: number) {
 		subbufs.push({
 			buffer: recordBuffer,
 			offset: scan,
-			size
+			size,
+			fileid: subids[j]
 		})
 	}
 	return subbufs;
@@ -246,6 +249,13 @@ export class CacheFileSource {
 
 	writeFileArchive(index: CacheIndex, files: Buffer[]): Promise<void> {
 		throw new Error("not implemented");
+	}
+
+	async getArchiveById(major: number, minor: number) {
+		let indexfile = await this.getIndexFile(major);
+		let index = indexfile[minor];
+		if (!index) { throw new Error(`minor id ${minor} does not exist in major ${major}.`); }
+		return this.getFileArchive(index);
 	}
 
 	async getFileById(major: number, fileid: number) {

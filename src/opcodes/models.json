@@ -20,7 +20,7 @@
 		["hasFaceBones",["ref","groupFlags",[2,1]]],
 		["hasBoneIds",["ref","groupFlags",[3,1]]],
 		["isHidden",["ref","groupFlags",[4,1]]],
-		["hasFlag20",["ref","groupFlags",[5,1]]],
+		["hasSkin",["ref","groupFlags",[5,1]]],
 
 		
 		["colourBuffer",["opt",["hasVertices",1],["buffer",["ref","faceCount"],"ushort"]]],
@@ -36,7 +36,11 @@
 		["uvBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],
 		["boneidBuffer",["opt",["hasBoneIds",1],["buffer",["ref","vertexCount"],"ushort"]]],
 		
-		["flag20Buffer",["opt",["hasFlag20",1],["buffer","uint le","hex",3]]]
+		["skin",["opt",["hasSkin",1],["struct",
+			["skinVertexCount","uint le"],
+			["skinBoneBuffer",["buffer",["ref","skinVertexCount"],"hex",2]],
+			["skinWeightBuffer",["buffer",["ref","skinVertexCount"],"hex",1]]
+		]]]
 	]]],
 
 	["unk1Buffer",["array",["ref","unkCount1"],["buffer",39,"hex"]]],

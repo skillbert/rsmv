@@ -1,8 +1,17 @@
 import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
 import { cacheMajors } from "../constants";
 import { CacheFileSource } from "../cache";
-import { parseFrames, parseFramemaps, parseSequences } from "../opdecoder";
-import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, Vector3, VectorKeyframeTrack } from "three";
+import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
+import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, Vector3, VectorKeyframeTrack } from "three";
+import { skeletalanim } from "../../generated/skeletalanim";
+import { framemaps } from "../../generated/framemaps";
+import { ThreejsSceneCache } from "./ob3tothree";
+import { sequences } from "../../generated/sequences";
+
+//TODO remove
+import * as THREE from "three";
+(window as any).THREE = THREE;
+
 
 //test    anim ids
 //3577    falling plank
@@ -17,6 +26,15 @@ import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix4, Object3D, Quaternio
 //3484    dg door
 //114132  weird bugged balloon
 //43      fishing spot
+
+
+//new anims
+//115416  obelisk
+//114652  pof totem
+//117253  dramatic doors
+
+//npc new anims
+//27111   butterfly
 
 const framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
 let loaded = false;
@@ -43,6 +61,12 @@ type TransformRotate = TransformBase & { type: "rotate", data: Float32Array }
 type TransformScale = TransformBase & { type: "scale", data: Float32Array }
 type Transform = TransformTranslateConst | TransformTranslate | TransformRotate | TransformScale;
 
+export type MountableAnimation = {
+	skeleton: Skeleton,
+	clip: AnimationClip,
+	rootbones: Bone[]
+};
+
 export type BoneInit = {
 	translateconst: TransformTranslateConst[],
 	translate: TransformTranslate[],
@@ -54,7 +78,6 @@ export type BoneInit = {
 export type ParsedAnimation = {
 	rootboneinits: BoneInit[],
 	keyframetimes: Float32Array,
-	animid: number,
 	endtime: number
 }
 
@@ -131,28 +154,223 @@ function findSharedPivot(bones: TransformStack[]) {
 	}
 }
 
-export async function parseAnimationSequence3(loader: CacheFileSource, id: number): Promise<ParsedAnimation | null> {
 
-	let seqfile = await loader.getFileById(cacheMajors.sequences, id);
-
-	let seq = parseSequences.read(seqfile);
-
-	let sequenceframes = seq.frames;
-	if (!sequenceframes) {
-		return null;
+export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number): Promise<MountableAnimation> {
+	let anim = parseSkeletalAnim.read(await cache.getFileById(cacheMajors.skeletalAnims, animid));
+	let base = parseFramemaps.read(await cache.getFileById(cacheMajors.framemaps, anim.framebase));
+	if (!base.skeleton) {
+		throw new Error("framebase does not have skeleton");
 	}
+
+	let convertedtracks: KeyframeTrack[] = [];
+
+	let animtracks = anim.tracks.sort((a, b) => {
+		if (a.boneid != b.boneid) { return a.boneid - b.boneid; }
+		return a.type_0to9 - b.type_0to9;
+	});
+	//TODO remove
+	// animtracks = animtracks.filter(q => q.chunks.length > 4);
+
+	// console.log(base.skeleton.map(bone => ([
+	// 	"skin,parent,old", bone.skinid, bone.parentbone, bone.nonskinboneid,
+	// 	"pivot", ...bone.bonematrix.slice(12, 15).map(q => +q.toFixed(2)),
+	// 	bone
+	// ])));
+
+	// console.log(base.skeleton.map(bone => `mats{length(mats)+1}=reshape([${bone.bonematrix.map(q => +q.toFixed(3)).join(",")}],[4,4]);`).join("\n"));
+
+	// let boneactions = {};
+	// animtracks.forEach(q => { boneactions[q.boneid - 64] = [...(boneactions[q.boneid - 64] ?? []), q] });
+	// console.log(boneactions);
+
+
+	let sc = (a: number) => +(a).toFixed(2);
+	let logmat = (m: Matrix4) => {
+		let str = "";
+		for (let i = 0; i < 4; i++) {
+			for (let j = 0; j < 4; j++) {
+				str += m.elements[i + j * 4].toFixed(2).padStart(7) + (j < 3 ? "," : "");
+			}
+			str += (i < 3 ? "\n" : "")
+		}
+		console.log(str);
+	}
+
+	let bones: Bone[] = [];
+	let binds: Matrix4[] = [];
+	let rootbones: Bone[] = [];
+	let tmp = new Matrix4();
+	let prematrix = new Matrix4().makeScale(1, 1, -1);
+	for (let [id, entry] of base.skeleton.entries()) {
+		let bone = new Bone();
+		let matrix = new Matrix4().fromArray(entry.bonematrix);
+
+
+		bone.name = "bone_" + id;
+		if (entry.nonskinboneid == 65535) {
+			rootbones.push(bone);
+			matrix.premultiply(prematrix);
+		} else {
+			bones[entry.nonskinboneid].add(bone);
+			// matrix.multiply(binds[entry.nonskinboneid]);
+		}
+
+		tmp.copy(matrix).decompose(bone.position, bone.quaternion, bone.scale);
+		// bone.matrixAutoUpdate = true;
+		let angle = new Euler().setFromQuaternion(bone.quaternion);
+		// console.log(id,
+		// 	"TRS", +bone.position.x.toFixed(2), +bone.position.y.toFixed(2), +bone.position.z.toFixed(2),
+		// 	"", sc(angle.x), sc(angle.y), sc(angle.z),
+		// 	"", +bone.scale.x.toFixed(2), +bone.scale.y.toFixed(2), +bone.scale.z.toFixed(2));
+		bone.updateMatrixWorld();
+		// console.log(id, entry.nonskinboneid);
+		// logmat(matrix);
+		bones[id] = bone;
+		binds[id] = matrix;
+	}
+	prematrix.invert();
+	binds.forEach(q => q.multiply(prematrix));
+	let skeleton = new Skeleton(bones);
+
+	let actiontypemap: { t: "unknown" | "rotate" | "translate" | "scale", a: number }[] = [
+		{ t: "unknown", a: 0 },
+
+		//1-9
+		{ t: "rotate", a: 0 },
+		{ t: "rotate", a: 1 },
+		{ t: "rotate", a: 2 },
+		{ t: "translate", a: 0 },
+		{ t: "translate", a: 1 },
+		{ t: "translate", a: 2 },
+		{ t: "scale", a: 0 },
+		{ t: "scale", a: 1 },
+		{ t: "scale", a: 2 },
+
+		//10-16 unknown
+		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },
+	]
+
+
+	for (let index = 0; index < animtracks.length;) {
+		let track = animtracks[index];
+
+		let xvalues: skeletalanim["tracks"][number]["chunks"] | null = null;
+		let yvalues: skeletalanim["tracks"][number]["chunks"] | null = null;
+		let zvalues: skeletalanim["tracks"][number]["chunks"] | null = null;
+
+		let tracktype = actiontypemap[track.type_0to9];
+		let boneid = track.boneid - 64;
+
+		while (index < animtracks.length) {
+			let track2 = animtracks[index];
+			let t2 = actiontypemap[track2.type_0to9];
+			if (track2.boneid - 64 != boneid || t2.t != tracktype.t) { break; }
+			if (t2.a == 0) { xvalues = track2.chunks; }
+			if (t2.a == 1) { yvalues = track2.chunks; }
+			if (t2.a == 2) { zvalues = track2.chunks; }
+			index++;
+		}
+
+
+		let bone = bones[track.boneid - 64];//not sure where the 64 comes from
+		if (!bone) {
+			console.log("animation track without bone", track.boneid - 64);
+			continue;
+		}
+		let bonename = bone.name;
+
+		let defaultvalue = (tracktype.t == "scale" ? 1 : 9);
+		let intp = (v: { time: number, value: number[] }[] | null, i: number, t: number) => {
+			let v1 = v?.[i]?.value[0] ?? defaultvalue;
+			let v2 = v?.[i + 1]?.value[0] ?? defaultvalue;
+			let t1 = v?.[i].time ?? 0;
+			let t2 = v?.[i + 1]?.time ?? t1;
+			let a = (t1 == t2 ? 0 : (t - t1) / (t2 - t1));
+			return v1 * (1 - a) + v2 * a;
+		}
+		let timearray: number[] = [];
+		let data: number[] = [];
+		let euler = new Euler();
+		let quat = new Quaternion();
+		// let time = new Float32Array(timearray.map(q => q * 0.020));
+		for (let ix = 0, iy = 0, iz = 0, idata = 0; ;) {
+			let tx = xvalues?.[ix]?.time ?? Infinity;
+			let ty = yvalues?.[iy]?.time ?? Infinity;
+			let tz = zvalues?.[iz]?.time ?? Infinity;
+
+			let t = Math.min(tx, ty, tz);
+			if (!isFinite(t)) { break; }
+
+			data[idata++] = intp(xvalues, ix, t);
+			data[idata++] = intp(yvalues, iy, t);
+			data[idata++] = intp(zvalues, iz, t);
+
+			timearray.push(t);
+			if (tx == t && xvalues && ix + 1 < xvalues.length) { ix++; }
+			if (ty == t && yvalues && iy + 1 < yvalues.length) { iy++; }
+			if (tz == t && zvalues && iz + 1 < zvalues.length) { iz++; }
+		}
+
+
+		let times = new Float32Array(timearray.map(q => q * 0.020));
+		if (tracktype.t == "translate") {
+			if (boneid == 2) {
+				for (let i = 0; i < data.length; i += 3) {
+					data[i + 2] *= -1;
+					// data[i + 2] *= -1;
+				}
+			}
+			convertedtracks.push(new VectorKeyframeTrack(`${bonename}.position`, times as any, data));
+		}
+		if (tracktype.t == "scale") {
+			if (boneid == 0) {
+				for (let i = 0; i < data.length; i += 3) {
+					data[i + 0] *= -1;
+					// data[i + 2] *= -1;
+				}
+			}
+			convertedtracks.push(new VectorKeyframeTrack(`${bonename}.scale`, times as any, data));
+		}
+		if (tracktype.t == "rotate") {
+			let quatdata = new Float32Array(timearray.length * 4);
+			for (let i = 0; i * 3 < data.length; i++) {
+				euler.set(
+					data[i * 3 + 0],
+					data[i * 3 + 1],
+					data[i * 3 + 2], 'XYZ');
+				quat.setFromEuler(euler);
+				//flip the quaternion along the z axis
+				quat.z *= -1;
+				quat.w *= -1;
+				quat.toArray(quatdata, i * 4);
+			}
+			convertedtracks.push(new QuaternionKeyframeTrack(`${bonename}.quaternion`, times as any, quatdata as any));
+		}
+		// console.log(bonename, tracktype.t, +data[0].toFixed(2), +data[1].toFixed(2), +data[2].toFixed(2));
+	}
+	//TODO remove
+	// convertedtracks = [];
+	let clip = new AnimationClip("anim_" + (Math.random() * 1000 | 0), undefined, convertedtracks);
+
+
+	return { skeleton, clip, rootbones };
+}
+
+
+export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenceframes: NonNullable<sequences["frames"]>): Promise<ParsedAnimation> {
+
 	let secframe0 = sequenceframes[0];
 	if (!secframe0) {
 		throw new Error("animation has no frames");
 	}
 
-	let frameindices = await loader.getIndexFile(cacheMajors.frames);
-	let frameindex = frameindices[secframe0!.frameidhi];
-	if (!frameindex) {
-		throw new Error("frame not found " + secframe0.frameidhi);
-	}
-
-	let framearch = await loader.getFileArchive(frameindex);
+	let framearch = await loader.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
 	let frames = framearch.map(file => {
 		let framedata = parseFrames.read(file.buffer);
@@ -294,7 +512,7 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 		//need to copy and reorder the clip since the frame might be out of order/reused
 		let clip = new Float32Array(nfields * sequenceframes.length);
 		for (let i = 0; i < sequenceframes.length; i++) {
-			let frameid = frameindex.subindices.indexOf(sequenceframes[i].frameidlow);
+			let frameid = framearch.findIndex(q => q.fileid == sequenceframes![i].frameidlow);
 			for (let j = 0; j < nfields; j++) {
 				clip[i * nfields + j] = rawclip[frameid * nfields + j];
 			}
@@ -428,27 +646,10 @@ export async function parseAnimationSequence3(loader: CacheFileSource, id: numbe
 		console.log(str);
 		bone.children.forEach(q => logboneinit(q, indent + 1));
 	}
-
 	console.log(bones);
 	rootboneinits.forEach(q => logboneinit(q, 0));
-
-	// let skeleton = new Skeleton(resultbones);
-	// let clip = new AnimationClip(`sequence_${id}`, endtime, tracks);
-
-
-	// console.log("sequence id:", id, "framebase id:", frames[0].baseid, "framesid:", sequenceframes[0].frameidhi, "framecount:", sequenceframes.length);
-
-	// // let clip = new AnimationClip(`sequence_${id}`, endtime, tracks);
-
 	console.log(framebase.data.map(q => [q.type, "", ...q.data.map(q => q + 1)]));
-
-	// //TODO remove mockup
-	// let rootbone = new Bone();
-	// let rootbones = [rootbone];
-	// let skeleton = new Skeleton(rootbones);
-	// let clip = new AnimationClip(`sequence_${id}`, endtime, []);
-
-	return { rootboneinits, keyframetimes, animid: id, endtime };
+	return { rootboneinits, keyframetimes, endtime };
 }
 
 function readAnimTranslate(str: Stream) {

@@ -1,0 +1,19 @@
+["struct",
+	["header","ubyte"],
+	["framebase","ushort"],
+	["endtime","uint"],
+	["unk_always0","ubyte"],
+	["tracks",["array","ushort",["struct",
+		["unk_1to4","ubyte"],
+		["boneid","varushort"],
+		["type_0to9","ubyte"],
+		["$packetlength","ushort"],
+		["bonetype_01or3","ubyte"],
+		["always0","ushort"],
+		["flag2","bool"],
+		["chunks",["array",["ref","$packetlength"],["struct",
+			["time","ushort"],
+			["value",["array",5,"float"]]
+		]]]
+	]]]
+]

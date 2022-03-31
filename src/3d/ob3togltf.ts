@@ -6,6 +6,7 @@ import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 import * as THREE from "three";
+import { CacheFileSource } from "../cache";
 
 
 export type FileGetter = (major: number, minor: number) => Promise<Buffer>;
@@ -13,20 +14,23 @@ export type FileGetter = (major: number, minor: number) => Promise<Buffer>;
 
 //a wrapper around gltfbuilder that ensures that resouces are correctly shared
 export class GLTFSceneCache {
-	getFileById: FileGetter;
 	textureCache = new Map<number, number>();
 	gltfMaterialCache = new Map<number, Promise<number>>();
 	gltf = new GLTFBuilder();
+	source: CacheFileSource;
 
-	constructor(getfilebyid: FileGetter) {
-		this.getFileById = getfilebyid;
+	constructor(source: CacheFileSource) {
+		this.source = source;
+	}
+	getFileById(major: number, id: number) {
+		return this.source.getFileById(major, id);
 	}
 
 	async getTextureFile(texid: number, allowAlpha) {
 		let cached = this.textureCache.get(texid);
 		if (cached) { return cached; }
 
-		let file = await this.getFileById(cacheMajors.texturesDds, texid);
+		let file = await this.source.getFileById(cacheMajors.texturesDds, texid);
 		let parsed = new ParsedTexture(file, allowAlpha);
 		let texnode = this.gltf.addImage(await parsed.convertFile("png"));
 		this.textureCache.set(texid, texnode);
@@ -40,7 +44,7 @@ export class GLTFSceneCache {
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let { textures, alphamode } = await getMaterialData(this.getFileById, matid);
+				let { textures, alphamode } = await getMaterialData(this.source, matid);
 
 				let materialdef: Material = {
 					//TODO check if diffuse has alpha as well
@@ -94,11 +98,11 @@ export type MaterialData = {
 	raw: any
 }
 //this one is narly, i have touched it as little as possible, needs a complete refactor together with JMat
-export async function getMaterialData(getFile: FileGetter, matid: number) {
+export async function getMaterialData(source: CacheFileSource, matid: number) {
 	if (matid == -1) {
 		return defaultMaterial();
 	}
-	var materialfile = await getFile(cacheMajors.materials, matid);
+	var materialfile = await source.getFileById(cacheMajors.materials, matid);
 	return JMat(materialfile);
 }
 
@@ -155,7 +159,7 @@ export function parseOb3Model(modelfile: Buffer) {
 
 	for (var n = 0; n < meshCount; ++n) {
 		// Flag 0x10 is currently used, but doesn't appear to change the structure or data in any way
-		let groupFlags =model.readUInt();
+		let groupFlags = model.readUInt();
 
 		// Unknown, probably pertains to materials transparency maybe?
 		let unk6 = model.readUByte();
@@ -169,7 +173,7 @@ export function parseOb3Model(modelfile: Buffer) {
 		let hasFaceBones = (groupFlags & 0x04) != 0;
 		let hasBoneids = (groupFlags & 0x08) != 0;
 		let isHidden = (groupFlags & 0x10) != 0;
-		let hasFlag20 = (groupFlags & 0x20) != 0;
+		let hasSkin = (groupFlags & 0x20) != 0;
 		// console.log(n, "mat", materialId, "faceCount", faceCount, "hasFaceBones:", hasFaceBones, "ishidden:", isHidden, "hasflag20:", hasFlag20, "unk6:", unk6);
 		if (groupFlags & ~0x2f) {
 			console.log("unknown model flags", groupFlags & ~0x2f);
@@ -181,6 +185,8 @@ export function parseOb3Model(modelfile: Buffer) {
 		let normalBuffer: ArrayLike<number> | null = null;
 		let uvBuffer: Float32Array | null = null;
 		let boneidBuffer: Uint16Array | null = null;
+		let skinIdBuffer: Uint16Array | null = null;
+		let skinWeightBuffer: Uint8Array | null = null;
 		let faceboneidBuffer: Uint16Array | null = null;
 
 		if (hasVertices) {
@@ -222,21 +228,37 @@ export function parseOb3Model(modelfile: Buffer) {
 				for (let i = 0; i < vertexCount * 2; i++) {
 					uvBuffer[i] = model.readHalf();
 				}
-				//group.uvBuffer = streamChunk(Uint16Array, model, group.vertexCount * 2);
 			}
 			if (hasBoneids) {
 				//TODO there can't be more than ~50 bones in the engine, what happens to the extra byte?
 				boneidBuffer = streamChunk(Uint16Array, model, vertexCount);
 			}
 		}
-		if (hasFlag20) {
-			//probably material related
-			//models from this update/area also for the first time has some sort of "skybox" material
-			//
+		if (hasSkin) {
 			let count = model.readUInt();
-			let bytes = streamChunk(Uint8Array, model, count * 3);
-			console.log("mesh flag20", bytes);
-			let a = 1;
+
+			let rawbuf = streamChunk(Uint8Array, model, count * 3);
+			let dataindex = 0;
+			let weightindex = count * 2;
+
+			skinIdBuffer = new Uint16Array(vertexCount * 4);
+			skinWeightBuffer = new Uint8Array(vertexCount * 4);
+			for (let i = 0; i < vertexCount; i++) {
+				let remainder = 255;
+				for (let j = 0; j < 4; j++) {
+					let weight = rawbuf[weightindex++];
+					let boneid = rawbuf[dataindex++] | (rawbuf[dataindex++] << 8);//manual 16bit building since it might not be alligned
+					let actualweight = (weight != 0 ? weight : remainder);
+					remainder -= weight;
+					skinIdBuffer[i * 4 + j] = boneid;
+					skinWeightBuffer[i * 4 + j] = actualweight;
+					if (weight == 0) { break; }
+				}
+			}
+			if (dataindex != count * 2 || weightindex != count * 3) {
+				console.log("model skin decode failed");
+				debugger;
+			}
 		}
 
 		if (isHidden) {
@@ -248,10 +270,6 @@ export function parseOb3Model(modelfile: Buffer) {
 			console.log("skipped mesh without position buffer")
 			continue;
 		}
-
-		// if (faceboneidBuffer) {
-		// 	console.log("faceboneidBuffer", faceboneidBuffer);
-		// }
 
 		//TODO somehow this doesn't always work
 		if (materialId != -1) {
@@ -269,8 +287,6 @@ export function parseOb3Model(modelfile: Buffer) {
 				miny = positionBuffer[i + 1];
 			}
 		}
-		// let positionfloatbuffer = new Float32Array(positionBuffer);
-
 
 		//highest level of detail only
 		let indexbuf = indexBuffers[0];
@@ -285,8 +301,11 @@ export function parseOb3Model(modelfile: Buffer) {
 		};
 		meshes.push(meshdata);
 
-		if (boneidBuffer) {
-			//every modern animation system uses 4 skinned bones per vertex instead of one
+		//every modern animation system uses 4 skinned bones per vertex instead of one
+		if (skinIdBuffer && skinWeightBuffer) {
+			meshdata.attributes.skinids = new THREE.BufferAttribute(skinIdBuffer, 4);
+			meshdata.attributes.skinweights = new THREE.BufferAttribute(skinWeightBuffer, 4, true);
+		} else if (boneidBuffer) {
 			let quadboneids = new Uint8Array(boneidBuffer.length * 4);
 			let quadboneweights = new Uint8Array(boneidBuffer.length * 4);
 			const maxshort = (1 << 16) - 1;
@@ -303,9 +322,11 @@ export function parseOb3Model(modelfile: Buffer) {
 			meshdata.attributes.skinweights = new THREE.BufferAttribute(quadboneweights, 4, true);
 		}
 
+
 		if (uvBuffer) {
 			meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
 		}
+
 
 		if (normalBuffer) {
 			let normalsrepacked = new Float32Array(normalBuffer.length);
@@ -341,41 +362,51 @@ export function parseOb3Model(modelfile: Buffer) {
 					}
 				}
 			}
-
 		}
-		// // TODO proper toggle for this or remove
-		// // visualize bone ids
-		// materialArgument = 0;
-		// let vertexcolor = new Uint8Array(vertexCount * 4);
-		// meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
-		// let allbones = new Set<number>();
-		// const bonecols = [
-		// 	[255, 255, 255],//0 white no bone
-		// 	[255, 0, 0],//1 red
-		// 	[0, 255, 0],//2 green
-		// 	[0, 0, 255],//3 blue
-		// 	[90, 0, 0],//4 red--
-		// 	[0, 90, 0],//5 green--
-		// 	[0, 0, 90],//6 blue--
-		// 	[255, 255, 0],//7 yellow
-		// 	[0, 255, 255],//8 cyan
-		// 	[255, 0, 255],//9 purple
-		// ]
-		// for (let i = 0; i < vertexCount; i++) {
-		// 	let index = i * 4;
-		// 	let boneid = meshdata.attributes.skinids?.array[index]!;
-		// 	// let boneid = n;
-		// 	vertexcolor[index + 0] = (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256);
-		// 	vertexcolor[index + 1] = (boneid < bonecols.length ? bonecols[boneid][1] : (171 + boneid * 1071) % 256);
-		// 	vertexcolor[index + 2] = (boneid < bonecols.length ? bonecols[boneid][2] : (23 + boneid * 98537) % 256);
-		// 	vertexcolor[index + 3] = 255;
-		// 	allbones.add(boneid);
-		// }
+
+		// TODO proper toggle for this or remove
+		// visualize bone ids
+		materialArgument = 0;
+		let vertexcolor = new Uint8Array(vertexCount * 4);
+		meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
+		const bonecols = [
+			// [255, 255, 255],//0 white no bone
+			[255, 0, 0],//1 red
+			[0, 255, 0],//2 green
+			[0, 0, 255],//3 blue
+			[15, 0, 0],//4 red--
+			[0, 15, 0],//5 green--
+			[0, 0, 15],//6 blue--
+			[255, 255, 0],//7 yellow
+			[0, 255, 255],//8 cyan
+			[255, 0, 255],//9 purple
+		];
+		let bonecomponent = (i: number, skinindex: number) => {
+			let boneid = meshdata.attributes.skinids?.array[i + skinindex] ?? 0;
+			// let weight = meshdata.attributes.skinweights?.array[i + skinindex] ?? (skinindex == 0 ? 255 : 0);
+			let weight = 255;
+			vertexcolor[i + 0] += (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256) * weight / 255;
+			vertexcolor[i + 1] += (boneid < bonecols.length ? bonecols[boneid][1] : (73 + boneid * 9323) % 256) * weight / 255;
+			vertexcolor[i + 2] += (boneid < bonecols.length ? bonecols[boneid][2] : (171 + boneid * 1071) % 256) * weight / 255;
+		}
+		for (let i = 0; i < vertexCount; i++) {
+			let index = i * 4;
+			vertexcolor[index + 0] = 0;
+			vertexcolor[index + 1] = 0;
+			vertexcolor[index + 2] = 0;
+			vertexcolor[index + 3] = 255;
+			bonecomponent(index, 0);
+			// bonecomponent(index, 1);
+			// bonecomponent(index, 2);
+			// bonecomponent(index, 3);
+		}
 	}
 	for (let n = 0; n < unkCount1; n++) {
+		console.log("unk1", unkCount1);
 		model.skip(37);
 	}
 	for (let n = 0; n < unkCount2; n++) {
+		console.log("unk2", unkCount2);
 		model.skip(2);//material id?
 		for (let i = 0; i < 3; i++) {
 			model.skip(2); model.skip(2);//u16 flags mostly 0x0000,0x0040,0x0080, f16 position? mostly -5.0<x<5.0
@@ -385,6 +416,7 @@ export function parseOb3Model(modelfile: Buffer) {
 		}
 	}
 	for (let n = 0; n < unkCount3; n++) {
+		console.log("unk3", unkCount3);
 		model.skip(16);
 	}
 

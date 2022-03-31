@@ -14,7 +14,14 @@ export type framemaps = {
 	} & {
 		data: number[],
 	})[],
-	footchunks: number[][][],
+	skeleton: ({
+		parentbone: number,
+		nonskinboneid: number,
+		bonematrix: number[],
+		dataq: Uint8Array,
+	} & {
+		skinid: number,
+	})[],
 	bool0: boolean,
 	always0: number,
 };

@@ -13,7 +13,8 @@ module.exports = {
 		extract: "./src/scripts/extractfiles.ts",
 		indexoverview: "./src/scripts/indexoverview.ts",
 		testdecode: "./src/scripts/testdecode.ts",
-		opcode_reader: "./src/opcode_reader.ts"
+		opcode_reader: "./src/opcode_reader.ts",
+		skeleton: "./src/scripts/testskeletons.ts"
 	},
 	module: {
 		rules: [

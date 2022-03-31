@@ -1,6 +1,6 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-const { ProvidePlugin } = require('webpack');
+const { ProvidePlugin ,HotModuleReplacementPlugin} = require('webpack');
 
 /**
  * @type {import("webpack").Configuration}
@@ -21,9 +21,9 @@ module.exports = {
 		],
 	},
 	target: "web",
-	externals: {
-		// "sharp": { commonjs: "sharp" },
-		// "lzma": { commonjs: "lzma" }
+	devServer: {
+		static: "./dist",
+		hot: true,
 	},
 	resolve: {
 		extensions: ['.tsx', '.ts', '.js'],
@@ -58,5 +58,6 @@ module.exports = {
 			Buffer: ['buffer', 'Buffer'],
 			process: [require.resolve('process/browser')]
 		}),
+		new HotModuleReplacementPlugin(),
 	]
 };

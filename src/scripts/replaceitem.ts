@@ -29,7 +29,7 @@ async function run(cachedir: string, jsondir: string, replaceid: number) {
 
 		let rawfile = await getfile(chunk);
 		let archive = decompressSqlite(rawfile);
-		let files = cache.unpackSqliteBufferArchive(archive, chunk.subindices.length).map(f => f.buffer);
+		let files = cache.unpackSqliteBufferArchive(archive, chunk.subindices).map(f => f.buffer);
 
 		for (let i = 0; i < chunk.subindices.length; i++) {
 			let itemid = chunk.subindices[i];

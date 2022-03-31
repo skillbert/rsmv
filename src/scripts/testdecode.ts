@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim } from "../opdecoder";
 import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -21,16 +21,16 @@ let cmd = command({
 	args: {},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
-		const major = cacheMajors.index;
+		const major = cacheMajors.skeletalAnims;
 		const minor = -1;
-		const decoder = parseCacheIndex;
+		const decoder = parseSkeletalAnim;
 		const skipMinorAfterError = false;
 		const skipFilesizeAfterError = true;
-		const memlimit = 100e6;
-		const orderBySize = false;
+		const memlimit = 200e6;
+		const orderBySize = true;
 
-		// let source = new GameCacheLoader();
-		let source = new Downloader();
+		let source = new GameCacheLoader();
+		// let source = new Downloader();
 		let indices = await source.getIndexFile(major);
 		fs.mkdirSync(errdir, { recursive: true });
 		let olderrfiles = fs.readdirSync(errdir);
@@ -58,6 +58,7 @@ let cmd = command({
 
 			getDebug(true);
 			try {
+				// console.log("reading ", file.major, file.minor, file.subfile);
 				let res = decoder.read(file.file);
 				nsuccess++;
 			} catch (e) {
@@ -135,7 +136,9 @@ let cmd = command({
 			allfiles.sort((a, b) => a.file.byteLength - b.file.byteLength);
 			console.log("starting files:", allfiles.length);
 			// allfiles = allfiles.filter((q, i) => i % 20 == 0);
-			allfiles.forEach(testFile);
+			for (let file of allfiles) {
+				if (testFile(file) == false) { break; }
+			}
 
 			console.log("completed files: ", nsuccess);
 		}

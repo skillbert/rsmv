@@ -170,9 +170,7 @@ let cmd = cmdts.command({
 				let file = await filesource.getFileById(cacheMajors.enums, 708);
 				let mapenum = parseEnums.read(file);
 
-				let indexmeta = await filesource.getIndexFile(cacheMajors.worldmap);
-				let index = indexmeta[0];
-				let files = await filesource.getFileArchive(index);
+				let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
 				mask = mapenum.intArrayValue2!.values
 					.map(q => parseMapZones.read(files[q[1]].buffer))
 					// .filter(q => q.show && q.name)
@@ -368,7 +366,7 @@ export class MapRenderer {
 function disposeThreeTree(node: THREE.Object3D | null) {
 	if (!node) { return; }
 
-	const cleanMaterial = (material:Material) => {
+	const cleanMaterial = (material: Material) => {
 		count++;
 		material.dispose();
 

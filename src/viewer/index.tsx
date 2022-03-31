@@ -6,17 +6,23 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
-import { ModelModifications } from "3d/utils";
-import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
+import { ModelModifications } from "../3d/utils";
 import { WasmGameCacheLoader as GameCacheLoader } from "../cacheloaderwasm";
+import { CacheFileSource, cachingFileSourceMixin } from "../cache";
+
+import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
 import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
-import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
 import * as datastore from "idb-keyval";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
 type RenderMode = "gltf" | "three";
+
+
+if (module.hot) {
+	module.hot.accept("../3d/ob3togltf");
+}
 
 function start() {
 	window.addEventListener("keydown", e => {
@@ -66,6 +72,12 @@ type WebkitDirectoryHandle = WebkitFsHandleBase & {
 var cacheDirectoryHandle: WebkitDirectoryHandle | null = null;
 var cacheDirectoryLoaded = false;
 
+if (module.hot) {
+	module.hot.accept("../3d/ob3tothree.ts", () => {
+		console.log("notified");
+	})
+}
+
 async function ensureCachePermission() {
 	if (cacheDirectoryLoaded) { return }
 	if (!cacheDirectoryHandle) {
@@ -92,58 +104,48 @@ if (typeof window != "undefined") {
 	datastore.get("cachefilehandles").then(oldhandle => {
 		if (typeof FileSystemHandle != "undefined" && oldhandle instanceof FileSystemHandle && oldhandle.kind == "directory") {
 			cacheDirectoryHandle = oldhandle;
-			// document.body.addEventListener("click", async () => {
-			// 	let files: Record<string, Blob> = {};
-			// 	console.log(await oldhandle.queryPermission());
-			// 	await oldhandle.requestPermission();
-			// 	for await (let handle of oldhandle.values()) {
-			// 		if (handle.kind == "file") {
-			// 			files[handle.name] = await handle.getFile();
-			// 		}
-			// 	}
-			// 	hackyCacheFileSource.giveBlobs(files);
-			// }, { once: true });
 		}
 	});
-	// document.body.ondragover = e => e.preventDefault();
-	// document.body.ondrop = async e => {
-	// 	e.preventDefault();
-	// 	if (e.dataTransfer) {
-	// 		let files: Record<string, Blob> = {};
-	// 		let items: DataTransferItem[] = [];
-	// 		let folderhandles: WebkitFsHandle[] = [];
-	// 		let filehandles: WebkitFsHandle[] = [];
-	// 		for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
-	// 		//needs to start synchronously as the list is cleared after the event
-	// 		await Promise.all(items.map(async item => {
-	// 			//@ts-ignore
-	// 			if (item.getAsFileSystemHandle) {
-	// 				//@ts-ignore
-	// 				let filehandle: WebkitFsHandle = await item.getAsFileSystemHandle();
-	// 				if (filehandle.kind == "file") {
-	// 					filehandles.push(filehandle);
-	// 					files[filehandle.name] = await filehandle.getFile();
-	// 				} else {
-	// 					folderhandles.push(filehandle);
-	// 					for await (let handle of filehandle.values()) {
-	// 						if (handle.kind == "file") {
-	// 							files[handle.name] = await handle.getFile();
-	// 						}
-	// 					}
-	// 				}
-	// 			} else if (item.kind == "file") {
-	// 				let file = item.getAsFile()!;
-	// 				files[file.name] = file;
-	// 			}
-	// 		}));
-	// 		if (folderhandles.length == 1 && filehandles.length == 0) {
-	// 			datastore.set("cachefilehandles", folderhandles[0]);
-	// 			console.log("stored folder " + folderhandles[0].name);
-	// 		}
-	// 		console.log(`added ${Object.keys(files).length} files`);
-	// 		hackyCacheFileSource.giveBlobs(files);
-	// 	}
-	// }
+	document.body.ondragover = e => e.preventDefault();
+	document.body.ondrop = async e => {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			let files: Record<string, Blob> = {};
+			let items: DataTransferItem[] = [];
+			let folderhandles: WebkitDirectoryHandle[] = [];
+			let filehandles: WebkitFsHandle[] = [];
+			for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
+			//needs to start synchronously as the list is cleared after the event
+			await Promise.all(items.map(async item => {
+				//@ts-ignore
+				if (item.getAsFileSystemHandle) {
+					//@ts-ignore
+					let filehandle: WebkitFsHandle = await item.getAsFileSystemHandle();
+					if (filehandle.kind == "file") {
+						filehandles.push(filehandle);
+						files[filehandle.name] = await filehandle.getFile();
+					} else {
+						folderhandles.push(filehandle);
+						for await (let handle of filehandle.values()) {
+							if (handle.kind == "file") {
+								files[handle.name] = await handle.getFile();
+							}
+						}
+					}
+				} else if (item.kind == "file") {
+					let file = item.getAsFile()!;
+					files[file.name] = file;
+				}
+			}));
+			if (folderhandles.length == 1 && filehandles.length == 0) {
+				datastore.set("cachefilehandles", folderhandles[0]);
+				console.log("stored folder " + folderhandles[0].name);
+				cacheDirectoryHandle = folderhandles[0];
+			}
+			console.log(`added ${Object.keys(files).length} files`);
+			hackyCacheFileSource.giveBlobs(files);
+		}
+	}
 }
 
 // const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
@@ -418,8 +420,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			let npc = parseNpc.read(await hackyCacheFileSource.getFileById(cacheMajors.npcs, +searchid));
 			metatext = JSON.stringify(npc, undefined, 2)
 			if (npc.animation_group) {
-				let index = await hackyCacheFileSource.getIndexFile(cacheMajors.config);
-				let arch = await hackyCacheFileSource.getFileArchive(index[cacheConfigPages.animgroups]);
+				let arch = await hackyCacheFileSource.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 				let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
 				console.log(animgroup);
 				let forcedanim = (window as any).forcedanim;
@@ -453,7 +454,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			// mods.replaceMaterials = [
 			// 	[8868, +searchid]
 			// ];
-			let mat = await getMaterialData(hackyCacheFileSource.getFile, +searchid);
+			let mat = await getMaterialData(hackyCacheFileSource, +searchid);
 			let info: any = { mat };
 			let addtex = async (name: string, texid: number) => {
 				let file = await hackyCacheFileSource.getFile(cacheMajors.texturesDds, texid);

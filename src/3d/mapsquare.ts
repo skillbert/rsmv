@@ -21,6 +21,9 @@ import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 
+
+module.hot?.accept(["../3d/ob3tothree", "../3d/ob3togltf"]);
+
 const upvector = new THREE.Vector3(0, 1, 0);
 
 const tiledimensions = 512;
@@ -894,13 +897,11 @@ export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocatio
 type MapConfigData = typeof mapConfigData extends ((...a: any[]) => Promise<infer T>) ? T : never;
 
 export async function mapConfigData(source: CacheFileSource) {
-	//TODO proper erroring on nulls
-	let configindex = await source.getIndexFile(cacheMajors.config);
-	let underlays = (await source.getFileArchive(configindex[cacheConfigPages.mapunderlays]))
+	let underlays = (await source.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
 		.map(q => parseMapsquareUnderlays.read(q.buffer));
-	let overlays = (await source.getFileArchive(configindex[cacheConfigPages.mapoverlays]))
+	let overlays = (await source.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
 		.map(q => parseMapsquareOverlays.read(q.buffer));
-	let mapscenes = (await source.getFileArchive(configindex[cacheConfigPages.mapscenes]))
+	let mapscenes = (await source.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
 		.map(q => parseMapscenes.read(q.buffer));
 
 	return { underlays, overlays, mapscenes };
@@ -971,7 +972,7 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 		let materials = new Map<number, MaterialData>();
 		let materialproms: Promise<any>[] = [];
 		for (let matid of matids) {
-			materialproms.push(getMaterialData(source.getFileById.bind(source), matid).then(mat => materials.set(matid, mat)));
+			materialproms.push(getMaterialData(source, matid).then(mat => materials.set(matid, mat)));
 		}
 		await Promise.all(materialproms);
 		let textures = new Map<number, ImageData>();
@@ -1022,7 +1023,7 @@ export async function mapsquareModels(source: CacheFileSource, grid: TileGrid, c
 }
 
 export async function mapsquareToThree(source: CacheFileSource, grid: TileGrid, chunks: ChunkModelData[]) {
-	let scene = new ThreejsSceneCache(source.getFileById.bind(source));
+	let scene = new ThreejsSceneCache(source);
 	let root = new THREE.Group();
 
 	for (let chunk of chunks) {

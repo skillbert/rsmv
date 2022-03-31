@@ -115,7 +115,7 @@ export class Downloader extends CacheFileSource {
 		return decompress(await this.downloadFile(major, minor, (major == 255 && minor == 255 ? undefined : crc)));
 	}
 	async getFileArchive(meta: CacheIndex) {
-		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindexcount);
+		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindices);
 	}
 	async getIndexFile(major: number) {
 		if (!this.indexMap.get(major)) {

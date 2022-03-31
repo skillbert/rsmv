@@ -5,7 +5,6 @@
 export type frames = {
 	header_always_2: number,
 	probably_framemap_id: number,
-	header3: number,
 	flags: number[],
 	animdata: Uint8Array,
 };

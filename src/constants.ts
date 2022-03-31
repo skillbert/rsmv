@@ -18,6 +18,7 @@ export const cacheMajors = {
 	texturesDds: 52,
 	texturesPng: 53,
 	texturesBmp: 54,
+	skeletalAnims: 56,
 
 	achievements: 57,
 

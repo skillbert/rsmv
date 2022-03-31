@@ -1,17 +1,15 @@
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
-import { GLTFBuilder } from "./gltf";
-import { GlTf, MeshPrimitive, Material } from "./gltftype";
 import { cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
-import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, buildAttributeBuffer, AttributeSoure } from "./gltfutil";
 import { GLTFSceneCache, ModelData, ModelMeshData, FileGetter, parseOb3Model, getMaterialData } from '../3d/ob3togltf';
 import { boundMethod } from 'autobind-decorator';
 import { materialCacheKey } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
-import { BoneInit, parseAnimationSequence3, ParsedAnimation } from "./animation";
+import { BoneInit, MountableAnimation, parseAnimationSequence3, ParsedAnimation, parseSkeletalAnimation } from "./animation";
 import { CacheFileSource } from "../cache";
 import { AnimationClip, Bone, Group, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
+import { parseSequences } from "../opdecoder";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -68,12 +66,19 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 
 
 export class ThreejsSceneCache {
-	getFileById: FileGetter;
 	textureCache = new Map<number, THREE.Texture>();
 	gltfMaterialCache = new Map<number, Promise<THREE.Material>>();
+	source: CacheFileSource;
 
-	constructor(getfilebyid: FileGetter) {
-		this.getFileById = getfilebyid;
+	constructor(source: CacheFileSource) {
+		this.source = source;
+	}
+
+	getFileById(major: number, id: number) {
+		return this.source.getFileById(major, id);
+	}
+	getArchiveById(major: number, minor: number) {
+		return this.source.getArchiveById(major, minor);
 	}
 
 	async getTextureFile(texid: number, allowAlpha: boolean) {
@@ -95,7 +100,7 @@ export class ThreejsSceneCache {
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let material = await getMaterialData(this.getFileById, matid);
+				let material = await getMaterialData(this.source, matid);
 
 				let mat = new THREE.MeshPhongMaterial();
 				mat.transparent = hasVertexAlpha || material.alphamode != "opaque";
@@ -112,6 +117,10 @@ export class ThreejsSceneCache {
 					mat.normalMap.wrapT = THREE.RepeatWrapping;
 				}
 				mat.vertexColors = material.vertexColors || hasVertexAlpha;
+				//TODO re-enable
+				mat.vertexColors = true;
+				mat.map = null;
+
 				if (!material.vertexColors && hasVertexAlpha) {
 					mat.customProgramCacheKey = () => "vertexalphaonly";
 					mat.onBeforeCompile = (shader, renderer) => {
@@ -132,25 +141,22 @@ export class ThreejsSceneCache {
 
 
 
-export async function ob3ModelToThreejsNode(getFile: CacheFileSource, modelfiles: Buffer[], mods: ModelModifications, animids: number[]) {
-	let scene = new ThreejsSceneCache(getFile.getFileById.bind(getFile));
+export async function ob3ModelToThreejsNode(source: CacheFileSource, modelfiles: Buffer[], mods: ModelModifications, animids: number[]) {
+	let scene = new ThreejsSceneCache(source);
 	let meshdatas = modelfiles.map(file => {
 		let meshdata = parseOb3Model(file);
 		meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));
 		return meshdata;
 	});
 
-
-	let anims = await Promise.all(animids.map(q => parseAnimationSequence3(getFile, q)));
-	let mesh = await ob3ModelToThree(scene, mergeModelDatas(meshdatas), anims.filter((q): q is ParsedAnimation => !!q));
+	let mesh = await ob3ModelToThree(scene, mergeModelDatas(meshdatas), animids);
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
 	(window as any).mesh = mesh;
 	return mesh;
 }
 
-
-function mountAnimation(model: ModelData, anim: ParsedAnimation) {
+function mountAnimation(model: ModelData, anim: ParsedAnimation): MountableAnimation {
 	let nbones = model.bonecount + 1;//TODO find out why this number is wrong
 
 	let bonecenters: { xsum: number, ysum: number, zsum: number, weightsum: number }[] = [];
@@ -301,20 +307,13 @@ function mountAnimation(model: ModelData, anim: ParsedAnimation) {
 	let rootbones = anim.rootboneinits.map(b => iter(b, rootangle));
 
 	let skeleton = new Skeleton(indexedbones);
-	let clip = new AnimationClip(`sequence_${anim.animid}`, anim.endtime, keyframetracks);
+	let clip = new AnimationClip(`sequence_${Math.random() * 1000 | 0}`, undefined, keyframetracks);
 
 	if (missingpivots != 0) {
 		console.log("missing pivots during mountanimation", missingpivots);
 	}
 
 	return { skeleton, clip, rootbones };
-}
-
-
-function traverseSweep(obj: Object3D, precall: (obj: Object3D) => void, aftercall: (obj: Object3D) => void) {
-	precall(obj);
-	for (let c of obj.children) { traverseSweep(c, precall, aftercall); }
-	aftercall(obj);
 }
 
 function mergeModelDatas(models: ModelData[]) {
@@ -327,8 +326,28 @@ function mergeModelDatas(models: ModelData[]) {
 	return r;
 }
 
-export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData, anims: ParsedAnimation[]) {
-	let rootnode = (anims.length == 0 ? new Object3D() : new SkinnedMesh());
+export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData, animids: number[]) {
+
+	let mountanim: (() => MountableAnimation) | null = null;
+
+	//bit weird since animations are not guaranteed to have compatible bones
+	for (let animid of animids) {
+		let seqfile = await scene.getFileById(cacheMajors.sequences, animid);
+
+		let seq = parseSequences.read(seqfile);
+
+		if (seq.skeletal_animation) {
+			let anim = await parseSkeletalAnimation(scene, seq.skeletal_animation);
+			mountanim = () => anim;
+			break;
+		} else if (seq.frames) {
+			let frameanim = await parseAnimationSequence3(scene, seq.frames);
+			mountanim = () => mountAnimation(model, frameanim);
+			break;
+		}
+	}
+
+	let rootnode = (mountanim ? new SkinnedMesh() : new Object3D());
 
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
@@ -344,24 +363,20 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		//@ts-ignore
 		// mat.wireframe = true;
 		let mesh: THREE.Mesh | THREE.SkinnedMesh;
-		if (anims.length != 0) {
-			mesh = new THREE.SkinnedMesh(geo, mat);
-		} else {
-			mesh = new THREE.Mesh(geo, mat);
-		}
+		if (mountanim && geo.attributes.skinIndex) { mesh = new THREE.SkinnedMesh(geo, mat); }
+		else { mesh = new THREE.Mesh(geo, mat); }
 		rootnode.add(mesh);
 	}
-	if (anims.length != 0) {
-		let anim = anims[0];
-		let mount = mountAnimation(model, anim);
+	if (mountanim) {
+		let mount = mountanim();
 		if (mount.rootbones) { rootnode.add(...mount.rootbones); }
 		rootnode.traverse(node => {
 			if (node instanceof SkinnedMesh) {
 				// node.bindMode = "detached";
-				node.bind(mount.skeleton);
+				node.bind(mount.skeleton, new Matrix4());
 			}
 		});
-		(rootnode as SkinnedMesh).bind(mount.skeleton);
+		// (rootnode as SkinnedMesh).bind(mount.skeleton);
 		rootnode.animations = [mount.clip];
 	}
 	return rootnode;

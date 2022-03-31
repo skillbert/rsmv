@@ -16,6 +16,23 @@ import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
 
+
+let lastob3modelcall: { args: any[], inst: ThreeJsRenderer } | null = null;
+if (module.hot) {
+	module.hot.accept("../3d/ob3tothree", () => {
+		console.log("accept module")
+		setTimeout(() => {
+			if (lastob3modelcall) {
+				//@ts-ignore
+				lastob3modelcall.inst.setOb3Models(...lastob3modelcall.args);
+			}
+		}, 1);
+	});
+}
+
+
+
+
 export class ThreeJsRenderer implements ModelSink {
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
@@ -307,6 +324,7 @@ export class ThreeJsRenderer implements ModelSink {
 	}
 
 	async setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, metastr: string, anims: number[]) {
+		lastob3modelcall = { args: [...arguments] as any, inst: this };
 		if (this.unpackOb3WithGltf) {
 			//TODO
 			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
