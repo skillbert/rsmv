@@ -118,8 +118,8 @@ export class ThreejsSceneCache {
 				}
 				mat.vertexColors = material.vertexColors || hasVertexAlpha;
 				//TODO re-enable
-				mat.vertexColors = true;
-				mat.map = null;
+				// mat.vertexColors = true;
+				// mat.map = null;
 
 				if (!material.vertexColors && hasVertexAlpha) {
 					mat.customProgramCacheKey = () => "vertexalphaonly";

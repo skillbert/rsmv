@@ -168,20 +168,8 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		if (a.boneid != b.boneid) { return a.boneid - b.boneid; }
 		return a.type_0to9 - b.type_0to9;
 	});
-	//TODO remove
-	// animtracks = animtracks.filter(q => q.chunks.length > 4);
-
-	// console.log(base.skeleton.map(bone => ([
-	// 	"skin,parent,old", bone.skinid, bone.parentbone, bone.nonskinboneid,
-	// 	"pivot", ...bone.bonematrix.slice(12, 15).map(q => +q.toFixed(2)),
-	// 	bone
-	// ])));
 
 	// console.log(base.skeleton.map(bone => `mats{length(mats)+1}=reshape([${bone.bonematrix.map(q => +q.toFixed(3)).join(",")}],[4,4]);`).join("\n"));
-
-	// let boneactions = {};
-	// animtracks.forEach(q => { boneactions[q.boneid - 64] = [...(boneactions[q.boneid - 64] ?? []), q] });
-	// console.log(boneactions);
 
 
 	let sc = (a: number) => +(a).toFixed(2);
@@ -209,7 +197,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		bone.name = "bone_" + id;
 		if (entry.nonskinboneid == 65535) {
 			rootbones.push(bone);
-			matrix.premultiply(prematrix);
+			matrix.multiply(prematrix);
 		} else {
 			bones[entry.nonskinboneid].add(bone);
 			// matrix.multiply(binds[entry.nonskinboneid]);
@@ -218,10 +206,11 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		tmp.copy(matrix).decompose(bone.position, bone.quaternion, bone.scale);
 		// bone.matrixAutoUpdate = true;
 		let angle = new Euler().setFromQuaternion(bone.quaternion);
-		// console.log(id,
-		// 	"TRS", +bone.position.x.toFixed(2), +bone.position.y.toFixed(2), +bone.position.z.toFixed(2),
-		// 	"", sc(angle.x), sc(angle.y), sc(angle.z),
-		// 	"", +bone.scale.x.toFixed(2), +bone.scale.y.toFixed(2), +bone.scale.z.toFixed(2));
+		console.log(id,
+			"TRS", +bone.position.x.toFixed(2), +bone.position.y.toFixed(2), +bone.position.z.toFixed(2),
+			// "", sc(angle.x), sc(angle.y), sc(angle.z),
+			"",+bone.quaternion.x.toFixed(2), +bone.quaternion.y.toFixed(2), +bone.quaternion.z.toFixed(2),+bone.quaternion.w.toFixed(2),
+			"", +bone.scale.x.toFixed(2), +bone.scale.y.toFixed(2), +bone.scale.z.toFixed(2));
 		bone.updateMatrixWorld();
 		// console.log(id, entry.nonskinboneid);
 		// logmat(matrix);
@@ -265,22 +254,22 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		let zvalues: skeletalanim["tracks"][number]["chunks"] | null = null;
 
 		let tracktype = actiontypemap[track.type_0to9];
-		let boneid = track.boneid - 64;
+		//no clue what these offsets are about
+		let boneid = (track.boneid < 16000 ? track.boneid - 64 : track.boneid - 16384);
 
 		while (index < animtracks.length) {
 			let track2 = animtracks[index];
 			let t2 = actiontypemap[track2.type_0to9];
-			if (track2.boneid - 64 != boneid || t2.t != tracktype.t) { break; }
+			if (track2.boneid != track.boneid || t2.t != tracktype.t) { break; }
 			if (t2.a == 0) { xvalues = track2.chunks; }
 			if (t2.a == 1) { yvalues = track2.chunks; }
 			if (t2.a == 2) { zvalues = track2.chunks; }
 			index++;
 		}
 
-
-		let bone = bones[track.boneid - 64];//not sure where the 64 comes from
+		let bone = bones[boneid];
 		if (!bone) {
-			console.log("animation track without bone", track.boneid - 64);
+			console.log("animation track without bone", boneid, track.boneid);
 			continue;
 		}
 		let bonename = bone.name;
@@ -289,7 +278,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		let intp = (v: { time: number, value: number[] }[] | null, i: number, t: number) => {
 			let v1 = v?.[i]?.value[0] ?? defaultvalue;
 			let v2 = v?.[i + 1]?.value[0] ?? defaultvalue;
-			let t1 = v?.[i].time ?? 0;
+			let t1 = v?.[i]?.time ?? 0;
 			let t2 = v?.[i + 1]?.time ?? t1;
 			let a = (t1 == t2 ? 0 : (t - t1) / (t2 - t1));
 			return v1 * (1 - a) + v2 * a;
@@ -312,17 +301,17 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 			data[idata++] = intp(zvalues, iz, t);
 
 			timearray.push(t);
-			if (tx == t && xvalues && ix + 1 < xvalues.length) { ix++; }
-			if (ty == t && yvalues && iy + 1 < yvalues.length) { iy++; }
-			if (tz == t && zvalues && iz + 1 < zvalues.length) { iz++; }
+			if (tx == t) { ix++; }
+			if (ty == t) { iy++; }
+			if (tz == t) { iz++; }
 		}
 
 
 		let times = new Float32Array(timearray.map(q => q * 0.020));
 		if (tracktype.t == "translate") {
-			if (boneid == 2) {
+			if (boneid == 0) {
 				for (let i = 0; i < data.length; i += 3) {
-					data[i + 2] *= -1;
+					// data[i + 2] *= -1;
 					// data[i + 2] *= -1;
 				}
 			}
@@ -331,28 +320,35 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		if (tracktype.t == "scale") {
 			if (boneid == 0) {
 				for (let i = 0; i < data.length; i += 3) {
-					data[i + 0] *= -1;
-					// data[i + 2] *= -1;
+					// data[i + 0] *= -1;
+					data[i + 2] *= -1;
 				}
 			}
 			convertedtracks.push(new VectorKeyframeTrack(`${bonename}.scale`, times as any, data));
 		}
 		if (tracktype.t == "rotate") {
+			let prequat = new Quaternion().setFromEuler(new Euler(-Math.PI, 0, -Math.PI));
 			let quatdata = new Float32Array(timearray.length * 4);
 			for (let i = 0; i * 3 < data.length; i++) {
 				euler.set(
 					data[i * 3 + 0],
 					data[i * 3 + 1],
-					data[i * 3 + 2], 'XYZ');
+					data[i * 3 + 2], 'YXZ');
 				quat.setFromEuler(euler);
+				if (boneid == 0) {
+					quat.multiply(prequat);
+				}
 				//flip the quaternion along the z axis
-				quat.z *= -1;
-				quat.w *= -1;
+				// quat.x *= -1;
+				// quat.z *= -1;
 				quat.toArray(quatdata, i * 4);
 			}
 			convertedtracks.push(new QuaternionKeyframeTrack(`${bonename}.quaternion`, times as any, quatdata as any));
+
+			console.log(bonename, tracktype.t, +quatdata[0].toFixed(2), +quatdata[1].toFixed(2), +quatdata[2].toFixed(2), +quatdata[3].toFixed(2));
+		} else {
+			console.log(bonename, tracktype.t, +data[0].toFixed(2), +data[1].toFixed(2), +data[2].toFixed(2));
 		}
-		// console.log(bonename, tracktype.t, +data[0].toFixed(2), +data[1].toFixed(2), +data[2].toFixed(2));
 	}
 	//TODO remove
 	// convertedtracks = [];
@@ -494,8 +490,8 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 				// 	rawclip[clipindex++] = q2 / 128;
 				// }
 				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame.stream) : 128) / 128;
-				rawclip[clipindex++] = (flag & 2 ? readAnimTranslate(frame.stream) : 128) / 128;
-				rawclip[clipindex++] = (flag & 4 ? readAnimTranslate(frame.stream) : 128) / 128;
+				rawclip[clipindex++] = (flag & 2 ? readAnimFraction(frame.stream) : 128) / 128;
+				rawclip[clipindex++] = (flag & 4 ? readAnimFraction(frame.stream) : 128) / 128;
 			}
 			//others todo
 			if (base.type == 5) {

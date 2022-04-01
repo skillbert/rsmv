@@ -250,7 +250,7 @@ export function parseOb3Model(modelfile: Buffer) {
 					let boneid = rawbuf[dataindex++] | (rawbuf[dataindex++] << 8);//manual 16bit building since it might not be alligned
 					let actualweight = (weight != 0 ? weight : remainder);
 					remainder -= weight;
-					skinIdBuffer[i * 4 + j] = boneid;
+					skinIdBuffer[i * 4 + j] = (boneid==65535?0:boneid);
 					skinWeightBuffer[i * 4 + j] = actualweight;
 					if (weight == 0) { break; }
 				}
@@ -366,40 +366,40 @@ export function parseOb3Model(modelfile: Buffer) {
 
 		// TODO proper toggle for this or remove
 		// visualize bone ids
-		materialArgument = 0;
-		let vertexcolor = new Uint8Array(vertexCount * 4);
-		meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
-		const bonecols = [
-			// [255, 255, 255],//0 white no bone
-			[255, 0, 0],//1 red
-			[0, 255, 0],//2 green
-			[0, 0, 255],//3 blue
-			[15, 0, 0],//4 red--
-			[0, 15, 0],//5 green--
-			[0, 0, 15],//6 blue--
-			[255, 255, 0],//7 yellow
-			[0, 255, 255],//8 cyan
-			[255, 0, 255],//9 purple
-		];
-		let bonecomponent = (i: number, skinindex: number) => {
-			let boneid = meshdata.attributes.skinids?.array[i + skinindex] ?? 0;
-			// let weight = meshdata.attributes.skinweights?.array[i + skinindex] ?? (skinindex == 0 ? 255 : 0);
-			let weight = 255;
-			vertexcolor[i + 0] += (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256) * weight / 255;
-			vertexcolor[i + 1] += (boneid < bonecols.length ? bonecols[boneid][1] : (73 + boneid * 9323) % 256) * weight / 255;
-			vertexcolor[i + 2] += (boneid < bonecols.length ? bonecols[boneid][2] : (171 + boneid * 1071) % 256) * weight / 255;
-		}
-		for (let i = 0; i < vertexCount; i++) {
-			let index = i * 4;
-			vertexcolor[index + 0] = 0;
-			vertexcolor[index + 1] = 0;
-			vertexcolor[index + 2] = 0;
-			vertexcolor[index + 3] = 255;
-			bonecomponent(index, 0);
-			// bonecomponent(index, 1);
-			// bonecomponent(index, 2);
-			// bonecomponent(index, 3);
-		}
+		// materialArgument = 0;
+		// let vertexcolor = new Uint8Array(vertexCount * 4);
+		// meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
+		// const bonecols = [
+		// 	// [255, 255, 255],//0 white no bone
+		// 	[255, 0, 0],//1 red
+		// 	[0, 255, 0],//2 green
+		// 	[0, 0, 255],//3 blue
+		// 	[15, 0, 0],//4 red--
+		// 	[0, 15, 0],//5 green--
+		// 	[0, 0, 15],//6 blue--
+		// 	[255, 255, 0],//7 yellow
+		// 	[0, 255, 255],//8 cyan
+		// 	[255, 0, 255],//9 purple
+		// ];
+		// let bonecomponent = (i: number, skinindex: number) => {
+		// 	let boneid = meshdata.attributes.skinids?.array[i + skinindex] ?? 0;
+		// 	let weight = meshdata.attributes.skinweights?.array[i + skinindex] ?? (skinindex == 0 ? 255 : 0);
+		// 	// let weight = 255;
+		// 	vertexcolor[i + 0] += (boneid < bonecols.length ? bonecols[boneid][0] : (73 + boneid * 9323) % 256) * weight / 255;
+		// 	vertexcolor[i + 1] += (boneid < bonecols.length ? bonecols[boneid][1] : (73 + boneid * 9323) % 256) * weight / 255;
+		// 	vertexcolor[i + 2] += (boneid < bonecols.length ? bonecols[boneid][2] : (171 + boneid * 1071) % 256) * weight / 255;
+		// }
+		// for (let i = 0; i < vertexCount; i++) {
+		// 	let index = i * 4;
+		// 	vertexcolor[index + 0] = 0;
+		// 	vertexcolor[index + 1] = 0;
+		// 	vertexcolor[index + 2] = 0;
+		// 	vertexcolor[index + 3] = 255;
+		// 	bonecomponent(index, 0);
+		// 	bonecomponent(index, 1);
+		// 	bonecomponent(index, 2);
+		// 	bonecomponent(index, 3);
+		// }
 	}
 	for (let n = 0; n < unkCount1; n++) {
 		console.log("unk1", unkCount1);
