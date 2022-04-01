@@ -7,9 +7,9 @@ import { materialCacheKey } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, ParsedAnimation, parseSkeletalAnimation } from "./animation";
-import { CacheFileSource } from "../cache";
+import { achiveToFileId, CacheFileSource } from "../cache";
 import { AnimationClip, Bone, Group, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
-import { parseSequences } from "../opdecoder";
+import { parseFramemaps, parseSequences } from "../opdecoder";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -74,6 +74,36 @@ export class ThreejsSceneCache {
 		this.source = source;
 	}
 
+	//TODO implement rest
+
+	// framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
+	// materialCache = new Map<number, ReturnType<typeof parsemater["read"]>>();
+	// ready:Promise<void>;
+	// async preload() {
+	// 	let framemapindices = await this.source.getIndexFile(cacheMajors.framemaps);
+	// 	for (let index of framemapindices) {
+	// 		let arch = await this.source.getFileArchive(index);
+	// 		for (let file of arch) {
+	// 			this.framemapCache.set(achiveToFileId(index.major, index.minor, file.fileid), parseFramemaps.read(file.buffer));
+	// 		}
+	// 	}
+	// 	// let materialindices = await this.source.getIndexFile(cacheMajors.materials);
+	// 	// for (let index of materialindices) {
+	// 	// 	let arch = await this.source.getFileArchive(index);
+	// 	// 	for(let file of arch){
+	// 	// 		this.
+	// 	// 	}
+	// 	// }
+	// }
+	// getFramemap(id: number) {
+	// 	return this.framemapCache.get(id);
+	// }
+	// getMaterial(id:number){
+	// 	return this.materialCache.get(id);
+	// }
+
+
+
 	getFileById(major: number, id: number) {
 		return this.source.getFileById(major, id);
 	}
@@ -93,6 +123,7 @@ export class ThreejsSceneCache {
 		this.textureCache.set(texid, texture);
 		return texture;
 	}
+
 
 	async getMaterial(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
@@ -376,7 +407,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 				node.bind(mount.skeleton, new Matrix4());
 			}
 		});
-		// (rootnode as SkinnedMesh).bind(mount.skeleton);
+		(rootnode as SkinnedMesh).bind(mount.skeleton);
 		rootnode.animations = [mount.clip];
 	}
 	return rootnode;

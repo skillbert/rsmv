@@ -36,24 +36,6 @@ import * as THREE from "three";
 //npc new anims
 //27111   butterfly
 
-const framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
-let loaded = false;
-async function getFramemap(loader: CacheFileSource, id: number) {
-	// if (!loaded) {
-	// 	let indices = await loader.getIndexFile(cacheMajors.framemaps);
-	// 	for (let index of indices) {
-	// 		let arch = await loader.getFileArchive(index);
-	// 		for (let i = 0; i < index.subindexcount; i++) {
-	// 			framemapCache.set(index.minor * 128 + index.subindices[i], parseFramemaps.read(arch[i].buffer));
-	// 		}
-	// 	}
-	// 	loaded = true;
-	// }
-	// return framemapCache.get(id);
-	return loader.getFileById(cacheMajors.framemaps, id);
-}
-
-
 type TransformBase = { type: string, inverse: boolean };
 type TransformTranslateConst = TransformBase & { type: "translateconst", data: number[] }
 type TransformTranslate = TransformBase & { type: "translate", data: Float32Array }
@@ -128,6 +110,11 @@ function findSharedPivot(bones: TransformStack[]) {
 			passed = false;
 			break;
 		}
+		if (bone.stack.length != len) {
+			console.log("different stack lengths");
+			passed = false;
+			break;
+		}
 	}
 	//skip first bone since it's the slightly different translate
 	if (passed) {
@@ -169,21 +156,6 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		return a.type_0to9 - b.type_0to9;
 	});
 
-	// console.log(base.skeleton.map(bone => `mats{length(mats)+1}=reshape([${bone.bonematrix.map(q => +q.toFixed(3)).join(",")}],[4,4]);`).join("\n"));
-
-
-	let sc = (a: number) => +(a).toFixed(2);
-	let logmat = (m: Matrix4) => {
-		let str = "";
-		for (let i = 0; i < 4; i++) {
-			for (let j = 0; j < 4; j++) {
-				str += m.elements[i + j * 4].toFixed(2).padStart(7) + (j < 3 ? "," : "");
-			}
-			str += (i < 3 ? "\n" : "")
-		}
-		console.log(str);
-	}
-
 	let bones: Bone[] = [];
 	let binds: Matrix4[] = [];
 	let rootbones: Bone[] = [];
@@ -193,27 +165,20 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		let bone = new Bone();
 		let matrix = new Matrix4().fromArray(entry.bonematrix);
 
-
 		bone.name = "bone_" + id;
 		if (entry.nonskinboneid == 65535) {
 			rootbones.push(bone);
 			matrix.multiply(prematrix);
 		} else {
 			bones[entry.nonskinboneid].add(bone);
-			// matrix.multiply(binds[entry.nonskinboneid]);
 		}
 
 		tmp.copy(matrix).decompose(bone.position, bone.quaternion, bone.scale);
-		// bone.matrixAutoUpdate = true;
-		let angle = new Euler().setFromQuaternion(bone.quaternion);
-		console.log(id,
-			"TRS", +bone.position.x.toFixed(2), +bone.position.y.toFixed(2), +bone.position.z.toFixed(2),
-			// "", sc(angle.x), sc(angle.y), sc(angle.z),
-			"",+bone.quaternion.x.toFixed(2), +bone.quaternion.y.toFixed(2), +bone.quaternion.z.toFixed(2),+bone.quaternion.w.toFixed(2),
-			"", +bone.scale.x.toFixed(2), +bone.scale.y.toFixed(2), +bone.scale.z.toFixed(2));
+		// console.log(id,
+		// 	"TRS", +bone.position.x.toFixed(2), +bone.position.y.toFixed(2), +bone.position.z.toFixed(2),
+		// 	"", +bone.quaternion.x.toFixed(2), +bone.quaternion.y.toFixed(2), +bone.quaternion.z.toFixed(2), +bone.quaternion.w.toFixed(2),
+		// 	"", +bone.scale.x.toFixed(2), +bone.scale.y.toFixed(2), +bone.scale.z.toFixed(2));
 		bone.updateMatrixWorld();
-		// console.log(id, entry.nonskinboneid);
-		// logmat(matrix);
 		bones[id] = bone;
 		binds[id] = matrix;
 	}
@@ -309,45 +274,23 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 
 		let times = new Float32Array(timearray.map(q => q * 0.020));
 		if (tracktype.t == "translate") {
-			if (boneid == 0) {
-				for (let i = 0; i < data.length; i += 3) {
-					// data[i + 2] *= -1;
-					// data[i + 2] *= -1;
-				}
-			}
 			convertedtracks.push(new VectorKeyframeTrack(`${bonename}.position`, times as any, data));
 		}
 		if (tracktype.t == "scale") {
+			//flip the root bone in z direction
 			if (boneid == 0) {
-				for (let i = 0; i < data.length; i += 3) {
-					// data[i + 0] *= -1;
-					data[i + 2] *= -1;
-				}
+				for (let i = 0; i < data.length; i += 3) { data[i + 2] *= -1; }
 			}
 			convertedtracks.push(new VectorKeyframeTrack(`${bonename}.scale`, times as any, data));
 		}
 		if (tracktype.t == "rotate") {
-			let prequat = new Quaternion().setFromEuler(new Euler(-Math.PI, 0, -Math.PI));
 			let quatdata = new Float32Array(timearray.length * 4);
 			for (let i = 0; i * 3 < data.length; i++) {
-				euler.set(
-					data[i * 3 + 0],
-					data[i * 3 + 1],
-					data[i * 3 + 2], 'YXZ');
+				euler.set(data[i * 3 + 0], data[i * 3 + 1], data[i * 3 + 2], "YXZ");
 				quat.setFromEuler(euler);
-				if (boneid == 0) {
-					quat.multiply(prequat);
-				}
-				//flip the quaternion along the z axis
-				// quat.x *= -1;
-				// quat.z *= -1;
 				quat.toArray(quatdata, i * 4);
 			}
 			convertedtracks.push(new QuaternionKeyframeTrack(`${bonename}.quaternion`, times as any, quatdata as any));
-
-			console.log(bonename, tracktype.t, +quatdata[0].toFixed(2), +quatdata[1].toFixed(2), +quatdata[2].toFixed(2), +quatdata[3].toFixed(2));
-		} else {
-			console.log(bonename, tracktype.t, +data[0].toFixed(2), +data[1].toFixed(2), +data[2].toFixed(2));
 		}
 	}
 	//TODO remove
