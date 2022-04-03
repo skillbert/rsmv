@@ -52,6 +52,7 @@
 		"bzip2": "^0.1.1",
 		"classnames": "^2.3.1",
 		"cmd-ts": "^0.7.0",
+		"comment-json": "^4.2.2",
 		"crc": "^3.8.0",
 		"electron-titlebar": "0.0.3",
 		"idb-keyval": "^6.1.0",

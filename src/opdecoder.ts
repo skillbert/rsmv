@@ -1,7 +1,8 @@
 // import * as fs from "fs";
 import * as opcode_reader from "./opcode_reader";
+import commentJson from "comment-json";
 
-const typedef = require("./opcodes/typedef.json");
+const typedef = commentJson.parse(require("./opcodes/typedef.json")) as any;
 
 //alloc a large static buffer to write data to without knowing the data size
 //then copy what we need out of it
@@ -12,10 +13,11 @@ let bytesleftoverwarncount = 0;
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser<T>;
 
-	constructor(_opcodes: any) {
+	constructor(_opcodes: string) {
+		let opcodeobj = commentJson.parse(_opcodes, undefined, true);
 		// const typedef = JSON.parse(fs.readFileSync(__dirname + "/opcodes/typedef.json", "utf-8"));
 		// const _opcodes = JSON.parse(fs.readFileSync(opcodePath, "utf-8"));
-		this.parser = opcode_reader.buildParser(_opcodes, typedef as any);
+		this.parser = opcode_reader.buildParser(opcodeobj as any, typedef as any);
 	}
 
 	read(buffer: Buffer) {
@@ -32,9 +34,9 @@ export class FileParser<T> {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
-			if (buffer.byteLength < 100000) {
-				throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
-			}
+			// if (buffer.byteLength < 100000) {
+			// 	throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+			// }
 		}
 		return res;
 	}
@@ -70,5 +72,6 @@ export const parseModels = new FileParser<import("../generated/models").models>(
 export const parseSpotAnims = new FileParser<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json"));
 export const parseRootCacheIndex = new FileParser<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json"));
 export const parseSkeletalAnim = new FileParser<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.json"));
+export const parseMaterials = new FileParser<import("../generated/materials").materials>(require("./opcodes/materials.jsonc"));
 
 

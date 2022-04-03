@@ -96,30 +96,30 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 		return data[scan++];
 	}
 
-	this.readShort = function (flip = false) {
-		var val = this.readUShort(flip);
+	this.readShort = function (bigendian = false) {
+		var val = this.readUShort(bigendian);
 		if (val > 32767)
 			return val - 65536;
 		return val;
 	}
 
-	this.readUShort = function (flip = false) {
-		if (flip)
+	this.readUShort = function (bigendian = false) {
+		if (bigendian)
 			return ((data[scan++] << 8) & 0xFF00) | data[scan++];
 		else
 			return data[scan++] | ((data[scan++] << 8) & 0xFF00);
 	}
 
-	this.readUInt = function (flip = false) {
-		if (flip)
+	this.readUInt = function (bigendian = false) {
+		if (bigendian)
 			return ((data[scan++] << 24) & 0xFF000000) | ((data[scan++] << 16) & 0xFF0000) | ((data[scan++] << 8) & 0xFF00) | data[scan++];
 		else
 			return data[scan++] | ((data[scan++] << 8) & 0xFF00) | ((data[scan++] << 16) & 0xFF0000) | ((data[scan++] << 24) & 0xFF000000);
 	}
 
-	this.readFloat = function (flip = false, signage = false) {
+	this.readFloat = function (bigendian = false, signage = false) {
 		var upper, mid, lower, exponent;
-		if (flip) {
+		if (bigendian) {
 			exponent = data[scan++];
 			lower = (data[scan++] << 16) & 0xFF0000;
 			mid = (data[scan++] << 8) & 0xFF00;

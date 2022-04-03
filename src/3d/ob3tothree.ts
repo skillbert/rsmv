@@ -1,15 +1,18 @@
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
-import { cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
-import { GLTFSceneCache, ModelData, ModelMeshData, FileGetter, parseOb3Model, getMaterialData } from '../3d/ob3togltf';
+import { ModelData, parseOb3Model } from '../3d/ob3togltf';
 import { boundMethod } from 'autobind-decorator';
-import { materialCacheKey } from "./jmat";
+import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, ParsedAnimation, parseSkeletalAnimation } from "./animation";
 import { achiveToFileId, CacheFileSource } from "../cache";
 import { AnimationClip, Bone, Group, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
-import { parseFramemaps, parseSequences } from "../opdecoder";
+import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
+import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
+import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
+import { mapscenes } from "../../generated/mapscenes";
 
 (globalThis as any).packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -65,44 +68,72 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 }
 
 
+//basically stores all the config of the game engine
+export class EngineCache {
+	framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
+	materialCache = new Map<number, MaterialData>();
+	ready: Promise<EngineCache>;
+	source: CacheFileSource;
+
+	mapUnderlays: mapsquare_underlays[];
+	mapOverlays: mapsquare_overlays[];
+	mapMapscenes: mapscenes[];
+
+	static async create(source: CacheFileSource) {
+		let ret = new EngineCache(source);
+		return ret.ready;
+	}
+
+	private constructor(source: CacheFileSource) {
+		this.source = source;
+		this.ready = this.preload();
+	}
+
+	async preload() {
+		// let framemapindices = await this.source.getIndexFile(cacheMajors.framemaps);
+		// for (let index of framemapindices) {
+		// 	let arch = await this.source.getFileArchive(index);
+		// 	for (let file of arch) {
+		// 		this.framemapCache.set(achiveToFileId(index.major, index.minor, file.fileid), parseFramemaps.read(file.buffer));
+		// 	}
+		// }
+		let materialindices = await this.source.getIndexFile(cacheMajors.materials);
+		this.materialCache.set(-1, defaultMaterial());
+		for (let index of materialindices) {
+			let arch = await this.source.getFileArchive(index);
+			for (let file of arch) {
+				this.materialCache.set(achiveToFileId(index.major, index.minor, file.fileid), convertMaterial(file.buffer));
+			}
+		}
+
+		this.mapUnderlays = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
+			.map(q => parseMapsquareUnderlays.read(q.buffer));
+		this.mapOverlays = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
+			.map(q => parseMapsquareOverlays.read(q.buffer));
+		this.mapMapscenes = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
+			.map(q => parseMapscenes.read(q.buffer));
+
+		return this;
+	}
+
+	// getFramemap(id: number) {
+	// 	return this.framemapCache.get(id)!;
+	// }
+	getMaterialData(id: number) {
+		return this.materialCache.get(id)!;
+	}
+}
+
 export class ThreejsSceneCache {
 	textureCache = new Map<number, THREE.Texture>();
 	gltfMaterialCache = new Map<number, Promise<THREE.Material>>();
 	source: CacheFileSource;
+	cache: EngineCache;
 
-	constructor(source: CacheFileSource) {
-		this.source = source;
+	constructor(scenecache: EngineCache) {
+		this.cache = scenecache;
+		this.source = scenecache.source;
 	}
-
-	//TODO implement rest
-
-	// framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
-	// materialCache = new Map<number, ReturnType<typeof parsemater["read"]>>();
-	// ready:Promise<void>;
-	// async preload() {
-	// 	let framemapindices = await this.source.getIndexFile(cacheMajors.framemaps);
-	// 	for (let index of framemapindices) {
-	// 		let arch = await this.source.getFileArchive(index);
-	// 		for (let file of arch) {
-	// 			this.framemapCache.set(achiveToFileId(index.major, index.minor, file.fileid), parseFramemaps.read(file.buffer));
-	// 		}
-	// 	}
-	// 	// let materialindices = await this.source.getIndexFile(cacheMajors.materials);
-	// 	// for (let index of materialindices) {
-	// 	// 	let arch = await this.source.getFileArchive(index);
-	// 	// 	for(let file of arch){
-	// 	// 		this.
-	// 	// 	}
-	// 	// }
-	// }
-	// getFramemap(id: number) {
-	// 	return this.framemapCache.get(id);
-	// }
-	// getMaterial(id:number){
-	// 	return this.materialCache.get(id);
-	// }
-
-
 
 	getFileById(major: number, id: number) {
 		return this.source.getFileById(major, id);
@@ -131,7 +162,7 @@ export class ThreejsSceneCache {
 		let cached = this.gltfMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
-				let material = await getMaterialData(this.source, matid);
+				let material = this.cache.getMaterialData(matid);
 
 				let mat = new THREE.MeshPhongMaterial();
 				mat.transparent = hasVertexAlpha || material.alphamode != "opaque";
@@ -171,9 +202,7 @@ export class ThreejsSceneCache {
 }
 
 
-
-export async function ob3ModelToThreejsNode(source: CacheFileSource, modelfiles: Buffer[], mods: ModelModifications, animids: number[]) {
-	let scene = new ThreejsSceneCache(source);
+export async function ob3ModelToThreejsNode(scene: ThreejsSceneCache, modelfiles: Buffer[], mods: ModelModifications, animids: number[]) {
 	let meshdatas = modelfiles.map(file => {
 		let meshdata = parseOb3Model(file);
 		meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, mods));

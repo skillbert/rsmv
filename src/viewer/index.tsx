@@ -11,13 +11,13 @@ import { WasmGameCacheLoader as GameCacheLoader } from "../cacheloaderwasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
 import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
-import { getMaterialData } from "../3d/ob3togltf";
 import { ParsedTexture } from "../3d/textures";
-
+import * as commntJson from "comment-json";
 import * as datastore from "idb-keyval";
+import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
-type RenderMode = "gltf" | "three";
+type RenderMode = "three";
 
 
 if (module.hot) {
@@ -37,6 +37,8 @@ function start() {
 //TODO rename this, it's no longer a hack
 let CachedHacky = cachingFileSourceMixin(GameCacheLoader);
 const hackyCacheFileSource = new CachedHacky();
+
+let engineCache: Promise<EngineCache> | null = null;
 
 declare var FileSystemHandle: {
 	prototype: WebkitFsHandle;
@@ -70,8 +72,8 @@ type WebkitDirectoryHandle = WebkitFsHandleBase & {
 }
 
 var cacheDirectoryHandle: WebkitDirectoryHandle | null = null;
-var cacheDirectoryLoaded = false;
 
+//TODO remove
 if (module.hot) {
 	module.hot.accept("../3d/ob3tothree.ts", () => {
 		console.log("notified");
@@ -79,25 +81,31 @@ if (module.hot) {
 }
 
 async function ensureCachePermission() {
-	if (cacheDirectoryLoaded) { return }
-	if (!cacheDirectoryHandle) {
-		cacheDirectoryHandle = await showDirectoryPicker();
-	}
-	if (cacheDirectoryHandle) {
-		await cacheDirectoryHandle.requestPermission();
-		cacheDirectoryLoaded = true;
-
-		let files: Record<string, Blob> = {};
-		console.log(await cacheDirectoryHandle.queryPermission());
-		await cacheDirectoryHandle.requestPermission();
-		for await (let handle of cacheDirectoryHandle.values()) {
-			if (handle.kind == "file") {
-				files[handle.name] = await handle.getFile();
+	if (!engineCache) {
+		engineCache = (async () => {
+			if (!cacheDirectoryHandle) {
+				cacheDirectoryHandle = await showDirectoryPicker();
+				if (!cacheDirectoryHandle) { throw new Error("permission denied"); }
 			}
-		}
-		hackyCacheFileSource.giveBlobs(files);
-		datastore.set("cachefilehandles", cacheDirectoryHandle);
+			await cacheDirectoryHandle.requestPermission();
+
+			let files: Record<string, Blob> = {};
+			console.log(await cacheDirectoryHandle.queryPermission());
+			await cacheDirectoryHandle.requestPermission();
+			for await (let handle of cacheDirectoryHandle.values()) {
+				if (handle.kind == "file") {
+					files[handle.name] = await handle.getFile();
+				}
+			}
+			hackyCacheFileSource.giveBlobs(files);
+			datastore.set("cachefilehandles", cacheDirectoryHandle);
+			let cache = await EngineCache.create(hackyCacheFileSource);
+			console.log("engine loaded");
+			return cache;
+		})();
+		engineCache.catch(() => engineCache = null);
 	}
+	return engineCache;
 }
 
 if (typeof window != "undefined") {
@@ -168,7 +176,6 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 
 	@boundMethod
 	async submitSearchIds(value: string) {
-		await ensureCachePermission();
 		localStorage.rsmv_lastsearch = value;
 		localStorage.rsmv_lastmode = this.state.mode;
 		if (!this.state.hist.includes(value)) {
@@ -240,14 +247,9 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	@boundMethod
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
-			if (this.state.rendermode == "gltf") {
-				this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource, true);
-			}
-			if (this.state.rendermode == "three") {
-				this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource);
-				(this.renderer as any).automaticFrames = true;
-				console.warn("forcing auto-frames!!");
-			}
+			this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource);
+			// (this.renderer as any).automaticFrames = true;
+			// console.warn("forcing auto-frames!!");
 		}
 	}
 
@@ -290,8 +292,6 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 						<div className="sidebar-browser-tab-strip">
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "three" })} onClick={() => this.setRenderer("three")}><span>Three</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "gltf" })} onClick={() => this.setRenderer("gltf")}><span>GLTF</span></div>
 							<div></div>
 							<div className={classNames("rsmv-icon-button", { active: false })} onClick={this.exportModel}><span>Export</span></div>
 							<div></div>
@@ -395,12 +395,13 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 // }
 
 export async function requestLoadModel(searchid: string, mode: LookupMode, renderer: ModelSink) {
-	// let cache = new MiniCache(getFile);
+	let engineCache = await ensureCachePermission();
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
 	let models: Buffer[] = [];
 	let anims: number[] = [];
 	let metatext = "";
+	let scenecache = new ThreejsSceneCache(engineCache);
 	switch (mode) {
 		case "model":
 			modelids = [+searchid];
@@ -454,7 +455,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			// mods.replaceMaterials = [
 			// 	[8868, +searchid]
 			// ];
-			let mat = await getMaterialData(hackyCacheFileSource, +searchid);
+			let mat = engineCache.getMaterialData(+searchid);
 			let info: any = { mat };
 			let addtex = async (name: string, texid: number) => {
 				let file = await hackyCacheFileSource.getFile(cacheMajors.texturesDds, texid);
@@ -477,10 +478,10 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			zsize = zsize ?? xsize;
 			//TODO enable centered again
 			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: false };
-			let { grid, chunks } = await parseMapsquare(hackyCacheFileSource, { x, z, xsize, zsize }, opts);
-			let modeldata = await mapsquareModels(hackyCacheFileSource, grid, chunks, opts);
+			let { grid, chunks } = await parseMapsquare(engineCache, { x, z, xsize, zsize }, opts);
+			let modeldata = await mapsquareModels(engineCache, grid, chunks, opts);
 
-			let scene = await mapsquareToThree(hackyCacheFileSource, grid, modeldata);
+			let scene = await mapsquareToThree(scenecache, grid, modeldata);
 			renderer.setModels?.([scene], "");
 			// TODO currently parsing this twice
 			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
@@ -494,7 +495,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 	if (modelids.length != 0) {
 		models.push(...await Promise.all(modelids.map(id => hackyCacheFileSource.getFileById(cacheMajors.models, id))));
 		console.log("loading models", ...modelids);
-		renderer.setOb3Models(models, hackyCacheFileSource, mods, metatext, anims);
+		renderer.setOb3Models(scenecache, models, mods, metatext, anims);
 	}
 }
 
@@ -504,7 +505,7 @@ export type ModelViewerState = {
 }
 
 export interface ModelSink {
-	setOb3Models: (models: Buffer[], cache: CacheFileSource, mods: ModelModifications, meta: string, anims: number[]) => void
+	setOb3Models: (scenecache: ThreejsSceneCache, models: Buffer[], mods: ModelModifications, meta: string, anims: number[]) => void
 	setGltfModels?: (models: Buffer[]) => void,
 	setModels?: (models: THREE.Object3D[], metastr?: string) => void,
 	setValue?: (key: string, value: boolean) => void

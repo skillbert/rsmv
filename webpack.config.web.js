@@ -18,6 +18,10 @@ module.exports = {
 				use: 'ts-loader',
 				exclude: /node_modules/,
 			},
+			{
+				test: /\.jsonc?$/,
+				type: "asset/source"
+			}
 		],
 	},
 	target: "web",
@@ -57,7 +61,6 @@ module.exports = {
 		new ProvidePlugin({
 			Buffer: ['buffer', 'Buffer'],
 			process: [require.resolve('process/browser')]
-		}),
-		new HotModuleReplacementPlugin(),
+		})
 	]
 };

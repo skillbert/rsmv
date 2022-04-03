@@ -218,7 +218,7 @@ const mappedFileIds = {
 	[cacheMajors.sequences]: 128,
 	[cacheMajors.spotanims]: 256,
 	[cacheMajors.achievements]: 128,
-	[cacheMajors.materials]: Infinity
+	[cacheMajors.materials]: 10000000//is single index
 }
 
 export function fileIdToArchiveminor(major: number, fileid: number) {

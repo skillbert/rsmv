@@ -1,10 +1,11 @@
 var gulp = require('gulp');
 var child_process = require("child_process");
 var through2 = require('through2');
+var commentjson = require("comment-json");
 
 const outdir = 'dist/';
 const generateddir = 'generated/';
-const opcodesglob = 'src/opcodes/*.json';
+const opcodesglob = 'src/opcodes/*.{json,jsonc}';
 const assetsglob = 'src/assets/*';
 
 //gulp-typescript hasn't been updated in 2 years and does not support incremental builds anymore
@@ -22,8 +23,8 @@ function generateOpcodeTypes() {
 			const opcode_reader = require("./dist/opcode_reader");
 			const fs = require("fs");
 			const path = require("path");
-			const opcodes = JSON.parse(file.contents.toString());
-			const typedef = JSON.parse(fs.readFileSync(file.dirname + "/typedef.json", "utf-8"));
+			const opcodes = commentjson.parse(file.contents.toString(), undefined, true);
+			const typedef = commentjson.parse(fs.readFileSync(file.dirname + "/typedef.json", "utf-8"), undefined, true);
 			var typesfile =
 				"// GENERATED DO NOT EDIT\n" +
 				"// This source data is located at '" + path.relative(generateddir, file.path) + "'\n" +

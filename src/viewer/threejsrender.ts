@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader, GLTFParser, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
-import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode } from '../3d/ob3tothree';
+import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache } from '../3d/ob3tothree';
 import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
@@ -49,16 +49,14 @@ export class ThreeJsRenderer implements ModelSink {
 	automaticFrames = false;
 	contextLossCount = 0;
 	contextLossCountLastRender = 0;
-	unpackOb3WithGltf: boolean;
 	filesource: CacheFileSource;
 	clock = new Clock(true);
 	animationMixer: AnimationMixer | null = null;
 
-	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource, unpackOb3WithGltf = false) {
+	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource) {
 		(window as any).render = this;//TODO remove
 		this.filesource = filesource;
 		this.canvas = canvas;
-		this.unpackOb3WithGltf = unpackOb3WithGltf;
 		this.stateChangeCallback = stateChangeCallback;
 		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, powerPreference: "high-performance", antialias: true, ...params });
 		const renderer = this.renderer;
@@ -323,16 +321,10 @@ export class ThreeJsRenderer implements ModelSink {
 		this.stateChangeCallback(this.uistate);
 	}
 
-	async setOb3Models(modelfiles: Buffer[], cache: CacheFileSource, mods: ModelModifications, metastr: string, anims: number[]) {
+	async setOb3Models(scene: ThreejsSceneCache, modelfiles: Buffer[], mods: ModelModifications, metastr: string, anims: number[]) {
 		lastob3modelcall = { args: [...arguments] as any, inst: this };
-		if (this.unpackOb3WithGltf) {
-			//TODO
-			// let models = await Promise.all(modelfiles.map(file => ob3ModelToGltfFile(cache.get.bind(cache), file, mods)));
-			// return this.setGltfModels(models, metastr);
-		} else {
-			let model = await ob3ModelToThreejsNode(cache, modelfiles, mods, anims);
-			return this.setModels([model], metastr);
-		}
+		let model = await ob3ModelToThreejsNode(scene, modelfiles, mods, anims);
+		return this.setModels([model], metastr);
 	}
 	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
 		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));

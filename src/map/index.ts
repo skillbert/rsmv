@@ -13,6 +13,7 @@ import { cacheMajors } from "../constants";
 import { parseEnums, parseMapZones } from "../opdecoder";
 import { FlatImageData } from "3d/utils";
 import * as THREE from "three";
+import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 
 window.addEventListener("keydown", e => {
 	if (e.key == "F5") { document.location.reload(); }
@@ -160,6 +161,7 @@ let cmd = cmdts.command({
 		const mapsizez = 200;
 		const mapsizex = 100;
 		let filesource = await args.source();
+		let engine = await EngineCache.create(filesource);
 
 		let areas: MapRect[] = [];
 		let mask: MapRect[] | undefined = undefined;
@@ -277,7 +279,7 @@ let cmd = cmdts.command({
 		document.body.appendChild(progress.root);
 
 
-		await downloadMap(filesource, areas, mask, config, progress);
+		await downloadMap(engine, areas, mask, config, progress);
 		await generateMips(config, progress);
 		console.log("done");
 	}
@@ -458,11 +460,11 @@ export function isImageEmpty(img: FlatImageData, mode: "black" | "transparent", 
 	return true;
 }
 
-export async function downloadMap(filesource: CacheFileSource, rects: MapRect[], mask: MapRect[] | undefined, config: MapRender, progress: ProgressUI) {
+export async function downloadMap(engine: EngineCache, rects: MapRect[], mask: MapRect[] | undefined, config: MapRender, progress: ProgressUI) {
 	let cnv = document.createElement("canvas");
 	let extraopts: ParsemapOpts = { mask };
-	let chunksource = (x: number, z: number) => downloadMapsquareThree(filesource, extraopts, x, z);
-	let maprender = new MapRenderer(cnv, filesource, chunksource);
+	let chunksource = (x: number, z: number) => downloadMapsquareThree(engine, extraopts, x, z);
+	let maprender = new MapRenderer(cnv, engine.source, chunksource);
 
 	let errs: Error[] = [];
 	const zscan = 4;
@@ -473,11 +475,11 @@ export async function downloadMap(filesource: CacheFileSource, rects: MapRect[],
 				for (let retry = 0; retry <= maxretries; retry++) {
 					try {
 						let zsize = Math.min(zscan, rect.z + rect.zsize - z);
-						await renderMapsquare(filesource, { x, z, xsize: 1, zsize }, extraopts, config, maprender, progress);
+						await renderMapsquare(engine, { x, z, xsize: 1, zsize }, extraopts, config, maprender, progress);
 						break;
 					} catch (e) {
 						let cnv = document.createElement("canvas");
-						maprender = new MapRenderer(cnv, filesource, chunksource);
+						maprender = new MapRenderer(cnv, engine.source, chunksource);
 						console.warn(e);
 						errs.push(e);
 					}
@@ -488,17 +490,18 @@ export async function downloadMap(filesource: CacheFileSource, rects: MapRect[],
 	console.log(errs);
 }
 
-export async function downloadMapsquareThree(filesource: CacheFileSource, extraopts: ParsemapOpts, x: number, z: number) {
+export async function downloadMapsquareThree(engine: EngineCache, extraopts: ParsemapOpts, x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
 	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false, ...extraopts };
-	let { chunks, grid } = await parseMapsquare(filesource, { x, z, xsize: 1, zsize: 1 }, opts);
-	let modeldata = await mapsquareModels(filesource, grid, chunks, opts);
-	let file = await mapsquareToThree(filesource, grid, modeldata);
+	let { chunks, grid } = await parseMapsquare(engine, { x, z, xsize: 1, zsize: 1 }, opts);
+	let modeldata = await mapsquareModels(engine, grid, chunks, opts);
+	let scene = new ThreejsSceneCache(engine);
+	let file = await mapsquareToThree(scene, grid, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
 	return { grid, chunks, model: file, modeldata };
 }
 
-export async function renderMapsquare(filesource: CacheFileSource, subrect: MapRect, extraopts: ParsemapOpts, config: MapRender, renderer: MapRenderer, progress: ProgressUI) {
+export async function renderMapsquare(engine: EngineCache, subrect: MapRect, extraopts: ParsemapOpts, config: MapRender, renderer: MapRenderer, progress: ProgressUI) {
 	let takepicture = async (cnf: LayerConfig & { mode: "3d" }, rect: MapRect) => {
 		for (let retry = 0; retry <= 2; retry++) {
 			let img = await renderer!.renderer.takePicture(rect.x, rect.z, rect.xsize, cnf.pxpersquare, cnf.dxdy, cnf.dzdy);
@@ -559,8 +562,8 @@ export async function renderMapsquare(filesource: CacheFileSource, subrect: MapR
 				if (cnf.mode == "map") {
 					//TODO somehow dedupe this with massive memory cost?
 					//TODO this ignores mask
-					let { grid, chunks } = await parseMapsquare(filesource, { x: x - 1, z: z - 1, xsize: squares + 1, zsize: squares + 1 }, extraopts);
-					let svg = await svgfloor(filesource, grid, chunks.flatMap(q => q.locs), area, cnf.level, cnf.pxpersquare, cnf.wallsonly);
+					let { grid, chunks } = await parseMapsquare(engine, { x: x - 1, z: z - 1, xsize: squares + 1, zsize: squares + 1 }, extraopts);
+					let svg = await svgfloor(engine.source, grid, chunks.flatMap(q => q.locs), area, cnf.level, cnf.pxpersquare, cnf.wallsonly);
 					let zooms = config.getLayerZooms(cnf);
 					fs.writeFileSync(config.outpath(cnf.name, zooms.base, x, config.config.mapsizez - z - 1, "svg"), svg);
 					imgfiles++;

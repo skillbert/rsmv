@@ -1,11 +1,11 @@
 import { filesource, cliArguments, mapareasource } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import * as fs from "fs";
-import { cacheMajors } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareLocations } from "../opdecoder";
-import { mapConfigData, mapsquareModels, ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
+import { parseMapsquareLocations } from "../opdecoder";
+import { ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
 import sharp from "sharp";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
+import { EngineCache } from "../3d/ob3tothree";
 
 //for debugging
 (global as any).fs = require("fs");
@@ -21,14 +21,12 @@ let cmd = command({
 	handler: async (args) => {
 		let opts: ParsemapOpts = { centered: true, invisibleLayers: false };
 		let filesource = await args.source();
-		let { chunks, grid } = await parseMapsquare(filesource, args.area, opts);
+		let engine = await EngineCache.create(filesource);
+		let { chunks, grid } = await parseMapsquare(engine, args.area, opts);
 		fs.mkdirSync(args.save, { recursive: true });
 		if (args.mode == "model") {
 			//TODO
 			console.log("needs repimplementation");
-			// let modeldata = await mapsquareModels(args.source, grid, chunks, opts);
-			// let file = await mapsquareToGltf(args.source, modeldata);
-			// fs.writeFileSync(args.save + "/" + Date.now() + ".glb", file);
 		}
 		if (args.mode == "objects") {
 			let locs: { squarex: number, squarez: number, locs: mapsquare_locations["locations"] }[] = [];
@@ -48,9 +46,8 @@ let cmd = command({
 			let alltiles = chunks.flatMap(q => q.tiles.map((t, i) => ({ $coord: `${i / 64 | 0}_${i % 64}`, ...t })));
 			let usedunderlays = new Set(alltiles.map(q => q.underlay).filter(q => typeof q != "undefined"));
 			let usedoverlays = new Set(alltiles.map(q => q.overlay).filter(q => typeof q != "undefined"));
-			let { underlays, overlays } = await mapConfigData(filesource);
-			let allunderlays = Object.fromEntries([...usedunderlays].map(q => [q, { $actualid: q! - 1, ...underlays[q! - 1] }]));
-			let alloverlays = Object.fromEntries([...usedoverlays].map(q => [q, { $actualid: q! - 1, ...overlays[q! - 1] }]));
+			let allunderlays = Object.fromEntries([...usedunderlays].map(q => [q, { $actualid: q! - 1, ...engine.mapUnderlays[q! - 1] }]));
+			let alloverlays = Object.fromEntries([...usedoverlays].map(q => [q, { $actualid: q! - 1, ...engine.mapOverlays[q! - 1] }]));
 			let r = {
 				allunderlays,
 				alloverlays,

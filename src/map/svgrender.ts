@@ -177,7 +177,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 			if (drawmapscenes) {
 				let group = mapscenes.get(loc.location.mapscene);
 				if (!group) {
-					let mapscene = grid.mapconfig.mapscenes[loc.location.mapscene];
+					let mapscene = grid.engine.mapMapscenes[loc.location.mapscene];
 					let src = "";
 					let width = 0;
 					let height = 0;

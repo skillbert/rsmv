@@ -14,7 +14,8 @@ module.exports = {
 		indexoverview: "./src/scripts/indexoverview.ts",
 		testdecode: "./src/scripts/testdecode.ts",
 		opcode_reader: "./src/opcode_reader.ts",
-		skeleton: "./src/scripts/testskeletons.ts"
+		skeleton: "./src/scripts/testskeletons.ts",
+		material: "./src/scripts/testmats.ts"
 	},
 	module: {
 		rules: [
@@ -23,6 +24,10 @@ module.exports = {
 				use: 'ts-loader',
 				exclude: /node_modules/,
 			},
+			{
+				test: /\.jsonc?$/,
+				type: "asset/source"
+			}
 		],
 	},
 	target: "node",

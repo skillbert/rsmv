@@ -28,7 +28,7 @@ type PrimitiveString = {
 }
 export type ScanBuffer = Buffer & { scan: number };
 
-type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot";
+type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor";
 
 export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
@@ -300,8 +300,8 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 				if (v !== undefined && key[0] != "$") {
 					r[key] = v;
 				}
-				if (typeof v == "number") {
-					ctx[key as string] = v;
+				if (typeof v == "number" || typeof v == "boolean") {
+					ctx[key as string] = +v;
 				}
 			}
 			if (debugdata && !isTuple) { debugdata.structstack.pop(); }
@@ -398,6 +398,8 @@ function forceCondition(parser: ChunkParser<any>, oldvalue: number, state: boole
 			return state ? oldvalue : parser.condValue!;
 		case "bitflag":
 			return (state ? oldvalue | (1 << parser.condValue!) : oldvalue & ~(1 << parser.condValue!));
+		case "bitor":
+			return (state ? oldvalue | parser.condValue! : oldvalue & ~parser.condValue!);
 		case "bitflagnot":
 			return (state ? oldvalue & ~(1 << parser.condValue!) : oldvalue | (1 << parser.condValue!));
 		default:
@@ -413,6 +415,8 @@ function checkCondition(parser: ChunkParser<any>, v: number) {
 			return v != parser.condValue!;
 		case "bitflag":
 			return (v & (1 << parser.condValue!)) != 0;
+		case "bitor":
+			return (v & parser.condValue!) != 0;
 		case "bitflagnot":
 			return (v & (1 << parser.condValue!)) == 0;
 		default:

@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim, parseMaterials } from "../opdecoder";
 import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -21,11 +21,11 @@ let cmd = command({
 	args: {},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
-		const major = cacheMajors.skeletalAnims;
+		const major = cacheMajors.materials;
 		const minor = -1;
-		const decoder = parseSkeletalAnim;
+		const decoder = parseMaterials;
 		const skipMinorAfterError = false;
-		const skipFilesizeAfterError = true;
+		const skipFilesizeAfterError = false;
 		const memlimit = 200e6;
 		const orderBySize = true;
 
@@ -67,19 +67,25 @@ let cmd = command({
 				let debugdata = getDebug(false)!;
 				console.log("decode", file.minor, file.subfile, (e as Error).message);
 
+				// let chunks = [file.file];
 				let chunks: Buffer[] = [];
 				let index = 0;
 				let outindex = 0;
+				let lastopstr = "";
 				for (let op of debugdata.opcodes) {
 					chunks.push(file.file.slice(index, op.index));
 					outindex += op.index - index;
 					index = op.index;
-					let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + 1) / 16) * 16 - outindex);
+					let opstr = lastopstr;
+					let minfill = opstr.length + 1;
+					let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + minfill) / 16) * 16 - outindex);
 					if (fillsize > 0) {
-						chunks.push(Buffer.alloc(1, 0xcc));
-						chunks.push(Buffer.alloc(fillsize - 1, 0xff));
+						chunks.push(Buffer.alloc(1, 0xDD));
+						chunks.push(Buffer.alloc(fillsize - 1 - opstr.length, 0xff));
+						chunks.push(Buffer.from(opstr, "ascii"));
 					}
 					outindex += fillsize;
+					lastopstr = (op.op + "").slice(0, 6).padStart(6, "\0");
 				}
 				chunks.push(file.file.slice(index));
 				outindex += file.file.byteLength - index;
