@@ -226,7 +226,7 @@ export function fileIdToArchiveminor(major: number, fileid: number) {
 	let holderindex = Math.floor(fileid / archsize);
 	return { minor: holderindex, major, subindex: fileid % archsize };
 }
-export function achiveToFileId(major: number, minor: number, subfile: number) {
+export function archiveToFileId(major: number, minor: number, subfile: number) {
 	let archsize = mappedFileIds[major] ?? 1;
 	return minor * archsize + subfile;
 }

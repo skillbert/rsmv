@@ -119,7 +119,12 @@ export class Downloader extends CacheFileSource {
 	}
 	async getIndexFile(major: number) {
 		if (!this.indexMap.get(major)) {
-			let indexfile = await this.getFile(255, major);
+			let crc: number | undefined = undefined;
+			if (major != 255) {
+				let index = await this.getIndexFile(255);
+				crc = index[major].crc;
+			}
+			let indexfile = await this.getFile(255, major, crc);
 			let decoded = indexBufferToObject(major, indexfile);
 			this.indexMap.set(major, decoded);
 		}

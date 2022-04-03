@@ -24,7 +24,7 @@ export function setLoadingIndicator(ind: typeof loadingIndicator) {
 	loadingIndicator = ind;
 }
 
-const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
+export const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
 	async from(str) {
 		let [mode, ...argparts] = str.split(":",);
 		let arg = argparts.join(":");

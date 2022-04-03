@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim, parseMaterials } from "../opdecoder";
-import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
+import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData } from "../3d/utils";
@@ -21,9 +21,9 @@ let cmd = command({
 	args: {},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
-		const major = cacheMajors.materials;
+		const major = cacheMajors.items;
 		const minor = -1;
-		const decoder = parseMaterials;
+		const decoder = parseItem;
 		const skipMinorAfterError = false;
 		const skipFilesizeAfterError = false;
 		const memlimit = 200e6;

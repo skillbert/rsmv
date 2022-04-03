@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim } from "../opdecoder";
-import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
+import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData } from "../3d/utils";
@@ -32,7 +32,7 @@ async function start() {
 			let seq = parseSequences.read(file.buffer)
 			if (seq.skeletal_animation) {
 				let seqarr = skeltoseqs.get(seq.skeletal_animation) ?? [];
-				seqarr.push(achiveToFileId(index.major, index.minor, file.fileid));
+				seqarr.push(archiveToFileId(index.major, index.minor, file.fileid));
 				skeltoseqs.set(seq.skeletal_animation, seqarr);
 			}
 		}
@@ -47,7 +47,7 @@ async function start() {
 			let seq = parseObject.read(file.buffer)
 			if (seq.probably_animation) {
 				let loc = seqtolocs.get(seq.probably_animation) ?? [];
-				loc.push(achiveToFileId(index.major, index.minor, file.fileid));
+				loc.push(archiveToFileId(index.major, index.minor, file.fileid));
 				seqtolocs.set(seq.probably_animation, loc);
 			}
 		}
@@ -74,7 +74,7 @@ async function start() {
 			let seq = parseNpc.read(file.buffer)
 			if (seq.animation_group) {
 				let npc = groupstonpcs.get(seq.animation_group) ?? [];
-				npc.push(achiveToFileId(index.major, index.minor, file.fileid));
+				npc.push(archiveToFileId(index.major, index.minor, file.fileid));
 				groupstonpcs.set(seq.animation_group, npc);
 			}
 		}

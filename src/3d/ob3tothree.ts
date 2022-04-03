@@ -7,7 +7,7 @@ import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, ParsedAnimation, parseSkeletalAnimation } from "./animation";
-import { achiveToFileId, CacheFileSource } from "../cache";
+import { archiveToFileId, CacheFileSource } from "../cache";
 import { AnimationClip, Bone, Group, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -102,7 +102,7 @@ export class EngineCache {
 		for (let index of materialindices) {
 			let arch = await this.source.getFileArchive(index);
 			for (let file of arch) {
-				this.materialCache.set(achiveToFileId(index.major, index.minor, file.fileid), convertMaterial(file.buffer));
+				this.materialCache.set(archiveToFileId(index.major, index.minor, file.fileid), convertMaterial(file.buffer));
 			}
 		}
 

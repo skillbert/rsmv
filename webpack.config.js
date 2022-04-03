@@ -15,7 +15,9 @@ module.exports = {
 		testdecode: "./src/scripts/testdecode.ts",
 		opcode_reader: "./src/opcode_reader.ts",
 		skeleton: "./src/scripts/testskeletons.ts",
-		material: "./src/scripts/testmats.ts"
+		material: "./src/scripts/testmats.ts",
+		diff: "./src/scripts/cachediff.ts",
+		deps: "./src/scripts/dependencies.ts",
 	},
 	module: {
 		rules: [

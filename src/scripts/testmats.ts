@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim } from "../opdecoder";
-import { achiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
+import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData, Stream } from "../3d/utils";
@@ -111,7 +111,7 @@ async function start() {
 			for (let [typenr, modelgroup] of (parsed.models ?? []).entries()) {
 				for (let [modelnr, modelid] of modelgroup.values.entries()) {
 					let group = modeltoloc[modelid] ?? [];
-					group.push({ locid: achiveToFileId(locid.major, locid.minor, file.fileid), modelnr, typenr });
+					group.push({ locid: archiveToFileId(locid.major, locid.minor, file.fileid), modelnr, typenr });
 					modeltoloc[modelid] = group;
 				}
 			}

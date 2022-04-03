@@ -9,8 +9,8 @@ import { ThreejsSceneCache } from "./ob3tothree";
 import { sequences } from "../../generated/sequences";
 
 //TODO remove
-import * as THREE from "three";
-(window as any).THREE = THREE;
+// import * as THREE from "three";
+// (window as any).THREE = THREE;
 
 
 //test    anim ids

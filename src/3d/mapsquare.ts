@@ -1127,17 +1127,20 @@ type MapsquareLocation = {
 	extras: ModelExtrasLocation
 }
 
+export function defaultMorphId(locmeta: objects) {
+	let newid = -1;
+	if (locmeta.morphs_1) { newid = locmeta.morphs_1.unk2[0] ?? locmeta.morphs_1.unk3; }
+	if (locmeta.morphs_2) { newid = locmeta.morphs_2.unk2; }
+	if (newid == (1 << 15) - 1) { newid = -1; }
+	return newid;
+}
+
 //TODO move this to a more logical location
 export async function resolveMorphedObject(source: CacheFileSource, id: number) {
 	let objectfile = await source.getFileById(cacheMajors.objects, id);
 	let objectmeta = parseObject.read(objectfile);
 	if (objectmeta.morphs_1 || objectmeta.morphs_2) {
-		let newid = -1;
-		if (objectmeta.morphs_1) { newid = objectmeta.morphs_1.unk2[0] ?? objectmeta.morphs_1.unk3; }
-		if (objectmeta.morphs_2) { newid = objectmeta.morphs_2.unk2; }
-		if (newid == (1 << 15) - 1) {
-			return undefined;
-		}
+		let newid = defaultMorphId(objectmeta);
 		if (newid != -1) {
 			objectfile = await source.getFileById(cacheMajors.objects, newid);
 			objectmeta = {

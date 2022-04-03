@@ -33,7 +33,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		for (let file of files) {
 			let m = file.match(/js5-(\d+)\.jcache$/);
 			if (m) {
-				majors.push({
+				majors[m[1]] = {
 					major: cacheMajors.index,
 					minor: +m[1],
 					crc: 0,
@@ -43,11 +43,11 @@ export class GameCacheLoader extends cache.CacheFileSource {
 					version: 0,
 					uncompressed_crc: 0,
 					uncompressed_size: 0
-				});
+				};
 			}
 		}
 
-		return majors.sort((a, b) => a.minor - b.minor);
+		return majors;
 	}
 
 	openTable(major: number) {
