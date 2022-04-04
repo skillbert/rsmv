@@ -32,7 +32,7 @@ async function filerange(source: CacheFileSource, startindex: FileId, endindex: 
 				let subfileid = index.subindices[fileindex];
 				if (index.minor == startindex.minor && subfileid < startindex.subindex) { continue; }
 				if (index.minor == endindex.minor && subfileid > endindex.subindex) { continue; }
-				files.push({ index, subfile: fileindex });
+				files.push({ index, subfile: index.subindices[fileindex] });
 			}
 		}
 	}

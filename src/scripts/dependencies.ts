@@ -9,7 +9,7 @@ import { convertMaterial } from "../3d/jmat";
 
 
 
-type DepTypes = "material" | "model" | "item" | "loc" | "mapsquare" | "sequence" | "skeleton" | "frameset" | "animgroup" | "npc" | "framebase" | "texture";
+export type DepTypes = "material" | "model" | "item" | "loc" | "mapsquare" | "sequence" | "skeleton" | "frameset" | "animgroup" | "npc" | "framebase" | "texture" | "enum";
 
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
 type DepCollector = (cache: CacheFileSource, addDep: DepCallback) => Promise<void>;
@@ -186,6 +186,43 @@ async function modelDeps(cache: CacheFileSource, addDep: DepCallback) {
 	}
 }
 
+export async function getDependencies(cache: CacheFileSource) {
+
+	let dependencyMap = new Map<string, string[]>();
+	let addDep = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => {
+		let holder = `${holdertype}-${holderId}`;
+		let newdep = `${deptType}-${depId}`;
+		let deps = dependencyMap.get(holder);
+		if (!deps) {
+			deps = [];
+			dependencyMap.set(holder, deps);
+		}
+		if (deps.indexOf(newdep) == -1) { deps.push(newdep); }
+	}
+
+	globalThis.dependencyMap = dependencyMap;
+
+	let runs: DepCollector[] = [
+		mapsquareDeps,
+		sequenceDeps,
+		locationDeps,
+		itemDeps,
+		animgroupDeps,
+		materialDeps,
+		npcDeps,
+		skeletonDeps,
+		framesetDeps,
+		// modelDeps
+	];
+
+	for (let run of runs) {
+		console.log(`starting ${run.name}`);
+		let t = Date.now();
+		await run(cache, addDep);
+		console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
+	}
+}
+
 let cmd2 = command({
 	name: "run",
 	args: {
@@ -193,43 +230,10 @@ let cmd2 = command({
 	},
 	handler: async (args) => {
 		let cache = await args.source();
-
-		let dependencyMap = new Map<string, string[]>();
-		let addDep = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => {
-			let holder = `${holdertype}-${holderId}`;
-			let newdep = `${deptType}-${depId}`;
-			let deps = dependencyMap.get(holder);
-			if (!deps) {
-				deps = [];
-				dependencyMap.set(holder, deps);
-			}
-			if (deps.indexOf(newdep) == -1) { deps.push(newdep); }
-		}
-
-		globalThis.dependencyMap = dependencyMap;
-
-		let runs: DepCollector[] = [
-			mapsquareDeps,
-			sequenceDeps,
-			locationDeps,
-			itemDeps,
-			animgroupDeps,
-			materialDeps,
-			npcDeps,
-			skeletonDeps,
-			framesetDeps,
-			// modelDeps
-		];
-
-		for (let run of runs) {
-			console.log(`starting ${run.name}`);
-			let t = Date.now();
-			await run(cache, addDep);
-			console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
-		}
+		getDependencies(cache);
 	}
 });
 
-run(cmd2, cliArguments());
+// run(cmd2, cliArguments());
 
-setTimeout(() => { }, 10000000);
+// setTimeout(() => { }, 10000000);

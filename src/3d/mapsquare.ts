@@ -1013,10 +1013,11 @@ export async function mapsquareToThree(scene: ThreejsSceneCache, grid: TileGrid,
 
 		let rootx = chunk.chunk.xoffset * tiledimensions;
 		let rootz = chunk.chunk.zoffset * tiledimensions;
-		node.add(...models.map(q => meshgroupsToThree(grid, q, rootx, rootz)));
-		node.add(...chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(grid, q, rootx, rootz)));
-
-		node.add(... (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any);
+		if (models.length != 0) { node.add(...models.map(q => meshgroupsToThree(grid, q, rootx, rootz))); }
+		let chunkoverlays = chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(grid, q, rootx, rootz));
+		if (chunkoverlays.length != 0) { node.add(...chunkoverlays); }
+		let floors = (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any;
+		if (floors.length != 0) { node.add(...floors); }
 		for (let level = 0; level < squareLevels; level++) {
 			let boxes = mapsquareCollisionToThree(chunk, level);
 			if (boxes) { node.add(boxes); }

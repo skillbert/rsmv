@@ -17,7 +17,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		this.worker = new Worker(new URL("./cacheloaderwasmworker.ts", import.meta.url));
 		this.worker.onmessage = e => {
 			let handler = this.callbacks.get(e.data.id);
-			if (e.data.error) { handler?.reject(e.data.error); }
+			if (e.data.error) { handler?.reject(new Error(e.data.error)); }
 			else { handler?.resolve(e.data.packet); }
 			this.callbacks.delete(e.data.id);
 		}

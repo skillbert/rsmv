@@ -66,8 +66,9 @@ function openTable(major: number) {
 
 		let dbget = async (query: string, args: any[]) => {
 			let db = await dbprom;
-			let rawres = db.exec(query, args)[0];
-			let res: Record<string, any>[] = [];
+			let row = db.exec(query, args);
+			let rawres = row[0];
+			if (!rawres) { debugger; }
 			for (let rawrow of rawres.values) {
 				let row = {};
 				for (let i = 0; i < rawres.columns.length; i++) {

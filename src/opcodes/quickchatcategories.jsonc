@@ -1,5 +1,6 @@
 {
 	"0x01": { "name":                     "text", "read": "string" },
 	"0x02": { "name":            "subcategories", "read": ["array","ubyte",["struct",["id","ushort"],["hotkey","ubyte"]]]},
-	"0x03": { "name":                    "lines", "read": ["array","ubyte",["struct",["id","ushort"],["hotkey","ubyte"]]]}
+	"0x03": { "name":                    "lines", "read": ["array","ubyte",["struct",["id","ushort"],["hotkey","ubyte"]]]},
+	"0x04": { "name":            "nonsearchable", "read": "true" }
 }

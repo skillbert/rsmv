@@ -429,7 +429,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 	}
 	if (mountanim) {
 		let mount = mountanim();
-		if (mount.rootbones) { rootnode.add(...mount.rootbones); }
+		if (mount.rootbones && mount.rootbones.length != 0) { rootnode.add(...mount.rootbones); }
 		rootnode.traverse(node => {
 			if (node instanceof SkinnedMesh) {
 				// node.bindMode = "detached";
