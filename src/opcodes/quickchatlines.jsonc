@@ -1,0 +1,20 @@
+{
+	"0x01": { "name":               "text", "read": "string" },
+	"0x02": { "name":            "replies", "read": ["array","ubyte","ushort"]},
+	"0x03": { "name":            "inserts", "read": ["array","ubyte",["struct",
+		["type","ushort"],
+		["pickEnum",["opt",["type",0],"ushort"]],
+		["pickTtem",["opt",["type",1],"true"]],
+		["skillLevel",["opt",["type",4],"ushort"]],
+		["varbitEnum",["opt",["type",6],["struct",["enum","ushort"],["varbit","ushort"]]]],
+		["varbit",["opt",["type",8],"ushort"]],
+		["varbit2",["opt",["type",9],"ushort"]],
+		["pickTradeableItem",["opt",["type",10],"true"]],
+		["skillLevelEnum",["opt",["type",11],["struct",["enum","ushort"],["skill","ushort"]]]],
+		["friendsChatCount",["opt",["type",12],"true"]],
+		["varWorld",["opt",["type",14],"ushort"]],
+		["combatlevel",["opt",["type",15],"true"]],
+		["varbitEnumstring",["opt",["type",16],["struct",["enum","ushort"],["varbit","ushort"]]]]
+	]]},
+	"0x04": { "name":      "nonsearchable", "read": "true" }
+}

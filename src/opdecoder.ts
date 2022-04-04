@@ -73,5 +73,7 @@ export const parseSpotAnims = new FileParser<import("../generated/spotanims").sp
 export const parseRootCacheIndex = new FileParser<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json"));
 export const parseSkeletalAnim = new FileParser<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.json"));
 export const parseMaterials = new FileParser<import("../generated/materials").materials>(require("./opcodes/materials.jsonc"));
+export const parseQuickchatCategories = new FileParser<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc"));
+export const parseQuickchatLines = new FileParser<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc"));
 
 

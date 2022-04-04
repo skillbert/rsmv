@@ -18,6 +18,7 @@ module.exports = {
 		material: "./src/scripts/testmats.ts",
 		diff: "./src/scripts/cachediff.ts",
 		deps: "./src/scripts/dependencies.ts",
+		quickchatlookup: "./src/scripts/quickchatlookup.ts",
 	},
 	module: {
 		rules: [

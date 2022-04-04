@@ -10,6 +10,7 @@ export const cacheMajors = {
 	items: 19,
 	sequences: 20,
 	spotanims: 21,
+	quickchat: 24,
 	materials: 26,
 	worldmap: 23,
 	models: 47,
