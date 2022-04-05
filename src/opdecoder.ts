@@ -34,9 +34,9 @@ export class FileParser<T> {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
-			// if (buffer.byteLength < 100000) {
-			// 	throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
-			// }
+			if (buffer.byteLength < 100000) {
+				throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+			}
 		}
 		return res;
 	}
@@ -56,7 +56,7 @@ export const parseNpc = new FileParser<import("../generated/npcs").npcs>(require
 export const parseItem = new FileParser<import("../generated/items").items>(require("./opcodes/items.json"));
 export const parseObject = new FileParser<import("../generated/objects").objects>(require("./opcodes/objects.json"));
 export const parseAchievement = new FileParser<import("../generated/achievements").achievements>(require("./opcodes/achievements.json"));
-export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.json"));
+export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.jsonc"));
 export const parseMapsquareWaterTiles = new FileParser<import("../generated/mapsquare_watertiles").mapsquare_watertiles>(require("./opcodes/mapsquare_watertiles.json"));
 export const parseMapsquareUnderlays = new FileParser<import("../generated/mapsquare_underlays").mapsquare_underlays>(require("./opcodes/mapsquare_underlays.json"));
 export const parseMapsquareOverlays = new FileParser<import("../generated/mapsquare_overlays").mapsquare_overlays>(require("./opcodes/mapsquare_overlays.json"));
@@ -75,5 +75,6 @@ export const parseSkeletalAnim = new FileParser<import("../generated/skeletalani
 export const parseMaterials = new FileParser<import("../generated/materials").materials>(require("./opcodes/materials.jsonc"));
 export const parseQuickchatCategories = new FileParser<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc"));
 export const parseQuickchatLines = new FileParser<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc"));
+export const parseEnvironments = new FileParser<import("../generated/environments").environments>(require("./opcodes/environments.jsonc"));
 
 

@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf, optio
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -16,7 +16,7 @@ import prettyJson from "json-stringify-pretty-compact";
 
 type CacheFileId = {
 	index: CacheIndex,
-	subfile: number
+	subindex: number
 }
 
 type LogicalIndex = number[];
@@ -30,9 +30,9 @@ async function filerange(source: CacheFileSource, startindex: FileId, endindex: 
 		if (index.minor >= startindex.minor && index.minor <= endindex.minor) {
 			for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
 				let subfileid = index.subindices[fileindex];
-				if (index.minor == startindex.minor && subfileid < startindex.subindex) { continue; }
-				if (index.minor == endindex.minor && subfileid > endindex.subindex) { continue; }
-				files.push({ index, subfile: index.subindices[fileindex] });
+				if (index.minor == startindex.minor && subfileid < startindex.subid) { continue; }
+				if (index.minor == endindex.minor && subfileid > endindex.subid) { continue; }
+				files.push({ index, subindex: fileindex });
 			}
 		}
 	}
@@ -55,7 +55,7 @@ function worldmapIndex(subfile: number): DecodeLookup {
 					for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
 						let subfileid = index.subindices[fileindex];
 						if (subfileid == subfile) {
-							files.push({ index, subfile: fileindex });
+							files.push({ index, subindex: fileindex });
 						}
 					}
 				}
@@ -66,7 +66,7 @@ function worldmapIndex(subfile: number): DecodeLookup {
 			return [minor % worldStride, Math.floor(minor / worldStride)];
 		},
 		logicalToFile(id: LogicalIndex) {
-			return { major, minor: id[0] + id[1] * worldStride, subindex: subfile };
+			return { major, minor: id[0] + id[1] * worldStride, subid: subfile };
 		}
 	}
 }
@@ -75,13 +75,13 @@ function singleMinorIndex(major: number, minor: number): DecodeLookup {
 	return {
 		major,
 		async logicalRangeToFiles(source, start, end) {
-			return filerange(source, { major, minor, subindex: start[0] }, { major, minor, subindex: end[0] });
+			return filerange(source, { major, minor, subid: start[0] }, { major, minor, subid: end[0] });
 		},
 		fileToLogical(major, minor, subfile) {
 			return [subfile];
 		},
 		logicalToFile(id: LogicalIndex) {
-			return { major, minor, subindex: id[0] };
+			return { major, minor, subid: id[0] };
 		}
 	}
 }
@@ -107,9 +107,9 @@ function standardIndex(major: number): DecodeLookup {
 	return {
 		major,
 		fileToLogical(major, minor, subfile) { return [minor, subfile]; },
-		logicalToFile(id) { return { major, minor: id[0], subindex: id[1] }; },
+		logicalToFile(id) { return { major, minor: id[0], subid: id[1] }; },
 		async logicalRangeToFiles(source, start, end) {
-			return filerange(source, { major, minor: start[0], subindex: start[1] }, { major, minor: end[0], subindex: end[1] });
+			return filerange(source, { major, minor: start[0], subid: start[1] }, { major, minor: end[0], subid: end[1] });
 		}
 	}
 }
@@ -117,12 +117,12 @@ function indexfileIndex(): DecodeLookup {
 	return {
 		major: cacheMajors.index,
 		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.index, minor: id[0], subindex: 0 }; },
+		logicalToFile(id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let indices = await source.getIndexFile(cacheMajors.index);
 			return indices
 				.filter(index => index.minor >= start[0] && index.minor <= end[0])
-				.map(index => ({ index, subfile: 0 }));
+				.map(index => ({ index, subindex: 0 }));
 		}
 	}
 }
@@ -131,10 +131,10 @@ function rootindexfileIndex(): DecodeLookup {
 	return {
 		major: cacheMajors.index,
 		fileToLogical(major, minor, subfile) { return []; },
-		logicalToFile(id) { return { major: cacheMajors.index, minor: 255, subindex: 0 }; },
+		logicalToFile(id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return [
-				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, subindexcount: 1, subindices: [0] }, subfile: 0 }
+				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, subindexcount: 1, subindices: [0] }, subindex: 0 }
 			];
 		}
 	}
@@ -172,7 +172,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 
 type DecodeModeFactory = (outdir: string, flags: Record<string, string>) => DecodeMode;
 
-type FileId = { major: number, minor: number, subindex: number };
+type FileId = { major: number, minor: number, subid: number };
 
 type DecodeLookup = {
 	major: number | undefined,
@@ -193,11 +193,11 @@ const decodeBinary: DecodeModeFactory = () => {
 		ext: "bin",
 		major: undefined,
 		fileToLogical(major, minor, subfile) { return [major, minor, subfile]; },
-		logicalToFile(id) { return { major: id[0], minor: id[1], subindex: id[2] }; },
+		logicalToFile(id) { return { major: id[0], minor: id[1], subid: id[2] }; },
 		async logicalRangeToFiles(source, start, end) {
 			if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
 			let major = start[0];
-			return filerange(source, { major, minor: start[1], subindex: start[2] }, { major, minor: end[1], subindex: end[2] });
+			return filerange(source, { major, minor: start[1], subid: start[2] }, { major, minor: end[1], subid: end[2] });
 		},
 		read(b) { return b; },
 		write(b) { return b; },
@@ -224,6 +224,7 @@ const modes: Record<string, DecodeModeFactory> = {
 	overlays: standardFile(parseMapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
 	underlays: standardFile(parseMapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
 	mapscenes: standardFile(parseMapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
+	environments: standardFile(parseEnvironments, singleMinorIndex(cacheMajors.config, cacheConfigPages.environments)),
 	animgroupconfigs: standardFile(parseAnimgroupConfigs, singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups)),
 
 	maptiles: standardFile(parseMapsquareTiles, worldmapIndex(cacheMapFiles.squares)),
@@ -276,7 +277,7 @@ let cmd2 = command({
 
 		let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(source, q.start, q.end))))
 			.flat()
-			.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subfile - b.subfile);
+			.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subindex - b.subindex);
 
 
 		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
@@ -296,9 +297,9 @@ let cmd2 = command({
 				arch = await source.getFileArchive(fileid.index);
 				lastarchive = { index: fileid.index, subfiles: arch };
 			}
-			let file = arch[fileid.subfile].buffer;
-			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
-			let res = mode.read(file, logicalid);
+			let file = arch[fileid.subindex];
+			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
+			let res = mode.read(file.buffer, logicalid);
 			if (args.batched) {
 				if (!currentBatch || (batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles) || (batchSubfile && currentBatch.arch != arch)) {
 					flushbatch();
@@ -337,10 +338,10 @@ let cmd2 = command({
 					arch = await source.getFileArchive(fileid.index);
 					lastarchive = { index: fileid.index, subfiles: arch };
 				}
-				let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subfile);
+				let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
 				let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
 				let newfile = fs.readFileSync(filename);
-				arch[fileid.subfile].buffer = mode.write(newfile);
+				arch[fileid.subindex].buffer = mode.write(newfile);
 			}
 			await archedited();
 		}

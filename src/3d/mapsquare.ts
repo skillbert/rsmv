@@ -85,7 +85,8 @@ export type ChunkData = {
 	zoffset: number,
 	mapsquarex: number,
 	mapsquarez: number,
-	tiles: mapsquare_tiles,
+	tiles: mapsquare_tiles["tiles"],
+	extra: mapsquare_tiles["extra"],
 	archive: SubFile[],
 	cacheIndex: CacheIndex,
 	locs: WorldLocation[]
@@ -132,7 +133,7 @@ export type ModelExtras = ModelExtrasLocation | ModelExtrasOverlay | {
 export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number };
 
 export type TileProps = {
-	raw: mapsquare_tiles[number],
+	raw: mapsquare_tiles["tiles"][number],
 	rawOverlay: mapsquare_overlays | undefined,
 	rawUnderlay: mapsquare_underlays | undefined,
 	next01: TileProps | undefined,
@@ -922,13 +923,13 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 			let tilefile = selfarchive[tileindex].buffer;
 			//let watertilefile = selfarchive[tileindexwater]?.buffer;
 			//let watertiles = parseMapsquareWaterTiles.read(watertilefile);
-			let tiles = parseMapsquareTiles.read(tilefile);
+			let tiledata = parseMapsquareTiles.read(tilefile);
 			let chunk: ChunkData = {
 				xoffset: (rect.x + x) * squareSize,
 				zoffset: (rect.z + z) * squareSize,
 				mapsquarex: rect.x + x,
 				mapsquarez: rect.z + z,
-				tiles, cacheIndex: selfindex, archive: selfarchive,
+				tiles: tiledata.tiles, extra: tiledata.extra, cacheIndex: selfindex, archive: selfarchive,
 				locs: []
 			};
 			grid.addMapsquare(chunk, !!opts?.collision);

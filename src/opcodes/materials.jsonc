@@ -31,8 +31,8 @@
 
 		["flagextra","bool"],
 		["extra",["opt",["flagextra",1],["struct",
-			["unkown",["buffer",10,"hex"]],
-			["forceopaque","bool"],
+			["unknown",["buffer",10,"hex"]],
+			["unknownbool","bool"],
 			["specular","ubyte"],
 			["metalness","ubyte"],
 			["colorint","ushort"]

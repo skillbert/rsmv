@@ -1,0 +1,48 @@
+["struct",
+	["tiles",["array",16384,["struct",
+		["flags","unsigned byte"],
+		["shape",["opt",["flags",0,"bitflag"],"unsigned byte"]],
+		["overlay",["opt",["flags",0,"bitflag"],"variable unsigned short"]],
+		["settings",["opt",["flags",1,"bitflag"],"unsigned byte"]],
+		["underlay",["opt",["flags",2,"bitflag"],"variable unsigned short"]],
+		["height",["opt",["flags",3,"bitflag"],"unsigned byte"]]
+	]]],
+	//1 bit per 8x8 subarea, starting southwest, going north and wrapping east
+	["nonmembarea",["buffer",8,"hex"]],
+	["extra",{
+		"0x00": { "name": "unk00", "read":["struct",
+			["flags","ubyte"],
+			["unk01",["opt",["flags",0,"bitflag"],["array",4,"ubyte"]]],//probably sun intensity+color
+			["unk02",["opt",["flags",1,"bitflag"],"ushort"]],
+			["unk04",["opt",["flags",2,"bitflag"],"ushort"]],
+			["unk08",["opt",["flags",3,"bitflag"],"ushort"]],
+			["unk10",["opt",["flags",4,"bitflag"],["ushort","ushort","ushort"]]],
+			["unk20",["opt",["flags",5,"bitflag"],["array",4,"ubyte"]]],
+			["unk40",["opt",["flags",6,"bitflag"],"ushort"]],
+			["unk80",["opt",["flags",7,"bitflag"],"ushort"]]
+		]},
+		"0x01": { "name": "unk01", "read":["array","ubyte",["struct",
+			["byte2","ubyte"],
+			["short0","ushort"],
+			["short1","ushort"],
+			["short2","ushort"],
+			["array5",["array","ubyte",["array",4,"ubyte"]]],
+			["short3","ushort"],
+			["short4","ushort"],
+			["extraflags","ubyte"],
+			["extra08","ushort"],//always ffff?
+			["extra1f",["opt",["extraflags",31,"bitand"],"ushort"]]
+		]]},
+		"0x02": { "name": "unk02", "read":["array",3,"float"]},
+		"0x03": { "name": "unk03", "read":["short","float"]},
+		"0x80": { "name": "unk80", "read":["struct",
+			["environment","ushort"],
+			["always00",["buffer",8,"hex"]]
+		]},
+		"0x81": { "name": "unk81", "read":["array",4,["struct",
+			["flag","ubyte"],
+			["data",["opt",["flag",0,"bitflag"],["buffer",256,"hex"]]]
+		]]},
+		"0x82": { "name": "unk82", "read":"true" }//changable skybox/lighting?
+	}]
+]

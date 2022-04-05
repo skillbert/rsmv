@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatLines } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatLines, parseEnvironments } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -21,9 +21,10 @@ let cmd = command({
 	args: {},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
-		const major = cacheMajors.quickchat;
-		const minor: number = 1;
-		const decoder = parseQuickchatLines;
+		const major = cacheMajors.config;
+		const minor: number = cacheConfigPages.environments;
+		const subfileid: number = -1;
+		const decoder = parseEnvironments;
 		const skipMinorAfterError = false;
 		const skipFilesizeAfterError = false;
 		const memlimit = 200e6;
@@ -44,7 +45,7 @@ let cmd = command({
 		let allfiles: DecodeEntry[] = [];
 		let errminors: number[] = [];
 		let errfilesizes: number[] = [];
-		let maxerrs = 20;
+		let maxerrs = 200;
 		let nsuccess = 0;
 		let lastProgress = Date.now();
 
@@ -104,7 +105,8 @@ let cmd = command({
 			}
 		}
 		function addArchieve(index: CacheIndex, arch: SubFile[]) {
-			let entries = arch.map((q, i) => ({ major: index.major, minor: index.minor, subfile: index.subindices[i], file: q.buffer }));
+			let entries = arch.map((q, i) => ({ major: index.major, minor: index.minor, subfile: index.subindices[i], file: q.buffer }))
+				.filter(q => subfileid == -1 || q.subfile == subfileid);
 			if (orderBySize) {
 				allfiles.push(...entries);
 				if (memuse > memlimit) {
@@ -145,9 +147,8 @@ let cmd = command({
 			for (let file of allfiles) {
 				if (testFile(file) == false) { break; }
 			}
-
-			console.log("completed files: ", nsuccess);
 		}
+		console.log("completed files: ", nsuccess);
 	}
 });
 

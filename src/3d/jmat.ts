@@ -49,6 +49,7 @@ export function convertMaterial(data: Buffer) {
 			let scale = 1 / (1 << 15);
 			mat.uvAnim = { u: (raw.animtexU ?? 0) * scale, v: (raw.animtexV ?? 0) * scale };
 		}
+		mat.vertexColors = (raw.alphamode != 2);
 	} else if (rawparsed.v1) {
 		let raw = rawparsed.v1;
 		//this is very wrong

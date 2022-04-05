@@ -224,7 +224,7 @@ const mappedFileIds = {
 export function fileIdToArchiveminor(major: number, fileid: number) {
 	let archsize = mappedFileIds[major] ?? 1;
 	let holderindex = Math.floor(fileid / archsize);
-	return { minor: holderindex, major, subindex: fileid % archsize };
+	return { minor: holderindex, major, subid: fileid % archsize };
 }
 export function archiveToFileId(major: number, minor: number, subfile: number) {
 	let archsize = mappedFileIds[major] ?? 1;
@@ -264,7 +264,7 @@ export class CacheFileSource {
 		//TODO cache these in a map or something
 		let holder = indexfile[holderindex.minor];
 		if (!holder) { throw new Error(`file id ${fileid} in major ${major} has no archive`); }
-		let subindex = holder.subindices.indexOf(holderindex.subindex);
+		let subindex = holder.subindices.indexOf(holderindex.subid);
 		if (subindex == -1) { throw new Error(`file id ${fileid} in major ${major} does not exist in archive`); }
 		let files = await this.getFileArchive(holder);
 		let file = files[subindex].buffer;

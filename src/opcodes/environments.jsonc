@@ -1,0 +1,6 @@
+{
+	"0x01": { "name": "unk01", "read":"ushort" },
+	"0x04": { "name": "unk04", "read":"bool" },
+	"0x05": { "name": "model", "read":"varuint" },
+	"0x06": { "name": "unk06", "read":"ushort" }
+}

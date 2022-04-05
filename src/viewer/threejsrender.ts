@@ -11,11 +11,13 @@ import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
-import { ModelViewerState, ModelSink } from "./index";
+import { ModelViewerState } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
 
+//TODO remove
+globalThis.THREE = THREE;
 
 let lastob3modelcall: { args: any[], inst: ThreeJsRenderer } | null = null;
 if (module.hot) {
@@ -33,11 +35,12 @@ if (module.hot) {
 
 
 
-export class ThreeJsRenderer implements ModelSink {
+export class ThreeJsRenderer {
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
 	stateChangeCallback: (newstate: ModelViewerState) => void;
 	uistate: ModelViewerState = { meta: "", toggles: {} };
+	skybox: { scene: THREE.Object3D, camera: THREE.Camera } | null = null;
 	scene: THREE.Scene;
 	camera: THREE.Camera | THREE.PerspectiveCamera;
 	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
@@ -59,6 +62,7 @@ export class ThreeJsRenderer implements ModelSink {
 		this.canvas = canvas;
 		this.stateChangeCallback = stateChangeCallback;
 		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, powerPreference: "high-performance", antialias: true, ...params });
+		this.renderer.autoClear = false;
 		const renderer = this.renderer;
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
 		canvas.onclick = this.click;
@@ -287,6 +291,17 @@ export class ThreeJsRenderer implements ModelSink {
 			this.animationMixer.update(delta);
 		}
 
+		this.renderer.clearColor();
+		this.renderer.clearDepth();
+		if (this.skybox) {
+			this.skybox.camera.matrixAutoUpdate = false;
+			this.camera.updateWorldMatrix(true, true);
+			this.skybox.camera.matrix.copy(this.camera.matrixWorld);
+			this.skybox.camera.matrix.setPosition(0, 0, 0);
+			this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
+			this.renderer.render(this.skybox.scene, this.skybox.camera);
+			this.renderer.clearDepth()
+		}
 		this.renderer.render(this.scene, this.camera);
 		this.contextLossCountLastRender = this.contextLossCount;
 
@@ -407,7 +422,7 @@ export class ThreeJsRenderer implements ModelSink {
 		return { rootnode };
 	}
 
-	async setModels(models: THREE.Object3D[], metastr = "") {
+	async setModels(models: THREE.Object3D[], metastr = "", options?: { skybox?: THREE.Object3D, fogColor: number[] }) {
 		let combined = new THREE.Group();
 		let groups = new Set<string>();
 		models.forEach(m => combined.add(m));
@@ -470,6 +485,22 @@ export class ThreeJsRenderer implements ModelSink {
 			this.scene.add(skelhelper);
 			this.cleanModelCallbacks.push(() => skelhelper.removeFromParent());
 		});
+		if (options?.skybox) {
+			let scene = new THREE.Scene();
+			let camera = this.camera.clone();
+			let obj = new THREE.Object3D();
+			obj.scale.set(1 / 512, 1 / 512, 1 / 512);
+			obj.add(options.skybox);
+			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
+			this.skybox = { scene, camera };
+			if (options?.fogColor) {
+				scene.background = new THREE.Color(options.fogColor[0] / 255, options.fogColor[1] / 255, options.fogColor[2] / 255);
+				this.scene.fog = new THREE.Fog("#" + scene.background.getHexString(), 30, 150);
+				this.cleanModelCallbacks.push(() => this.scene.fog = null);
+			}
+		} else {
+			this.skybox = null;
+		}
 
 		this.uistate = { meta: metastr, toggles: Object.create(null) };
 		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {

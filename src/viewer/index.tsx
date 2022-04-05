@@ -1,12 +1,12 @@
 
-import { parseAnimgroupConfigs, parseItem, parseNpc, parseObject } from "../opdecoder";
+import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject } from "../opdecoder";
 import { ThreeJsRenderer } from "./threejsrender";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
-import { ModelModifications } from "../3d/utils";
+import { HSL2RGB, ModelModifications, packedHSL2HSL } from "../3d/utils";
 import { WasmGameCacheLoader as GameCacheLoader } from "../cacheloaderwasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
@@ -14,7 +14,8 @@ import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolv
 import { ParsedTexture } from "../3d/textures";
 import * as commntJson from "comment-json";
 import * as datastore from "idb-keyval";
-import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
+import { Object3D } from "three";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
 type RenderMode = "three";
@@ -161,7 +162,7 @@ if (typeof window != "undefined") {
 // const hackyCacheFileSource = new CachedHacky();
 
 class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, viewerState: ModelViewerState }> {
-	renderer: ModelSink;
+	renderer: ThreeJsRenderer;
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -394,7 +395,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 // 	}
 // }
 
-export async function requestLoadModel(searchid: string, mode: LookupMode, renderer: ModelSink) {
+export async function requestLoadModel(searchid: string, mode: LookupMode, renderer: ThreeJsRenderer) {
 	let engineCache = await ensureCachePermission();
 	let modelids: number[] = [];
 	let mods: ModelModifications = {};
@@ -480,9 +481,24 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: false };
 			let { grid, chunks } = await parseMapsquare(engineCache, { x, z, xsize, zsize }, opts);
 			let modeldata = await mapsquareModels(engineCache, grid, chunks, opts);
+			let mainchunk = chunks[0];
+			let skybox: Object3D | undefined = undefined;
+			let fogColor = [0, 0, 0, 0];
+			if (mainchunk?.extra.unk00?.unk20) {
+				fogColor=mainchunk.extra.unk00.unk20.slice(1);
+				// fogColor = [...HSL2RGB(packedHSL2HSL(mainchunk.extra.unk00.unk01[1])), 255];
+			}
+			if (mainchunk?.extra.unk80) {
+				let envarch = await engineCache.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
+				let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
+				let env = parseEnvironments.read(envfile.buffer);
+				if (typeof env.model == "number") {
+					skybox = await ob3ModelToThreejsNode(scenecache, [await scenecache.getFileById(cacheMajors.models, env.model)], {}, []);
+				}
+			}
 
 			let scene = await mapsquareToThree(scenecache, grid, modeldata);
-			renderer.setModels?.([scene], "");
+			renderer.setModels([scene], "", { skybox,fogColor });
 			// TODO currently parsing this twice
 			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
 			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
@@ -503,12 +519,5 @@ export type ModelViewerState = {
 	meta: string,
 	toggles: Record<string, boolean>
 }
-
-export interface ModelSink {
-	setOb3Models: (scenecache: ThreejsSceneCache, models: Buffer[], mods: ModelModifications, meta: string, anims: number[]) => void
-	setGltfModels?: (models: Buffer[]) => void,
-	setModels?: (models: THREE.Object3D[], metastr?: string) => void,
-	setValue?: (key: string, value: boolean) => void
-};
 
 start();

@@ -12,4 +12,5 @@ export type quickchatcategories = {
 		id: number,
 		hotkey: number,
 	}[] | null
+	nonsearchable?: true | null
 };

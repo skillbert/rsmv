@@ -27,8 +27,8 @@ export type materials = {
 		animtexV: number | null,
 		flagextra: boolean,
 		extra: {
-			unkown: Uint8Array,
-			forceopaque: boolean,
+			unknown: Uint8Array,
+			unknownbool: boolean,
 			specular: number,
 			metalness: number,
 			colorint: number,

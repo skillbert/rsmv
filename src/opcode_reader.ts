@@ -28,7 +28,7 @@ type PrimitiveString = {
 }
 export type ScanBuffer = Buffer & { scan: number };
 
-type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor";
+type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand";
 
 export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
@@ -231,6 +231,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 		if (opt.condName != "opcode" || typeof opt.condValue != "number" || opt.condMode != "eq") { throw new Error("option in opcode set that is not conditional on 'opcode'"); }
 		map.set(opt.condValue, { key: key, parser: opt });
 	}
+	let hasexplicitnull = !!map.get(0);
 
 	return {
 		read(buffer, parentctx) {
@@ -239,13 +240,15 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 			if (debugdata) { debugdata.structstack.push(r); }
 			while (true) {
 				if (buffer.scan == buffer.length) {
-					// throw new Error("ended reading opcode struct at end of file without 0x00 opcode");
-					console.log("ended reading opcode struct at end of file without 0x00 opcode");
+					if (!hasexplicitnull) {
+						// throw new Error("ended reading opcode struct at end of file without 0x00 opcode");
+						console.log("ended reading opcode struct at end of file without 0x00 opcode");
+					}
 					break;
 				}
 				let opt = opcodetype.read(buffer, ctx);
 				ctx.opcode = opt;
-				if (opt == 0) { break; }
+				if (!hasexplicitnull && opt == 0) { break; }
 				if (debugdata) {
 					debugdata.opcodes.push({ op: opt, index: buffer.scan - 1 });
 				}
@@ -340,13 +343,21 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 			return r;
 		},
 		getJsonSChema() {
-			return {
-				type: "object",
-				properties: Object.fromEntries([...Object.entries(props)]
-					.filter(([key]) => !key.startsWith("$"))
-					.map(([key, prop]) => [key, (prop as ChunkParser<any>).getJsonSChema()])
-				),
-				required: keys
+			if (!isTuple) {
+				return {
+					type: "object",
+					properties: Object.fromEntries([...Object.entries(props)]
+						.filter(([key]) => !key.startsWith("$"))
+						.map(([key, prop]) => [key, (prop as ChunkParser<any>).getJsonSChema()])
+					),
+					required: keys
+				}
+			} else {
+				return {
+					type: "array",
+					prefixItems: Object.entries(props).map(([k, v]: [string, ChunkParser<any>]) => v.getJsonSChema()),
+					items: false
+				};
 			}
 		}
 	}
@@ -400,6 +411,8 @@ function forceCondition(parser: ChunkParser<any>, oldvalue: number, state: boole
 			return (state ? oldvalue | (1 << parser.condValue!) : oldvalue & ~(1 << parser.condValue!));
 		case "bitor":
 			return (state ? oldvalue | parser.condValue! : oldvalue & ~parser.condValue!);
+		case "bitand":
+			return (state ? oldvalue | parser.condValue! : oldvalue & ~parser.condValue!);
 		case "bitflagnot":
 			return (state ? oldvalue & ~(1 << parser.condValue!) : oldvalue | (1 << parser.condValue!));
 		default:
@@ -417,6 +430,8 @@ function checkCondition(parser: ChunkParser<any>, v: number) {
 			return (v & (1 << parser.condValue!)) != 0;
 		case "bitor":
 			return (v & parser.condValue!) != 0;
+		case "bitand":
+			return (v & parser.condValue!) == parser.condValue!;
 		case "bitflagnot":
 			return (v & (1 << parser.condValue!)) == 0;
 		default:
