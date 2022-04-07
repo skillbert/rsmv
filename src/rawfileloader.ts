@@ -1,0 +1,46 @@
+import * as path from "path";
+import * as fs from "fs";
+import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "./cache";
+
+
+export class RawFileLoader extends CacheFileSource {
+	cachedir: string;
+	writable: boolean;
+	virtualMajor: number;
+	index: CacheIndex[];
+	files = new Map<number, string>();
+
+	constructor(cachedir: string, virtualMajor = 0) {
+		super();
+		this.cachedir = cachedir;
+		this.virtualMajor = virtualMajor;
+		let dir = fs.readdirSync(cachedir);
+		this.index = dir.map((name, index) => {
+			this.files.set(index, name);
+			return {
+				major: virtualMajor,
+				minor: index,
+				crc: 0,
+				subindexcount: 1,
+				subindices: [0],
+				version: 0,
+				size: 0,
+				uncompressed_crc: 0,
+				uncompressed_size: 0
+			};
+		})
+	}
+
+	getFile(major: number, minor: number, crc?: number) {
+		let name = this.files.get(minor);
+		if (!name) { throw new Error(`virtual minor ${minor} does not have a corresponding file`); }
+		return fs.promises.readFile(path.join(this.cachedir, name));
+	}
+	async getFileArchive(index: CacheIndex): Promise<SubFile[]> {
+		let file = await this.getFile(index.major, index.minor, index.crc)
+		return [{ fileid: 0, offset: 0, size: file.byteLength, buffer: file }];
+	}
+	async getIndexFile(major: number): Promise<CacheIndexFile> {
+		return this.index;
+	}
+}

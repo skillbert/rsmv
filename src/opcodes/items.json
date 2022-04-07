@@ -1,4 +1,5 @@
 {
+	"0x00": { "name":                             "nullopt", "read": "true" },
 	"0x01": { "name":                           "baseModel", "read": "unsigned variable int" },
 	"0x02": { "name":                                "name", "read": "string" },
 	"0x03": { "name":                         "buff_effect", "read": "string" },

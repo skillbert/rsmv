@@ -34,6 +34,7 @@ export const cacheMapFiles = {
 
 export const cacheConfigPages = {
 	mapunderlays: 1,
+	identityKit: 3,
 	mapoverlays: 4,
 	environments: 29,
 	animgroups: 32,

@@ -3,6 +3,7 @@
 // run `npm run filetypes` to rebuild
 
 export type items = {
+	nullopt?: true | null
 	baseModel?: number | null
 	name?: string | null
 	buff_effect?: string | null

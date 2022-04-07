@@ -76,5 +76,7 @@ export const parseMaterials = new FileParser<import("../generated/materials").ma
 export const parseQuickchatCategories = new FileParser<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc"));
 export const parseQuickchatLines = new FileParser<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc"));
 export const parseEnvironments = new FileParser<import("../generated/environments").environments>(require("./opcodes/environments.jsonc"));
+export const parseAvatars = new FileParser<import("../generated/avatars").avatars>(require("./opcodes/avatars.jsonc"));
+export const parseIdentitykit = new FileParser<import("../generated/identitykit").identitykit>(require("./opcodes/identitykit.jsonc"));
 
 

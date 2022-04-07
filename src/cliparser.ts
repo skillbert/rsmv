@@ -1,14 +1,13 @@
-import * as path from "path";
 import * as cmdts from "cmd-ts";
 import { ArgParser } from "cmd-ts/dist/cjs/argparser";
 
 import { Type, option } from 'cmd-ts';
-import fs from 'fs';
 import { CacheFileSource } from "./cache";
 import { Downloader } from "./downloader";
 import * as updater from "./updater";
 import { GameCacheLoader } from "./cacheloader";
-import { MapRect } from "3d/mapsquare";
+import { MapRect } from "./3d/mapsquare";
+import { RawFileLoader } from "./rawfileloader";
 
 export type Rect = { x: number, y: number, width: number, height: number };
 
@@ -40,12 +39,14 @@ export const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Pr
 					return updater.fileSource;
 				case "cache":
 					return new GameCacheLoader(arg, !!opts?.writable);
+				case "files":
+					return new RawFileLoader(arg, 0);
 				default:
 					throw new Error("unknown mode");
 			}
 		}
 	},
-	defaultValue: () => () => Promise.resolve(new Downloader()),//yep, you saw it here first, the double lambda without brackets
+	defaultValue: () => () => Promise.resolve(new GameCacheLoader()),//yep, you saw it here first, the double lambda without brackets
 	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
 };
 

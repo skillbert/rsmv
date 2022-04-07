@@ -5,13 +5,17 @@ type PrimitiveInt = {
 	primitive: "int",
 	unsigned: boolean,
 	bytes: number,
-	readmode: "fixed" | "smart" | "sumtail",
+	readmode: "fixed" | "smart" | "sumtail"
 	endianness: "big" | "little"
 };
 type PrimitiveFloat = {
 	primitive: "float",
 	bytes: number,
 	endianness: "big" | "little"
+};
+type PrimitiveHardcode = {
+	primitive: "hardcode",
+	name: string
 };
 type PrimitiveBool = {
 	primitive: "bool"
@@ -30,7 +34,7 @@ export type ScanBuffer = Buffer & { scan: number };
 
 type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand";
 
-export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveValue<T>;
+export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveHardcode | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
 
 export type ComposedChunk = string
@@ -355,8 +359,9 @@ function structParser<TUPPLE extends boolean, T extends Record<TUPPLE extends tr
 			} else {
 				return {
 					type: "array",
-					prefixItems: Object.entries(props).map(([k, v]: [string, ChunkParser<any>]) => v.getJsonSChema()),
-					items: false
+					items: Object.entries(props).map(([k, v]: [string, ChunkParser<any>]) => v.getJsonSChema()),
+					minItems: Object.keys(props).length,
+					maxItems: Object.keys(props).length
 				};
 			}
 		}
@@ -780,8 +785,8 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 		getJsonSChema() {
 			return {
 				type: "integer",
-				minimum: 0,
-				maximum: 2 ** (bitlength * 8) - 1
+				minimum: (bitlength == -1 ? undefined : 0),
+				maximum: (bitlength == -1 ? undefined : 2 ** (bitlength * 8) - 1)
 			}
 		}
 	}
@@ -902,6 +907,25 @@ function booleanParser(): ChunkParser<boolean> {
 	}
 }
 
+
+let hardcodes: Record<string, () => ChunkParser<any>> = {
+	playeritem: function () {
+		return {
+			read(buffer) {
+				let byte0 = buffer.readUInt8(buffer.scan++);
+				if (byte0 == 0) { return 0; }
+				let byte1 = buffer.readUInt8(buffer.scan++);
+				if (byte1 == 0xff && byte0 == 0xff) { return -1; }
+				return (byte0 << 8) | byte1;
+			},
+			write(buffer, value) { throw new Error("not implemented"); },
+			getTypescriptType() { return "number"; },
+			getJsonSChema() { return { type: "integer", minimum: -1, maximum: 0xffff - 0x4000 - 1 }; }
+		}
+	}
+}
+
+
 function primitiveParser(primitive: Primitive<any>): ChunkParser<any> {
 	if (!("primitive" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`);
 	switch (primitive.primitive) {
@@ -915,6 +939,10 @@ function primitiveParser(primitive: Primitive<any>): ChunkParser<any> {
 			return stringParser(primitive);
 		case "value":
 			return literalValueParser(primitive);
+		case "hardcode":
+			let parser = hardcodes[primitive.name];
+			if (!parser) { throw new Error(`hardcode parser ${primitive.name} does not exist`); }
+			return parser();
 		default:
 			//@ts-ignore
 			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);

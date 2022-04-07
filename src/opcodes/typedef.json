@@ -28,6 +28,24 @@
 
     "float":            { "primitive": "float", "bytes": 4, "endianness": "big" },
 
+	"playeritem":       { "primitive": "hardcode", "name": "playeritem" },
+
+	"playeritemedit":   ["struct",
+		["type","ubyte"],
+		["model",["opt",["type",0,"bitflag"],["varuint","varuint"]]],
+		["flag2",["opt",["type",1,"bitflag"],"true"]],
+		["color",["opt",["type",2,"bitflag"],["struct",
+			["type","ushort"],
+			["col2",["opt",["type",12816],["array",4,"ushort"]]],
+			["col4",["opt",["type",8719],["array",8,"ushort"]]]
+		]]],
+		["texture",["opt",["type",3,"bitflag"],["struct",
+			["header","ubyte"],
+			["tex0","ushort"],
+			["tex1","ushort"]
+		]]]
+	],
+
 	"ubyte":            "unsigned byte",
 	"ushort":           "unsigned short",
 	"uint":             "unsigned int",

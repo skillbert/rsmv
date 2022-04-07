@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf, optio
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -222,6 +222,7 @@ const modes: Record<string, DecodeModeFactory> = {
 	quickchatlines: standardFile(parseQuickchatLines, singleMinorIndex(cacheMajors.quickchat, 1)),
 
 	overlays: standardFile(parseMapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
+	identitykit: standardFile(parseIdentitykit, singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit)),
 	underlays: standardFile(parseMapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
 	mapscenes: standardFile(parseMapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
 	environments: standardFile(parseEnvironments, singleMinorIndex(cacheMajors.config, cacheConfigPages.environments)),
@@ -235,7 +236,9 @@ const modes: Record<string, DecodeModeFactory> = {
 	skeletons: standardFile(parseSkeletalAnim, standardIndex(cacheMajors.skeletalAnims)),
 
 	indices: standardFile(parseCacheIndex, indexfileIndex()),
-	rootindex: standardFile(parseRootCacheIndex, rootindexfileIndex())
+	rootindex: standardFile(parseRootCacheIndex, rootindexfileIndex()),
+
+	avatars: standardFile(parseAvatars, standardIndex(0)),
 }
 
 let cmd2 = command({
@@ -243,7 +246,7 @@ let cmd2 = command({
 	args: {
 		...filesource,
 		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-		mode: option({ long: "mode", short: "m", type: string }),
+		mode: option({ long: "mode", short: "m", type: string, defaultValue: () => "bin" }),
 		files: option({ long: "ids", short: "i", type: string, defaultValue: () => "" }),
 		edit: flag({ long: "edit", short: "e" }),
 		fixhash: flag({ long: "fixhash", short: "h" }),

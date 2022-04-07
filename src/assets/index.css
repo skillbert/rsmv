@@ -141,7 +141,7 @@ input[type="text"]:focus {
 #content {
 	display: grid;
 	grid-template-columns: auto min-content;
-	grid-template-rows: minmax(0,100fr);
+	grid-template-rows: minmax(0, 100fr);
 }
 #viewer {
 	width: 100%;
@@ -149,7 +149,7 @@ input[type="text"]:focus {
 	grid-column-start: 1;
 	grid-column-end: span 0;
 }
-.canvas-container{
+.canvas-container {
 	width: 100%;
 	height: 100%;
 }
@@ -190,12 +190,14 @@ input[type="text"]:focus {
 
 .rsmv-icon-button {
 	position: relative;
-	vertical-align: middle;
-	text-align: center;
-	padding: 10px;
 	margin: 5px;
 	border-radius: 2px;
 	text-shadow: 0px 0px 5px #00000033;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 40px;
+	width: 50px;
 }
 .rsmv-icon-button.active {
 	background-color: #3e5b6d;
@@ -248,7 +250,7 @@ input[type="text"]:focus {
 #sidebar-browser {
 	overflow: hidden;
 	display: grid;
-	grid-template-rows: min-content min-content minmax(0,1fr);
+	grid-template-rows: min-content min-content minmax(0, 1fr);
 }
 #sidebar-browser-tab {
 	display: grid;
@@ -264,8 +266,7 @@ input[type="text"]:focus {
 }
 .sidebar-browser-tab-strip {
 	display: grid;
-	grid-template-columns: 144fr 55px 89fr 55px 89fr 55px 89fr 55px 89fr 55px 89fr 55px 144fr;
-	height: 55px;
+	grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
 	padding-top: 10px;
 	padding-bottom: 5px;
 }

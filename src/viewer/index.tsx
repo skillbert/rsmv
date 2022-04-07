@@ -12,13 +12,14 @@ import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
 import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
 import { ParsedTexture } from "../3d/textures";
-import * as commntJson from "comment-json";
 import * as datastore from "idb-keyval";
 import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
 import { Object3D } from "three";
+import { avatarStringToBytes, avatarToModel } from "../3d/avatar";
 
-type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map";
+type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar";
 type RenderMode = "three";
+
 
 
 if (module.hot) {
@@ -74,11 +75,13 @@ type WebkitDirectoryHandle = WebkitFsHandleBase & {
 
 var cacheDirectoryHandle: WebkitDirectoryHandle | null = null;
 
-//TODO remove
-if (module.hot) {
-	module.hot.accept("../3d/ob3tothree.ts", () => {
-		console.log("notified");
-	})
+function appearanceUrl(name: string) {
+	if (document.location.protocol.startsWith("http")) {
+		//proxy through runeapps if we are running in a browser
+		return `http://localhost/data/getplayeravatar.php?player=${encodeURIComponent(name)}`;
+	} else {
+		return `https://secure.runescape.com/m=avatar-rs/${encodeURIComponent(name)}/appearance.dat`;
+	}
 }
 
 async function ensureCachePermission() {
@@ -249,8 +252,8 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			this.renderer = new ThreeJsRenderer(cnv, {}, this.viewerStateChanged, hackyCacheFileSource);
-			// (this.renderer as any).automaticFrames = true;
-			// console.warn("forcing auto-frames!!");
+			(this.renderer as any).automaticFrames = true;
+			console.warn("forcing auto-frames!!");
 		}
 	}
 
@@ -276,26 +279,15 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 				<div id="sidebar">
 					<div id="sidebar-browser">
 						<div className="sidebar-browser-tab-strip">
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setState({ mode: "item" })}><span>Items IDs</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setState({ mode: "npc" })}><span>NPCs IDs</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setState({ mode: "object" })}><span>Obj/Locs IDs</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setState({ mode: "material" })}><span>Material IDs</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setState({ mode: "model" })}><span>Model IDs</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setState({ mode: "map" })}><span>Map</span></div>
-							<div></div>
-						</div>
-						<div className="sidebar-browser-tab-strip">
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "three" })} onClick={() => this.setRenderer("three")}><span>Three</span></div>
-							<div></div>
-							<div className={classNames("rsmv-icon-button", { active: false })} onClick={this.exportModel}><span>Export</span></div>
-							<div></div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setState({ mode: "item" })}>Items IDs</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setState({ mode: "npc" })}>NPCs IDs</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setState({ mode: "object" })}>Obj/Locs IDs</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setState({ mode: "avatar" })}>Avatar</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setState({ mode: "model" })}>Model IDs</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setState({ mode: "map" })}>Map</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setState({ mode: "material" })}>Material IDs</div>
+							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "three" })} onClick={() => this.setRenderer("three")}>Three</div>
+							<div className={classNames("rsmv-icon-button", { active: false })} onClick={this.exportModel}>Export</div>
 						</div>
 						<div id="sidebar-browser-tab">
 							<form className="sidebar-browser-search-bar" onSubmit={this.submitSearch}>
@@ -485,7 +477,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			let skybox: Object3D | undefined = undefined;
 			let fogColor = [0, 0, 0, 0];
 			if (mainchunk?.extra.unk00?.unk20) {
-				fogColor=mainchunk.extra.unk00.unk20.slice(1);
+				fogColor = mainchunk.extra.unk00.unk20.slice(1);
 				// fogColor = [...HSL2RGB(packedHSL2HSL(mainchunk.extra.unk00.unk01[1])), 255];
 			}
 			if (mainchunk?.extra.unk80) {
@@ -498,11 +490,18 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			}
 
 			let scene = await mapsquareToThree(scenecache, grid, modeldata);
-			renderer.setModels([scene], "", { skybox,fogColor });
+			renderer.setModels([scene], "", { skybox, fogColor });
 			// TODO currently parsing this twice
 			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
 			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
 			// fs.writeFileSync("map.svg", svg);
+			break;
+		case "avatar":
+			let url = appearanceUrl(searchid);
+			let data = await fetch(url).then(q => q.text());
+			let avainfo = await avatarToModel(scenecache, avatarStringToBytes(data));
+			modelids = avainfo.modelids;
+			anims = avainfo.animids;
 			break;
 		default:
 			throw new Error("unknown mode");
