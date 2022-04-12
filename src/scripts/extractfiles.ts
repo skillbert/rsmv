@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf, optio
 import * as fs from "fs";
 import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
@@ -215,6 +215,7 @@ const modes: Record<string, DecodeModeFactory> = {
 	npcs: standardFile(parseNpc, chunkedIndex(cacheMajors.npcs)),
 	objects: standardFile(parseObject, chunkedIndex(cacheMajors.objects)),
 	achievements: standardFile(parseAchievement, chunkedIndex(cacheMajors.achievements)),
+	structs: standardFile(parseStructs, chunkedIndex(cacheMajors.structs)),
 	sequences: standardFile(parseSequences, chunkedIndex(cacheMajors.sequences)),
 	spotanims: standardFile(parseSpotAnims, chunkedIndex(cacheMajors.spotanims)),
 	materials: standardFile(parseMaterials, chunkedIndex(cacheMajors.materials)),
@@ -223,6 +224,7 @@ const modes: Record<string, DecodeModeFactory> = {
 
 	overlays: standardFile(parseMapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
 	identitykit: standardFile(parseIdentitykit, singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit)),
+	params: standardFile(parseParams, singleMinorIndex(cacheMajors.config, cacheConfigPages.params)),
 	underlays: standardFile(parseMapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
 	mapscenes: standardFile(parseMapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
 	environments: standardFile(parseEnvironments, singleMinorIndex(cacheMajors.config, cacheConfigPages.environments)),

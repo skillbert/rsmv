@@ -10,6 +10,7 @@ export const cacheMajors = {
 	items: 19,
 	sequences: 20,
 	spotanims: 21,
+	structs: 22,
 	quickchat: 24,
 	materials: 26,
 	worldmap: 23,
@@ -36,6 +37,7 @@ export const cacheConfigPages = {
 	mapunderlays: 1,
 	identityKit: 3,
 	mapoverlays: 4,
+	params: 11,
 	environments: 29,
 	animgroups: 32,
 	mapscenes: 34

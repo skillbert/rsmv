@@ -213,6 +213,7 @@ export function indexBufferToObject(major: number, buffer: Buffer): CacheIndex[]
 const mappedFileIds = {
 	[cacheMajors.items]: 256,//not sure
 	[cacheMajors.npcs]: 128,
+	[cacheMajors.structs]: 32,
 	[cacheMajors.enums]: 256,
 	[cacheMajors.objects]: 256,
 	[cacheMajors.sequences]: 128,

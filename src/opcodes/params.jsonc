@@ -1,0 +1,9 @@
+{
+	"0x04": { "name":              "unk04", "read": "true" },
+	"0x65": { "name":              "type", "read": ["struct",
+		["vartype","varushort"],
+		["$primitive","ubyte"],
+		["defaultint",["opt",["$primitive",2],"uint"]],
+		["defaultstring",["opt",["$primitive",5],"string"]]
+	] }
+}

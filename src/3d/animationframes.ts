@@ -9,7 +9,6 @@ import { ThreejsSceneCache } from "./ob3tothree";
 import { sequences } from "../../generated/sequences";
 import { frames } from "../../generated/frames";
 import { BoneCenter, getBoneCenters, ModelData } from "./ob3togltf";
-import { SVD } from "svd-js";
 
 //TODO remove
 // import * as THREE from "three";
