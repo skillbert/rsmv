@@ -3,12 +3,15 @@
 // run `npm run filetypes` to rebuild
 
 export type identitykit = {
-	unk01?: number | null
+	bodypart?: number | null
 	model?: {
-		slot: number,
+		maybe_priority: number,
 		model: number,
 	} | null
-	unk03?: true | null
-	unk28?: Uint8Array | null
+	iscopy?: true | null
+	recolor?: [
+		number,
+		number,
+	][] | null
 	headmodel?: number | null
 };

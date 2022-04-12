@@ -2,13 +2,13 @@ import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { ModelData, parseOb3Model } from '../3d/ob3togltf';
-import { boundMethod } from 'autobind-decorator';
 import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
-import { BoneInit, MountableAnimation, parseAnimationSequence3, ParsedAnimation, parseSkeletalAnimation } from "./animation";
+import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
+import { parseSkeletalAnimation } from "./animationskeletal";
 import { archiveToFileId, CacheFileSource } from "../cache";
-import { AnimationClip, Bone, Group, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
+import { Matrix4, Object3D, SkinnedMesh } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -216,165 +216,6 @@ export async function ob3ModelToThreejsNode(scene: ThreejsSceneCache, modelfiles
 	return mesh;
 }
 
-function mountAnimation(model: ModelData, anim: ParsedAnimation): MountableAnimation {
-	let nbones = model.bonecount + 1;//TODO find out why this number is wrong
-
-	let bonecenters: { xsum: number, ysum: number, zsum: number, weightsum: number }[] = [];
-	for (let i = 0; i < nbones; i++) {
-		bonecenters.push({ xsum: 0, ysum: 0, zsum: 0, weightsum: 0 });
-	}
-
-	for (let mesh of model.meshes) {
-		let ids = mesh.attributes.skinids;
-		let weights = mesh.attributes.skinweights;
-		let pos = mesh.attributes.pos;
-		let indices = mesh.indices;
-		if (!ids || !weights) { continue; }
-		for (let i = 0; i < indices.count; i++) {
-			let vert = indices.array[i];
-			for (let skin = 0; skin < ids.itemSize; skin++) {
-				let skinid = ids.array[vert * ids.itemSize + skin];
-				let skinweight = weights.array[vert * weights.itemSize + skin];
-				let center = bonecenters[skinid];
-				center.xsum += pos.array[pos.itemSize * vert + 0] * skinweight;
-				center.ysum += pos.array[pos.itemSize * vert + 1] * skinweight;
-				center.zsum += pos.array[pos.itemSize * vert + 2] * skinweight;
-				center.weightsum += skinweight;
-			}
-		}
-	}
-
-
-	let nframes = anim.keyframetimes.length;
-	let keyframetracks: KeyframeTrack[] = [];
-	let extrabonecounter = 0;
-	let indexedbones: Bone[] = [];
-	let missingpivots = 0;
-	function iter(init: BoneInit, quaternionstack: Float32Array[]) {
-		let nextquaternionstack = quaternionstack;
-
-		let bone = new Bone();
-		if (init.boneid != -1) {
-			indexedbones[init.boneid] = bone;
-			bone.name = "bone_" + init.boneid;
-		} else {
-			bone.name = "extra_" + (extrabonecounter++);
-		}
-		for (let tr of init.translateconst) {
-			let totalweight = 0;
-			let xsum = 0, ysum = 0, zsum = 0;
-			for (let boneid of tr.data) {
-				let center = bonecenters[boneid];
-				if (!center) {
-					continue;
-				}
-				let factor = (tr.inverse ? -1 : 1);
-				xsum += center.xsum * factor;
-				ysum += center.ysum * factor;
-				zsum += center.zsum * factor;
-				totalweight += center.weightsum;
-			}
-			if (totalweight != 0) {
-				bone.position.set(
-					bone.position.x + xsum / totalweight,
-					bone.position.y + ysum / totalweight,
-					bone.position.z + zsum / totalweight
-				)
-			} else {
-				missingpivots++;
-			}
-		}
-
-		if (init.translate.length != 0) {
-			let track = new Float32Array(nframes * 3);
-			let sum = new Vector3();
-			let tmp = new Vector3();
-			let quatsum = new Quaternion();
-			let quattmp = new Quaternion();
-			for (let i = 0; i < nframes; i++) {
-				sum.set(0, 0, 0);
-				quatsum.identity();
-				//add all translations of this bone in the global frame
-				for (let track of init.translate) {
-					tmp.fromArray(track.data, i * 3);
-					if (track.inverse) { sum.sub(tmp); }
-					else { sum.add(tmp); }
-				}
-				//add all rotations on this bone
-				for (let rot of quaternionstack) {
-					quattmp.fromArray(rot, i * 4);
-					quatsum.multiply(quattmp);
-				}
-
-				//apply inverse of rotations on this bone
-				quatsum.invert();
-				sum.applyQuaternion(quatsum);
-
-				//add the translations of the bone in bone frame
-				sum.add(bone.position);
-
-				//save the baked translation
-				sum.toArray(track, i * 3);
-			}
-
-			keyframetracks.push(new VectorKeyframeTrack(`${bone.name}.position`, anim.keyframetimes as any, track as any));
-		}
-
-		if (init.rotate.length != 0) {
-			let track = new Float32Array(nframes * 4);
-			let sum = new Quaternion();
-			let tmp = new Quaternion();
-			for (let i = 0; i < nframes; i++) {
-				sum.identity();
-				for (let track of init.rotate) {
-					tmp.fromArray(track.data, i * 4);
-					if (track.inverse) { tmp.invert(); }
-					sum.multiply(tmp);
-				}
-				sum.toArray(track, i * 4);
-			}
-
-			keyframetracks.push(new QuaternionKeyframeTrack(`${bone.name}.quaternion`, anim.keyframetimes as any, track as any));
-
-			//new quaternionstack for child bones
-			nextquaternionstack = quaternionstack.concat([track]);
-		}
-
-		if (init.scale.length != 0) {
-			let track = new Float32Array(nframes * 3);
-			let sum = new Vector3();
-			let tmp = new Vector3();
-			for (let i = 0; i < nframes; i++) {
-				sum.set(1, 1, 1);
-				for (let track of init.scale) {
-					tmp.fromArray(track.data, i * 3);
-					sum.multiply(tmp);
-				}
-				sum.toArray(track, i * 3);
-			}
-
-			keyframetracks.push(new VectorKeyframeTrack(`${bone.name}.scale`, anim.keyframetimes as any, track as any));
-		}
-
-		if (init.children.length != 0) {
-			bone.add(...init.children.map(q => iter(q, nextquaternionstack)));
-		}
-
-		return bone;
-	}
-
-	let rootangle = []
-	let rootbones = anim.rootboneinits.map(b => iter(b, rootangle));
-
-	let skeleton = new Skeleton(indexedbones);
-	let clip = new AnimationClip(`sequence_${Math.random() * 1000 | 0}`, undefined, keyframetracks);
-
-	if (missingpivots != 0) {
-		console.log("missing pivots during mountanimation", missingpivots);
-	}
-
-	return { skeleton, clip, rootbones };
-}
 
 function mergeModelDatas(models: ModelData[]) {
 	let r: ModelData = {
@@ -401,8 +242,8 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 			mountanim = () => anim;
 			break;
 		} else if (seq.frames) {
-			let frameanim = await parseAnimationSequence3(scene, seq.frames);
-			mountanim = () => mountAnimation(model, frameanim);
+			let frameanim = await parseAnimationSequence4(scene, seq.frames);
+			mountanim = () => frameanim(model);
 			break;
 		}
 	}
@@ -429,6 +270,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 	}
 	if (mountanim) {
 		let mount = mountanim();
+		globalThis.mount=mount;
 		if (mount.rootbones && mount.rootbones.length != 0) { rootnode.add(...mount.rootbones); }
 		rootnode.traverse(node => {
 			if (node instanceof SkinnedMesh) {

@@ -57,8 +57,10 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 		let npc = parseNpc.read(file);
 		if (npc.models) { modelids.push(...npc.models) };
 	}
+	// let animids = [animid];
+	let animids:number[] = [];
 	return {
 		modelids: modelids.filter(q => q) as number[],
-		animids: [] as number[]
+		animids
 	};
 }

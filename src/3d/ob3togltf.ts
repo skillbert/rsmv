@@ -2,6 +2,13 @@ import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, AttributeSoure } from "./gltfutil";
 import * as THREE from "three";
 
+export type BoneCenter = {
+	xsum: number,
+	ysum: number,
+	zsum: number,
+	weightsum: number
+};
+
 export type ModelData = {
 	maxy: number,
 	miny: number,
@@ -21,6 +28,37 @@ export type ModelMeshData = {
 		skinids?: THREE.BufferAttribute,
 		skinweights?: THREE.BufferAttribute
 	}
+}
+
+
+export function getBoneCenters(model: ModelData) {
+	let nbones = model.bonecount + 1;//TODO find out why this number is wrong
+
+	let bonecenters: BoneCenter[] = [];
+	for (let i = 0; i < nbones; i++) {
+		bonecenters.push({ xsum: 0, ysum: 0, zsum: 0, weightsum: 0 });
+	}
+
+	for (let mesh of model.meshes) {
+		let ids = mesh.attributes.skinids;
+		let weights = mesh.attributes.skinweights;
+		let pos = mesh.attributes.pos;
+		let indices = mesh.indices;
+		if (!ids || !weights) { continue; }
+		for (let i = 0; i < indices.count; i++) {
+			let vert = indices.array[i];
+			for (let skin = 0; skin < ids.itemSize; skin++) {
+				let skinid = ids.array[vert * ids.itemSize + skin];
+				let skinweight = weights.array[vert * weights.itemSize + skin];
+				let center = bonecenters[skinid];
+				center.xsum += pos.array[pos.itemSize * vert + 0] * skinweight;
+				center.ysum += pos.array[pos.itemSize * vert + 1] * skinweight;
+				center.zsum += pos.array[pos.itemSize * vert + 2] * skinweight;
+				center.weightsum += skinweight;
+			}
+		}
+	}
+	return bonecenters;
 }
 
 export function parseOb3Model(modelfile: Buffer) {
@@ -133,7 +171,7 @@ export function parseOb3Model(modelfile: Buffer) {
 					let boneid = rawbuf[dataindex++] | (rawbuf[dataindex++] << 8);//manual 16bit building since it might not be alligned
 					let actualweight = (weight != 0 ? weight : remainder);
 					remainder -= weight;
-					skinIdBuffer[i * 4 + j] = (boneid==65535?0:boneid);
+					skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);
 					skinWeightBuffer[i * 4 + j] = actualweight;
 					if (weight == 0) { break; }
 				}

@@ -23,7 +23,7 @@ type RenderMode = "three";
 
 
 if (module.hot) {
-	module.hot.accept("../3d/ob3togltf");
+	module.hot.accept(["../3d/ob3togltf","../3d/ob3tothree"]);
 }
 
 function start() {
