@@ -23,7 +23,7 @@ type RenderMode = "three";
 
 
 if (module.hot) {
-	module.hot.accept(["../3d/ob3togltf","../3d/ob3tothree"]);
+	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
 }
 
 function start() {
@@ -222,7 +222,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 				{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
 			]
 		});
-		let modelexprt = await (this.renderer as any).export();
+		let modelexprt = await this.renderer.export("gltf");
 		let str = await savehandle.createWritable();
 		await str.write(modelexprt);
 		await str.close();
@@ -499,6 +499,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 		case "avatar":
 			let url = appearanceUrl(searchid);
 			let data = await fetch(url).then(q => q.text());
+			if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
 			let avainfo = await avatarToModel(scenecache, avatarStringToBytes(data));
 			modelids = avainfo.modelids;
 			anims = avainfo.animids;
