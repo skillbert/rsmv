@@ -490,7 +490,8 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 			}
 
 			let scene = await mapsquareToThree(scenecache, grid, modeldata);
-			renderer.setModels([scene], "", { skybox, fogColor });
+			renderer.setModels([scene]);
+			renderer.setSkybox(skybox, fogColor);
 			// TODO currently parsing this twice
 			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
 			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
@@ -512,6 +513,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 		models.push(...await Promise.all(modelids.map(id => hackyCacheFileSource.getFileById(cacheMajors.models, id))));
 		console.log("loading models", ...modelids);
 		renderer.setOb3Models(scenecache, models, mods, metatext, anims);
+		renderer.setSkybox();
 	}
 }
 

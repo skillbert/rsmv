@@ -15,6 +15,7 @@ import { ModelViewerState } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
+import { MountableAnimation } from "3d/animationframes";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -339,11 +340,7 @@ export class ThreeJsRenderer {
 	async setOb3Models(scene: ThreejsSceneCache, modelfiles: Buffer[], mods: ModelModifications, metastr: string, anims: number[]) {
 		lastob3modelcall = { args: [...arguments] as any, inst: this };
 		let model = await ob3ModelToThreejsNode(scene, modelfiles, mods, anims);
-		return this.setModels([model], metastr);
-	}
-	async setGltfModels(modelfiles: Uint8Array[], metastr = "") {
-		let newmodels = await Promise.all(modelfiles.map(file => this.parseGltfFile(file)));
-		this.setModels(newmodels.map(q => q.rootnode), metastr);
+		return this.setModels([model], { metastr });
 	}
 
 	async takePicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
@@ -422,7 +419,30 @@ export class ThreeJsRenderer {
 		return { rootnode };
 	}
 
-	async setModels(models: THREE.Object3D[], metastr = "", options?: { skybox?: THREE.Object3D, fogColor: number[] }) {
+	setSkybox(skybox?: THREE.Object3D, fogColor?: number[]) {
+		if (skybox) {
+			let scene = new THREE.Scene();
+			let camera = this.camera.clone();
+			let obj = new THREE.Object3D();
+			obj.scale.set(1 / 512, 1 / 512, 1 / 512);
+			obj.add(skybox);
+			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
+			this.skybox = { scene, camera };
+			if (fogColor) {
+				scene.background = new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255);
+				this.scene.fog = new THREE.Fog("#" + scene.background.getHexString(), 30, 150);
+				this.cleanModelCallbacks.push(() => this.scene.fog = null);
+			}
+		} else {
+			this.skybox = null;
+		}
+	}
+
+	setAnimation(anim: MountableAnimation) {
+
+	}
+
+	async setModels(models: THREE.Object3D[], options?: { metastr?: string, animatable?: THREE.Object3D }) {
 		let combined = new THREE.Group();
 		let groups = new Set<string>();
 		models.forEach(m => combined.add(m));
@@ -485,24 +505,8 @@ export class ThreeJsRenderer {
 			this.scene.add(skelhelper);
 			this.cleanModelCallbacks.push(() => skelhelper.removeFromParent());
 		});
-		if (options?.skybox) {
-			let scene = new THREE.Scene();
-			let camera = this.camera.clone();
-			let obj = new THREE.Object3D();
-			obj.scale.set(1 / 512, 1 / 512, 1 / 512);
-			obj.add(options.skybox);
-			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
-			this.skybox = { scene, camera };
-			if (options?.fogColor) {
-				scene.background = new THREE.Color(options.fogColor[0] / 255, options.fogColor[1] / 255, options.fogColor[2] / 255);
-				this.scene.fog = new THREE.Fog("#" + scene.background.getHexString(), 30, 150);
-				this.cleanModelCallbacks.push(() => this.scene.fog = null);
-			}
-		} else {
-			this.skybox = null;
-		}
 
-		this.uistate = { meta: metastr, toggles: Object.create(null) };
+		this.uistate = { meta: options?.metastr ?? "", toggles: Object.create(null) };
 		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 			this.uistate.toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
 		});
@@ -515,7 +519,7 @@ export class ThreeJsRenderer {
 	export(type: "gltf") {
 		return new Promise<Buffer>(resolve => {
 			let q = new GLTFExporter();
-			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: false, embedImages: true, animations: this.modelnode?.children[0].animations });
+			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: true, embedImages: true, animations: this.modelnode?.children[0].animations });
 		});
 		// return new Promise<Buffer>(resolve => {
 		// 	let q = new ColladaExporter();

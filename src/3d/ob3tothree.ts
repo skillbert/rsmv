@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
 import { parseSkeletalAnimation } from "./animationskeletal";
 import { archiveToFileId, CacheFileSource } from "../cache";
-import { Matrix4, Object3D, SkinnedMesh } from "three";
+import { BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, SkinnedMesh } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -212,7 +212,7 @@ export async function ob3ModelToThreejsNode(scene: ThreejsSceneCache, modelfiles
 	let mesh = await ob3ModelToThree(scene, mergeModelDatas(meshdatas), animids);
 	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
 	mesh.updateMatrix();
-	(window as any).mesh = mesh;
+	globalThis.mesh = mesh;//TODO remove
 	return mesh;
 }
 
@@ -248,7 +248,15 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		}
 	}
 
-	let rootnode = (mountanim ? new SkinnedMesh() : new Object3D());
+	let rootnode = new Mesh();
+	if (mountanim) {
+		let skinnedroot = new SkinnedMesh();
+		// //add empty geometry for gltf export
+		// skinnedroot.geometry = new BufferGeometry();
+		// skinnedroot.geometry.setAttribute("position", new BufferAttribute(new Float32Array([0, 0, 0]), 3));
+		// skinnedroot.geometry.setIndex([0, 0, 0]);
+		rootnode = skinnedroot;
+	}
 
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
@@ -263,22 +271,21 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
 		//@ts-ignore
 		// mat.wireframe = true;
-		let mesh: THREE.Mesh | THREE.SkinnedMesh;
-		if (mountanim && geo.attributes.skinIndex) { mesh = new THREE.SkinnedMesh(geo, mat); }
-		else { mesh = new THREE.Mesh(geo, mat); }
+		let mesh = (mountanim && geo.attributes.skinIndex ? new THREE.SkinnedMesh(geo, mat) : new THREE.Mesh(geo, mat));
 		rootnode.add(mesh);
 	}
 	if (mountanim) {
 		let mount = mountanim();
-		globalThis.mount=mount;
+		//set bone 0 as the root node instead of an identity bone (this is needed for gltf export)
+		mount.skeleton.bones[0] = rootnode as any;
+		globalThis.mount = mount;
 		if (mount.rootbones && mount.rootbones.length != 0) { rootnode.add(...mount.rootbones); }
 		rootnode.traverse(node => {
 			if (node instanceof SkinnedMesh) {
 				// node.bindMode = "detached";
-				node.bind(mount.skeleton, new Matrix4());
+				node.bind(mount.skeleton);
 			}
 		});
-		(rootnode as SkinnedMesh).bind(mount.skeleton);
 		rootnode.animations = [mount.clip];
 	}
 	return rootnode;

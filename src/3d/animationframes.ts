@@ -259,7 +259,8 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 				rootbone.position.set(center.xsum / center.weightsum, center.ysum / center.weightsum, center.zsum / center.weightsum);
 			}
 		}
-		let skeleton = new Skeleton(leafbones)
+		let skeleton = new Skeleton(leafbones);
+		globalThis.skeleton = skeleton;
 		let clip = new AnimationClip("anim", undefined, tracks);;
 		return { clip, rootbones, skeleton }
 	}
