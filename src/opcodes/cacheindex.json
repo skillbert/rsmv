@@ -4,36 +4,36 @@
 	["flags","unsigned byte"],
 	["$minorindex","0"],
 	["indices",["chunkedarray","variable unsigned int",
-		["struct",
+		[
 			["minor",["accum","$minorindex","unsigned short"]]
 		],
-		["struct",
+		[
 			["name",["opt",["flags",0,"bitflag"],"unsigned int"]]
 		],
-		["struct",
+		[
 			["crc","unsigned int"]
 		],
-		["struct",
+		[
 			["uncompressed_crc",["opt",["flags",2,"bitflag"],"unsigned int"]]
 		],
-		["struct",
+		[
 			["size",["opt",["flags",2,"bitflag"],"unsigned int"]],
 			["uncompressed_size",["opt",["flags",2,"bitflag"],"unsigned int"]]
 		],
-		["struct",
+		[
 			["encryption_or_hash",["opt",["flags",1,"bitflag"],["buffer",64,"hex"]]]
 		],
-		["struct",
+		[
 			["version","unsigned int"]
 		],
-		["struct",
+		[
 			["subindexcount","variable unsigned int"]
 		],
-		["struct",
+		[
 			["$subindex","0"],
 			["subindices",["array",["ref","subindexcount"],["accum","$subindex","unsigned short"]]]
 		],
-		["struct",
+		[
 			["subnames",["opt",["flags",0,"bitflag"],["array",["ref","subindexcount"],"uint"]]]
 		]
 	]]

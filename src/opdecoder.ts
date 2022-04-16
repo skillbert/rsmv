@@ -17,16 +17,23 @@ export class FileParser<T> {
 		let opcodeobj = commentJson.parse(_opcodes, undefined, true);
 		// const typedef = JSON.parse(fs.readFileSync(__dirname + "/opcodes/typedef.json", "utf-8"));
 		// const _opcodes = JSON.parse(fs.readFileSync(opcodePath, "utf-8"));
-		this.parser = opcode_reader.buildParser(opcodeobj as any, typedef as any);
+		this.parser = opcode_reader.buildParser(null, opcodeobj as any, typedef as any);
 	}
 
 	read(buffer: Buffer) {
-		let scanbuf = Object.assign(buffer, { scan: 0 });
-		let res = this.parser.read(scanbuf, {});
-		if (scanbuf.scan != scanbuf.length) {
+		let state = {
+			buffer,
+			stack: [],
+			hiddenstack: [],
+			scan: 0,
+			startoffset: 0,
+			endoffset: buffer.byteLength
+		};
+		let res = this.parser.read(state);
+		if (state.scan != state.endoffset) {
 			bytesleftoverwarncount++;
 			if (bytesleftoverwarncount < 100) {
-				console.log(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+				console.log(`bytes left over after decoding file: ${state.endoffset - state.scan}`);
 				// let name = `cache/bonusbytes-${Date.now()}.bin`;
 				// require("fs").writeFileSync(name, scanbuf.slice(scanbuf.scan));
 			}
@@ -35,14 +42,16 @@ export class FileParser<T> {
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
 			if (buffer.byteLength < 100000) {
-				throw new Error(`bytes left over after decoding file: ${scanbuf.length - scanbuf.scan}`);
+				throw new Error(`bytes left over after decoding file: ${state.endoffset - state.scan}`);
 			}
 		}
 		return res;
 	}
 
 	write(obj: T) {
-		this.parser.write(scratchbuf, obj);
+		let state = { buffer: scratchbuf, scan: 0 };
+		this.parser.write(state, obj);
+		if (state.scan > scratchbuf.byteLength) { throw new Error("tried to write file larger than scratchbuffer size"); }
 		//do the weird prototype slice since we need a copy, not a ref
 		let r: Buffer = Uint8Array.prototype.slice.call(scratchbuf, 0, scratchbuf.scan);
 		//clear it for next use

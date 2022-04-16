@@ -43,7 +43,9 @@ module.exports = {
 		"electron/renderer": { commonjs: "electron/renderer" },
 		"sharp": { commonjs: "sharp" },
 		"zlib": { commonjs: "zlib" },
-		"lzma": { commonjs: "lzma" }
+		"lzma": { commonjs: "lzma" },
+		"cmd-ts": { commonjs: "cmd-ts" },
+		"comment-json": { commonjs: "comment-json" }
 	},
 	resolve: {
 		extensions: ['.tsx', '.ts', '.js'],

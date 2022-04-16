@@ -1,8 +1,8 @@
 {
 	"0x01": { "name":                              "frames", "read": ["chunkedarray","unsigned short",
-																["struct",["framelength","unsigned short"]],
-																["struct",["frameidlow","unsigned short"]],
-																["struct",["frameidhi","unsigned short"]] ]},
+																[["framelength","unsigned short"]],
+																[["frameidlow","unsigned short"]],
+																[["frameidhi","unsigned short"]] ]},
 	"0x02": { "name":                          "unknown_02", "read": "ushort" },
 	"0x05": { "name":                          "unknown_05", "read": "ubyte" },
 	"0x06": { "name":                          "unknown_06", "read": "ushort" },
@@ -25,8 +25,8 @@
 	"0x19": { "name":                  "skeletal_animation", "read": "unsigned short" },	
 
 	"0x70": { "name":                          "unknown_70", "read": ["chunkedarray","unsigned short",
-																["struct",["intlow","unsigned short"]],
-																["struct",["maybe_file","unsigned short"]]] },
+																[["intlow","unsigned short"]],
+																[["maybe_file","unsigned short"]]] },
 	"0x77": { "name":                          "unknown_77", "read": ["unsigned short","unsigned byte"] },
 	"0x78": { "name":                          "unknown_78", "read": ["unsigned short","unsigned short","unsigned short"] },
 

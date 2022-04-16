@@ -144,7 +144,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 	let constr: DecodeModeFactory = (outdir, args: Record<string, string>) => {
 		let name = Object.entries(modes).find(q => q[1] == constr);
 		if (!name) { throw new Error(); }
-		let schema = parser.parser.getJsonSChema();
+		let schema = parser.parser.getJsonSchema();
 		let relurl = `./.schema-${name[0]}.json`;
 		fs.writeFileSync(path.resolve(outdir, relurl), prettyJson(schema));
 		return {
