@@ -3,7 +3,7 @@
 	["avatype","playeritem"],
 	["player",["opt",["avatype",-1,"eqnot"],["struct",
 		["slots",[
-			["ref",["avatype"]],
+			["ref","avatype"],
 			"playeritem",
 			"playeritem",
 			"playeritem",

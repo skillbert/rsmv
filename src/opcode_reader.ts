@@ -94,18 +94,21 @@ type ResolvedReference = {
 }
 
 export type ChunkParser<T = any> = {
-	parent: ChunkParserParent,
 	read(state: DecodeState): T,
 	write(state: EncodeState, v: unknown): void,
-	resolveReference?(name: string, childresolve: ResolvedReference): ResolvedReference,
+	setReferenceParent?(parent: ChunkParserContainer | null): void,
 	getTypescriptType(indent: string): string,
 	getJsonSchema(): jsonschema.JSONSchema6Definition,
 	condName?: string,
 	condValue?: number,
 	condMode?: CompareMode
 }
+type ChunkParserContainer<T = any> = ChunkParser<T> & {
+	resolveReference(name: string, childresolve: ResolvedReference): ResolvedReference,
+	setReferenceParent(parent: ChunkParserContainer | null): void,
+}
 
-function resolveAlias(parent: ChunkParserParent, typename: string, typedef: TypeDef) {
+function resolveAlias(typename: string, typedef: TypeDef) {
 	let newtype: Primitive<any> | ComposedChunk | string = typename;
 	for (let redirects = 0; redirects < 1024; redirects++) {
 		if (!Object.prototype.hasOwnProperty.call(typedef, newtype)) {
@@ -115,31 +118,29 @@ function resolveAlias(parent: ChunkParserParent, typename: string, typedef: Type
 		if (typeof newtype != "string") {
 			if ("primitive" in newtype) {
 				//TODO this break when aliased types have a key "primitive"
-				return primitiveParser(parent, newtype as any);
+				return primitiveParser(newtype as any);
 			} else {
 				//TODO this recursion is unchecked
-				return buildParser(parent, newtype, typedef);
+				return buildParser(newtype, typedef);
 			}
 		}
 	}
 	throw new Error(`Couldn't resolve alias stack for '${typename}', perhaps due to an infinite loop - last known alias was '${newtype!}'`);
 }
 
-export function buildParser(parent: ChunkParserParent, chunkdef: ComposedChunk, typedef: TypeDef): ChunkParser {
+export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkParser {
 	switch (typeof chunkdef) {
 		case "string":
-			return resolveAlias(parent, chunkdef, typedef);
+			return resolveAlias(chunkdef, typedef);
 		case "object":
 			if (!Array.isArray(chunkdef)) {
-				return opcodesParser(parent, newparent => buildParser(newparent, chunkdef.$opcode ?? "unsigned byte", typedef), newparent => {
-					let mappedobj: Record<string, ChunkParser> = {};
-					for (let key in chunkdef) {
-						if (key.startsWith("$")) { continue; }//TODO remove?
-						let op = chunkdef[key];
-						mappedobj[op.name] = optParser(newparent, sub => buildParser(sub, op.read, typedef), "$opcode", parseInt(key), "eq");
-					}
-					return mappedobj;
-				});
+				let mappedobj: Record<string, ChunkParser> = {};
+				for (let key in chunkdef) {
+					if (key.startsWith("$")) { continue; }//TODO remove?
+					let op = chunkdef[key];
+					mappedobj[op.name] = optParser(buildParser(op.read, typedef), "$opcode", parseInt(key), "eq");
+				}
+				return opcodesParser(buildParser(chunkdef.$opcode ?? "unsigned byte", typedef), mappedobj);
 			} else {
 				if (chunkdef.length < 1) throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(chunkdef)}`);
 				switch (chunkdef[0]) {
@@ -147,11 +148,11 @@ export function buildParser(parent: ChunkParserParent, chunkdef: ComposedChunk, 
 						if (chunkdef.length < 2) throw new Error(`2 arguments exptected for proprety with type ref`);
 						let [minbit, bitlength] = chunkdef[2] ?? [-1, -1];
 						let offset = chunkdef[3] ?? 0;
-						return referenceValueParser(parent, chunkdef[1], minbit, bitlength, offset);
+						return referenceValueParser(chunkdef[1], minbit, bitlength, offset);
 					}
 					case "accum": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type accum`);
-						return intAccumlatorParser(parent, chunkdef[1], buildParser(parent, chunkdef[2], typedef), chunkdef[3] ?? "add");
+						return intAccumlatorParser(chunkdef[1], buildParser(chunkdef[2], typedef), chunkdef[3] ?? "add");
 					}
 					case "opt": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type opt`);
@@ -167,47 +168,41 @@ export function buildParser(parent: ChunkParserParent, chunkdef: ComposedChunk, 
 							valuearg = chunkdef[1] as number | string;
 						}
 						if (typeof valuearg == "string") { valuearg = parseInt(valuearg) }
-						return optParser(parent, parent => buildParser(parent, chunkdef[2], typedef), cond, valuearg, cmpmode);
+						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg, cmpmode);
 					}
 					case "chunkedarray": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
 						let rawchunks = chunkdef.slice(chunkdef.length >= 3 ? 2 : 1) as [name: string, value: ComposedChunk][][];
-						return chunkedArrayParser(parent, newparent => {
-							return (typeof sizearg == "number" ? literalValueParser(newparent, { primitive: "value", value: sizearg }) : buildParser(newparent, sizearg, typedef))
-						}, newparent => {
-							return rawchunks.map(chunk => Object.fromEntries(chunk.map(q => [q[0], buildParser(newparent, q[1], typedef)])));
-						});
+						let lentype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						return chunkedArrayParser(lentype, rawchunks.map(chunk => Object.fromEntries(chunk.map(q => [q[0], buildParser(q[1], typedef)]))));
 					}
 					case "bytesleft":
-						return bytesRemainingParser(parent);
+						return bytesRemainingParser();
 					case "buffer":
 						if (chunkdef.length < 3) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = chunkdef[1];
-						let sizetype = (typeof sizearg == "number" ? literalValueParser(parent, { primitive: "value", value: sizearg }) : buildParser(parent, sizearg, typedef))
-						return bufferParser(parent, sizetype, chunkdef[2], chunkdef[3] ?? 1);
+						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						return bufferParser(sizetype, chunkdef[2], chunkdef[3] ?? 1);
 					case "nullarray":
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
-						let sizetypeinit = parent => {
-							return (typeof sizearg == "number" ? literalValueParser(parent, { primitive: "value", value: sizearg }) : buildParser(parent, sizearg, typedef));
-						}
-						let valuetype = chunkdef[chunkdef.length >= 3 ? 2 : 1] as ComposedChunk;
-						let valuetypeinit = parent => buildParser(parent, valuetype, typedef);
+						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef));
+						let valuetype = buildParser(chunkdef[chunkdef.length >= 3 ? 2 : 1] as ComposedChunk, typedef);
 						if (chunkdef[0] == "array") {
-							return arrayParser(parent, sizetypeinit, valuetypeinit);
+							return arrayParser(sizetype, valuetype);
 						} else {
-							return arrayNullTerminatedParser(parent, sizetypeinit, valuetypeinit);
+							return arrayNullTerminatedParser(sizetype, valuetype);
 						}
 					}
 					case "struct": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(chunkdef)}`);
 						let props = {};
 						for (let prop of chunkdef.slice(1) as [string, ComposedChunk][]) {
-							props[prop[0]] = buildParser(parent, prop[1], typedef);
+							props[prop[0]] = buildParser(prop[1], typedef);
 						}
-						return structParser(parent, props);
+						return structParser(props);
 					}
 					// Tuple
 					default: {
@@ -215,9 +210,9 @@ export function buildParser(parent: ChunkParserParent, chunkdef: ComposedChunk, 
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(chunkdef)}`);
 						let props: ChunkParser[] = [];
 						for (let prop of chunkdef as ComposedChunk[]) {
-							props.push(buildParser(parent, prop, typedef));
+							props.push(buildParser(prop, typedef));
 						}
-						return tuppleParser(parent, props);
+						return tuppleParser(props);
 					}
 				}
 			}
@@ -253,9 +248,18 @@ function validateStringType(primitive: PrimitiveString) {
 	if (!(primitive.termination === null || typeof primitive.termination === "number")) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'termination' must be null or the string's length in bytes`);
 }
 
-function opcodesParser<T extends Record<string, any>>(parent: ChunkParserParent, opcodetypeinit: (parent: ChunkParser) => ChunkParser<number>, optsinit: (parent: ChunkParser) => ({ [key in keyof T]: ChunkParser<T[key]> })): ChunkParser<Partial<T>> {
-	let r: ChunkParser<Partial<T>> = {
-		parent,
+function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<number>, opts: { [key in keyof T]: ChunkParser<T[key]> }): ChunkParser<Partial<T>> {
+	let map = new Map<number, { key: keyof T, parser: ChunkParser }>();
+	let refs: Record<string, ResolvedReference[] | undefined> = {};
+	for (let key in opts) {
+		let opt = opts[key];
+		if (opt.condName != "$opcode" || typeof opt.condValue != "number" || opt.condMode != "eq") { throw new Error("option in opcode set that is not conditional on '$opcode'"); }
+		map.set(opt.condValue, { key: key, parser: opt });
+	}
+	let hasexplicitnull = !!map.get(0);
+	let refparent: ChunkParserContainer | null = null;
+
+	let r: ChunkParserContainer<Partial<T>> = {
 		read(state) {
 			let r: Partial<T> = {};
 			let hidden: any = { $opcode: 0 };
@@ -298,8 +302,13 @@ function opcodesParser<T extends Record<string, any>>(parent: ChunkParserParent,
 				opcodetype.write(state, 0);
 			}
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			opcodetype.setReferenceParent?.(r);
+			(Object.values(opts) as ChunkParser[]).forEach(q => q.setReferenceParent?.(r));
+		},
 		resolveReference(name, childresolve) {
-			let targetprop = Object.entries(opts).find(([name, parser]) => parser == childresolve?.owner)?.[0];
+			let targetprop = Object.entries(opts).find(([name, parser]) => parser == childresolve.owner)?.[0];
 			if (!targetprop) { throw new Error("reference owner not found"); }
 			let result: ResolvedReference = {
 				owner: r,
@@ -315,7 +324,7 @@ function opcodesParser<T extends Record<string, any>>(parent: ChunkParserParent,
 				refs[name]!.push(result);
 				return result;
 			} else {
-				return buildReference(name, result);
+				return buildReference(name, refparent, result);
 			}
 		},
 		getTypescriptType(indent) {
@@ -337,23 +346,12 @@ function opcodesParser<T extends Record<string, any>>(parent: ChunkParserParent,
 		}
 	}
 
-	let opcodetype = opcodetypeinit(r);
-	let opts = optsinit(r);
-	let map = new Map<number, { key: keyof T, parser: ChunkParser }>();
-	let refs: Record<string, ResolvedReference[] | undefined> = {};
-	for (let key in opts) {
-		let opt = opts[key];
-		if (opt.condName != "$opcode" || typeof opt.condValue != "number" || opt.condMode != "eq") { throw new Error("option in opcode set that is not conditional on '$opcode'"); }
-		map.set(opt.condValue, { key: key, parser: opt });
-	}
-	let hasexplicitnull = !!map.get(0);
-
 	return r;
 }
 
-function tuppleParser(parent: ChunkParserParent, props: ChunkParser[]) {
-	let r: ChunkParser<any[]> = {
-		parent,
+function tuppleParser(props: ChunkParser[]) {
+	let refparent: ChunkParserContainer | null = null;
+	let r: ChunkParserContainer<any[]> = {
 		read(state) {
 			let r: any[] = [];
 			for (let prop of props) {
@@ -367,6 +365,22 @@ function tuppleParser(parent: ChunkParserParent, props: ChunkParser[]) {
 			for (let [i, prop] of props.entries()) {
 				prop.write(buffer, value[i]);
 			}
+		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			props.forEach(q => q.setReferenceParent?.(r));
+		},
+		resolveReference(name, child) {
+			let index = props.indexOf(child.owner);
+			if (index == -1) { throw new Error("tuple child prop not found"); }
+			return buildReference(name, refparent, {
+				stackdepth: child.stackdepth,
+				owner: r,
+				resolve(v, old) {
+					if (!Array.isArray(v)) { throw new Error("Array expected"); }
+					return child.resolve(v[index], old)
+				}
+			})
 		},
 		getTypescriptType(indent) {
 			let r = "[\n";
@@ -387,17 +401,13 @@ function tuppleParser(parent: ChunkParserParent, props: ChunkParser[]) {
 	return r;
 }
 
-function buildReference(name: string, startingpoint: ResolvedReference) {
-	for (let parent = startingpoint.owner.parent; parent; parent = parent.parent) {
-		if (parent.resolveReference) {
-			return parent.resolveReference(name, startingpoint);
-		}
-	}
-	throw new Error("reference " + name + " could not be resolved");
+function buildReference(name: string, container: ChunkParserContainer | null, startingpoint: ResolvedReference) {
+	if (!container) { throw new Error("reference " + name + " could not be resolved"); }
+	return container.resolveReference(name, startingpoint);
 }
 
-function refgetter(owner: ChunkParser, propname: string, resolve: (v: unknown, old: number) => number) {
-	let final = buildReference(propname, { owner, stackdepth: 0, resolve });
+function refgetter(owner: ChunkParser, refparent: ChunkParserContainer | null, propname: string, resolve: (v: unknown, old: number) => number) {
+	let final = buildReference(propname, refparent, { owner, stackdepth: 0, resolve });
 	let depth = final.stackdepth;
 	let hidden = propname.startsWith("$");
 	return {
@@ -412,22 +422,29 @@ function refgetter(owner: ChunkParser, propname: string, resolve: (v: unknown, o
 	}
 }
 
-function structParser<T extends Record<string, any>>(parent: ChunkParserParent, props: { [key in keyof T]: ChunkParser<T[key]> }): ChunkParser<T> {
+function structParser<T extends Record<string, any>>(props: { [key in keyof T]: ChunkParser<T[key]> }): ChunkParser<T> {
 	let keys = Object.keys(props);
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
-	let r: ChunkParser<T> = {
-		parent,
+	let refparent: ChunkParserContainer | null = null;
+	let r: ChunkParserContainer<T> = {
 		read(state) {
 			let r = {} as T;
+			let hidden = {};
 			state.stack.push(r);
+			state.hiddenstack.push(hidden);
 			for (let key of keys) {
 				if (debugdata) { debugdata.opcodes.push({ op: key, index: state.scan }); }
 				let v = props[key].read(state);
 				if (v !== undefined) {
-					r[key as keyof T] = v;
+					if (key[0] == "$") {
+						hidden[key] = v;
+					} else {
+						r[key as keyof T] = v;
+					}
 				}
 			}
 			state.stack.pop();
+			state.hiddenstack.pop();
 			return r;
 		},
 		write(buffer, value) {
@@ -445,8 +462,12 @@ function structParser<T extends Record<string, any>>(parent: ChunkParserParent, 
 				prop.write(buffer, propvalue);
 			}
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			(Object.values(props) as ChunkParser[]).forEach(q => q.setReferenceParent?.(r));
+		},
 		resolveReference(name, childresolve) {
-			let targetprop = Object.entries(props).find(([name, parser]) => parser == childresolve?.owner)?.[0];
+			let targetprop = Object.entries(props).find(([name, parser]) => parser == childresolve.owner)?.[0];
 			if (!targetprop) { throw new Error("reference owner not found"); }
 			let result: ResolvedReference = {
 				owner: r,
@@ -462,7 +483,7 @@ function structParser<T extends Record<string, any>>(parent: ChunkParserParent, 
 				refs[name]!.push(result);
 				return result;
 			} else {
-				return buildReference(name, result);
+				return buildReference(name, refparent, result);
 			}
 		},
 		getTypescriptType(indent) {
@@ -489,9 +510,10 @@ function structParser<T extends Record<string, any>>(parent: ChunkParserParent, 
 	return r;
 }
 
-function optParser<T>(parent: ChunkParserParent, typeinit: (parent: ChunkParser) => ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | null> {
-	let r: ChunkParser<T | null> = {
-		parent,
+function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | null> {
+	let refparent: ChunkParserContainer | null = null;
+	let ref: ReturnType<typeof refgetter>;
+	let r: ChunkParserContainer<T | null> = {
 		read(state) {
 			let value = ref.read(state);
 			if (!checkCondition(r, value)) {
@@ -504,8 +526,16 @@ function optParser<T>(parent: ChunkParserParent, typeinit: (parent: ChunkParser)
 				return type.write(buffer, value);
 			}
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			type.setReferenceParent?.(r);
+
+			ref = refgetter(r, parent, condvar, (v: unknown, oldvalue: number) => {
+				return forceCondition(r, oldvalue, v != null);
+			});
+		},
 		resolveReference(name, child) {
-			return buildReference(name, {
+			return buildReference(name, refparent, {
 				owner: r,
 				stackdepth: child.stackdepth,
 				resolve(v, old) {
@@ -527,11 +557,7 @@ function optParser<T>(parent: ChunkParserParent, typeinit: (parent: ChunkParser)
 		condName: condvar,
 		condValue: condvalue,
 		condMode: compare,
-	}
-	let type = typeinit(r);
-	let ref = refgetter(r, condvar, (v: unknown, oldvalue: number) => {
-		return forceCondition(r, oldvalue, v != null);
-	});
+	};
 	return r;
 }
 
@@ -573,9 +599,13 @@ function checkCondition(parser: ChunkParser, v: number) {
 	}
 }
 
-function chunkedArrayParser<T extends object>(parent: ChunkParserParent, lengthtypeinit: (p: ChunkParser) => ChunkParser<number>, chunktypesinit: (p: ChunkParser) => Record<string, ChunkParser>[]): ChunkParser<T[]> {
-	let r: ChunkParser<T[]> = {
-		parent,
+function chunkedArrayParser<T extends object>(lengthtype: ChunkParser<number>, chunktypes: Record<string, ChunkParser>[]): ChunkParser<T[]> {
+	let keys = Object.keys(chunktypes.flatMap(Object.keys));
+	let fullobj: Record<string, ChunkParser> = Object.assign({}, ...chunktypes);
+	let refs: Record<string, ResolvedReference[] | undefined> = {};
+	let refparent: ChunkParserContainer | null = null;
+
+	let r: ChunkParserContainer<T[]> = {
 		read(state) {
 			let len = lengthtype.read(state);
 			let r: object[] = [];
@@ -614,8 +644,23 @@ function chunkedArrayParser<T extends object>(parent: ChunkParserParent, lengtht
 		write(buf, v) {
 			throw new Error("not implemented");
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			lengthtype.setReferenceParent?.(r);
+			chunktypes.forEach(q => Object.values(q).forEach(q => q.setReferenceParent?.(r)));
+		},
 		resolveReference(name, childresolve) {
-			let targetprop = Object.entries(fullobj).find(([name, parser]) => parser == childresolve?.owner)?.[0];
+			if (childresolve.owner == lengthtype) {
+				return buildReference(name, refparent, {
+					owner: r,
+					stackdepth: childresolve.stackdepth,
+					resolve(v, old) {
+						if (!Array.isArray(v)) { throw new Error("array expected"); }
+						return childresolve.resolve(v.length, old);
+					}
+				});
+			}
+			let targetprop = Object.entries(fullobj).find(([name, parser]) => parser == childresolve.owner)?.[0];
 			if (!targetprop) { throw new Error("reference owner not found"); }
 			let result: ResolvedReference = {
 				owner: r,
@@ -631,7 +676,7 @@ function chunkedArrayParser<T extends object>(parent: ChunkParserParent, lengtht
 				refs[name]!.push(result);
 				return result;
 			} else {
-				return buildReference(name, result);
+				return buildReference(name, refparent, result);
 			}
 		},
 		getTypescriptType(indent) {
@@ -658,19 +703,14 @@ function chunkedArrayParser<T extends object>(parent: ChunkParserParent, lengtht
 			};
 		}
 	};
-	let chunktypes = chunktypesinit(r);
-	let lengthtype = lengthtypeinit(r);
-	let keys = Object.keys(chunktypes.flatMap(Object.keys));
-	let fullobj: Record<string, ChunkParser> = Object.assign({}, ...chunktypes);
-	let refs: Record<string, ResolvedReference[] | undefined> = {};
 
 	return r;
 }
 
-function bufferParser(parent: ChunkParserParent, lengthtype: ChunkParser<number>, scalartype: keyof typeof BufferTypes, vectorLength: number): ChunkParser<ArrayLike<number>> {
+function bufferParser(lengthtype: ChunkParser<number>, scalartype: keyof typeof BufferTypes, vectorLength: number): ChunkParser<ArrayLike<number>> {
 	const type = BufferTypes[scalartype];
-	return {
-		parent,
+	let refparent: ChunkParserContainer | null = null;
+	let r: ChunkParserContainer<ArrayLike<number>> = {
 		read(state) {
 			let len = lengthtype.read(state);
 			let bytelen = len * vectorLength * type.constr.BYTES_PER_ELEMENT;
@@ -692,6 +732,17 @@ function bufferParser(parent: ChunkParserParent, lengthtype: ChunkParser<number>
 			state.buffer.set(bytes, state.scan);
 			state.scan += bytes.byteLength;
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			lengthtype.setReferenceParent?.(r);
+		},
+		resolveReference(name, child) {
+			return buildReference(name, refparent, {
+				owner: r,
+				stackdepth: child.stackdepth,
+				resolve: child.resolve
+			});
+		},
 		getTypescriptType(indent) {
 			return type.constr.name;
 		},
@@ -699,11 +750,12 @@ function bufferParser(parent: ChunkParserParent, lengthtype: ChunkParser<number>
 			return { type: "string" };
 		}
 	};
+	return r;
 }
 
-function arrayParser<T>(parent: ChunkParserParent, lengthtypeinit: (p: ChunkParser) => ChunkParser<number>, subtypeinit: (p: ChunkParser) => ChunkParser<T>): ChunkParser<T[]> {
-	let r: ChunkParser<T[]> = {
-		parent,
+function arrayParser<T>(lengthtype: ChunkParser<number>, subtype: ChunkParser<T>): ChunkParser<T[]> {
+	let refparent: ChunkParserContainer | null = null;
+	let r: ChunkParserContainer<T[]> = {
 		read(state) {
 			let len = lengthtype.read(state);
 			let r: T[] = [];
@@ -719,12 +771,20 @@ function arrayParser<T>(parent: ChunkParserParent, lengthtypeinit: (p: ChunkPars
 				subtype.write(buffer, value[i]);
 			}
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			lengthtype.setReferenceParent?.(r);
+			subtype.setReferenceParent?.(r);
+		},
 		resolveReference(name, child) {
-			return buildReference(name, {
+			return buildReference(name, refparent, {
 				owner: r,
-				stackdepth: child.stackdepth + 1,
+				stackdepth: child.stackdepth,
 				resolve(v, old) {
 					if (!Array.isArray(v)) { throw new Error("array expected"); }
+					if (child.owner == lengthtype) {
+						return child.resolve(v.length, old);
+					}
 					//possibly do this for all elements in the array if needed and allowed by performance
 					return child.resolve(v[0], old);
 				}
@@ -740,15 +800,13 @@ function arrayParser<T>(parent: ChunkParserParent, lengthtypeinit: (p: ChunkPars
 			}
 		}
 	};
-	let subtype = subtypeinit(r);
-	let lengthtype = lengthtypeinit(r);
 
 	return r;
 }
 
-function arrayNullTerminatedParser<T>(parent: ChunkParserParent, lengthtypeinit: (p: ChunkParser) => ChunkParser<number>, proptypeinit: (p: ChunkParser) => ChunkParser<T>): ChunkParser<T[]> {
-	let r: ChunkParser<T[]> = {
-		parent,
+function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype: ChunkParser<T>): ChunkParser<T[]> {
+	let refparent: ChunkParserContainer | null = null;
+	let r: ChunkParserContainer<T[]> = {
 		read(state) {
 			let r: T[] = [];
 			let ctx = { $opcode: 0 };
@@ -773,8 +831,13 @@ function arrayNullTerminatedParser<T>(parent: ChunkParserParent, lengthtypeinit:
 			}
 			lengthtype.write(buffer, 0);
 		},
+		setReferenceParent(parent) {
+			refparent = parent;
+			lengthtype.setReferenceParent?.(r);
+			proptype.setReferenceParent?.(r);
+		},
 		resolveReference(name, child) {
-			return buildReference(name, {
+			return buildReference(name, refparent, {
 				owner: r,
 				stackdepth: child.stackdepth + 1,
 				resolve(v, old) {
@@ -794,15 +857,12 @@ function arrayNullTerminatedParser<T>(parent: ChunkParserParent, lengthtypeinit:
 			};
 		}
 	};
-	let proptype = proptypeinit(r);
-	let lengthtype = lengthtypeinit(r);
 	return r;
 }
 
-function floatParser(parent: ChunkParserParent, primitive: PrimitiveFloat): ChunkParser<number> {
+function floatParser(primitive: PrimitiveFloat): ChunkParser<number> {
 	validateFloatType(primitive);
 	let parser: ChunkParser<number> = {
-		parent,
 		read(state) {
 			let buffer = state.buffer;
 			if (primitive.bytes == 4) {
@@ -829,10 +889,9 @@ function floatParser(parent: ChunkParserParent, primitive: PrimitiveFloat): Chun
 	return parser;
 }
 
-function intParser(parent: ChunkParserParent, primitive: PrimitiveInt): ChunkParser<number> {
+function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 	validateIntType(primitive);
 	let parser: ChunkParser<number> = {
-		parent,
 		read(state) {
 			//TODO clean this whole thing up and remove the variable bytes mode
 			let unsigned = primitive.unsigned;
@@ -926,14 +985,13 @@ function intParser(parent: ChunkParserParent, primitive: PrimitiveInt): ChunkPar
 	return parser;
 }
 
-function literalValueParser<T>(parent: ChunkParserParent, primitive: PrimitiveValue<T>): ChunkParser<T> {
+function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 	if (!("value" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'value' variables need to specify a 'value'`);
 	return {
-		parent,
 		read(state) {
 			return primitive.value;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (primitive.value != value) throw new Error(`expected constant ${primitive.value} was not present during write`);
 			//this is a nop, the existence of this field implis its value
 		},
@@ -947,9 +1005,9 @@ function literalValueParser<T>(parent: ChunkParserParent, primitive: PrimitiveVa
 		getJsonSchema() { return { type: typeof primitive.value as any } }
 	}
 }
-function referenceValueParser(parent: ChunkParserParent, propname: string, minbit: number, bitlength: number, offset: number): ChunkParser<number> {
+function referenceValueParser(propname: string, minbit: number, bitlength: number, offset: number): ChunkParser<number> {
+	let ref: ReturnType<typeof refgetter>;
 	let r: ChunkParser<number> = {
-		parent,
 		read(state) {
 			let value = ref.read(state);
 			if (minbit != -1) {
@@ -959,6 +1017,12 @@ function referenceValueParser(parent: ChunkParserParent, propname: string, minbi
 		},
 		write(buffer, value) {
 			//noop, the referenced value does the writing and will get its value from this prop through refgetter
+		},
+		setReferenceParent(parent) {
+			ref = refgetter(r, parent, propname, (v) => {
+				if (typeof v != "number") { throw new Error("number expected"); }
+				return v;
+			});
 		},
 		getTypescriptType() {
 			return "number";
@@ -971,15 +1035,10 @@ function referenceValueParser(parent: ChunkParserParent, propname: string, minbi
 			}
 		}
 	}
-	let ref = refgetter(r, propname, (v) => {
-		if (typeof v != "number") { throw new Error("number expected"); }
-		return v;
-	});
 	return r;
 }
-function bytesRemainingParser(parent: ChunkParserParent): ChunkParser<number> {
+function bytesRemainingParser(): ChunkParser<number> {
 	return {
-		parent,
 		read(state) {
 			return state.endoffset - state.scan;
 		},
@@ -995,9 +1054,9 @@ function bytesRemainingParser(parent: ChunkParserParent): ChunkParser<number> {
 	}
 }
 
-function intAccumlatorParser(parent: ChunkParserParent, refname: string, value: ChunkParser<number | undefined>, mode: "add" | "add-1" | "hold"): ChunkParser<number> {
+function intAccumlatorParser(refname: string, value: ChunkParser<number | undefined>, mode: "add" | "add-1" | "hold"): ChunkParser<number> {
+	let ref: ReturnType<typeof refgetter>;
 	let r: ChunkParser<number> = {
-		parent,
 		read(state) {
 			//TODO fix the context situation
 			let increment = value.read(state);
@@ -1013,6 +1072,11 @@ function intAccumlatorParser(parent: ChunkParserParent, refname: string, value: 
 			ref.write(state, newvalue);
 			return newvalue;
 		},
+		setReferenceParent(parent) {
+			ref = refgetter(r, parent, refname, (v, old) => {
+				throw new Error("write for accumolator not implemented");
+			});
+		},
 		write(buffer, value) {
 			//need to make the struct writer grab its value from here for invisible props
 			throw new Error("write for accumolator not implemented");
@@ -1024,16 +1088,12 @@ function intAccumlatorParser(parent: ChunkParserParent, refname: string, value: 
 			return { type: "integer" };
 		}
 	}
-	let ref = refgetter(r, refname, (v, old) => {
-		throw new Error("write for accumolator not implemented");
-	});
 	return r;
 }
 
-function stringParser(parent: ChunkParserParent, primitive: PrimitiveString): ChunkParser<string> {
+function stringParser(primitive: PrimitiveString): ChunkParser<string> {
 	validateStringType(primitive);
 	return {
-		parent,
 		read(state) {
 			let encoding = primitive.encoding;
 			let termination = primitive.termination;
@@ -1073,9 +1133,8 @@ function stringParser(parent: ChunkParserParent, primitive: PrimitiveString): Ch
 	}
 }
 
-function booleanParser(parent: ChunkParserParent): ChunkParser<boolean> {
+function booleanParser(): ChunkParser<boolean> {
 	return {
-		parent,
 		read(state) {
 			let boolint = state.buffer.readUInt8(state.scan++);
 			if (boolint != 1 && boolint != 0) throw new Error(`value 0x${boolint} parsed as bool was not 0x00 or 0x01`)
@@ -1094,10 +1153,9 @@ function booleanParser(parent: ChunkParserParent): ChunkParser<boolean> {
 }
 
 
-let hardcodes: Record<string, (parent: ChunkParserParent) => ChunkParser> = {
-	playeritem: function (parent) {
+let hardcodes: Record<string, () => ChunkParser> = {
+	playeritem: function () {
 		return {
-			parent,
 			read(state) {
 				let byte0 = state.buffer.readUInt8(state.scan++);
 				if (byte0 == 0) { return 0; }
@@ -1113,23 +1171,23 @@ let hardcodes: Record<string, (parent: ChunkParserParent) => ChunkParser> = {
 }
 
 
-function primitiveParser(parent: ChunkParserParent, primitive: Primitive<any>): ChunkParser {
+function primitiveParser(primitive: Primitive<any>): ChunkParser {
 	if (!("primitive" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`);
 	switch (primitive.primitive) {
 		case "bool":
-			return booleanParser(parent);
+			return booleanParser();
 		case "int":
-			return intParser(parent, primitive);
+			return intParser(primitive);
 		case "float":
-			return floatParser(parent, primitive);
+			return floatParser(primitive);
 		case "string":
-			return stringParser(parent, primitive);
+			return stringParser(primitive);
 		case "value":
-			return literalValueParser(parent, primitive);
+			return literalValueParser(primitive);
 		case "hardcode":
 			let parser = hardcodes[primitive.name];
 			if (!parser) { throw new Error(`hardcode parser ${primitive.name} does not exist`); }
-			return parser(parent);
+			return parser();
 		default:
 			//@ts-ignore
 			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);
