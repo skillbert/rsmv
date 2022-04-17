@@ -1,12 +1,12 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\animgroupconfigs.json'
+// This source data is located at '..\src\opcodes\animgroupconfigs.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type animgroupconfigs = {
-	unknown_01?: [
-		number,
-		number,
-	] | null
+	baseAnims?: {
+		idle: number,
+		walk: number,
+	} | null
 	unknown_02?: number | null
 	unknown_03?: number | null
 	unknown_05?: number | null
@@ -34,10 +34,11 @@ export type animgroupconfigs = {
 	unknown_31?: number | null
 	unknown_32?: number | null
 	unknown_33?: number | null
-	unknown_34?: [
-		number,
-		number,
-	][] | null
+	idleVariations?: {
+		animid: number,
+		probably_chance: number,
+		always0: number,
+	}[] | null
 	unknown_35?: true | null
 	unknown_36?: [
 		number,

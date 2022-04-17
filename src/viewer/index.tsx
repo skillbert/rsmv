@@ -289,25 +289,20 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 							<div className={classNames("rsmv-icon-button", { active: this.state.rendermode == "three" })} onClick={() => this.setRenderer("three")}>Three</div>
 							<div className={classNames("rsmv-icon-button", { active: false })} onClick={this.exportModel}>Export</div>
 						</div>
-						<div id="sidebar-browser-tab">
+						<div>
 							<form className="sidebar-browser-search-bar" onSubmit={this.submitSearch}>
-								<div></div>
-								<input type="text" id="sidebar-browser-search-bar-input" value={this.state.search} onChange={e => this.setState({ search: e.currentTarget.value })} />
+								<input type="button" style={{ width: "25px", height: "25px" }} onClick={this.submitSearchminus} value="" className="sub-btn-minus" />
+								<input type="button" style={{ width: "25px", height: "25px" }} onClick={this.submitSearchplus} value="" className="sub-btn-plus" />
+								<input type="text" className="sidebar-browser-search-bar-input" value={this.state.search} onChange={e => this.setState({ search: e.currentTarget.value })} />
 								<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn" />
-								<div></div>
 							</form>
-							<div className="nav-jail">
-								<form className="sidebar-browser-search-bar" onSubmit={this.submitSearchminus} >
-									<div></div>
-									<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn-minus" />
-									<div></div>
-								</form>
-								<form className="sidebar-browser-search-bar" onSubmit={this.submitSearchplus} >
-									<div></div>
-									<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn-plus" />
-									<div></div>
-								</form>
+							<div id="sidebar-browser-tab-data">
+								<div id="sidebar-browser-tab-data-container" className="ids">
+									{this.state.hist.map((name, i) => <div key={i} onClick={e => this.submitSearchIds(name)}><span>{name}</span></div>)}
+								</div>
 							</div>
+						</div>
+						<div id="sidebar-browser-tab">
 							<div style={{ overflowY: "auto" }}>
 								<pre style={{ textAlign: "left", userSelect: "text" }}>
 									{this.state.viewerState.meta}
@@ -337,16 +332,6 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 									</div>
 								)
 							})}
-							<div id="sidebar-browser-tab-data">
-								<style>
-								</style>
-								<div id="sidebar-browser-tab-data-container" className="ids">
-									{this.state.hist.map((name, i) => <div key={i} onClick={e => this.submitSearchIds(name)}><span>{name}</span></div>)}
-								</div>
-							</div>
-							<div className="result-text">
-								<p>List of found IDs</p>
-							</div>
 						</div>
 					</div>
 					<div className="credits">
@@ -418,7 +403,7 @@ export async function requestLoadModel(searchid: string, mode: LookupMode, rende
 				let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
 				console.log(animgroup);
 				let forcedanim = (window as any).forcedanim;
-				anims.push(forcedanim ?? animgroup.unknown_26 ?? animgroup.unknown_01?.[1]);
+				anims.push(forcedanim ?? animgroup.idleVariations?.[0]?.animid ?? animgroup.baseAnims?.idle);
 				metatext += "\n\n" + JSON.stringify(animgroup, undefined, "\t");
 			}
 			console.log(npc);

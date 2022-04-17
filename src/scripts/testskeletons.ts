@@ -56,7 +56,7 @@ async function start() {
 	let seqtogroups = new Map<number, number[]>();
 	for (let file of animgroupfiles) {
 		let animgroup = parseAnimgroupConfigs.read(file.buffer);
-		let anim = animgroup.unknown_26 ?? animgroup.unknown_01?.[1];
+		let anim = animgroup.unknown_26 ?? animgroup.baseAnims?.idle;
 		if (anim) {
 			let animarr = seqtogroups.get(anim) ?? [];
 			animarr.push(file.fileid);

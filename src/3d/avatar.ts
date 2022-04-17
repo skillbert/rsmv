@@ -78,7 +78,7 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 	let animsetarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let animsetfile = animsetarch[animgroup];
 	let animset = parseAnimgroupConfigs.read(animsetfile.buffer);
-	let animid = animset.unknown_01![0];
+	let animid = animset.baseAnims!.idle;
 
 	let animids = (animid == -1 ? [] : [animid]);
 	return {

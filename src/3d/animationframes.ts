@@ -30,6 +30,9 @@ import { BoneCenter, getBoneCenters, ModelData } from "./ob3togltf";
 //43      fishing spot
 //3680    flag
 
+//weird animation set 3051 (human skeleton)
+//22564,22565,22566,22567,22568 human checking out clothes
+
 
 type TransformBase = { type: string, inverse: boolean };
 type TransformTranslateConst = TransformBase & { type: "translateconst", data: number[] }
@@ -157,7 +160,11 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 
 	let orderedframes: frames[] = [];
 	for (let seqframe of sequenceframes) {
-		orderedframes.push(frames[seqframe.frameidlow]);
+		if (frames[seqframe.frameidlow]) {
+			orderedframes.push(frames[seqframe.frameidlow]);
+		} else {
+			console.log(`missing animation frame ${seqframe.frameidlow} in sequence ${seqframe.frameidhi}`)
+		}
 	}
 
 	let framebase = parseFramemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id));
@@ -193,7 +200,11 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 
 	let orderedframes: frames[] = [];
 	for (let seqframe of sequenceframes) {
-		orderedframes.push(frames[seqframe.frameidlow]);
+		if (frames[seqframe.frameidlow]) {
+			orderedframes.push(frames[seqframe.frameidlow]);
+		} else {
+			console.log(`missing animation frame ${seqframe.frameidlow} in sequence ${seqframe.frameidhi}`)
+		}
 	}
 
 	let framebase = parseFramemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id));

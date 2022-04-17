@@ -258,11 +258,11 @@ input[type="text"]:focus {
 	overflow-y: auto;
 }
 .sidebar-browser-search-bar {
-	display: grid;
-	grid-template-columns: 72fr 89fr 10px 72fr;
-	grid-gap: 8px;
-	text-align: center;
+	display: flex;
 	padding: 10px;
+}
+.sidebar-browser-search-bar-input{
+	flex-grow: 1;
 }
 .sidebar-browser-tab-strip {
 	display: grid;
@@ -270,13 +270,6 @@ input[type="text"]:focus {
 	padding-top: 10px;
 	padding-bottom: 5px;
 }
-#sidebar-browser-tab-data {
-	overflow-x: hidden;
-	overflow-y: auto;
-	padding: 10px;
-	margin-right: 5px;
-}
-
 #sidebar-browser-tab-data-container {
 	display: flex;
 	flex-direction: row;

@@ -103,7 +103,7 @@ async function animgroupDeps(cache: CacheFileSource, addDep: DepCallback) {
 	let animgroupfiles = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	for (let file of animgroupfiles) {
 		let animgroup = parseAnimgroupConfigs.read(file.buffer);
-		let anim = animgroup.unknown_26 ?? animgroup.unknown_01?.[1];
+		let anim = animgroup.unknown_26 ?? animgroup.baseAnims?.idle;
 		if (anim) {
 			addDep("sequence", anim, "animgroup", file.fileid);
 		}

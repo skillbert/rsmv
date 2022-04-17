@@ -18,6 +18,7 @@ import { MountableAnimation } from "./animationframes";
 
 //npc new anims
 //27111   butterfly
+//28895   elder egg, currently bugged
 
 
 export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number): Promise<MountableAnimation> {

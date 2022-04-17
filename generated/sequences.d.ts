@@ -3,13 +3,11 @@
 // run `npm run filetypes` to rebuild
 
 export type sequences = {
-	frames?: ({
+	frames?: {
 		framelength: number,
-	} & {
 		frameidlow: number,
-	} & {
 		frameidhi: number,
-	})[] | null
+	}[] | null
 	unknown_02?: number | null
 	unknown_05?: number | null
 	unknown_06?: number | null
@@ -30,11 +28,10 @@ export type sequences = {
 	unknown_16?: number | null
 	unknown_18?: number | null
 	skeletal_animation?: number | null
-	unknown_70?: ({
+	unknown_70?: {
 		intlow: number,
-	} & {
 		maybe_file: number,
-	})[] | null
+	}[] | null
 	unknown_77?: [
 		number,
 		number,
