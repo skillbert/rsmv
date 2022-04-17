@@ -837,6 +837,13 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			proptype.setReferenceParent?.(r);
 		},
 		resolveReference(name, child) {
+			if (name == "$opcode") {
+				return {
+					owner: r,
+					stackdepth: child.stackdepth + 1,
+					resolve(v, old) { throw new Error("not implemented") }
+				}
+			}
 			return buildReference(name, refparent, {
 				owner: r,
 				stackdepth: child.stackdepth + 1,
@@ -1056,7 +1063,8 @@ function bytesRemainingParser(): ChunkParser<number> {
 
 function intAccumlatorParser(refname: string, value: ChunkParser<number | undefined>, mode: "add" | "add-1" | "hold"): ChunkParser<number> {
 	let ref: ReturnType<typeof refgetter>;
-	let r: ChunkParser<number> = {
+	let refparent: ChunkParserContainer | null = null;
+	let r: ChunkParserContainer<number> = {
 		read(state) {
 			//TODO fix the context situation
 			let increment = value.read(state);
@@ -1076,6 +1084,11 @@ function intAccumlatorParser(refname: string, value: ChunkParser<number | undefi
 			ref = refgetter(r, parent, refname, (v, old) => {
 				throw new Error("write for accumolator not implemented");
 			});
+			refparent = parent;
+			value.setReferenceParent?.(r);
+		},
+		resolveReference(name, child) {
+			return buildReference(name, refparent, { owner: r, stackdepth: child.stackdepth, resolve: child.resolve });
 		},
 		write(buffer, value) {
 			//need to make the struct writer grab its value from here for invisible props
