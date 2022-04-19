@@ -517,11 +517,12 @@ export async function renderMapsquare(engine: EngineCache, subrect: MapRect, ext
 	}
 	let setfloors = (floornr: number) => {
 		for (let i = 0; i < 4; i++) {
-			renderer!.renderer.setValue("floor" + i, i <= floornr);
-			renderer!.renderer.setValue("objects" + i, i <= floornr);
-			renderer!.renderer.setValue("map" + i, false);
-			renderer!.renderer.setValue("mapscenes" + i, false);
-			renderer!.renderer.setValue("walls" + i, false);
+			//TODO reimplement
+			// renderer!.renderer.setValue("floor" + i, i <= floornr);
+			// renderer!.renderer.setValue("objects" + i, i <= floornr);
+			// renderer!.renderer.setValue("map" + i, false);
+			// renderer!.renderer.setValue("mapscenes" + i, false);
+			// renderer!.renderer.setValue("walls" + i, false);
 		}
 	}
 

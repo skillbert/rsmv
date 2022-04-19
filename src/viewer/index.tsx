@@ -16,6 +16,7 @@ import * as datastore from "idb-keyval";
 import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
 import { Object3D } from "three";
 import { avatarStringToBytes, avatarToModel } from "../3d/avatar";
+import { SceneComponent, SceneComponentRoot, SceneMapModel, SceneSimpleModel } from "./scenenodes";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar";
 type RenderMode = "three";
@@ -166,6 +167,7 @@ if (typeof window != "undefined") {
 
 class App extends React.Component<{}, { search: string, hist: string[], mode: LookupMode, cnvRefresh: number, rendermode: RenderMode, viewerState: ModelViewerState }> {
 	renderer: ThreeJsRenderer;
+	rootnode: SceneComponent | null = null;
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -185,7 +187,7 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 		if (!this.state.hist.includes(value)) {
 			this.setState({ hist: [...this.state.hist.slice(-4), value] });
 		}
-		requestLoadModel(value, this.state.mode, this.renderer!);
+		this.requestLoadModel(value, this.state.mode, this.renderer!);
 	}
 
 	@boundMethod
@@ -316,21 +318,22 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 									all &&= v;
 									none &&= !v;
 								})
-								return (
-									<div key={base}>
-										<label><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.renderer.setValue!(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
-										{subs.map(sub => {
-											let name = base + sub;
-											let value = this.state.viewerState.toggles[name];
-											return (
-												<label key={sub}>
-													<input type="checkbox" checked={value} onChange={e => this.renderer.setValue!(name, e.currentTarget.checked)} />
-													{sub}
-												</label>
-											);
-										})}
-									</div>
-								)
+								return null;
+								// return (
+								// 	<div key={base}>
+								// 		<label><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.renderer.setValue!(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
+								// 		{subs.map(sub => {
+								// 			let name = base + sub;
+								// 			let value = this.state.viewerState.toggles[name];
+								// 			return (
+								// 				<label key={sub}>
+								// 					<input type="checkbox" checked={value} onChange={e => this.renderer.setValue!(name, e.currentTarget.checked)} />
+								// 					{sub}
+								// 				</label>
+								// 			);
+								// 		})}
+								// 	</div>
+								// )
 							})}
 						</div>
 					</div>
@@ -343,6 +346,122 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 				</div>
 			</div >
 		);
+	}
+
+
+	async requestLoadModel(searchid: string, mode: LookupMode, renderer: ThreeJsRenderer) {
+		let engineCache = await ensureCachePermission();
+		let scenecache = new ThreejsSceneCache(engineCache);
+		let metatext = "";
+		this.rootnode?.cleaup();
+		let node: SceneSimpleModel | SceneMapModel = new SceneSimpleModel(scenecache, this.renderer);
+		switch (mode) {
+			case "model": {
+				node.setAnimation({ animid: -1, model: [{ modelid: +searchid, mods: {} }] });
+				break;
+			}
+			case "item": {
+				let item = parseItem.read(await hackyCacheFileSource.getFileById(cacheMajors.items, +searchid));
+				console.log(item);
+				metatext = JSON.stringify(item, undefined, 2);
+				if (!item.baseModel && item.noteTemplate) {
+					item = parseItem.read(await hackyCacheFileSource.getFileById(cacheMajors.items, item.noteTemplate));
+				}
+				let mods: ModelModifications = {};
+				if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
+				if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
+				node.setAnimation({ animid: -1, model: (item.baseModel ? [{ modelid: item.baseModel, mods }] : []) });
+				break;
+			}
+			case "npc": {
+				let npc = parseNpc.read(await hackyCacheFileSource.getFileById(cacheMajors.npcs, +searchid));
+				metatext = JSON.stringify(npc, undefined, 2);
+				let anims: number[] = [];
+				let modelids = npc.models ?? [];
+				if (npc.animation_group) {
+					let arch = await hackyCacheFileSource.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
+					let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
+					console.log(animgroup);
+					let forcedanim = globalThis.forcedanim;
+					anims.push(forcedanim ?? animgroup.idleVariations?.[0]?.animid ?? animgroup.baseAnims?.idle);
+					metatext += "\n\n" + JSON.stringify(animgroup, undefined, "\t");
+				}
+				console.log(npc);
+				let mods: ModelModifications = {};
+				if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
+				if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
+				node.setAnimation({ model: modelids.map(q => ({ modelid: q, mods })), animid: anims[0] ?? -1 });
+				break;
+			}
+			case "object": {
+				let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);
+				console.log(obj);
+				metatext = JSON.stringify(obj, undefined, 2);
+				let mods: ModelModifications = {};
+				let animid = -1;
+				let modelids: number[] = [];
+				if (obj) {
+					if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
+					if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
+					modelids = obj.models?.flatMap(m => m.values) ?? [];
+				}
+				if (obj?.probably_animation) {
+					animid = obj.probably_animation;
+				}
+				node.setAnimation({ model: modelids.map(q => ({ modelid: q, mods })), animid });
+				break;
+			}
+			case "material": {
+				let modelid = 93776;//"RuneTek_Asset" jagex test model
+				let mods: ModelModifications = {
+					replaceMaterials: [[4314, +searchid]]
+				};
+				// modelids = [67768];//is a cube but has transparent vertices
+				// mods.replaceMaterials = [
+				// 	[8868, +searchid]
+				// ];
+				let mat = engineCache.getMaterialData(+searchid);
+				let info: any = { mat };
+				let addtex = async (name: string, texid: number) => {
+					let file = await hackyCacheFileSource.getFile(cacheMajors.texturesDds, texid);
+					let parsed = new ParsedTexture(file, false);
+					//bit of a waste to get decode the whole thing just to get meta data, but w/e
+					let img0 = await parsed.toImageData(0);
+					info[name] = { texid, filesize: file.length, width: img0.width, height: img0.height };
+				}
+				for (let tex in mat.textures) {
+					if (mat.textures[tex] != 0) {
+						await addtex(tex, mat.textures[tex]);
+					}
+				}
+
+				metatext = JSON.stringify(info, undefined, "\t");
+				node.setAnimation({ model: [{ modelid, mods }], animid: -1 });
+				break;
+			}
+			case "map": {
+				let [x, z, xsize, zsize] = searchid.split(/[,\.\/:;]/).map(n => +n);
+				xsize = xsize ?? 1;
+				zsize = zsize ?? xsize;
+				node = new SceneMapModel(scenecache, renderer);
+				node.setArea({ x, z, xsize, zsize });
+				break;
+			}
+			case "avatar": {
+				let url = appearanceUrl(searchid);
+				let data = await fetch(url).then(q => q.text());
+				if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
+				let avainfo = await avatarToModel(scenecache, avatarStringToBytes(data));
+				node.setAnimation({
+					model: avainfo.models,
+					animid: avainfo.animids[0] ?? -1
+				});
+				break;
+			}
+			default:
+				throw new Error("unknown mode");
+		}
+		this.rootnode = node;
 	}
 }
 
@@ -371,137 +490,6 @@ class App extends React.Component<{}, { search: string, hist: string[], mode: Lo
 // 		}
 // 	}
 // }
-
-export async function requestLoadModel(searchid: string, mode: LookupMode, renderer: ThreeJsRenderer) {
-	let engineCache = await ensureCachePermission();
-	let modelids: number[] = [];
-	let mods: ModelModifications = {};
-	let models: Buffer[] = [];
-	let anims: number[] = [];
-	let metatext = "";
-	let scenecache = new ThreejsSceneCache(engineCache);
-	switch (mode) {
-		case "model":
-			modelids = [+searchid];
-			break;
-		case "item":
-			let item = parseItem.read(await hackyCacheFileSource.getFileById(cacheMajors.items, +searchid));
-			console.log(item);
-			metatext = JSON.stringify(item, undefined, 2);
-			if (!item.baseModel && item.noteTemplate) {
-				item = parseItem.read(await hackyCacheFileSource.getFileById(cacheMajors.items, item.noteTemplate));
-			}
-			if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
-			if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
-			modelids = item.baseModel ? [item.baseModel] : [];
-			break;
-		case "npc":
-			let npc = parseNpc.read(await hackyCacheFileSource.getFileById(cacheMajors.npcs, +searchid));
-			metatext = JSON.stringify(npc, undefined, 2)
-			if (npc.animation_group) {
-				let arch = await hackyCacheFileSource.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
-				let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
-				console.log(animgroup);
-				let forcedanim = (window as any).forcedanim;
-				anims.push(forcedanim ?? animgroup.idleVariations?.[0]?.animid ?? animgroup.baseAnims?.idle);
-				metatext += "\n\n" + JSON.stringify(animgroup, undefined, "\t");
-			}
-			console.log(npc);
-			if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
-			if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
-			modelids = npc.models ?? [];
-			break;
-		case "object":
-			let obj = await resolveMorphedObject(hackyCacheFileSource, +searchid);
-			console.log(obj);
-			metatext = JSON.stringify(obj, undefined, 2);
-			if (obj) {
-				if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
-				if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
-				modelids = obj.models?.flatMap(m => m.values) ?? [];
-			}
-			if (obj?.probably_animation) {
-				anims.push(obj.probably_animation);
-			}
-			break;
-		case "material":
-			modelids = [93776];//"RuneTek_Asset" jagex test model
-			mods.replaceMaterials = [
-				[4314, +searchid]
-			];
-			// modelids = [67768];//is a cube but has transparent vertices
-			// mods.replaceMaterials = [
-			// 	[8868, +searchid]
-			// ];
-			let mat = engineCache.getMaterialData(+searchid);
-			let info: any = { mat };
-			let addtex = async (name: string, texid: number) => {
-				let file = await hackyCacheFileSource.getFile(cacheMajors.texturesDds, texid);
-				let parsed = new ParsedTexture(file, false);
-				//bit of a waste to get decode the whole thing just to get meta data, but w/e
-				let img0 = await parsed.toImageData(0);
-				info[name] = { texid, filesize: file.length, width: img0.width, height: img0.height };
-			}
-			for (let tex in mat.textures) {
-				if (mat.textures[tex] != 0) {
-					await addtex(tex, mat.textures[tex]);
-				}
-			}
-
-			metatext = JSON.stringify(info, undefined, "\t");
-			break;
-		case "map":
-			let [x, z, xsize, zsize] = searchid.split(/[,\.\/:;]/).map(n => +n);
-			xsize = xsize ?? 1;
-			zsize = zsize ?? xsize;
-			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: false };
-			let { grid, chunks } = await parseMapsquare(engineCache, { x, z, xsize, zsize }, opts);
-			let modeldata = await mapsquareModels(engineCache, grid, chunks, opts);
-			let mainchunk = chunks[0];
-			let skybox: Object3D | undefined = undefined;
-			let fogColor = [0, 0, 0, 0];
-			if (mainchunk?.extra.unk00?.unk20) {
-				fogColor = mainchunk.extra.unk00.unk20.slice(1);
-				// fogColor = [...HSL2RGB(packedHSL2HSL(mainchunk.extra.unk00.unk01[1])), 255];
-			}
-			if (mainchunk?.extra.unk80) {
-				let envarch = await engineCache.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
-				let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
-				let env = parseEnvironments.read(envfile.buffer);
-				if (typeof env.model == "number") {
-					skybox = await ob3ModelToThreejsNode(scenecache, [await scenecache.getFileById(cacheMajors.models, env.model)], {}, []);
-				}
-			}
-
-			let scene = await mapsquareToThree(scenecache, grid, modeldata);
-			renderer.setModels([scene]);
-			renderer.setSkybox(skybox, fogColor);
-			// TODO currently parsing this twice
-			// let locs = (await Promise.all(chunks.map(ch => mapsquareObjects(hackyCacheFileSource, ch, grid, false)))).flat();
-			// let svg = await svgfloor(hackyCacheFileSource, grid, locs, { x: x * 64, z: z * 64, xsize: xsize * 64, zsize: zsize * 64 }, 0, 8, false);
-			// fs.writeFileSync("map.svg", svg);
-			break;
-		case "avatar":
-			let url = appearanceUrl(searchid);
-			let data = await fetch(url).then(q => q.text());
-			if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
-			let avainfo = await avatarToModel(scenecache, avatarStringToBytes(data));
-			modelids = avainfo.modelids;
-			anims = avainfo.animids;
-			break;
-		default:
-			throw new Error("unknown mode");
-	}
-
-	if (modelids.length != 0) {
-		models.push(...await Promise.all(modelids.map(id => hackyCacheFileSource.getFileById(cacheMajors.models, id))));
-		console.log("loading models", ...modelids);
-		renderer.setOb3Models(scenecache, models, mods, metatext, anims);
-		renderer.setSkybox();
-	}
-}
-
 export type ModelViewerState = {
 	meta: string,
 	toggles: Record<string, boolean>

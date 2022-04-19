@@ -10,11 +10,6 @@ import { sequences } from "../../generated/sequences";
 import { frames } from "../../generated/frames";
 import { BoneCenter, getBoneCenters, ModelData } from "./ob3togltf";
 
-//TODO remove
-// import * as THREE from "three";
-// (window as any).THREE = THREE;
-
-
 //test    anim ids
 //3577    falling plank
 //3567    sawblade
@@ -772,12 +767,6 @@ export function buildFramebaseSkeleton(framebase: framemaps) {
 	type RsTransform = { index: number, type: number, nodes: number[] };
 	let pivot = bones[0];
 	let actions: RsTransform[] = [];//TODO remove
-
-
-	//TODO remove
-	if (typeof (window as any).partialanim == "number") {
-		framebase.data = framebase.data.slice(0, (window as any).partialanim);
-	}
 
 	for (let [index, base] of framebase.data.entries()) {
 		if (base.type == 0) {

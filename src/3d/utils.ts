@@ -193,6 +193,37 @@ export function HSL2RGB(hsl: number[]): [number, number, number] {
 	return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
+export function RGB2HSL(r: number, g: number, b: number): [number, number, number] {
+	r /= 255, g /= 255, b /= 255;
+	var max = Math.max(r, g, b), min = Math.min(r, g, b);
+	var h = 0;
+	var s = 0;
+	let l = (max + min) / 2;
+
+	if (max != min) {
+		var d = max - min;
+		s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+		switch (max) {
+			case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+			case g: h = (b - r) / d + 2; break;
+			case b: h = (r - g) / d + 4; break;
+		}
+		h /= 6;
+	}
+	return [h, s, l];
+}
+
+globalThis.rgb2hsl = RGB2HSL;
+globalThis.hsl2rgb = HSL2RGB;
+globalThis.packed2hsl = packedHSL2HSL;
+globalThis.hsl2packed = HSL2packHSL;
+
+
+export function HSL2packHSL(h: number, s: number, l: number) {
+	if (h < 0) { h += 1; }
+	return (Math.round(h * 63) << 10) | (Math.round(s * 7) << 7) | (Math.round(l * 127));
+}
+
 export function packedHSL2HSL(hsl: number) {
 	var h = ((hsl >> 10) & 0x3F) / 63.0;
 	var s = ((hsl >> 7) & 0x7) / 7.0;

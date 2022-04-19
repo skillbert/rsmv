@@ -32,10 +32,8 @@ export type ModelMeshData = {
 
 
 export function getBoneCenters(model: ModelData) {
-	let nbones = model.bonecount + 1;//TODO find out why this number is wrong
-
 	let bonecenters: BoneCenter[] = [];
-	for (let i = 0; i < nbones; i++) {
+	for (let i = 0; i < model.bonecount; i++) {
 		bonecenters.push({ xsum: 0, ysum: 0, zsum: 0, weightsum: 0 });
 	}
 
@@ -78,6 +76,7 @@ export function parseOb3Model(modelfile: Buffer) {
 	let bonecount = 0;
 	let meshes: ModelMeshData[] = [];
 
+	// let colmap: Record<number, number> = {};//TODO remove
 	for (var n = 0; n < meshCount; ++n) {
 		// Flag 0x10 is currently used, but doesn't appear to change the structure or data in any way
 		let groupFlags = model.readUInt();
@@ -114,6 +113,8 @@ export function parseOb3Model(modelfile: Buffer) {
 			colourBuffer = new Uint8Array(faceCount * 3);
 			for (var i = 0; i < faceCount; ++i) {
 				var faceColour = model.readUShort();
+				// colmap[faceColour] = (colmap[faceColour] ?? 0) + 1;//TODO remove
+				// if (faceColour == globalThis.mutecolor) { faceColour = 0; }//TODO remove
 				var colour = HSL2RGB(packedHSL2HSL(faceColour));
 				colourBuffer[i * 3 + 0] = colour[0];
 				colourBuffer[i * 3 + 1] = colour[1];
@@ -192,13 +193,6 @@ export function parseOb3Model(modelfile: Buffer) {
 			continue;
 		}
 
-		//TODO somehow this doesn't always work
-		if (materialId != -1) {
-			// let replacedmaterial = modifications.replaceMaterials?.find(q => q[0] == materialId)?.[1];
-			// if (typeof replacedmaterial != "undefined") {
-			// 	materialId = replacedmaterial;
-			// }
-		}
 		//TODO let threejs do this while making the bounding box
 		for (let i = 0; i < positionBuffer.length; i += 3) {
 			if (positionBuffer[i + 1] > maxy) {
@@ -236,7 +230,7 @@ export function parseOb3Model(modelfile: Buffer) {
 				quadboneids[i * 4] = id;
 				quadboneweights[i * 4] = 255;
 				if (id >= bonecount) {
-					bonecount = id + 1;
+					bonecount = id + 2;//we are adding a root bone at 0, and count is max+1
 				}
 			}
 			meshdata.attributes.skinids = new THREE.BufferAttribute(quadboneids, 4);
@@ -322,6 +316,9 @@ export function parseOb3Model(modelfile: Buffer) {
 		// 	bonecomponent(index, 3);
 		// }
 	}
+
+	// console.log(colmap);//TODO remove
+
 	for (let n = 0; n < unkCount1; n++) {
 		console.log("unk1", unkCount1);
 		model.skip(37);

@@ -11,7 +11,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { ModelViewerState } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
+import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
 import { MountableAnimation } from "3d/animationframes";
 
 //TODO remove
@@ -32,7 +32,6 @@ if (module.hot) {
 
 
 
-
 export class ThreeJsRenderer {
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
@@ -43,7 +42,7 @@ export class ThreeJsRenderer {
 	camera: THREE.Camera | THREE.PerspectiveCamera;
 	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
-	modelnode: THREE.Group | null = null;
+	modelnode: THREE.Group;
 	cleanModelCallbacks: (() => void)[] = [];
 	floormesh: THREE.Mesh;
 	queuedFrameId = 0;
@@ -52,10 +51,10 @@ export class ThreeJsRenderer {
 	contextLossCountLastRender = 0;
 	filesource: CacheFileSource;
 	clock = new Clock(true);
-	animationMixer: AnimationMixer | null = null;
+	animationMixer :AnimationMixer;
 
 	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource) {
-		(window as any).render = this;//TODO remove
+		globalThis.render = this;//TODO remove
 		this.filesource = filesource;
 		this.canvas = canvas;
 		this.stateChangeCallback = stateChangeCallback;
@@ -65,10 +64,9 @@ export class ThreeJsRenderer {
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
 		canvas.onclick = this.click;
 
-
 		const fov = 45;
-		const aspect = 2;  // the canvas default
-		const near = 0.1;//TODO revert to 0.1-100
+		const aspect = 2;
+		const near = 0.1;
 		const far = 1000;
 		const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
 		camera.position.set(0, 10, 20);
@@ -82,26 +80,12 @@ export class ThreeJsRenderer {
 
 		const scene = new THREE.Scene();
 		this.scene = scene;
+		globalThis.scene = this.scene;
 		//scene.background = new THREE.Color('transparent');
 		scene.add(camera);
 
-
 		renderer.physicallyCorrectLights = true;
 		renderer.outputEncoding = THREE.sRGBEncoding;
-		// const light2 = new THREE.DirectionalLight(0xffffff, 2);
-		// light2.position.set(0.5, 0, 0.866); // ~60º
-		// light2.name = 'main_light';
-		// camera.add(light2);
-
-		// let pmremGenerator = new THREE.PMREMGenerator(renderer);
-		// new RGBELoader()
-		// 	.setDataType(THREE.UnsignedByteType)
-		// 	.load("../assets/venice_sunset_1k.hdr", (texture) => {
-		// 		const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-		// 		scene.environment = envMap;
-		// 		pmremGenerator.dispose();
-		// 	}, undefined, (e) => console.log(e));
-
 
 		const planeSize = 11;
 
@@ -113,12 +97,20 @@ export class ThreeJsRenderer {
 		const repeats = planeSize / 2;
 		texture.repeat.set(repeats, repeats);
 
+		//floor mesh
 		const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
 		const planeMat = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide, });
 		const floormesh = new THREE.Mesh(planeGeo, planeMat);
 		floormesh.rotation.x = Math.PI * -.5;
 		scene.add(floormesh);
 		this.floormesh = floormesh;
+
+		//model viewer root
+		this.modelnode = new THREE.Group();
+		this.modelnode.scale.setScalar(1 / 512);
+		this.scene.add(this.modelnode);
+
+		this.animationMixer=new AnimationMixer(this.scene);
 
 		//TODO figure out which lights work or not
 		scene.add(new THREE.AmbientLight(0xffffff, 0.7));
@@ -129,32 +121,6 @@ export class ThreeJsRenderer {
 
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
 		scene.add(hemilight);
-	}
-
-	frameArea(sizeToFitOnScreen: number, boxSize: number, boxCenter: THREE.Vector3, camera: THREE.PerspectiveCamera) {
-		const halfSizeToFitOnScreen = sizeToFitOnScreen * 0.5;
-		const halfFovY = THREE.MathUtils.degToRad(camera.fov * .5);
-		const distance = halfSizeToFitOnScreen / Math.tan(halfFovY);
-		// compute a unit vector that points in the direction the camera is now
-		// in the xz plane from the center of the box
-		const direction = (new THREE.Vector3())
-			.subVectors(camera.position, boxCenter)
-			.multiply(new THREE.Vector3(1, 0, 1))
-			.normalize();
-
-		// move the camera to a position distance units way from the center
-		// in whatever direction the camera was from the center already
-		// camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
-
-		// pick some near and far values for the frustum that
-		// will contain the box.
-		// camera.near = boxSize / 100;
-		// camera.far = boxSize * 100;
-
-		camera.updateProjectionMatrix();
-
-		// point the camera to look at the center of the box
-		camera.lookAt(boxCenter.x, boxCenter.y, boxCenter.z);
 	}
 
 	resizeRendererToDisplaySize() {
@@ -208,71 +174,71 @@ export class ThreeJsRenderer {
 		}
 	}
 
-	renderSVG() {
-		let renderer = new SVGRenderer();
-		this.scene.traverse(q => {
-			if (q instanceof THREE.Mesh) {
-				let geo = q.geometry as THREE.BufferGeometry;
-				let mat = q.material as THREE.MeshBasicMaterial;
-				//svgrender doesn't deal with mirrored faces properly (det(proj)<0)
-				mat.side = THREE.DoubleSide;
-				for (let attr in geo.attributes) {
-					//de-interleave attributes since it doesn't understand
-					if (geo.attributes[attr] instanceof THREE.InterleavedBufferAttribute) {
-						geo.attributes[attr] = geo.attributes[attr].clone();
-					}
-					//it also doesn't understand normalized attrs (color)
-					if (geo.attributes[attr].normalized) {
-						let buf = geo.attributes[attr].array;
-						if (geo.attributes[attr].count * geo.attributes[attr].itemSize != buf.length) {
-							throw new Error("simple copy not possible");
-						}
-						let newbuf = new Float32Array(buf.length);
-						let factor = 1;
-						if (buf instanceof Uint8Array) {
-							factor = 1 / ((1 << 8) - 1);
-						} else if (buf instanceof Uint16Array) {
-							factor = 1 / ((1 << 16) - 1);
-						} else if (buf instanceof Int16Array) {
-							factor = 1 / ((1 << 15) - 1);
-						} else {
-							throw new Error("buffer type not supported");
-						}
-						for (let i = 0; i < buf.length; i++) {
-							newbuf[i] = buf[i] * factor;
-						}
+	// renderSVG() {
+	// 	let renderer = new SVGRenderer();
+	// 	this.scene.traverse(q => {
+	// 		if (q instanceof THREE.Mesh) {
+	// 			let geo = q.geometry as THREE.BufferGeometry;
+	// 			let mat = q.material as THREE.MeshBasicMaterial;
+	// 			//svgrender doesn't deal with mirrored faces properly (det(proj)<0)
+	// 			mat.side = THREE.DoubleSide;
+	// 			for (let attr in geo.attributes) {
+	// 				//de-interleave attributes since it doesn't understand
+	// 				if (geo.attributes[attr] instanceof THREE.InterleavedBufferAttribute) {
+	// 					geo.attributes[attr] = geo.attributes[attr].clone();
+	// 				}
+	// 				//it also doesn't understand normalized attrs (color)
+	// 				if (geo.attributes[attr].normalized) {
+	// 					let buf = geo.attributes[attr].array;
+	// 					if (geo.attributes[attr].count * geo.attributes[attr].itemSize != buf.length) {
+	// 						throw new Error("simple copy not possible");
+	// 					}
+	// 					let newbuf = new Float32Array(buf.length);
+	// 					let factor = 1;
+	// 					if (buf instanceof Uint8Array) {
+	// 						factor = 1 / ((1 << 8) - 1);
+	// 					} else if (buf instanceof Uint16Array) {
+	// 						factor = 1 / ((1 << 16) - 1);
+	// 					} else if (buf instanceof Int16Array) {
+	// 						factor = 1 / ((1 << 15) - 1);
+	// 					} else {
+	// 						throw new Error("buffer type not supported");
+	// 					}
+	// 					for (let i = 0; i < buf.length; i++) {
+	// 						newbuf[i] = buf[i] * factor;
+	// 					}
 
-						geo.attributes[attr] = new THREE.BufferAttribute(newbuf, geo.attributes[attr].itemSize);
-					}
-				}
-				//vertex alpha also messes it up...
-				if (geo.getAttribute("color")?.itemSize == 4) {
-					let oldvalue = geo.getAttribute("color").array;
-					let arr = new Float32Array(oldvalue.length / 4 * 3);
-					for (let i = 0; i < oldvalue.length / 4; i++) {
-						arr[i * 3 + 0] = oldvalue[i * 4 + 0];
-						arr[i * 3 + 1] = oldvalue[i * 4 + 1];
-						arr[i * 3 + 2] = oldvalue[i * 4 + 2];
-					}
-					geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
-				}
-				//non indexed geometries are bugged...
-				if (!geo.index) {
-					let index = new Uint32Array(geo.getAttribute("position").count);
-					for (let i = 0; i < index.length; i++) {
-						index[i] = i;
-					}
-					geo.index = new THREE.BufferAttribute(index, 1);
-				}
-				mat.needsUpdate = true;
-			}
-		})
-		renderer.setSize(this.canvas.width, this.canvas.height);
-		renderer.setPrecision(3);
-		renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
-		renderer.render(this.scene, this.camera);
-		return renderer.domElement;
-	}
+	// 					geo.attributes[attr] = new THREE.BufferAttribute(newbuf, geo.attributes[attr].itemSize);
+	// 				}
+	// 			}
+	// 			//vertex alpha also messes it up...
+	// 			if (geo.getAttribute("color")?.itemSize == 4) {
+	// 				let oldvalue = geo.getAttribute("color").array;
+	// 				let arr = new Float32Array(oldvalue.length / 4 * 3);
+	// 				for (let i = 0; i < oldvalue.length / 4; i++) {
+	// 					arr[i * 3 + 0] = oldvalue[i * 4 + 0];
+	// 					arr[i * 3 + 1] = oldvalue[i * 4 + 1];
+	// 					arr[i * 3 + 2] = oldvalue[i * 4 + 2];
+	// 				}
+	// 				geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+	// 			}
+	// 			//non indexed geometries are bugged...
+	// 			if (!geo.index) {
+	// 				let index = new Uint32Array(geo.getAttribute("position").count);
+	// 				for (let i = 0; i < index.length; i++) {
+	// 					index[i] = i;
+	// 				}
+	// 				geo.index = new THREE.BufferAttribute(index, 1);
+	// 			}
+	// 			mat.needsUpdate = true;
+	// 		}
+	// 	})
+	// 	renderer.setSize(this.canvas.width, this.canvas.height);
+	// 	renderer.setPrecision(3);
+	// 	renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
+	// 	renderer.render(this.scene, this.camera);
+	// 	return renderer.domElement;
+	// }
 
 	@boundMethod
 	render() {
@@ -284,10 +250,8 @@ export class ThreeJsRenderer {
 			this.camera.updateProjectionMatrix();
 		}
 		let delta = this.clock.getDelta();
-		delta *= ((window as any).speed ?? 100) / 100;//TODO remove
-		if (this.animationMixer) {
-			this.animationMixer.update(delta);
-		}
+		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
+		this.animationMixer.update(delta);
 
 		this.renderer.clearColor();
 		this.renderer.clearDepth();
@@ -313,31 +277,6 @@ export class ThreeJsRenderer {
 		if (!this.queuedFrameId) {
 			this.queuedFrameId = requestAnimationFrame(this.render);
 		}
-	}
-
-	@boundMethod
-	fixVisisbleMeshes() {
-		this.modelnode?.traverse(node => {
-			if (node.userData.modelgroup) {
-				let newvis = this.uistate.toggles[node.userData.modelgroup] ?? true;
-				node.traverse(child => {
-					if (child instanceof THREE.Mesh) { child.visible = newvis; }
-				})
-			}
-		});
-	}
-
-	setValue(prop: string, value: boolean) {
-		this.uistate.toggles[prop] = value;
-		this.fixVisisbleMeshes();
-		this.forceFrame();
-		this.stateChangeCallback(this.uistate);
-	}
-
-	async setOb3Models(scene: ThreejsSceneCache, modelfiles: Buffer[], mods: ModelModifications, metastr: string, anims: number[]) {
-		lastob3modelcall = { args: [...arguments] as any, inst: this };
-		let model = await ob3ModelToThreejsNode(scene, modelfiles, mods, anims);
-		return this.setModels([model], { metastr });
 	}
 
 	async takePicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
@@ -375,46 +314,46 @@ export class ThreeJsRenderer {
 		// return new Uint8Array(await img.arrayBuffer());
 	}
 
-	async parseGltfFile(modelfile: Uint8Array) {
+	// async parseGltfFile(modelfile: Uint8Array) {
 
-		//Threejs expects a raw memory slice (ArrayBuffer), however most nodejs api's use a view into
-		//such slice (TypedArray). some node modules go as far as reusing these and combining the raw buffers
-		//and returning only a correct view into a large slice if this is the case we have to copy it to a new
-		//slice to guarantee no other junk is in the same slice
-		let modelbuffer: ArrayBuffer;
-		if (modelfile.byteOffset != 0 || modelfile.byteLength != modelfile.buffer.byteLength) {
-			modelbuffer = Uint8Array.prototype.slice.call(modelfile).buffer;
-		} else {
-			modelbuffer = modelfile.buffer;
-		}
+	// 	//Threejs expects a raw memory slice (ArrayBuffer), however most nodejs api's use a view into
+	// 	//such slice (TypedArray). some node modules go as far as reusing these and combining the raw buffers
+	// 	//and returning only a correct view into a large slice if this is the case we have to copy it to a new
+	// 	//slice to guarantee no other junk is in the same slice
+	// 	let modelbuffer: ArrayBuffer;
+	// 	if (modelfile.byteOffset != 0 || modelfile.byteLength != modelfile.buffer.byteLength) {
+	// 		modelbuffer = Uint8Array.prototype.slice.call(modelfile).buffer;
+	// 	} else {
+	// 		modelbuffer = modelfile.buffer;
+	// 	}
 
-		const loader = new GLTFLoader();
+	// 	const loader = new GLTFLoader();
 
-		let model = await new Promise<GLTF>((d, e) => loader.parse(modelbuffer, "", d, e));
+	// 	let model = await new Promise<GLTF>((d, e) => loader.parse(modelbuffer, "", d, e));
 
-		//use faster materials
-		let rootnode = model.scene;
-		rootnode.traverse(node => {
-			node.matrixAutoUpdate = false;
-			node.updateMatrix();
-			if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
-				let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
-				let mat = new THREE.MeshPhongMaterial();
-				if (floortex) {
-					augmentThreeJsFloorMaterial(mat);
-				}
-				mat.map = node.material.map;
-				mat.vertexColors = node.material.vertexColors;
-				mat.transparent = node.material.transparent;
-				mat.alphaTest = 0.1;
-				mat.shininess = 0;
-				mat.userData = node.material.userData;
-				// mat.flatShading = true;//TODO remove
-				node.material = mat;
-			}
-		});
-		return { rootnode };
-	}
+	// 	//use faster materials
+	// 	let rootnode = model.scene;
+	// 	rootnode.traverse(node => {
+	// 		node.matrixAutoUpdate = false;
+	// 		node.updateMatrix();
+	// 		if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
+	// 			let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
+	// 			let mat = new THREE.MeshPhongMaterial();
+	// 			if (floortex) {
+	// 				augmentThreeJsFloorMaterial(mat);
+	// 			}
+	// 			mat.map = node.material.map;
+	// 			mat.vertexColors = node.material.vertexColors;
+	// 			mat.transparent = node.material.transparent;
+	// 			mat.alphaTest = 0.1;
+	// 			mat.shininess = 0;
+	// 			mat.userData = node.material.userData;
+	// 			// mat.flatShading = true;//TODO remove
+	// 			node.material = mat;
+	// 		}
+	// 	});
+	// 	return { rootnode };
+	// }
 
 	setSkybox(skybox?: THREE.Object3D, fogColor?: number[]) {
 		if (skybox) {
@@ -435,48 +374,12 @@ export class ThreeJsRenderer {
 		}
 	}
 
-	setAnimation(anim: MountableAnimation) {
-
-	}
-
-	async setModels(models: THREE.Object3D[], options?: { metastr?: string, animatable?: THREE.Object3D }) {
-		let combined = new THREE.Group();
-		let groups = new Set<string>();
-		models.forEach(m => combined.add(m));
-		combined.scale.setScalar(1 / 512);
-		(window as any).scene = this.scene;
-
-		combined.traverse(node => {
-			if (node.userData.modelgroup) {
-				groups.add(node.userData.modelgroup);
-			}
-			if (node instanceof THREE.Mesh) {
-				let parent: THREE.Object3D | null = node;
-				let iswireframe = false;
-				//TODO this data should be on the mesh it concerns instead of a parent
-				while (parent) {
-					if (parent.userData.modeltype == "floorhidden") {
-						iswireframe = true;
-					}
-					parent = parent.parent;
-				}
-				if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
-					node.material.wireframe = true;
-				}
-			}
-		});
-
-		//TODO move this somewhere else
-		this.animationMixer?.stopAllAction();
-		this.animationMixer = null;
+	setCameraLimits(){
 		// compute the box that contains all the stuff
 		// from root and below
-		const box = new THREE.Box3().setFromObject(combined);
+		const box = new THREE.Box3().setFromObject(this.modelnode);
 		const boxSize = box.getSize(new THREE.Vector3()).length();
 		const boxCenter = box.getCenter(new THREE.Vector3());
-
-		// set the camera to frame the box
-		//frameArea(boxSize * 0.5, boxSize, boxCenter, camera);
 
 		// update the Trackball controls to handle the new size
 		this.controls.maxDistance = Math.min(500, boxSize * 10 + 10);
@@ -484,33 +387,10 @@ export class ThreeJsRenderer {
 		this.controls.update();
 		this.controls.screenSpacePanning = true;
 
-		if (this.modelnode) { this.scene.remove(this.modelnode); }
 		this.cleanModelCallbacks.forEach(q => q());
 		this.cleanModelCallbacks = [];
-		this.modelnode = combined;
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
 		this.floormesh.visible = true;//box.min.y > -1;
-		this.scene.add(this.modelnode);
-
-		models.find(m => {
-			if (m.animations.length != 0) {
-				this.animationMixer = new AnimationMixer(m);
-				let anim = this.animationMixer.clipAction(m.animations[0]);
-				anim.play();
-			}
-			let skelhelper = new SkeletonHelper(m);
-			this.scene.add(skelhelper);
-			this.cleanModelCallbacks.push(() => skelhelper.removeFromParent());
-		});
-
-		this.uistate = { meta: options?.metastr ?? "", toggles: Object.create(null) };
-		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-			this.uistate.toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
-		});
-		this.fixVisisbleMeshes();
-
-		this.forceFrame();
-		this.stateChangeCallback(this.uistate);
 	}
 
 	export(type: "gltf") {
