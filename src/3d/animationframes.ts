@@ -2,7 +2,7 @@ import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
 import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
-import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, Vector3, VectorKeyframeTrack } from "three";
+import { AnimationClip, AnimationMixer, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
 import { ThreejsSceneCache } from "./ob3tothree";
@@ -182,7 +182,47 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 	}
 }
 
-export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenceframes: NonNullable<sequences["frames"]>): Promise<(model: ModelData) => MountableAnimation> {
+export function mountBakedSkeleton(rootnode: Object3D, model: ModelData) {
+	let centers = getBoneCenters(model);
+	let leafbones: Bone[] = [rootnode as Bone];
+	let rootbones: Bone[] = [];
+	let inverses: Matrix4[] = [new Matrix4()];
+
+	for (let i = 1; i < model.bonecount; i++) {
+		let rootbone = new Bone();
+		let leafbone = new Bone();
+		rootbone.name = `root_${i}`;
+		leafbone.name = `bone_${i}`;
+		rootbone.add(leafbone);
+		rootbones.push(rootbone);
+		leafbones.push(leafbone);
+		let inverse = new Matrix4();
+
+		let center = centers[i];
+		if (center && center.weightsum != 0) {
+			rootbone.position.set(center.xsum / center.weightsum, center.ysum / center.weightsum, center.zsum / center.weightsum);
+			inverse.setPosition(rootbone.position);
+		}
+		inverse.invert();
+		inverses.push(inverse);
+	}
+	let skeleton = new Skeleton(leafbones, inverses);
+	if (rootbones.length != 0) { rootnode.add(...rootbones); }
+	rootnode.updateMatrixWorld(true);
+	let childbind = new Matrix4().copy(rootnode.matrixWorld);
+	//TODO find out whats wrong with my own inverses
+	skeleton.calculateInverses();
+	rootnode.traverse(node => {
+		if (node instanceof SkinnedMesh) {
+			node.bind(skeleton, childbind);
+		}
+	});
+
+	let mixer = new AnimationMixer(rootnode);
+	return { mixer };
+}
+
+export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenceframes: NonNullable<sequences["frames"]>): Promise<(model: ModelData) => AnimationClip> {
 
 	let secframe0 = sequenceframes[0];
 	if (!secframe0) {
@@ -219,15 +259,9 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		let centers = getBoneCenters(model);
 		let transforms = bakeAnimation(framebase, clips, keyframetimes, centers)
 			.map((arr, i) => ({ id: i, trans: arr }));
-		// let transforms = bones.map(q => ({
-		// 	id: q.boneids[0],
-		// 	trans: bakeTransformStack(q.stack, clips, keyframetimes, centers)
-		// }));
 
 		let nframes = keyframetimes.length;
 		let tracks: KeyframeTrack[] = [];
-		let leafbones: Bone[] = [];
-		let rootbones: Bone[] = [];
 
 		//reused holders
 		let matrix = new Matrix4();
@@ -235,12 +269,14 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		let translate = new Vector3();
 		let prerotate = new Quaternion();
 		let postrotate = new Quaternion();
+		let skippedbones = 0;
 		for (let trans of transforms) {
-			let rootbone = new Bone();
-			let leafbone = new Bone();
-			rootbone.name = `root_${trans.id}`;
-			leafbone.name = `bone_${trans.id}`;
-			rootbone.add(leafbone);
+			if (trans.id >= model.bonecount) {
+				skippedbones++;
+				continue;
+			}
+			let rootname = `root_${trans.id}`;
+			let leafname = `bone_${trans.id}`;
 			let scales = new Float32Array(nframes * 3);
 			let positions = new Float32Array(nframes * 3);
 			let prerotates = new Float32Array(nframes * 4);
@@ -253,22 +289,16 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 				scale.toArray(scales, i * 3);
 				postrotate.toArray(postrotates, i * 4);
 			}
-			tracks.push(new VectorKeyframeTrack(`${rootbone.name}.position`, keyframetimes as any, positions as any));
-			tracks.push(new QuaternionKeyframeTrack(`${rootbone.name}.quaternion`, keyframetimes as any, prerotates as any));
-			tracks.push(new VectorKeyframeTrack(`${rootbone.name}.scale`, keyframetimes as any, scales as any));
-			tracks.push(new QuaternionKeyframeTrack(`${leafbone.name}.quaternion`, keyframetimes as any, postrotates as any));
-			rootbones.push(rootbone);
-			leafbones.push(leafbone);
-
-			let center = centers[trans.id];
-			if (center && center.weightsum != 0) {
-				rootbone.position.set(center.xsum / center.weightsum, center.ysum / center.weightsum, center.zsum / center.weightsum);
-			}
+			tracks.push(new VectorKeyframeTrack(`${rootname}.position`, keyframetimes as any, positions as any));
+			tracks.push(new QuaternionKeyframeTrack(`${rootname}.quaternion`, keyframetimes as any, prerotates as any));
+			tracks.push(new VectorKeyframeTrack(`${rootname}.scale`, keyframetimes as any, scales as any));
+			tracks.push(new QuaternionKeyframeTrack(`${leafname}.quaternion`, keyframetimes as any, postrotates as any));
 		}
-		let skeleton = new Skeleton(leafbones);
-		globalThis.skeleton = skeleton;
+		if (skippedbones != 0) {
+			console.log("skipped " + skippedbones + " bone animations since the model didn't have them");
+		}
 		let clip = new AnimationClip("anim", undefined, tracks);;
-		return { clip, rootbones, skeleton }
+		return clip;
 	}
 }
 

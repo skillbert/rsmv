@@ -10,6 +10,7 @@ module.exports = {
 	mode: "development",
 	entry: {
 		viewer: "./src/viewer/",
+		contextholder: "./src/viewer/contextholder.ts",
 	},
 	module: {
 		rules: [

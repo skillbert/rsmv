@@ -4,6 +4,7 @@ import { parseAnimgroupConfigs, parseAvatars, parseEnums, parseIdentitykit, pars
 import { ob3ModelToThreejsNode, ThreejsSceneCache } from "./ob3tothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL, Stream } from "./utils";
 import { SimpleModelDef } from "../viewer/scenenodes";
+import { items } from "../../generated/items";
 
 export function avatarStringToBytes(text: string) {
 	let base64 = text.replace(/\*/g, "+").replace(/-/g, "/");
@@ -60,12 +61,12 @@ async function loadKitData(source: CacheFileSource) {
 		clothes: await mapcololenum(2347, 3282, false)
 	}
 
-	for (let [id, colhsl] of Object.entries(kitcolors.hair)) {
-		let [r, g, b] = HSL2RGB(packedHSL2HSL(colhsl));
-		console.log("%c" + id, `font-weight:bold;padding:0px 20px;background:rgb(${r},${g},${b}`);
-	}
+	// for (let [id, colhsl] of Object.entries(kitcolors.hair)) {
+	// 	let [r, g, b] = HSL2RGB(packedHSL2HSL(colhsl));
+	// 	console.log("%c" + id, `font-weight:bold;padding:0px 20px;background:rgb(${r},${g},${b}`);
+	// }
 
-	console.log(kitcolors);
+	// console.log(kitcolors);
 	return kitcolors;
 }
 
@@ -78,6 +79,7 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parseIdentitykit.read(q.buffer)]));
 
 	let animgroup = 2699;
+	let items: items[] = [];
 
 	if (avabase.player) {
 		let isfemale = (avabase.gender & 1) != 0;
@@ -177,6 +179,7 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 				}
 			}
 			models.push(...itemmodels.slice(isfemale ? femaleindex : maleindex, isfemale ? maleheadindex : femaleindex));
+			items.push(item);
 		}
 
 		let haircol0 = modstream.readUByte();
@@ -210,14 +213,7 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 			q.mods.replaceColors.push(...extramods);
 		})
 
-
-		// let modstream.readUByte();
-
-		console.log("bytesleft", modstream.bytesLeft());
-		console.log(modstream.getData().slice(modstream.scanloc()));
-
-
-		modstream.skip(modstream.bytesLeft() - 2);
+		modstream.skip(13);
 		let unknownint = modstream.readUShort();
 
 		if (animstruct != -1) {
@@ -244,5 +240,14 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 	let animid = animset.baseAnims!.idle;
 
 	let animids = (animid == -1 ? [] : [animid]);
-	return { models, animids };
+	return { models, animids, items, animset };
+}
+
+export function appearanceUrl(name: string) {
+	if (typeof document != "undefined" && document.location.protocol.startsWith("http")) {
+		//proxy through runeapps if we are running in a browser
+		return `http://localhost/data/getplayeravatar.php?player=${encodeURIComponent(name)}`;
+	} else {
+		return `https://secure.runescape.com/m=avatar-rs/${encodeURIComponent(name)}/appearance.dat`;
+	}
 }

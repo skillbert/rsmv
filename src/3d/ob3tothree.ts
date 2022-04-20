@@ -210,8 +210,6 @@ export async function ob3ModelToThreejsNode(scene: ThreejsSceneCache, modelfiles
 	});
 
 	let mesh = await ob3ModelToThree(scene, mergeModelDatas(meshdatas));
-	mesh.scale.multiply(new THREE.Vector3(1, 1, -1));
-	mesh.updateMatrix();
 	return mesh;
 }
 
@@ -231,13 +229,12 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 	let rootnode: Mesh;
 	let nullskeleton: Skeleton = null!;
 	if (model.bonecount != 0) {
-		let nullbones: Bone[] = [];
-		for (let i = 0; i < model.bonecount; i++) { nullbones.push(new Bone()); }
-		nullskeleton = new Skeleton(nullbones);
 		let skinnedroot = new SkinnedMesh();
-		skinnedroot.bind(nullskeleton);
 		rootnode = skinnedroot;
-		rootnode.add(...nullbones);
+		let nullbones: Object3D[] = [];
+		for (let i = 0; i < model.bonecount; i++) { nullbones.push(skinnedroot); }
+		nullskeleton = new Skeleton(nullbones as any);
+		skinnedroot.bind(nullskeleton);
 	} else {
 		rootnode = new Mesh();
 	}
@@ -258,7 +255,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		let mesh: THREE.Mesh | THREE.SkinnedMesh;
 		if (geo.attributes.skinIndex) {
 			mesh = new THREE.SkinnedMesh(geo, mat);
-			(mesh as SkinnedMesh).bind(nullskeleton);
+			// (mesh as SkinnedMesh).bind(nullskeleton);
 		} else {
 			mesh = new THREE.Mesh(geo, mat);
 		}

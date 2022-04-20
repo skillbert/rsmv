@@ -51,7 +51,7 @@ export class ThreeJsRenderer {
 	contextLossCountLastRender = 0;
 	filesource: CacheFileSource;
 	clock = new Clock(true);
-	animationMixer :AnimationMixer;
+	animationMixers = new Set<AnimationMixer>();
 
 	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource) {
 		globalThis.render = this;//TODO remove
@@ -107,10 +107,8 @@ export class ThreeJsRenderer {
 
 		//model viewer root
 		this.modelnode = new THREE.Group();
-		this.modelnode.scale.setScalar(1 / 512);
+		this.modelnode.scale.set(1 / 512, 1 / 512, -1 / 512);
 		this.scene.add(this.modelnode);
-
-		this.animationMixer=new AnimationMixer(this.scene);
 
 		//TODO figure out which lights work or not
 		scene.add(new THREE.AmbientLight(0xffffff, 0.7));
@@ -251,7 +249,7 @@ export class ThreeJsRenderer {
 		}
 		let delta = this.clock.getDelta();
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
-		this.animationMixer.update(delta);
+		this.animationMixers.forEach(q => q.update(delta));
 
 		this.renderer.clearColor();
 		this.renderer.clearDepth();
@@ -360,7 +358,7 @@ export class ThreeJsRenderer {
 			let scene = new THREE.Scene();
 			let camera = this.camera.clone();
 			let obj = new THREE.Object3D();
-			obj.scale.set(1 / 512, 1 / 512, 1 / 512);
+			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
 			obj.add(skybox);
 			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
 			this.skybox = { scene, camera };
@@ -374,7 +372,7 @@ export class ThreeJsRenderer {
 		}
 	}
 
-	setCameraLimits(){
+	setCameraLimits() {
 		// compute the box that contains all the stuff
 		// from root and below
 		const box = new THREE.Box3().setFromObject(this.modelnode);

@@ -174,6 +174,9 @@ export function parseOb3Model(modelfile: Buffer) {
 					remainder -= weight;
 					skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);
 					skinWeightBuffer[i * 4 + j] = actualweight;
+					if (boneid >= bonecount) {
+						bonecount = boneid + 2;//we are adding a root bone at 0, and count is max+1
+					}
 					if (weight == 0) { break; }
 				}
 			}
