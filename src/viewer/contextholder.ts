@@ -1,6 +1,7 @@
 
 
 import * as datastore from "idb-keyval";
+import "./fsapi";
 
 if (module.hot) {
 	//never reload this page

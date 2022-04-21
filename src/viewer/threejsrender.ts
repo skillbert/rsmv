@@ -8,7 +8,6 @@ import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
-import { ModelViewerState } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
@@ -35,8 +34,6 @@ if (module.hot) {
 export class ThreeJsRenderer {
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
-	stateChangeCallback: (newstate: ModelViewerState) => void;
-	uistate: ModelViewerState = { meta: "", toggles: {} };
 	skybox: { scene: THREE.Object3D, camera: THREE.Camera } | null = null;
 	scene: THREE.Scene;
 	camera: THREE.Camera | THREE.PerspectiveCamera;
@@ -53,11 +50,10 @@ export class ThreeJsRenderer {
 	clock = new Clock(true);
 	animationMixers = new Set<AnimationMixer>();
 
-	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, stateChangeCallback: (newstate: ModelViewerState) => void, filesource: CacheFileSource) {
+	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, filesource: CacheFileSource) {
 		globalThis.render = this;//TODO remove
 		this.filesource = filesource;
 		this.canvas = canvas;
-		this.stateChangeCallback = stateChangeCallback;
 		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, powerPreference: "high-performance", antialias: true, ...params });
 		this.renderer.autoClear = false;
 		const renderer = this.renderer;
@@ -517,29 +513,28 @@ export class ThreeJsRenderer {
 			}
 
 			//show data about what we clicked
-			console.log(obj.material.userData);
-			if (meshdata.modeltype == "locationgroup") {
-				let typedmatch = match as typeof meshdata.subobjects[number];
-				if (typedmatch.modeltype == "location") {
-					let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);
-					this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
-				}
-			}
-			if (meshdata.modeltype == "floor") {
-				let typedmatch = match as typeof meshdata.subobjects[number];
-				this.uistate.meta = JSON.stringify({
-					...meshdata,
-					x: typedmatch.x,
-					z: typedmatch.z,
-					subobjects: undefined,//remove (near) circular ref from json
-					subranges: undefined,
-					tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined }
-				}, undefined, "\t");
-			}
+			// console.log(obj.material.userData);
+			// if (meshdata.modeltype == "locationgroup") {
+			// 	let typedmatch = match as typeof meshdata.subobjects[number];
+			// 	if (typedmatch.modeltype == "location") {
+			// 		let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);
+			// 		this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
+			// 	}
+			// }
+			// if (meshdata.modeltype == "floor") {
+			// 	let typedmatch = match as typeof meshdata.subobjects[number];
+			// 	this.uistate.meta = JSON.stringify({
+			// 		...meshdata,
+			// 		x: typedmatch.x,
+			// 		z: typedmatch.z,
+			// 		subobjects: undefined,//remove (near) circular ref from json
+			// 		subranges: undefined,
+			// 		tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined }
+			// 	}, undefined, "\t");
+			// }
 			break;
 		}
 
-		this.stateChangeCallback(this.uistate);
 		this.forceFrame();
 	}
 

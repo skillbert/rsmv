@@ -896,6 +896,7 @@ export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocatio
 export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
 
 	let chunkfloorpadding = (opts?.padfloor ? 10 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
+	let chunkpadding = Math.floor(chunkfloorpadding / squareSize);
 	let grid = new TileGrid(scene, {
 		x: rect.x * squareSize - chunkfloorpadding,
 		z: rect.z * squareSize - chunkfloorpadding,
@@ -903,8 +904,8 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 		zsize: rect.zsize * squareSize + chunkfloorpadding * 2
 	}, opts?.mask);
 	let chunks: ChunkData[] = [];
-	for (let z = -chunkfloorpadding; z < rect.zsize + chunkfloorpadding; z++) {
-		for (let x = -chunkfloorpadding; x < rect.xsize + chunkfloorpadding; x++) {
+	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
+		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
 			let mapunderlaymeta = await scene.source.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
@@ -1026,7 +1027,7 @@ export async function mapsquareToThree(scene: ThreejsSceneCache, grid: TileGrid,
 		root.add(node);
 	}
 
-	root.scale.set(1, 1, -1);
+	// root.scale.set(1, 1, -1);
 	return root;
 }
 

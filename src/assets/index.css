@@ -75,7 +75,7 @@ body {
 }
 #content {
 	position: absolute;
-	top: 30px;
+	top: 0px;
 	bottom: 0px;
 	left: 0px;
 	right: 0px;
@@ -261,7 +261,7 @@ input[type="text"]:focus {
 	display: flex;
 	padding: 10px;
 }
-.sidebar-browser-search-bar-input{
+.sidebar-browser-search-bar-input {
 	flex-grow: 1;
 }
 .sidebar-browser-tab-strip {

@@ -307,10 +307,10 @@ export class MapRenderer {
 	squares: MaprenderSquare[] = [];
 	chunksource: (x: number, z: number) => Promise<ChunkResult>;
 	constructor(cnv: HTMLCanvasElement, filesource: CacheFileSource, chunksource: (x: number, z: number) => Promise<ChunkResult>) {
-		this.renderer = new ThreeJsRenderer(cnv, { alpha: false }, () => { }, filesource);
+		this.renderer = new ThreeJsRenderer(cnv, { alpha: false }, filesource);
 		this.renderer.renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
 		this.renderer.scene.background = new THREE.Color(0, 0, 0);
-		this.chunksource = chunksource;
+		this.chunksource = chunksource; 
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),

@@ -4,10 +4,9 @@ import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, 
 import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 
-import { ModelViewerState } from "./index";
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh } from "three";
+import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
@@ -801,13 +800,22 @@ export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cac
 		)
 	}
 }
-
-export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { chunkgroups: { rect: MapRect, model: THREE.Object3D }[] }> {
+type SceneMapState = {
+	chunkgroups: { rect: MapRect, model: THREE.Object3D }[],
+	center: { x: number, z: number },
+	toggles: Record<string, boolean>
+};
+export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, SceneMapState> {
+	oldautoframe: boolean;
 	constructor(p) {
 		super(p);
 		this.state = {
-			chunkgroups: []
+			chunkgroups: [],
+			center: { x: 0, z: 0 },
+			toggles: Object.create(null)
 		}
+		this.oldautoframe = this.props.scene.automaticFrames;
+		this.props.scene.automaticFrames = false;
 	}
 
 	@boundMethod
@@ -815,14 +823,17 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 		this.props.scene.setSkybox();
 		this.state.chunkgroups.forEach(q => q.model.removeFromParent());
 		this.props.scene.forceFrame();
-		this.setState({ chunkgroups: [] });
+		this.setState({ chunkgroups: [], toggles: Object.create(null) });
 	}
 
-	componentWillUnmount() { this.clear(); }
+	componentWillUnmount() {
+		this.clear();
+		this.props.scene.automaticFrames = this.oldautoframe;
+	}
 
 	async addArea(rect: MapRect) {
 		//TODO enable centered again
-		let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: false };
+		let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
 		let { grid, chunks } = await parseMapsquare(this.props.cache.cache, rect, opts);
 		let modeldata = await mapsquareModels(this.props.cache.cache, grid, chunks, opts);
 		let mainchunk = chunks[0];
@@ -865,24 +876,45 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 			}
 		});
 
-		// let uistate = { meta: "", toggles: Object.create(null) };
-		// [...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-		// 	uistate.toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
-		// });
-		// combined.traverse(node => {
-		// 	if (node.userData.modelgroup) {
-		// 		let newvis = uistate.toggles[node.userData.modelgroup] ?? true;
-		// 		node.traverse(child => {
-		// 			if (child instanceof THREE.Mesh) { child.visible = newvis; }
-		// 		})
-		// 	}
-		// });
+		let toggles = this.state.toggles;
+		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
+			if (typeof toggles[q] != "boolean") {
+				toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
+			}
+		});
+
+		let center = this.state.center;
+		if (this.state.chunkgroups.length == 0) {
+			center = {
+				x: (rect.x + rect.xsize / 2) * 64 * 512,
+				z: (rect.z + rect.zsize / 2) * 64 * 512,
+			}
+		}
+
+		combined.position.add(new Vector3(-center.x, 0, -center.z));
 
 		this.props.scene.setSkybox(skybox, fogColor);
 		this.props.scene.modelnode.add(combined);
 		this.props.scene.forceFrame();
 
-		this.setState({ chunkgroups: [...this.state.chunkgroups, { rect, model: combined }] })
+		this.setState({
+			chunkgroups: [...this.state.chunkgroups, { rect, model: combined }],
+			center: center,
+			toggles
+		});
+	}
+
+	fixToggles() {
+		this.state.chunkgroups.forEach(chunk => {
+			chunk.model.traverse(node => {
+				if (node.userData.modelgroup) {
+					let newvis = this.state.toggles[node.userData.modelgroup] ?? true;
+					node.traverse(child => {
+						if (child instanceof THREE.Mesh) { child.visible = newvis; }
+					})
+				}
+			});
+		})
 	}
 
 	@boundMethod
@@ -893,13 +925,56 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 		this.addArea({ x, z, xsize, zsize });
 	}
 
+	setToggle(toggle: string, value: boolean) {
+		let newtoggles = Object.create(null);
+		for (let key in this.state.toggles) {
+			newtoggles[key] = (key.startsWith(toggle) ? value : this.state.toggles[key]);
+		}
+		this.setState({ toggles: newtoggles });
+	}
+
 	render() {
+		this.fixToggles();
+		this.props.scene.forceFrame();
+		let toggles: Record<string, string[]> = {};
+		for (let toggle of Object.keys(this.state.toggles)) {
+			let m = toggle.match(/^(\D+?)(\d.*)?$/);
+			if (!m) { throw new Error("???"); }
+			toggles[m[1]] = toggles[m[1]] ?? [];
+			toggles[m[1]].push(m[2] ?? "");
+		}
+
 		return (
 			<React.Fragment>
 				<StringInput onChange={this.onSubmit} />
 				{this.state.chunkgroups.map((chunk, i) => {
 					return <div key={i}>{prettyJson(chunk.rect)}</div>;
 				})}
+				{Object.entries(toggles).map(([base, subs]) => {
+					let all = true;
+					let none = true;
+					subs.forEach(s => {
+						let v = this.state.toggles[base + s];
+						all &&= v;
+						none &&= !v;
+					})
+					return (
+						<div key={base}>
+							<label><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.setToggle(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
+							{subs.map(sub => {
+								let name = base + sub;
+								let value = this.state.toggles[name];
+								return (
+									<label key={sub}>
+										<input type="checkbox" checked={value} onChange={e => this.setToggle(name, e.currentTarget.checked)} />
+										{sub}
+									</label>
+								);
+							})}
+						</div>
+					)
+				})}
+				<div onClick={this.clear}>clear</div>
 			</React.Fragment>
 		)
 	}

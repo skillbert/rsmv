@@ -17,6 +17,7 @@ import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3
 import { Object3D } from "three";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ModelBrowser } from "./scenenodes";
+import "./fsapi";
 
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
@@ -141,7 +142,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	@boundMethod
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
-			let renderer = new ThreeJsRenderer(cnv, {}, () => { }, hackyCacheFileSource);
+			let renderer = new ThreeJsRenderer(cnv, {}, hackyCacheFileSource);
 			renderer.automaticFrames = true;
 			console.warn("forcing auto-frames!!");
 			this.setState({ renderer });
@@ -196,9 +197,5 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 // 		}
 // 	}
 // }
-export type ModelViewerState = {
-	meta: string,
-	toggles: Record<string, boolean>
-}
 
 start();
