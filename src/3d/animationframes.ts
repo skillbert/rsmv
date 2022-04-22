@@ -699,13 +699,15 @@ export function getFrameClips(framebase: framemaps, framesparsed: frames[]) {
 		let tempEuler = new Euler();
 		for (let frame of frames) {
 			let flag = frame?.flags[index] ?? 0;
-
+			if (flag & ~7) {
+				console.log("unexpexted frame data flag " + (flag & ~7));
+			}
 			//there seems to actually be data here
 			if (base.type == 0) {
 				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame?.stream) : 0);
 				rawclip[clipindex++] = (flag & 2 ? readAnimFraction(frame?.stream) : 0);
 				rawclip[clipindex++] = (flag & 4 ? readAnimFraction(frame?.stream) : 0);
-				if (flag != 0) {
+				if (flag & 7) {
 					console.log("type 0 data", flag, [...rawclip.slice(clipindex - 3, clipindex)]);
 				}
 			}

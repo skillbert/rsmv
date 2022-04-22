@@ -9,8 +9,7 @@ module.exports = {
 	devtool: false,
 	mode: "development",
 	entry: {
-		viewer: "./src/viewer/",
-		contextholder: "./src/viewer/contextholder.ts",
+		viewer: "./src/viewer/"
 	},
 	module: {
 		rules: [

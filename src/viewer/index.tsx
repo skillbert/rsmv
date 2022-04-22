@@ -30,6 +30,10 @@ function start() {
 	});
 
 	ReactDOM.render(<App />, document.getElementById("app"));
+
+	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
+	//across tab reloads
+	navigator.serviceWorker.register('./contextholder.js', { scope: './', });
 }
 
 
@@ -60,6 +64,7 @@ async function ensureCachePermission() {
 				}
 			}
 			hackyCacheFileSource.giveBlobs(files);
+			navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: cacheDirectoryHandle }));
 			datastore.set("cachefilehandles", cacheDirectoryHandle);
 			let cache = await EngineCache.create(hackyCacheFileSource);
 			console.log("engine loaded");
@@ -85,7 +90,7 @@ if (typeof window != "undefined") {
 			let files: Record<string, Blob> = {};
 			let items: DataTransferItem[] = [];
 			let folderhandles: WebkitDirectoryHandle[] = [];
-			let filehandles: WebkitFsHandle[] = [];
+			let filehandles: WebkitFileHandle[] = [];
 			for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
 			//needs to start synchronously as the list is cleared after the event
 			await Promise.all(items.map(async item => {
@@ -163,9 +168,8 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 					<canvas id="viewer" ref={this.initCnv}></canvas>
 				</div>
 				<div id="sidebar">
-					{!this.state.cache && <div onClick={this.requestFiles}>Open cache</div>}
+					{!this.state.cache && <input type="button" className="sub-btn" onClick={this.requestFiles} value="Open cache" />}
 					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} />}
-					{this.state.cache && <div><a target="_blank" href="./contextholder.html">hold context</a></div>}
 				</div>
 			</div >
 		);

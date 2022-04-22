@@ -7,7 +7,7 @@ import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
 import { parseSkeletalAnimation } from "./animationskeletal";
-import { archiveToFileId, CacheFileSource } from "../cache";
+import { archiveToFileId, CacheFileSource, SubFile } from "../cache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -75,6 +75,7 @@ export class EngineCache {
 	ready: Promise<EngineCache>;
 	source: CacheFileSource;
 
+	materialArchive = new Map<number, Buffer>();
 	mapUnderlays: mapsquare_underlays[];
 	mapOverlays: mapsquare_overlays[];
 	mapMapscenes: mapscenes[];
@@ -90,20 +91,9 @@ export class EngineCache {
 	}
 
 	async preload() {
-		// let framemapindices = await this.source.getIndexFile(cacheMajors.framemaps);
-		// for (let index of framemapindices) {
-		// 	let arch = await this.source.getFileArchive(index);
-		// 	for (let file of arch) {
-		// 		this.framemapCache.set(achiveToFileId(index.major, index.minor, file.fileid), parseFramemaps.read(file.buffer));
-		// 	}
-		// }
-		let materialindices = await this.source.getIndexFile(cacheMajors.materials);
-		this.materialCache.set(-1, defaultMaterial());
-		for (let index of materialindices) {
-			let arch = await this.source.getFileArchive(index);
-			for (let file of arch) {
-				this.materialCache.set(archiveToFileId(index.major, index.minor, file.fileid), convertMaterial(file.buffer));
-			}
+		let matarch = await this.source.getArchiveById(cacheMajors.materials, 0);
+		for (let file of matarch) {
+			this.materialArchive.set(file.fileid, file.buffer);
 		}
 
 		this.mapUnderlays = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
@@ -116,11 +106,11 @@ export class EngineCache {
 		return this;
 	}
 
-	// getFramemap(id: number) {
-	// 	return this.framemapCache.get(id)!;
-	// }
 	getMaterialData(id: number) {
-		return this.materialCache.get(id)!;
+		if (id == -1) { return defaultMaterial(); }
+		let file = this.materialArchive.get(id);
+		if (!file) { throw new Error("material " + id + " not found"); }
+		return convertMaterial(file);
 	}
 }
 

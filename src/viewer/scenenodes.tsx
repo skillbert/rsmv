@@ -82,7 +82,7 @@ export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cac
 
 		let ModeComp = LookupModeComponentMap[this.state.mode];
 		return (
-			<div id="sidebar-browser">
+			<React.Fragment>
 				<div className="sidebar-browser-tab-strip">
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setState({ mode: "item" })}>Items IDs</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setState({ mode: "npc" })}>NPCs IDs</div>
@@ -93,17 +93,9 @@ export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cac
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setState({ mode: "material" })}>Material IDs</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setState({ mode: "spotanim" })}>Spotanims</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setState({ mode: "scenario" })}>Scenario</div>
-					{
-						//<div className={classNames("rsmv-icon-button", { active: false })} onClick={this.exportModel}>Export</div>
-					}
 				</div>
-				<div id="sidebar-browser-tab">
-					<div style={{ overflowY: "auto" }}>
-						<ModeComp cache={this.props.cache} scene={this.props.render} />
-						<pre style={{ textAlign: "left", userSelect: "text" }}></pre>
-					</div>
-				</div>
-			</div>
+				<ModeComp cache={this.props.cache} scene={this.props.render} />
+			</React.Fragment>
 		);
 	}
 }
@@ -142,12 +134,16 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 	loaded: { modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip } | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
-	anims: Record<number, { clip: AnimationClip | null, prom: Promise<AnimationClip> }> = {};
+	nullAnimLoaded: (clip: AnimationClip) => void;
+	anims: Record<number, { clip: AnimationClip | null, prom: Promise<AnimationClip> }> = {
+		"-1": { clip: null, prom: new Promise(d => this.nullAnimLoaded = d) }
+	};
 	mountedanim: AnimationClip | null = null;
 	mixer = new AnimationMixer(this.rootnode);
 	renderscene: ThreeJsRenderer | null = null;
 	targetAnimId = -1;
 	skeletontype: "none" | "baked" | "full" = "none";
+
 
 	cleanup() {
 		this.listeners = {};
@@ -192,6 +188,8 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 				}
 			});
 			let nullAnim = new AnimationClip(undefined, undefined, []);
+			this.nullAnimLoaded(nullAnim);
+			this.anims[-1].clip = nullAnim;
 
 			this.rootnode.add(mesh);
 			this.loaded = { mesh, modeldata, nullAnim };
@@ -522,10 +520,14 @@ export class ScenePlayer extends React.Component<{ scene: ThreeJsRenderer, cache
 				{this.state.avaitems?.map((item, index) => {
 					return <div key={index}>{item.name ?? "no name"}</div>
 				})}
-				<pre>{prettyJson(this.state.animset)}</pre>
+				<JsonDisplay obj={this.state.animset} />
 			</React.Fragment>
 		)
 	}
+}
+
+function JsonDisplay(p: { obj: any }) {
+	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
 }
 
 export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }> {
@@ -582,7 +584,7 @@ export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cac
 		if (this.modelid != modelid) {
 			let matdata: materials | null = null;
 			if (modelid != -1) {
-				let modelid = 93776;//"RuneTek_Asset" jagex test model
+				let assetid = 93776;//"RuneTek_Asset" jagex test model
 				let mods: ModelModifications = {
 					replaceMaterials: [[4314, modelid]]
 				};
@@ -604,7 +606,7 @@ export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cac
 						await addtex(tex, mat.textures[tex]);
 					}
 				}
-				this.model = new RSModel([{ modelid, mods }], this.props.cache);
+				this.model = new RSModel([{ modelid: assetid, mods }], this.props.cache);
 				this.model.addToScene(this.props.scene);
 			}
 			this.setState({ matdata });
@@ -616,7 +618,7 @@ export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cac
 		return (
 			<React.Fragment>
 				<IdInput onChange={this.setModel} />
-				<pre>{prettyJson(this.state.matdata)}</pre>
+				<JsonDisplay obj={this.state.matdata} />
 			</React.Fragment>
 		)
 	}
@@ -646,6 +648,7 @@ export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cac
 			let obj: objects | null = null;
 			if (modelid != -1) {
 				let data = await locToModel(this.props.cache, modelid);
+				obj = data.loc;
 				this.model = new RSModel(data.models, this.props.cache);
 				this.model.setAnimation(data.animids[0] ?? -1);
 				this.model.addToScene(this.props.scene);
@@ -659,7 +662,7 @@ export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cac
 		return (
 			<React.Fragment>
 				<IdInput onChange={this.setModel} />
-				<pre>{prettyJson(this.state.locdata)}</pre>
+				<JsonDisplay obj={this.state.locdata} />
 			</React.Fragment>
 		)
 	}
@@ -708,7 +711,7 @@ export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: 
 		return (
 			<React.Fragment>
 				<IdInput onChange={this.setModel} />
-				<pre>{prettyJson(this.state.itemdata)}</pre>
+				<JsonDisplay obj={this.state.itemdata} />
 			</React.Fragment>
 		)
 	}
@@ -751,7 +754,7 @@ export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: T
 		return (
 			<React.Fragment>
 				<IdInput onChange={this.setModel} />
-				<pre>{prettyJson(this.state.npcdata)}</pre>
+				<JsonDisplay obj={this.state.npcdata} />
 			</React.Fragment>
 		)
 	}
@@ -795,7 +798,7 @@ export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cac
 		return (
 			<React.Fragment>
 				<IdInput onChange={this.setModel} />
-				<pre>{prettyJson(this.state.animdata)}</pre>
+				<JsonDisplay obj={this.state.animdata} />
 			</React.Fragment>
 		)
 	}
