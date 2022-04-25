@@ -95,3 +95,52 @@ async function start() {
 	}
 }
 start();
+
+async function loadSkeletons() {
+	let source = new GameCacheLoader();
+
+	let skelindex = await source.getIndexFile(cacheMajors.skeletalAnims);
+
+	let files: Buffer[] = [];
+	for (let index of skelindex) {
+		if (!index) { continue; }
+		if (files.length % 50 == 0) { console.log(files.length); }
+		files.push(await source.getFile(index.major, index.minor, index.crc));
+	}
+
+	return function* () {
+		for (let file of files) {
+			yield parseSkeletalAnim.read(file);
+		}
+	}
+};
+globalThis.loadSkeletons = loadSkeletons;
+
+async function render() {
+	let skelfiles = await loadSkeletons()
+	let points: number[] = [];
+	for (let skel of skelfiles()) {
+		for (let track of skel.tracks) {
+			if (track.type_0to9 >= 1 && track.type_0to9 <= 3) {
+				points.push(...track.chunks.flatMap(q => q.value[0]))
+			}
+		}
+	}
+	let min = Infinity, max = -Infinity;
+	for (let p of points) { min = Math.min(min, p); max = Math.max(max, p) }
+	let n = 21;
+	let start = -10;
+	let end = 10;
+	let size = (end - start) / (n - 1);
+	let buckets = new Array(n).fill(0);
+	let misses = 0;
+	for (let p of points) {
+		let i = Math.floor((p - start) / size);
+		if (i >= 0 && i < n) { buckets[i]++; }
+		else { misses++; }
+	}
+	console.log("min", min);
+	console.log("max", max);
+	console.log("misses", misses);
+	buckets.forEach((n, i) => console.log((i * size + start).toFixed(1), n))
+}

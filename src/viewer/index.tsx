@@ -1,5 +1,5 @@
 
-import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject } from "../opdecoder";
+import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSkeletalAnim } from "../opdecoder";
 import { ThreeJsRenderer } from "./threejsrender";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
@@ -18,6 +18,8 @@ import { Object3D } from "three";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ModelBrowser } from "./scenenodes";
 import "./fsapi";
+
+
 
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
@@ -158,6 +160,25 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	requestFiles() {
 		ensureCachePermission().then(engine => {
 			this.setState({ cache: new ThreejsSceneCache(engine) });
+			//TODO remove
+			let source = engine.source;
+			globalThis.loadSkeletons = async function run() {
+
+				let skelindex = await source.getIndexFile(cacheMajors.skeletalAnims);
+
+				let files: Buffer[] = [];
+				for (let index of skelindex) {
+					if (!index) { continue; }
+					if (files.length % 50 == 0) { console.log(files.length); }
+					files.push(await source.getFile(index.major, index.minor, index.crc));
+				}
+
+				return function* () {
+					for (let file of files) {
+						yield parseSkeletalAnim.read(file);
+					}
+				}
+			};
 		});
 	}
 

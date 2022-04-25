@@ -2,7 +2,7 @@ import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
 import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
-import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, Vector3, VectorKeyframeTrack } from "three";
+import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
 import { ThreejsSceneCache } from "./ob3tothree";
@@ -21,22 +21,14 @@ import { MountableAnimation } from "./animationframes";
 //28895   elder egg, currently bugged
 
 
-export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number): Promise<MountableAnimation> {
-	let anim = parseSkeletalAnim.read(await cache.getFileById(cacheMajors.skeletalAnims, animid));
-	let base = parseFramemaps.read(await cache.getFileById(cacheMajors.framemaps, anim.framebase));
+export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSceneCache, framebaseid: number) {
+	let base = parseFramemaps.read(await cache.getFileById(cacheMajors.framemaps, framebaseid));
 	if (!base.skeleton) {
 		throw new Error("framebase does not have skeleton");
 	}
 
-	let convertedtracks: KeyframeTrack[] = [];
-
-	let animtracks = anim.tracks.sort((a, b) => {
-		if (a.boneid != b.boneid) { return a.boneid - b.boneid; }
-		return a.type_0to9 - b.type_0to9;
-	});
-
 	let bones: Bone[] = [];
-	let binds: Matrix4[] = [];
+	// let binds: Matrix4[] = [];
 	let rootbones: Bone[] = [];
 	let tmp = new Matrix4();
 	let prematrix = new Matrix4().makeScale(1, 1, -1);
@@ -59,11 +51,34 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		// 	"", +bone.scale.x.toFixed(2), +bone.scale.y.toFixed(2), +bone.scale.z.toFixed(2));
 		bone.updateMatrixWorld();
 		bones[id] = bone;
-		binds[id] = matrix;
+		// binds[id] = matrix;
 	}
-	prematrix.invert();
-	binds.forEach(q => q.multiply(prematrix));
+	// prematrix.invert();
+	// binds.forEach(q => q.multiply(prematrix));
+
 	let skeleton = new Skeleton(bones);
+
+	if (rootbones.length != 0) { rootnode.add(...rootbones); }
+	rootnode.updateMatrixWorld(true);
+	let childbind = new Matrix4().copy(rootnode.matrixWorld);
+	//TODO find out whats wrong with my own inverses
+	skeleton.calculateInverses();
+	rootnode.traverse(node => {
+		if (node instanceof SkinnedMesh) {
+			node.bind(skeleton, childbind);
+		}
+	});
+}
+
+export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number) {
+	let anim = parseSkeletalAnim.read(await cache.getFileById(cacheMajors.skeletalAnims, animid));
+
+	let convertedtracks: KeyframeTrack[] = [];
+
+	let animtracks = anim.tracks.sort((a, b) => {
+		if (a.boneid != b.boneid) { return a.boneid - b.boneid; }
+		return a.type_0to9 - b.type_0to9;
+	});
 
 	let actiontypemap: { t: "unknown" | "rotate" | "translate" | "scale", a: number }[] = [
 		{ t: "unknown", a: 0 },
@@ -80,16 +95,16 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		{ t: "scale", a: 2 },
 
 		//10-16 unknown
-		{ t: "unknown", a: 0 },
-		{ t: "unknown", a: 0 },
-		{ t: "unknown", a: 0 },
-		{ t: "unknown", a: 0 },
-		{ t: "unknown", a: 0 },
-		{ t: "unknown", a: 0 },
-		{ t: "unknown", a: 0 },
+		{ t: "unknown", a: 0 },//109 hits, -1 3x, 0 103x, 1 3x
+		{ t: "unknown", a: 0 },//109 hits, -1 6x, 0 103x
+		{ t: "unknown", a: 0 },//109 hits, -1 4x, 0 94x, 1 15x
+		{ t: "unknown", a: 0 },//4k hits, 0x 3400, 42 600x
+		{ t: "unknown", a: 0 },//4k hits, sort of spread between 0-0.015, most at bounderies
+		{ t: "unknown", a: 0 },//4k hits, spread between -0.3-0.1, most at bounderies
+		{ t: "unknown", a: 0 },//2k hits, spread between -1-1, most at bounderies or 0
 	]
 
-
+	console.log(animtracks);
 	for (let index = 0; index < animtracks.length;) {
 		let track = animtracks[index];
 
@@ -110,13 +125,9 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 			if (t2.a == 2) { zvalues = track2.chunks; }
 			index++;
 		}
-
-		let bone = bones[boneid];
-		if (!bone) {
-			console.log("animation track without bone", boneid, track.boneid);
-			continue;
-		}
-		let bonename = bone.name;
+		// if (track.bonetype_01or3 == 3) { continue; }
+		// if (boneid >= 6 && boneid <= 8) { continue; }
+		let bonename = "bone_" + boneid;
 
 		let defaultvalue = (tracktype.t == "scale" ? 1 : 9);
 		let intp = (v: { time: number, value: number[] }[] | null, i: number, t: number) => {
@@ -131,6 +142,9 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		let data: number[] = [];
 		let euler = new Euler();
 		let quat = new Quaternion();
+		// if (tracktype.t == "scale") {
+		// 	console.log(xvalues, yvalues, zvalues);
+		// }
 		// let time = new Float32Array(timearray.map(q => q * 0.020));
 		for (let ix = 0, iy = 0, iz = 0, idata = 0; ;) {
 			let tx = xvalues?.[ix]?.time ?? Infinity;
@@ -177,5 +191,5 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 	let clip = new AnimationClip("anim_" + (Math.random() * 1000 | 0), undefined, convertedtracks);
 
 
-	return { skeleton, clip, rootbones };
+	return { clip, framebaseid: anim.framebase };
 }

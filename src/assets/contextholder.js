@@ -8,7 +8,7 @@
 let filehandle = null;
 
 setInterval(() => {
-	filehandle?.requestPermission().then(q => console.log(q));
+	filehandle?.requestPermission();
 }, 1000 * 60);
 
 onmessage = (e) => {

@@ -172,7 +172,7 @@ export function parseOb3Model(modelfile: Buffer) {
 					let boneid = rawbuf[dataindex++] | (rawbuf[dataindex++] << 8);//manual 16bit building since it might not be alligned
 					let actualweight = (weight != 0 ? weight : remainder);
 					remainder -= weight;
-					skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);
+					skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);//TODO this should be boneid+1since we're shifting in -1 to 0?
 					skinWeightBuffer[i * 4 + j] = actualweight;
 					if (boneid >= bonecount) {
 						bonecount = boneid + 2;//we are adding a root bone at 0, and count is max+1

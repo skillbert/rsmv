@@ -18,7 +18,7 @@ import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ThreeJsRenderer } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
-import { parseSkeletalAnimation } from "../3d/animationskeletal";
+import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../3d/utils";
 import { objects } from "../../generated/objects";
 import { items } from "../../generated/items";
@@ -78,23 +78,27 @@ export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cac
 	// 	// }));
 	// }
 
-	render() {
+	setMode(mode: LookupMode) {
+		localStorage.rsmv_lastmode = mode;
+		this.setState({ mode, search: "" });
+	}
 
+	render() {
 		let ModeComp = LookupModeComponentMap[this.state.mode];
 		return (
 			<React.Fragment>
 				<div className="sidebar-browser-tab-strip">
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setState({ mode: "item" })}>Items IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setState({ mode: "npc" })}>NPCs IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setState({ mode: "object" })}>Obj/Locs IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setState({ mode: "avatar" })}>Avatar</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setState({ mode: "model" })}>Model IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setState({ mode: "map" })}>Map</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setState({ mode: "material" })}>Material IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setState({ mode: "spotanim" })}>Spotanims</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setState({ mode: "scenario" })}>Scenario</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Obj/Locs IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setMode("avatar")}>Avatar</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setMode("map")}>Map</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Material IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
 				</div>
-				<ModeComp cache={this.props.cache} scene={this.props.render} />
+				<ModeComp cache={this.props.cache} scene={this.props.render} initialId={this.state.search} />
 			</React.Fragment>
 		);
 	}
@@ -143,20 +147,24 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 	renderscene: ThreeJsRenderer | null = null;
 	targetAnimId = -1;
 	skeletontype: "none" | "baked" | "full" = "none";
+	skeletonHelper: SkeletonHelper | null = null;
 
 
 	cleanup() {
 		this.listeners = {};
 		this.rootnode.removeFromParent();
+		this.skeletonHelper?.removeFromParent();
 		if (this.renderscene) {
 			this.renderscene.animationMixers.delete(this.mixer);
 		}
+		this.renderscene = null;
 	}
 
 	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
 		this.renderscene = scene;
 		scene.animationMixers.add(this.mixer);
 		node.add(this.rootnode);
+		if (this.skeletonHelper) { node.add(this.skeletonHelper); }
 		scene.forceFrame();
 	}
 
@@ -208,8 +216,8 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 		this.mixer.stopAllAction();
 		let action = this.mixer.clipAction(clip, mesh);
 		action.play();
-		// let skelhelper = new SkeletonHelper(mesh);
-		// this.rootnode.add(skelhelper);
+		this.skeletonHelper = new SkeletonHelper(mesh);
+		this.renderscene?.scene.add(this.skeletonHelper);
 		this.mountedanim = clip;
 	}
 
@@ -224,8 +232,14 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 
 				let clip: AnimationClip;
 				if (seq.skeletal_animation) {
-					throw new Error("todo");//TODO
-					// mount = await parseSkeletalAnimation(this.cache, seq.skeletal_animation);
+					let anim = await parseSkeletalAnimation(this.cache, seq.skeletal_animation);
+					clip = anim.clip;
+					let loaded = this.loaded ?? await this.model;
+					if (this.skeletontype != "full") {
+						if (this.skeletontype != "none") { throw new Error("wrong skeleton type already mounted to model"); }
+						await mountSkeletalSkeleton(loaded.mesh, this.cache, anim.framebaseid);
+						this.skeletontype = "full";
+					}
 				} else if (seq.frames) {
 					let frameanim = await parseAnimationSequence4(this.cache, seq.frames);
 					let loaded = this.loaded ?? await this.model;
@@ -262,7 +276,7 @@ type ScenarioComponent = {
 }
 
 
-class InputCommitted2 extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
+class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
 	el: HTMLInputElement | null = null;
 	@boundMethod
 	onChange(e: Event) {
@@ -286,22 +300,11 @@ class InputCommitted2 extends React.Component<React.DetailedHTMLProps<React.Inpu
 	}
 }
 
-function InputCommitted(p: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>) {
-	let ref = React.useCallback((e: HTMLInputElement | null) => {
-		if (e && p.onChange) {
-			e.addEventListener("change", p.onChange as any);
-			return () => e.removeEventListener("change", p.onChange as any);
-		}
-	}, [p.onChange]);
-	let newp = { ...p, onChange: undefined, value: undefined, defaultValue: undefined };
-	return <input ref={ref} {...newp} />;
-}
-
 function ScenarioAnimControl(p: { anim: ScenarioComponent["anims"][number], onChange: (v: ScenarioComponent["anims"][number] | null) => void }) {
 	return (
 		<form>
-			<InputCommitted2 type="number" value={p.anim.animid} onChange={e => p.onChange({ ...p.anim, animid: +e.currentTarget.value })} />
-			<InputCommitted2 type="number" value={p.anim.startTime} onChange={e => p.onChange({ ...p.anim, startTime: +e.currentTarget.value })} />
+			<InputCommitted type="number" value={p.anim.animid} onChange={e => p.onChange({ ...p.anim, animid: +e.currentTarget.value })} />
+			<InputCommitted type="number" value={p.anim.startTime} onChange={e => p.onChange({ ...p.anim, startTime: +e.currentTarget.value })} />
 			<div onClick={() => p.onChange(null)}>delete</div>
 		</form>
 	);
@@ -320,12 +323,13 @@ function ScenarioControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioCom
 				};
 				return <ScenarioAnimControl key={i} anim={anim} onChange={onchange} />
 			})}
+			<div onClick={e => p.onChange({ ...p.comp, anims: [...p.comp.anims, { animid: -1, startTime: 0 }] })}>add anim</div>
 			<div onClick={e => p.onChange(null)}>delete</div>
 		</div>
 	)
 }
 
-export class SceneScenario extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { components: ScenarioComponent[], addType: keyof typeof primitiveModelInits }>{
+export class SceneScenario extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { components: ScenarioComponent[], addType: keyof typeof primitiveModelInits }>{
 
 	models = new Map<ScenarioComponent, RSModel>();
 
@@ -377,7 +381,7 @@ export class SceneScenario extends React.Component<{ scene: ThreeJsRenderer, cac
 		this.models.delete(oldcomp);
 		if (model && newcomp) {
 			this.models.set(newcomp, model);
-			model.setAnimation(newcomp.anims[0].animid);
+			if (newcomp.anims.length != 0) { model.setAnimation(newcomp.anims[0].animid); }
 		}
 		if (newcomp) { components[index] = newcomp; }
 		else { components.splice(index, 1); }
@@ -476,7 +480,7 @@ async function locToModel(cache: ThreejsSceneCache, id: number) {
 	return { models, animids, loc: obj };
 }
 
-export class ScenePlayer extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { avaitems: items[] | null, animset: animgroupconfigs | null }> {
+export class ScenePlayer extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { avaitems: items[] | null, animset: animgroupconfigs | null }> {
 	model: RSModel | null = null;
 	modelid = "";
 
@@ -494,6 +498,7 @@ export class ScenePlayer extends React.Component<{ scene: ThreeJsRenderer, cache
 
 	@boundMethod
 	async setModel(modelid: string) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -516,7 +521,7 @@ export class ScenePlayer extends React.Component<{ scene: ThreeJsRenderer, cache
 	render() {
 		return (
 			<React.Fragment>
-				<StringInput onChange={this.setModel} />
+				<StringInput onChange={this.setModel} initialid={this.props.initialId} />
 				{this.state.avaitems?.map((item, index) => {
 					return <div key={index}>{item.name ?? "no name"}</div>
 				})}
@@ -530,7 +535,7 @@ function JsonDisplay(p: { obj: any }) {
 	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
 }
 
-export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }> {
+export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -540,6 +545,7 @@ export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cac
 
 	@boundMethod
 	setModel(modelid: number) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -555,13 +561,13 @@ export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	render() {
 		return (
 			<React.Fragment>
-				<IdInput onChange={this.setModel} />
+				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
 			</React.Fragment>
 		)
 	}
 }
 
-export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { matdata: materials | null }> {
+export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { matdata: materials | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -578,6 +584,7 @@ export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cac
 
 	@boundMethod
 	async setModel(modelid: number) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -617,14 +624,14 @@ export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cac
 	render() {
 		return (
 			<React.Fragment>
-				<IdInput onChange={this.setModel} />
+				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
 				<JsonDisplay obj={this.state.matdata} />
 			</React.Fragment>
 		)
 	}
 }
 
-export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { locdata: objects | null }> {
+export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { locdata: objects | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -641,6 +648,7 @@ export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cac
 
 	@boundMethod
 	async setModel(modelid: number) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -661,14 +669,14 @@ export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cac
 	render() {
 		return (
 			<React.Fragment>
-				<IdInput onChange={this.setModel} />
+				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
 				<JsonDisplay obj={this.state.locdata} />
 			</React.Fragment>
 		)
 	}
 }
 
-export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { itemdata: items | null }> {
+export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { itemdata: items | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -685,6 +693,7 @@ export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: 
 
 	@boundMethod
 	async setModel(modelid: number) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -710,13 +719,13 @@ export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: 
 	render() {
 		return (
 			<React.Fragment>
-				<IdInput onChange={this.setModel} />
+				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
 				<JsonDisplay obj={this.state.itemdata} />
 			</React.Fragment>
 		)
 	}
 }
-export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { npcdata: npcs | null }> {
+export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { npcdata: npcs | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -733,6 +742,7 @@ export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: T
 
 	@boundMethod
 	async setModel(modelid: number) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -753,14 +763,14 @@ export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: T
 	render() {
 		return (
 			<React.Fragment>
-				<IdInput onChange={this.setModel} />
+				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
 				<JsonDisplay obj={this.state.npcdata} />
 			</React.Fragment>
 		)
 	}
 }
 
-export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, { animdata: spotanims | null }> {
+export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { animdata: spotanims | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -777,6 +787,7 @@ export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cac
 
 	@boundMethod
 	async setModel(modelid: number) {
+		localStorage.rsmv_lastsearch = modelid;
 		if (this.model && this.modelid != modelid) {
 			this.model.cleanup();
 		}
@@ -797,7 +808,7 @@ export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cac
 	render() {
 		return (
 			<React.Fragment>
-				<IdInput onChange={this.setModel} />
+				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
 				<JsonDisplay obj={this.state.animdata} />
 			</React.Fragment>
 		)
@@ -808,7 +819,7 @@ type SceneMapState = {
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>
 };
-export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, SceneMapState> {
+export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, SceneMapState> {
 	oldautoframe: boolean;
 	constructor(p) {
 		super(p);
@@ -984,7 +995,7 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 }
 
 
-const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache }, any> }> = {
+const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, any> }> = {
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,
