@@ -17,7 +17,6 @@ import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3
 import { Object3D } from "three";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ModelBrowser } from "./scenenodes";
-import "./fsapi";
 
 
 
@@ -45,8 +44,8 @@ const hackyCacheFileSource = new CachedHacky();
 
 let engineCache: Promise<EngineCache> | null = null;
 
-var cacheDirectoryHandle: WebkitDirectoryHandle | null = null;
-var cacheDirectoryHandlePromise: Promise<WebkitDirectoryHandle | null>;
+var cacheDirectoryHandle: FileSystemDirectoryHandle | null = null;
+var cacheDirectoryHandlePromise: Promise<FileSystemDirectoryHandle | null>;
 
 async function ensureCachePermission() {
 	if (!engineCache) {
@@ -78,8 +77,8 @@ async function ensureCachePermission() {
 }
 cacheDirectoryHandlePromise = (typeof window == undefined ? Promise.resolve(null) : datastore.get("cachefilehandles").then(oldhandle => {
 	if (typeof FileSystemHandle != "undefined" && oldhandle instanceof FileSystemHandle && oldhandle.kind == "directory") {
-		cacheDirectoryHandle = oldhandle;
-		return oldhandle;
+		cacheDirectoryHandle = oldhandle as FileSystemDirectoryHandle;
+		return oldhandle as FileSystemDirectoryHandle;
 	}
 	return null;
 }));
@@ -91,8 +90,8 @@ if (typeof window != "undefined") {
 		if (e.dataTransfer) {
 			let files: Record<string, Blob> = {};
 			let items: DataTransferItem[] = [];
-			let folderhandles: WebkitDirectoryHandle[] = [];
-			let filehandles: WebkitFileHandle[] = [];
+			let folderhandles: FileSystemDirectoryHandle[] = [];
+			let filehandles: FileSystemFileHandle[] = [];
 			for (let i = 0; i < e.dataTransfer.items.length; i++) { items.push(e.dataTransfer.items[i]); }
 			//needs to start synchronously as the list is cleared after the event
 			await Promise.all(items.map(async item => {

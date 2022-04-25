@@ -331,7 +331,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 			let r = "{\n";
 			let newindent = indent + "\t";
 			for (let val of map.values()) {
-				r += newindent + val.key + "?: " + val.parser.getTypescriptType(newindent) + "\n";
+				r += newindent + (val.key as string) + "?: " + val.parser.getTypescriptType(newindent) + "\n";
 			}
 			r += indent + "}";
 			return r;
