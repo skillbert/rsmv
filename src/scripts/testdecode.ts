@@ -23,9 +23,9 @@ let cmd = command({
 	},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
-		const decoder = parseParams;
-		const major = cacheMajors.config;
-		const minor: number =cacheConfigPages.params;
+		const decoder = parseObject;
+		const major = cacheMajors.objects;
+		const minor: number = -1;
 		const subfileid: number = -1;
 		const skipMinorAfterError = false;
 		const skipFilesizeAfterError = false;

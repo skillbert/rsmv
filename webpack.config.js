@@ -19,7 +19,8 @@ module.exports = {
 		diff: "./src/scripts/cachediff.ts",
 		deps: "./src/scripts/dependencies.ts",
 		quickchatlookup: "./src/scripts/quickchatlookup.ts",
-		scrapeavatars: "./src/scripts/scrapeavatars.ts"
+		scrapeavatars: "./src/scripts/scrapeavatars.ts",
+		searchmap: "./src/scripts/searchmap.ts"
 	},
 	module: {
 		rules: [
