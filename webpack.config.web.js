@@ -54,8 +54,7 @@ module.exports = {
 	plugins: [
 		new CopyWebpackPlugin({
 			patterns: [
-				{ from: 'src/assets', to: "assets" },
-				{ from: 'src/opcodes', to: "opcodes" }
+				{ from: 'src/assets', to: "assets" }
 			]
 		}),
 		new ProvidePlugin({

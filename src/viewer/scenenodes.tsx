@@ -5,7 +5,7 @@ import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';
-import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree } from '../3d/mapsquare';
+import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
@@ -112,10 +112,10 @@ function IdInput({ initialid, onChange }: { initialid?: number, onChange: (id: n
 	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); };
 	return (
 		<form className="sidebar-browser-search-bar" onSubmit={submit}>
-			<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn-minus" />
-			<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn-plus" />
+			<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
+			<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
 			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => setId(+e.currentTarget.value)} />
-			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn" />
+			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
 	)
 }
@@ -126,7 +126,7 @@ function StringInput({ initialid, onChange }: { initialid?: string, onChange: (i
 	return (
 		<form className="sidebar-browser-search-bar" onSubmit={submit}>
 			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => setId(e.currentTarget.value)} />
-			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn" />
+			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
 	)
 }
@@ -266,6 +266,58 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 		this.targetAnimId = animid;
 		const mount = this.loadAnimation(animid);
 		return this.mountAnim(mount.clip ?? await mount.prom);
+	}
+}
+
+
+export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
+	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[] }>;
+	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[] } | null = null;
+	cache: ThreejsSceneCache;
+	rootnode = new THREE.Group();
+	mixer = new AnimationMixer(this.rootnode);
+	renderscene: ThreeJsRenderer | null = null;
+
+	cleanup() {
+		this.listeners = {};
+		this.rootnode.removeFromParent();
+		if (this.renderscene) {
+			this.renderscene.animationMixers.delete(this.mixer);
+		}
+		this.renderscene = null;
+	}
+
+	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
+		this.renderscene = scene;
+		scene.animationMixers.add(this.mixer);
+		node.add(this.rootnode);
+		scene.forceFrame();
+	}
+
+	onModelLoaded() {
+		this.emit("loaded", undefined);
+		this.renderscene?.forceFrame();
+		this.renderscene?.setCameraLimits();
+	}
+
+	constructor(rect: MapRect, cache: ThreejsSceneCache) {
+		super();
+		this.cache = cache;
+		this.model = (async () => {
+			//TODO enable centered again
+			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
+			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
+			let modeldata = await mapsquareModels(cache.cache, grid, chunks, opts);
+
+			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
+
+			if (chunkmodels.length != 0) {
+				this.rootnode.add(...chunkmodels);
+			}
+			this.loaded = { grid, chunks, chunkmodels };
+			this.onModelLoaded();
+			return this.loaded;
+		})();
 	}
 }
 
@@ -815,7 +867,7 @@ export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 }
 type SceneMapState = {
-	chunkgroups: { rect: MapRect, model: THREE.Object3D }[],
+	chunkgroups: { rect: MapRect, chunk: RSMapChunk }[],
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>
 };
@@ -835,7 +887,7 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	@boundMethod
 	clear() {
 		this.props.scene.setSkybox();
-		this.state.chunkgroups.forEach(q => q.model.removeFromParent());
+		this.state.chunkgroups.forEach(q => q.chunk.cleanup());
 		this.props.scene.forceFrame();
 		this.setState({ chunkgroups: [], toggles: Object.create(null) });
 	}
@@ -846,55 +898,61 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 
 	async addArea(rect: MapRect) {
-		//TODO enable centered again
-		let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
-		let { grid, chunks } = await parseMapsquare(this.props.cache.cache, rect, opts);
-		let modeldata = await mapsquareModels(this.props.cache.cache, grid, chunks, opts);
-		let mainchunk = chunks[0];
-		let skybox: Object3D | undefined = undefined;
-		let fogColor = [0, 0, 0, 0];
-		if (mainchunk?.extra.unk00?.unk20) {
-			fogColor = mainchunk.extra.unk00.unk20.slice(1);
-			// fogColor = [...HSL2RGB(packedHSL2HSL(mainchunk.extra.unk00.unk01[1])), 255];
-		}
-		if (mainchunk?.extra.unk80) {
-			let envarch = await this.props.cache.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
-			let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
-			let env = parseEnvironments.read(envfile.buffer);
-			if (typeof env.model == "number") {
-				skybox = await ob3ModelToThreejsNode(this.props.cache, [await this.props.cache.getFileById(cacheMajors.models, env.model)]);
+		let chunk = new RSMapChunk(rect, this.props.cache);
+		chunk.once("loaded", async () => {
+			let mainchunk = chunk.loaded![0];
+			let skybox: Object3D | undefined = undefined;
+			let fogColor = [0, 0, 0, 0];
+			if (mainchunk?.extra.unk00?.unk20) {
+				fogColor = mainchunk.extra.unk00.unk20.slice(1);
 			}
-		}
-
-		let combined = await mapsquareToThree(this.props.cache, grid, modeldata);
-
-		let groups = new Set<string>();
-
-		combined.traverse(node => {
-			if (node.userData.modelgroup) {
-				groups.add(node.userData.modelgroup);
+			if (mainchunk?.extra.unk80) {
+				let envarch = await this.props.cache.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
+				let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
+				let env = parseEnvironments.read(envfile.buffer);
+				if (typeof env.model == "number") {
+					skybox = await ob3ModelToThreejsNode(this.props.cache, [await this.props.cache.getFileById(cacheMajors.models, env.model)]);
+				}
 			}
-			if (node instanceof THREE.Mesh) {
-				let parent: THREE.Object3D | null = node;
-				let iswireframe = false;
-				//TODO this data should be on the mesh it concerns instead of a parent
-				while (parent) {
-					if (parent.userData.modeltype == "floorhidden") {
-						iswireframe = true;
+
+			let combined = chunk.rootnode;
+			let groups = new Set<string>();
+
+			combined.traverse(node => {
+				if (node.userData.modelgroup) {
+					groups.add(node.userData.modelgroup);
+				}
+				if (node instanceof THREE.Mesh) {
+					let parent: THREE.Object3D | null = node;
+					let iswireframe = false;
+					//TODO this data should be on the mesh it concerns instead of a parent
+					while (parent) {
+						if (parent.userData.modeltype == "floorhidden") {
+							iswireframe = true;
+						}
+						parent = parent.parent;
 					}
-					parent = parent.parent;
+					if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
+						node.material.wireframe = true;
+					}
 				}
-				if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
-					node.material.wireframe = true;
-				}
-			}
-		});
+			});
 
-		let toggles = this.state.toggles;
-		[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-			if (typeof toggles[q] != "boolean") {
-				toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
-			}
+			let toggles = this.state.toggles;
+			[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
+				if (typeof toggles[q] != "boolean") {
+					toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
+				}
+			});
+
+			let center = this.state.center;
+			combined.position.add(new Vector3(-center.x, 0, -center.z));
+
+			this.fixToggles();
+			this.props.scene.setSkybox(skybox, fogColor);
+			this.props.scene.modelnode.add(combined);
+			this.props.scene.forceFrame();
+			this.setState({ toggles });
 		});
 
 		let center = this.state.center;
@@ -904,23 +962,16 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 				z: (rect.z + rect.zsize / 2) * 64 * 512,
 			}
 		}
-
-		combined.position.add(new Vector3(-center.x, 0, -center.z));
-
-		this.props.scene.setSkybox(skybox, fogColor);
-		this.props.scene.modelnode.add(combined);
-		this.props.scene.forceFrame();
-
+		let chunkentry = { rect, chunk };
 		this.setState({
-			chunkgroups: [...this.state.chunkgroups, { rect, model: combined }],
-			center: center,
-			toggles
+			chunkgroups: [...this.state.chunkgroups, chunkentry],
+			center: center
 		});
 	}
 
 	fixToggles() {
 		this.state.chunkgroups.forEach(chunk => {
-			chunk.model.traverse(node => {
+			chunk.chunk.rootnode.traverse(node => {
 				if (node.userData.modelgroup) {
 					let newvis = this.state.toggles[node.userData.modelgroup] ?? true;
 					node.traverse(child => {
@@ -933,6 +984,7 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 
 	@boundMethod
 	onSubmit(searchtext: string) {
+		localStorage.rsmv_lastsearch = searchtext;
 		let [x, z, xsize, zsize] = searchtext.split(/[,\.\/:;]/).map(n => +n);
 		xsize = xsize ?? 1;
 		zsize = zsize ?? xsize;
@@ -940,11 +992,13 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 
 	setToggle(toggle: string, value: boolean) {
-		let newtoggles = Object.create(null);
-		for (let key in this.state.toggles) {
-			newtoggles[key] = (key.startsWith(toggle) ? value : this.state.toggles[key]);
-		}
-		this.setState({ toggles: newtoggles });
+		this.setState(old => {
+			let newtoggles = Object.create(null);
+			for (let key in old.toggles) {
+				newtoggles[key] = (key == toggle ? value : old.toggles[key]);
+			}
+			return { toggles: newtoggles };
+		})
 	}
 
 	render() {
@@ -958,12 +1012,57 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 			toggles[m[1]].push(m[2] ?? "");
 		}
 
+		let xmin = Infinity, xmax = -Infinity;
+		let zmin = Infinity, zmax = -Infinity;
+		for (let chunk of this.state.chunkgroups) {
+			xmin = Math.min(xmin, chunk.rect.x); xmax = Math.max(xmax, chunk.rect.x + chunk.rect.xsize);
+			zmin = Math.min(zmin, chunk.rect.z); zmax = Math.max(zmax, chunk.rect.z + chunk.rect.zsize);
+		}
+		let xsize = xmax - xmin + 2;
+		let zsize = zmax - zmin + 2;
+		xmin--;
+		zmin--;
+
+		let addgrid: (JSX.Element | null)[] = [];
+		for (let x = xmin; x < xmin + xsize; x++) {
+			for (let z = zmin; z < zmin + zsize; z++) {
+				let style: React.CSSProperties = {
+					gridColumn: "" + (x - xmin + 1),
+					gridRow: "" + (zmin + zsize - z),
+					border: "1px solid rgba(255,255,255,0.2)"
+				}
+				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.addArea({ x, z, xsize: 1, zsize: 1 })} style={style}></div>);
+			}
+		}
+
 		return (
 			<React.Fragment>
-				<StringInput onChange={this.onSubmit} />
+				<StringInput onChange={this.onSubmit} initialid={this.props.initialId} />
+				<div className="map-grid-container">
+					<div className="map-grid-root" style={{ gridTemplateColumns: `repeat(${xsize},40px)`, gridTemplateRows: `repeat(${zsize},40px)` }}>
+						{this.state.chunkgroups.flatMap((chunk, i) => {
+							let style: React.CSSProperties = {
+								gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
+								gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
+							}
+							for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
+								for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
+									addgrid[(x - xmin) * zsize + (z - zmin)] = null;
+								}
+							}
+							return (
+								<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !chunk.chunk.loaded })} style={style}>
+									{chunk.rect.x},{chunk.rect.z}{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : ` ${chunk.rect.xsize}x${chunk.rect.zsize}`}
+								</div>
+							);
+						})}
+						{addgrid}
+					</div>
+				</div>
 				{this.state.chunkgroups.map((chunk, i) => {
-					return <div key={i}>{prettyJson(chunk.rect)}</div>;
+					return <div key={i}>{chunk.rect.x},{chunk.rect.z} {chunk.rect.xsize}x{chunk.rect.zsize}</div>;
 				})}
+				{this.state.chunkgroups.length == 0 && (<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>)}
 				{Object.entries(toggles).map(([base, subs]) => {
 					let all = true;
 					let none = true;
@@ -988,7 +1087,7 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 						</div>
 					)
 				})}
-				<div onClick={this.clear}>clear</div>
+				<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
 			</React.Fragment>
 		)
 	}

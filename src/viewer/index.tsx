@@ -40,33 +40,36 @@ function start() {
 
 //TODO rename this, it's no longer a hack
 let CachedHacky = cachingFileSourceMixin(GameCacheLoader);
-const hackyCacheFileSource = new CachedHacky();
+let hackyCacheFileSource = new CachedHacky();
 
 let engineCache: Promise<EngineCache> | null = null;
 
 var cacheDirectoryHandle: FileSystemDirectoryHandle | null = null;
 var cacheDirectoryHandlePromise: Promise<FileSystemDirectoryHandle | null>;
 
-async function ensureCachePermission() {
+async function ensureCachePermission(ignorenohandle = false) {
 	if (!engineCache) {
 		engineCache = (async () => {
-			if (!cacheDirectoryHandle) {
+			if (!cacheDirectoryHandle && !ignorenohandle) {
 				cacheDirectoryHandle = await showDirectoryPicker();
 				if (!cacheDirectoryHandle) { throw new Error("permission denied"); }
 			}
-			await cacheDirectoryHandle.requestPermission();
-
-			let files: Record<string, Blob> = {};
-			console.log(await cacheDirectoryHandle.queryPermission());
-			await cacheDirectoryHandle.requestPermission();
-			for await (let handle of cacheDirectoryHandle.values()) {
-				if (handle.kind == "file") {
-					files[handle.name] = await handle.getFile();
+			if (cacheDirectoryHandle) {
+				await cacheDirectoryHandle.requestPermission();
+				let files: Record<string, Blob> = {};
+				console.log(await cacheDirectoryHandle.queryPermission());
+				await cacheDirectoryHandle.requestPermission();
+				for await (let handle of cacheDirectoryHandle.values()) {
+					if (handle.kind == "file") {
+						files[handle.name] = await handle.getFile();
+					}
 				}
+
+				hackyCacheFileSource.giveBlobs(files);
+
+				navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: cacheDirectoryHandle }));
+				datastore.set("cachefilehandles", cacheDirectoryHandle);
 			}
-			hackyCacheFileSource.giveBlobs(files);
-			navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: cacheDirectoryHandle }));
-			datastore.set("cachefilehandles", cacheDirectoryHandle);
 			let cache = await EngineCache.create(hackyCacheFileSource);
 			console.log("engine loaded");
 			return cache;
@@ -83,9 +86,43 @@ cacheDirectoryHandlePromise = (typeof window == undefined ? Promise.resolve(null
 	return null;
 }));
 
-if (typeof window != "undefined") {
-	document.body.ondragover = e => e.preventDefault();
-	document.body.ondrop = async e => {
+
+// const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
+// let CachedHacky = cachingFileSourceMixin(Downloader);
+// const hackyCacheFileSource = new CachedHacky();
+
+class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null }> {
+	constructor(p) {
+		super(p);
+		this.state = {
+			cache: null,
+			renderer: null
+		};
+		(async () => {
+			let handle = await cacheDirectoryHandlePromise;
+			if (handle && await handle.queryPermission() == "granted") {
+				this.requestFiles(false);
+			}
+		})();
+	}
+
+	componentDidMount() {
+		document.body.addEventListener("dragover", this.onDragOver);
+		document.body.addEventListener("drop", this.onFileDrop);
+	}
+
+	componentWillUnmount() {
+		document.body.removeEventListener("dragover", this.onDragOver);
+		document.body.removeEventListener("drop", this.onFileDrop)
+	}
+
+	@boundMethod
+	onDragOver(e: DragEvent) {
+		e.preventDefault();
+	}
+
+	@boundMethod
+	async onFileDrop(e: DragEvent) {
 		e.preventDefault();
 		if (e.dataTransfer) {
 			let files: Record<string, Blob> = {};
@@ -119,30 +156,13 @@ if (typeof window != "undefined") {
 				datastore.set("cachefilehandles", folderhandles[0]);
 				console.log("stored folder " + folderhandles[0].name);
 				cacheDirectoryHandle = folderhandles[0];
+				this.requestFiles(false);
+			} else {
+				console.log(`added ${Object.keys(files).length} files`);
+				hackyCacheFileSource.giveBlobs(files);
+				this.requestFiles(false);
 			}
-			console.log(`added ${Object.keys(files).length} files`);
-			hackyCacheFileSource.giveBlobs(files);
 		}
-	}
-}
-
-// const hackyCacheFileSource = new CachedHacky(path.resolve(process.env.ProgramData!, "jagex/runescape"));
-// let CachedHacky = cachingFileSourceMixin(Downloader);
-// const hackyCacheFileSource = new CachedHacky();
-
-class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null }> {
-	constructor(p) {
-		super(p);
-		this.state = {
-			cache: null,
-			renderer: null
-		};
-		(async () => {
-			let handle = await cacheDirectoryHandlePromise;
-			if (handle && await handle.queryPermission() == "granted") {
-				this.requestFiles();
-			}
-		})();
 	}
 
 	@boundMethod
@@ -156,7 +176,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	}
 
 	@boundMethod
-	requestFiles() {
+	requestFiles(ignorenohandle: boolean) {
 		ensureCachePermission().then(engine => {
 			this.setState({ cache: new ThreejsSceneCache(engine) });
 			//TODO remove
@@ -181,6 +201,21 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 		});
 	}
 
+	@boundMethod
+	closeCache() {
+		datastore.del("cachefilehandles");
+		hackyCacheFileSource = new CachedHacky();
+		engineCache = null;
+		cacheDirectoryHandle = null;
+		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
+		this.setState({ cache: null });
+	}
+
+	@boundMethod
+	openCache() {
+		this.requestFiles(false);
+	}
+
 	render() {
 		return (
 			<div id="content">
@@ -188,7 +223,14 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 					<canvas id="viewer" ref={this.initCnv}></canvas>
 				</div>
 				<div id="sidebar">
-					{!this.state.cache && <input type="button" className="sub-btn" onClick={this.requestFiles} value="Open cache" />}
+					{this.state.cache && <input type="button" className="sub-btn" onClick={this.closeCache} value="Close cache" />}
+					{!this.state.cache && (
+						<React.Fragment>
+							<input type="button" className="sub-btn" onClick={this.openCache} value="Open cache" />
+							<p>Drag a folder containing NXT cache files here in order to keep it.</p>
+							<p>Dragging files here is the preffered and most supported way to open a cache.</p>
+						</React.Fragment>
+					)}
 					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} />}
 				</div>
 			</div >

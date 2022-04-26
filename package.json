@@ -13,7 +13,8 @@
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",
 		"ts": "tsc",
 		"webpack": "webpack --watch",
-		"web": "webpack serve --config webpack.config.web.js"
+		"web": "webpack serve --config webpack.config.web.js",
+		"webrelease":"webpack --config webpack.config.web.js --mode production"
 	},
 	"author": "Skillbert",
 	"license": "GPL-4",
