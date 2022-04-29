@@ -1059,9 +1059,6 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 						{addgrid}
 					</div>
 				</div>
-				{this.state.chunkgroups.map((chunk, i) => {
-					return <div key={i}>{chunk.rect.x},{chunk.rect.z} {chunk.rect.xsize}x{chunk.rect.zsize}</div>;
-				})}
 				{this.state.chunkgroups.length == 0 && (<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>)}
 				{Object.entries(toggles).map(([base, subs]) => {
 					let all = true;

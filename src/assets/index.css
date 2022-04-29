@@ -354,6 +354,7 @@ input[type="text"]:focus {
 	margin: 10px auto;
 	background: black;
 	border: 1px solid #555;
+	max-width: 100%;
 }
 .map-grid-root {
 	display: grid;

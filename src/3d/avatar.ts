@@ -246,7 +246,7 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 export function appearanceUrl(name: string) {
 	if (typeof document != "undefined" && document.location.protocol.startsWith("http")) {
 		//proxy through runeapps if we are running in a browser
-		return `http://localhost/data/getplayeravatar.php?player=${encodeURIComponent(name)}`;
+		return `https://runeapps.org/data/getplayeravatar.php?player=${encodeURIComponent(name)}`;
 	} else {
 		return `https://secure.runescape.com/m=avatar-rs/${encodeURIComponent(name)}/appearance.dat`;
 	}
