@@ -1,7 +1,6 @@
 import sharp from "sharp";
 import { loadDds } from "./ddsimage";
 
-
 export class ParsedTexture {
 	fullfile: Buffer;
 	imagefiles: Buffer[];
@@ -38,11 +37,11 @@ export class ParsedTexture {
 		let offset = 1;
 		if (this.type == "bmpmips") {
 			this.bmpWidth = texture.readUInt32BE(offset); offset += 4;
-			this.bmpWidth = texture.readUInt32BE(offset); offset += 4;
-		} 
+			this.bmpHeight = texture.readUInt32BE(offset); offset += 4;
+		}
 		for (let i = 0; i < this.mipmaps; i++) {
 			let compressedsize: number;
-			if (i != 0 && this.type == "bmpmips") {
+			if (this.type == "bmpmips") {
 				compressedsize = (this.bmpWidth >> i) * (this.bmpHeight >> i) * 4;
 			} else {
 				compressedsize = texture.readUInt32BE(offset);
@@ -102,10 +101,12 @@ export class ParsedTexture {
 	async toImageData(subimg = 0) {
 		//TODO polyfill imagedata in nodejs, just need {width,height,data}
 		if (this.type == "bmpmips") {
-			let width = this.imagefiles[subimg].readUInt32BE(0);
-			let height = this.imagefiles[subimg].readUInt32BE(4);
+			let width = this.bmpWidth >> subimg;
+			let height = this.bmpHeight >> subimg;
+			let pixels = new Uint8ClampedArray(this.imagefiles[subimg].buffer, this.imagefiles[subimg].byteOffset, width * height * 4);
 			//TODO slice off 32px of anti-bleeding border around the image
-			return new ImageData(new Uint8ClampedArray(this.imagefiles[subimg].buffer, this.imagefiles[subimg].byteOffset + 8), width, height);
+			//TODO remove alpha if forceOpaque is enabled
+			return new ImageData(pixels, width, height);
 		} else if (this.type == "png") {
 			let img = sharp(this.imagefiles[subimg]);
 			let decoded = await img.raw().toBuffer({ resolveWithObject: true });

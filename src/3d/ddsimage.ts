@@ -1,10 +1,7 @@
 
 
-/**
- * @param
- * @param padding size to subtract, will auto-detect to create power of 2 sprite if left at -1 
- */
-export function loadDds(filedata: Buffer, paddingsize = -1, forceOpaque = true) {
+
+export function readDds(filedata: Buffer) {
 	let offset = 0;
 	let magic = filedata.readUInt32LE(offset); offset += 4;
 	let headersize = filedata.readUInt32LE(offset); offset += 4;
@@ -23,24 +20,46 @@ export function loadDds(filedata: Buffer, paddingsize = -1, forceOpaque = true) 
 	let isDxt1 = encoding == 0x31545844;//DXT1
 
 	if (!isDxt1 && !isDxt5) {
-		console.log("dds file is not dxt1 or dxt5 encoded as expected, continuing as dxt5");
-		isDxt5 = true;
+		throw new Error("dds file is not dxt1 or dxt5 encoded as expected, continuing as dxt5");
+		// isDxt5 = true;
 	}
+	let mips: { width: number, height: number, data: Buffer }[] = [];
+	for (let i = 0; i < mipmapcount; i++) {
+		let mipwidth = width >> i;
+		let mipheight = height >> i;
+		let datasize = mipwidth * mipheight * (isDxt5 ? 16 : 8);
+		mips.push({
+			width: mipwidth,
+			height: mipheight,
+			data: filedata.slice(offset, offset + datasize)
+		});
+		offset += datasize;
+	}
+
+	return { magic, flags, height, width, pitchorlinearsize, depth, isDxt1, isDxt5, mips };
+}
+
+/**
+ * @param
+ * @param padding size to subtract, will auto-detect to create power of 2 sprite if left at -1 
+ */
+export function loadDds(filedata: Buffer, paddingsize = -1, forceOpaque = true) {
+	let parsedfile = readDds(filedata);
 
 	if (paddingsize == -1) {
 		//dxt5 textures go into the texture mega-atlas (4k x 4k) and have pre-applied padding pixels
 		//dxt1 textures are used in separate textures (cubemaps mostly?) and have hardware padding/wrapping
-		if (isDxt5) { paddingsize = 32; }
+		if (parsedfile.isDxt5) { paddingsize = 32; }
 		else { paddingsize = 0; }
 	}
 	//making many assumptions here about exact format
 	//it is fairly unlikely that some files are different from the rest as this
 	//the compressed data is fed directly to the GPU as DXT5 sRgba
 
-	let innerwidth = width - paddingsize * 2;
-	let innerheight = height - paddingsize * 2;
+	let innerwidth = parsedfile.width - paddingsize * 2;
+	let innerheight = parsedfile.height - paddingsize * 2;
 	let data = Buffer.alloc(innerwidth * innerheight * 4);
-	dxtdata(data, innerwidth * 4, filedata.slice(offset), width, paddingsize, paddingsize, innerwidth, innerheight, isDxt5);
+	dxtdata(data, innerwidth * 4, parsedfile.mips[0].data, parsedfile.mips[0].width, paddingsize, paddingsize, innerwidth, innerheight, parsedfile.isDxt5);
 
 	//opaque textures are stored with random data in their [a] channel, this causes many
 	//problem for different render pipelines

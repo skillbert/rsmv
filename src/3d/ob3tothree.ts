@@ -90,7 +90,7 @@ export class EngineCache {
 		this.ready = this.preload();
 	}
 
-	async preload() {
+	private async preload() {
 		let matarch = await this.source.getArchiveById(cacheMajors.materials, 0);
 		for (let file of matarch) {
 			this.materialArchive.set(file.fileid, file.buffer);
@@ -115,10 +115,17 @@ export class EngineCache {
 }
 
 export class ThreejsSceneCache {
-	textureCache = new Map<number, THREE.Texture>();
+	textureCache = new Map<number, Promise<THREE.Texture>>();
 	gltfMaterialCache = new Map<number, Promise<THREE.Material>>();
 	source: CacheFileSource;
 	cache: EngineCache;
+	textureType: "png" | "dds" | "bmp" = "dds";//only dds is currently fully implemented
+
+	static textureIndices = {
+		png: cacheMajors.texturesPng,
+		dds: cacheMajors.texturesDds,
+		bmp: cacheMajors.texturesBmp
+	}
 
 	constructor(scenecache: EngineCache) {
 		this.cache = scenecache;
@@ -132,17 +139,19 @@ export class ThreejsSceneCache {
 		return this.source.getArchiveById(major, minor);
 	}
 
-	async getTextureFile(texid: number, allowAlpha: boolean) {
-		let cached = this.textureCache.get(texid);
-		if (cached) { return cached; }
-		let file = await this.getFileById(cacheMajors.texturesDds, texid);
-		let parsed = new ParsedTexture(file, allowAlpha);
-		//TODO can also directly load dxt texture here!
-		let texture = new THREE.CanvasTexture(await parsed.toWebgl());
-		// let data = await parsed.toImageData();
-		// let texture = new THREE.DataTexture(data.data, data.width, data.height);
-		this.textureCache.set(texid, texture);
-		return texture;
+	getTextureFile(texid: number, allowAlpha: boolean) {
+		let texprom = this.textureCache.get(texid);
+		if (!texprom) {
+			texprom = (async () => {
+				let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
+				let parsed = new ParsedTexture(file, allowAlpha);
+				let texture = new THREE.CanvasTexture(await parsed.toWebgl());
+				return texture;
+			})();
+
+			this.textureCache.set(texid, texprom);
+		}
+		return texprom;
 	}
 
 
