@@ -1,5 +1,5 @@
-import { filesource, cliArguments } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
+// import { filesource, cliArguments } from "../cliparser";
+// import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim, parseMaterials } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
@@ -166,8 +166,8 @@ async function framesetDeps(cache: CacheFileSource, addDep: DepCallback) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
 		if (arch.length != 0) {
-			let frame0 = parseSkeletalAnim.read(arch[0].buffer);
-			addDep("framebase", frame0.framebase, "frameset", index.minor);
+			let frame0 = parseFrames.read(arch[0].buffer);
+			addDep("framebase", frame0.probably_framemap_id, "frameset", index.minor);
 		}
 	}
 }
@@ -187,20 +187,28 @@ async function modelDeps(cache: CacheFileSource, addDep: DepCallback) {
 }
 
 export async function getDependencies(cache: CacheFileSource) {
-
+	let dependentsMap = new Map<string, string[]>();
 	let dependencyMap = new Map<string, string[]>();
 	let addDep = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => {
 		let holder = `${holdertype}-${holderId}`;
 		let newdep = `${deptType}-${depId}`;
-		let deps = dependencyMap.get(holder);
+		//add dependency
+		let dependencies = dependencyMap.get(newdep);
+		if (!dependencies) {
+			dependencies = [];
+			dependentsMap.set(newdep, dependencies);
+		}
+		if (dependencies.indexOf(holder) == -1) { dependencies.push(holder); }
+		//add dependent
+		let deps = dependentsMap.get(holder);
 		if (!deps) {
 			deps = [];
-			dependencyMap.set(holder, deps);
+			dependentsMap.set(holder, deps);
 		}
 		if (deps.indexOf(newdep) == -1) { deps.push(newdep); }
 	}
 
-	globalThis.dependencyMap = dependencyMap;
+	globalThis.dependentsMap = dependentsMap;
 
 	let runs: DepCollector[] = [
 		mapsquareDeps,
@@ -221,18 +229,19 @@ export async function getDependencies(cache: CacheFileSource) {
 		await run(cache, addDep);
 		console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
 	}
+	return { dependencyMap, dependentsMap };
 }
 
-let cmd2 = command({
-	name: "run",
-	args: {
-		...filesource
-	},
-	handler: async (args) => {
-		let cache = await args.source();
-		getDependencies(cache);
-	}
-});
+// let cmd2 = command({
+// 	name: "run",
+// 	args: {
+// 		...filesource
+// 	},
+// 	handler: async (args) => {
+// 		let cache = await args.source();
+// 		getDependencies(cache);
+// 	}
+// });
 
 // run(cmd2, cliArguments());
 

@@ -1,8 +1,6 @@
 import { app, BrowserWindow, ipcMain, powerSaveBlocker } from "electron/main";
-import * as updater from "./updater";
-import * as downloader from "./downloader";
-import * as gamecache from "./cache";
-import { GameCacheLoader } from "./cacheloader";
+import * as downloader from "./cache/downloader";
+import { GameCacheLoader } from "./cache/sqlite";
 import * as argparser from "./cliparser";
 import { command } from "cmd-ts";
 

@@ -1,9 +1,9 @@
 import { Downloader, downloadServerConfig } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
-import { CacheIndex, CacheFileSource, unpackBufferArchive, indexBufferToObject } from "./cache";
-import { ParsedTexture } from "./3d/textures";
-import { cacheMajors } from "./constants";
+import { CacheIndex, CacheFileSource, unpackBufferArchive, indexBufferToObject } from "./index";
+import { ParsedTexture } from "../3d/textures";
+import { cacheMajors } from "../constants";
 
 var cachedir: string;
 var progressDelay = 20;

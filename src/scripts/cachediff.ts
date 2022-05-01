@@ -4,13 +4,14 @@ import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { FileParser, parseAchievement, parseEnums, parseItem, parseMaterials, parseModels, parseNpc } from "../opdecoder";
 import { DepTypes } from "./dependencies";
 import { parseObject } from "../opdecoder";
-import { archiveToFileId } from "../cache";
+import { archiveToFileId, CacheFileSource, fileIdToArchiveminor } from "../cache";
 import * as fs from "fs";
 import prettyJson from "json-stringify-pretty-compact";
+import { crc32 } from "../libs/crc32util";
 
 
 type FileAction = {
-	name: DepTypes,
+	name: string,
 	comparesubfiles: boolean,
 	parser: FileParser<any> | null,
 	getFileName: (major: number, minor: number, subfile: number) => string
@@ -47,6 +48,40 @@ let majormap: Record<number, FileAction> = {
 	[cacheMajors.achievements]: { name: "achievements" as any, comparesubfiles: true, parser: parseAchievement, getFileName: chunkedIndexName },
 	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parseMaterials, getFileName: chunkedIndexName }
 }
+function getMajorAction(major: number) {
+	let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `${major}`;
+	let action = majormap[major] ?? { name: majorname, parser: null, comparesubfiles: false, getFileName: standardName };
+	return action;
+}
+
+export async function hashCache(source: CacheFileSource, onlymajors: number[] | undefined = undefined) {
+	let allmajors = await source.getIndexFile(cacheMajors.index);
+
+	let hashes: number[][] = [];
+	for (let major = 0; major < allmajors.length; major++) {
+		let subhashes: number[] = [];
+		hashes[major] = subhashes;
+		if (!allmajors[major] || onlymajors && !onlymajors.includes(major)) { continue; }
+
+		let indices = await source.getIndexFile(major);
+		let action = getMajorAction(major);
+		for (let i = 0; i < indices.length; i++) {
+			let index = indices[i];
+			if (!index) { continue; }
+			if (action.comparesubfiles) {
+				let arch = await source.getFileArchive(index);
+				for (let sub of arch) {
+					let fileid = archiveToFileId(major, index.minor, sub.fileid);
+					subhashes[fileid] = crc32(sub.buffer);
+				}
+			} else {
+				subhashes[index.minor] = index.crc;
+			}
+		}
+	}
+
+	return hashes;
+}
 
 let cmd2 = command({
 	name: "run",
@@ -75,8 +110,7 @@ let cmd2 = command({
 			let indexb = await sourceb.getIndexFile(major);
 			let len = Math.max(indexa.length, indexb.length);
 
-			let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `${major}`;
-			let action = majormap[major] ?? { name: majorname, parser: null, comparesubfiles: false, getFileName: standardName };
+			let action = getMajorAction(major);
 
 
 			for (let i = 0; i < len; i++) {
@@ -176,4 +210,4 @@ let cmd2 = command({
 	}
 });
 
-run(cmd2, cliArguments());
+// run(cmd2, cliArguments());

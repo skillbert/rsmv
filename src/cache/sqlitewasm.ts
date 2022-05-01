@@ -1,6 +1,6 @@
-import { cacheMajors } from "./constants";
-import * as cache from "./cache";
-import type { WorkerPackets } from "./cacheloaderwasmworker";
+import { cacheMajors } from "../constants";
+import * as cache from "./index";
+import type { WorkerPackets } from "./sqlitewasmworker";
 
 
 export class WasmGameCacheLoader extends cache.CacheFileSource {
@@ -14,7 +14,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	constructor() {
 		super();
 		//@ts-ignore this whole line gets consumed by webpack, turns to static string in webpack
-		this.worker = new Worker(new URL("./cacheloaderwasmworker.ts", import.meta.url));
+		this.worker = new Worker(new URL("./sqlitewasmworker.ts", import.meta.url));
 		this.worker.onmessage = e => {
 			let handler = this.callbacks.get(e.data.id);
 			if (e.data.error) { handler?.reject(new Error(e.data.error)); }
@@ -54,6 +54,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	}
 
 	giveBlobs(blobs: Record<string, Blob>) {
+		Object.assign(this.dbfiles, blobs);
 		this.sendWorker({ type: "blobs", blobs });
 	}
 

@@ -3,11 +3,11 @@ import { ArgParser } from "cmd-ts/dist/cjs/argparser";
 
 import { Type, option } from 'cmd-ts';
 import { CacheFileSource } from "./cache";
-import { Downloader } from "./downloader";
-import * as updater from "./updater";
-import { GameCacheLoader } from "./cacheloader";
+import { Downloader } from "./cache/downloader";
+import * as updater from "./cache/updater";
+import { GameCacheLoader } from "./cache/sqlite";
 import { MapRect } from "./3d/mapsquare";
-import { RawFileLoader } from "./rawfileloader";
+import { RawFileLoader } from "./cache/rawfiles";
 
 export type Rect = { x: number, y: number, width: number, height: number };
 

@@ -52,7 +52,7 @@ var _uncompressed = function (input: Buffer) {
  */
 var _bz2 = function (input: Buffer) {
 	//var bzip2 = require("bzip2");
-	var bzip2 = require("./libs/bzip2fork");
+	var bzip2 = require("../libs/bzip2fork");
 	var compressed = input.readUInt32BE(0x1);
 	var uncompressed = input.readUInt32BE(0x5);
 	var processed = Buffer.alloc(compressed + 0x2 + 0x1 + 0x1);

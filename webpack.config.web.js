@@ -1,6 +1,6 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-const { ProvidePlugin ,HotModuleReplacementPlugin} = require('webpack');
+const { ProvidePlugin, HotModuleReplacementPlugin } = require('webpack');
 
 /**
  * @type {import("webpack").Configuration}
@@ -36,6 +36,8 @@ module.exports = {
 			path: false,
 			crypto: false,
 			sharp: false,
+			net: false,
+			sqlite3: false,
 			process: require.resolve('process/browser')
 		},
 		fallback: {

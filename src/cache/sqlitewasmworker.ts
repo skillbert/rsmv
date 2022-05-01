@@ -1,4 +1,4 @@
-import { compressSqlite, decompressSqlite } from "./decompress";
+import { compressSqlite, decompressSqlite } from "./compression";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type { InitSqlJsStatic, Database } from "sql.js";
 

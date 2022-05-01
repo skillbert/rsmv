@@ -13,7 +13,6 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import classNames from "classnames";
-import { WasmGameCacheLoader as GameCacheLoader } from "../cacheloaderwasm";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ThreeJsRenderer } from "./threejsrender";

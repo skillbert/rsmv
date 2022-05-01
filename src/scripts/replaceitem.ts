@@ -1,4 +1,4 @@
-import { compressSqlite, decompressSqlite } from "../decompress";
+import { compressSqlite, decompressSqlite } from "../cache/compression";
 import * as path from "path";
 import { promisify } from "util";
 import * as cache from "../cache";

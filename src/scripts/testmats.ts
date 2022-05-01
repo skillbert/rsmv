@@ -9,10 +9,9 @@ import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
 import { FlatImageData, Stream } from "../3d/utils";
 import * as cache from "../cache";
-import { GameCacheLoader } from "../cacheloader";
+import { GameCacheLoader } from "../cache/sqlite";
 import { crc32_backward, forge } from "../libs/crc32util";
 import { getDebug } from "../opcode_reader";
-import { Downloader } from "../downloader";
 import prettyJson from "json-stringify-pretty-compact";
 import { framemaps } from "../../generated/framemaps";
 

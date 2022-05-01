@@ -35,7 +35,6 @@ type LayerConfig = {
 	mode: string,
 	name: string,
 	pxpersquare: number,
-	outputpxpersquare?: number,
 	level: number,
 	subtractlayer?: string
 } & ({
@@ -80,7 +79,7 @@ class MapRender {
 	}
 	getLayerZooms(layercnf: LayerConfig) {
 		const min = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
-		const max = Math.log2((layercnf.outputpxpersquare ?? layercnf.pxpersquare));
+		const max = Math.log2(layercnf.pxpersquare);
 		const base = Math.log2(this.config.tileimgsize / 64);
 		return { min, max, base };
 	}
@@ -238,7 +237,6 @@ let cmd = cmdts.command({
 					dxdy: 0.15, dzdy: 0.5,
 					level,
 					pxpersquare: 64,
-					outputpxpersquare: 64,
 					subtractlayer: (level == 0 ? undefined : `level-0`)
 				} as LayerConfig)),
 				...allfloors.map(level => ({
@@ -247,7 +245,6 @@ let cmd = cmdts.command({
 					dxdy: 0, dzdy: 0,
 					level,
 					pxpersquare: 64,
-					outputpxpersquare: 64,
 					subtractlayer: (level == 0 ? undefined : `topdown-0`)
 				} as LayerConfig)),
 				...allfloors.map(level => ({

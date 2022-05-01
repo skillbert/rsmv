@@ -1,15 +1,15 @@
-import { cliArguments } from "../cliparser";
+import { cliArguments, filesource, ReadCacheSource } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheMajors } from "../constants";
-import { GameCacheLoader } from "../cacheloader";
 
 let cmd2 = command({
 	name: "run",
 	args: {
+		...filesource
 		// save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
 	},
 	handler: async (args) => {
-		let source = new GameCacheLoader();
+		let source = await args.source();
 		let rootindex = await source.getIndexFile(cacheMajors.index);
 		console.log("[");
 		for (let indexfile of rootindex) {

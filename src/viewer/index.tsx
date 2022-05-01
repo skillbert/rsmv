@@ -6,19 +6,18 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
-import { HSL2RGB, ModelModifications, packedHSL2HSL } from "../3d/utils";
-import { WasmGameCacheLoader as GameCacheLoader } from "../cacheloaderwasm";
+import { WasmGameCacheLoader as GameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 
-import { mapsquareModels, mapsquareToThree, ParsemapOpts, parseMapsquare, resolveMorphedObject } from "../3d/mapsquare";
-import { ParsedTexture } from "../3d/textures";
 import * as datastore from "idb-keyval";
 import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
-import { Object3D } from "three";
-import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ModelBrowser } from "./scenenodes";
+import { getDependencies } from "../scripts/dependencies";
+import { hashCache } from "../scripts/cachediff";
 
-
+//TODO remove
+globalThis.calculateDependencies = () => getDependencies(hackyCacheFileSource);
+globalThis.hashCache = () => hashCache(hackyCacheFileSource);
 
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);

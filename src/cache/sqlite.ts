@@ -1,11 +1,11 @@
-import * as cache from "./cache";
-import { compressSqlite, decompress, decompressSqlite } from "./decompress";
+import * as cache from "./index";
+import { compressSqlite, decompress, decompressSqlite } from "./compression";
 import * as path from "path";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type * as sqlite3 from "sqlite3";
 import * as fs from "fs";
-import { cacheMajors } from "./constants";
-import { CacheIndex } from "./cache";
+import { cacheMajors } from "../constants";
+import { CacheIndex } from "./index";
 
 type CacheTable = {
 	db: sqlite3.Database | null,

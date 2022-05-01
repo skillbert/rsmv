@@ -1,6 +1,6 @@
-import { crc32, crc32_backward, forge_crcbytes } from "./libs/crc32util";
-import { cacheMajors } from "./constants";
-import { parseCacheIndex, parseRootCacheIndex } from "./opdecoder";
+import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
+import { cacheMajors } from "../constants";
+import { parseCacheIndex, parseRootCacheIndex } from "../opdecoder";
 
 export type SubFile = {
 	offset: number,

@@ -1,6 +1,6 @@
-import { CacheIndex, indexBufferToObject, unpackBufferArchive, CacheFileSource, CacheIndexFile } from "./cache";
+import { CacheIndex, indexBufferToObject, unpackBufferArchive, CacheFileSource, CacheIndexFile } from "./index";
 import { crc32 } from "crc";
-import { decompress } from "./decompress";
+import { decompress } from "./compression";
 import * as fs from "fs";
 import * as net from "net";
 import fetch from "node-fetch";

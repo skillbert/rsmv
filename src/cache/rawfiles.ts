@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "./cache";
+import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "./index";
 
 
 export class RawFileLoader extends CacheFileSource {
