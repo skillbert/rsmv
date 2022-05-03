@@ -27,7 +27,7 @@ const tiledimensions = 512;
 export const squareSize = 64;
 export const squareLevels = 4;
 const heightScale = 1 / 16;
-const worldStride = 128;
+export const worldStride = 128;
 
 const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 const wallmodels = generateWallModels();

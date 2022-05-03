@@ -26,6 +26,8 @@ import { npcs } from "../../generated/npcs";
 import { spotanims } from "../../generated/spotanims";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import prettyJson from "json-stringify-pretty-compact";
+import { svgfloor } from "../map/svgrender";
+import { stringToMapArea } from "../cliparser";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario";
 
@@ -270,12 +272,14 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 
 
 export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
-	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[] }>;
-	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[] } | null = null;
+	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> }>;
+	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> } | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
 	mixer = new AnimationMixer(this.rootnode);
 	renderscene: ThreeJsRenderer | null = null;
+	toggles: Record<string, boolean> = {};
+	rect: MapRect;
 
 	cleanup() {
 		this.listeners = {};
@@ -283,7 +287,20 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		if (this.renderscene) {
 			this.renderscene.animationMixers.delete(this.mixer);
 		}
+
+		//only clear vertex memory for now, materials might be reused and are up to the scenecache
+		this.model.then(q => q.chunkmodels.forEach(node => {
+			node.traverse(obj => {
+				if (obj instanceof Mesh) { obj.geometry.dispose(); }
+			});
+		}))
 		this.renderscene = null;
+	}
+
+	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
+		let { chunks, grid } = await this.model;
+		let rect: MapRect = { x: this.rect.x * 64, z: this.rect.z * 64, xsize: this.rect.xsize * 64, zsize: this.rect.zsize * 64 };
+		return svgfloor(this.cache.source, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
 	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
@@ -294,13 +311,27 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 	}
 
 	onModelLoaded() {
+		this.setToggles(this.toggles);
 		this.emit("loaded", undefined);
 		this.renderscene?.forceFrame();
 		this.renderscene?.setCameraLimits();
 	}
 
+	setToggles(toggles: Record<string, boolean>) {
+		this.toggles = toggles;
+		this.rootnode.traverse(node => {
+			if (node.userData.modelgroup) {
+				let newvis = toggles[node.userData.modelgroup] ?? true;
+				node.traverse(child => {
+					if (child instanceof THREE.Mesh) { child.visible = newvis; }
+				});
+			}
+		});
+	}
+
 	constructor(rect: MapRect, cache: ThreejsSceneCache) {
 		super();
+		this.rect = rect;
 		this.cache = cache;
 		this.model = (async () => {
 			//TODO enable centered again
@@ -313,7 +344,29 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 			if (chunkmodels.length != 0) {
 				this.rootnode.add(...chunkmodels);
 			}
-			this.loaded = { grid, chunks, chunkmodels };
+
+			let groups = new Set<string>();
+			this.rootnode.traverse(node => {
+				if (node.userData.modelgroup) {
+					groups.add(node.userData.modelgroup);
+				}
+				if (node instanceof THREE.Mesh) {
+					let parent: THREE.Object3D | null = node;
+					let iswireframe = false;
+					//TODO this data should be on the mesh it concerns instead of a parent
+					while (parent) {
+						if (parent.userData.modeltype == "floorhidden") {
+							iswireframe = true;
+						}
+						parent = parent.parent;
+					}
+					if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
+						node.material.wireframe = true;
+					}
+				}
+			});
+
+			this.loaded = { grid, chunks, chunkmodels, groups };
 			this.onModelLoaded();
 			return this.loaded;
 		})();
@@ -866,7 +919,11 @@ export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 }
 type SceneMapState = {
-	chunkgroups: { rect: MapRect, chunk: RSMapChunk }[],
+	chunkgroups: {
+		rect: MapRect,
+		chunk: RSMapChunk,
+		background: string
+	}[],
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>
 };
@@ -899,7 +956,7 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	async addArea(rect: MapRect) {
 		let chunk = new RSMapChunk(rect, this.props.cache);
 		chunk.once("loaded", async () => {
-			let mainchunk = chunk.loaded![0];
+			let mainchunk = chunk.loaded!.chunks[0];
 			let skybox: Object3D | undefined = undefined;
 			let fogColor = [0, 0, 0, 0];
 			if (mainchunk?.extra.unk00?.unk20) {
@@ -915,30 +972,9 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 			}
 
 			let combined = chunk.rootnode;
-			let groups = new Set<string>();
-
-			combined.traverse(node => {
-				if (node.userData.modelgroup) {
-					groups.add(node.userData.modelgroup);
-				}
-				if (node instanceof THREE.Mesh) {
-					let parent: THREE.Object3D | null = node;
-					let iswireframe = false;
-					//TODO this data should be on the mesh it concerns instead of a parent
-					while (parent) {
-						if (parent.userData.modeltype == "floorhidden") {
-							iswireframe = true;
-						}
-						parent = parent.parent;
-					}
-					if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
-						node.material.wireframe = true;
-					}
-				}
-			});
 
 			let toggles = this.state.toggles;
-			[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
+			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 				if (typeof toggles[q] != "boolean") {
 					toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
 				}
@@ -946,11 +982,10 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 
 			let center = this.state.center;
 			combined.position.add(new Vector3(-center.x, 0, -center.z));
+			chunk.addToScene(this.props.scene);
+			chunk.setToggles(toggles);
 
-			this.fixToggles();
 			this.props.scene.setSkybox(skybox, fogColor);
-			this.props.scene.modelnode.add(combined);
-			this.props.scene.forceFrame();
 			this.setState({ toggles });
 		});
 
@@ -961,33 +996,26 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 				z: (rect.z + rect.zsize / 2) * 64 * 512,
 			}
 		}
-		let chunkentry = { rect, chunk };
+		let chunkentry = { rect, chunk, background: "" };
+		chunk.renderSvg().then(svg => {
+			chunkentry.background = `url("data:image/svg+xml;base64,${btoa(svg)}")`;
+			this.forceUpdate();
+		});
 		this.setState({
 			chunkgroups: [...this.state.chunkgroups, chunkentry],
 			center: center
 		});
 	}
 
-	fixToggles() {
-		this.state.chunkgroups.forEach(chunk => {
-			chunk.chunk.rootnode.traverse(node => {
-				if (node.userData.modelgroup) {
-					let newvis = this.state.toggles[node.userData.modelgroup] ?? true;
-					node.traverse(child => {
-						if (child instanceof THREE.Mesh) { child.visible = newvis; }
-					})
-				}
-			});
-		})
-	}
-
 	@boundMethod
 	onSubmit(searchtext: string) {
 		localStorage.rsmv_lastsearch = searchtext;
-		let [x, z, xsize, zsize] = searchtext.split(/[,\.\/:;]/).map(n => +n);
-		xsize = xsize ?? 1;
-		zsize = zsize ?? xsize;
-		this.addArea({ x, z, xsize, zsize });
+		let rect = stringToMapArea(searchtext);
+		if (!rect) {
+			//TODO some sort of warning?
+			return;
+		}
+		this.addArea(rect);
 	}
 
 	setToggle(toggle: string, value: boolean) {
@@ -996,12 +1024,12 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 			for (let key in old.toggles) {
 				newtoggles[key] = (key == toggle ? value : old.toggles[key]);
 			}
+			this.state.chunkgroups.forEach(q => q.chunk.setToggles(newtoggles));
 			return { toggles: newtoggles };
 		})
 	}
 
 	render() {
-		this.fixToggles();
 		this.props.scene.forceFrame();
 		let toggles: Record<string, string[]> = {};
 		for (let toggle of Object.keys(this.state.toggles)) {
@@ -1044,6 +1072,9 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 								gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
 								gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
 							}
+							if (chunk.background) {
+								style.backgroundImage = chunk.background;
+							}
 							for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
 								for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
 									addgrid[(x - xmin) * zsize + (z - zmin)] = null;
@@ -1051,7 +1082,8 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 							}
 							return (
 								<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !chunk.chunk.loaded })} style={style}>
-									{chunk.rect.x},{chunk.rect.z}{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : ` ${chunk.rect.xsize}x${chunk.rect.zsize}`}
+									{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : <React.Fragment>{chunk.rect.xsize}x{chunk.rect.zsize}<br /></React.Fragment>}
+									{chunk.rect.x},{chunk.rect.z}
 								</div>
 							);
 						})}

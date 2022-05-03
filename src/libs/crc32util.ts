@@ -66,7 +66,7 @@ export function forge_crcbytes(frontcrc: number, backcrc: number) {
 
 export function forge(str: Uint8Array, wanted_crc: number, pos = str.length, insert = true) {
 	let endpos = (insert ? pos : pos + 4);
-	
+
 	let fwd_crc = crc32(str, 0, 0, pos);
 	let bkd_crc = crc32_backward(str, wanted_crc, endpos);
 

@@ -5,20 +5,23 @@ import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, pa
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { defaultMorphId } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
+import { crc32 } from "../libs/crc32util";
+import { arrayEnum } from "../3d/utils";
 
-
-
-
-export type DepTypes = "material" | "model" | "item" | "loc" | "mapsquare" | "sequence" | "skeleton" | "frameset" | "animgroup" | "npc" | "framebase" | "texture" | "enum";
+const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum"]);
+const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
+export type DepTypes = typeof depids[number];
 
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
-type DepCollector = (cache: CacheFileSource, addDep: DepCallback) => Promise<void>;
+type HashCallback = (depType: DepTypes, depId: number, hash: number) => void;
+type DepCollector = (cache: CacheFileSource, addDep: DepCallback, addHash: HashCallback) => Promise<void>;
 
-async function mapsquareDeps(cache: CacheFileSource, addDep: DepCallback) {
+const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 	let mapsquareindices = await cache.getIndexFile(cacheMajors.mapsquares);
 	for (let square of mapsquareindices) {
 		if (!square) { continue; }
 		let locsconfig = square.subindices.indexOf(cacheMapFiles.locations);
+		addHash("mapsquare", square.minor, square.crc);
 		if (locsconfig != -1) {
 			let arch = await cache.getFileArchive(square);
 			let locs = parseMapsquareLocations.read(arch[locsconfig].buffer);
@@ -30,13 +33,14 @@ async function mapsquareDeps(cache: CacheFileSource, addDep: DepCallback) {
 }
 
 
-async function sequenceDeps(cache: CacheFileSource, addDep: DepCallback) {
+const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 	let seqindices = await cache.getIndexFile(cacheMajors.sequences);
 	for (let index of seqindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
 		for (let file of arch) {
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
+			addHash("sequence", id, crc32(file.buffer));
 			let seq = parseSequences.read(file.buffer);
 			if (seq.skeletal_animation) {
 				addDep("skeleton", seq.skeletal_animation, "sequence", id);
@@ -47,15 +51,16 @@ async function sequenceDeps(cache: CacheFileSource, addDep: DepCallback) {
 		}
 	}
 }
-async function locationDeps(cache: CacheFileSource, addDep: DepCallback) {
+const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 	let locindices = await cache.getIndexFile(cacheMajors.objects);
 	for (let index of locindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
 
 		for (let file of arch) {
-			let loc = parseObject.read(file.buffer);
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
+			addHash("loc", id, crc32(file.buffer));
+			let loc = parseObject.read(file.buffer);
 			if (loc.probably_animation) {
 				addDep("sequence", loc.probably_animation, "loc", id);
 			}
@@ -75,15 +80,16 @@ async function locationDeps(cache: CacheFileSource, addDep: DepCallback) {
 		}
 	}
 }
-async function itemDeps(cache: CacheFileSource, addDep: DepCallback) {
+const itemDeps: DepCollector = async (cache, addDep, addHash) => {
 	let itemindices = await cache.getIndexFile(cacheMajors.items);
 	for (let index of itemindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
 
 		for (let file of arch) {
-			let item = parseItem.read(file.buffer);
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
+			addHash("item", id, crc32(file.buffer));
+			let item = parseItem.read(file.buffer);
 			let models: number[] = ([] as (number | undefined | null)[]).concat(
 				item.baseModel,
 				item.maleModels_0, item.maleModels_1, item.maleModels_2,
@@ -99,9 +105,10 @@ async function itemDeps(cache: CacheFileSource, addDep: DepCallback) {
 		}
 	}
 }
-async function animgroupDeps(cache: CacheFileSource, addDep: DepCallback) {
+const animgroupDeps: DepCollector = async (cache, addDep, addHash) => {
 	let animgroupfiles = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	for (let file of animgroupfiles) {
+		addHash("animgroup", file.fileid, crc32(file.buffer));
 		let animgroup = parseAnimgroupConfigs.read(file.buffer);
 		let anim = animgroup.unknown_26 ?? animgroup.baseAnims?.idle;
 		if (anim) {
@@ -109,13 +116,14 @@ async function animgroupDeps(cache: CacheFileSource, addDep: DepCallback) {
 		}
 	}
 }
-async function materialDeps(cache: CacheFileSource, addDep: DepCallback) {
+const materialDeps: DepCollector = async (cache, addDep, addHash) => {
 	let npcindices = await cache.getIndexFile(cacheMajors.materials);
 	for (let index of npcindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
 
 		for (let file of arch) {
+			addHash("material", file.fileid, crc32(file.buffer));
 			let mat = convertMaterial(file.buffer);
 			for (let tex of Object.values(mat.textures)) {
 				if (typeof tex == "number") {
@@ -125,7 +133,7 @@ async function materialDeps(cache: CacheFileSource, addDep: DepCallback) {
 		}
 	}
 }
-async function npcDeps(cache: CacheFileSource, addDep: DepCallback) {
+const npcDeps: DepCollector = async (cache, addDep, addHash) => {
 	let npcindices = await cache.getIndexFile(cacheMajors.npcs);
 	for (let index of npcindices) {
 		if (!index) { continue; }
@@ -133,6 +141,7 @@ async function npcDeps(cache: CacheFileSource, addDep: DepCallback) {
 
 		for (let file of arch) {
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
+			addHash("npc", id, crc32(file.buffer));
 			let npc = parseNpc.read(file.buffer)
 			if (npc.animation_group) {
 				addDep("animgroup", npc.animation_group, "npc", id);
@@ -150,20 +159,22 @@ async function npcDeps(cache: CacheFileSource, addDep: DepCallback) {
 		}
 	}
 }
-async function skeletonDeps(cache: CacheFileSource, addDep: DepCallback) {
+const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
 	let skelindices = await cache.getIndexFile(cacheMajors.skeletalAnims);
 	for (let skelindex of skelindices) {
 		if (!skelindex) { continue; }
+		addHash("skeleton", skelindex.minor, skelindex.crc);
 		let file = await cache.getFile(skelindex.major, skelindex.minor, skelindex.crc);
 		let skel = parseSkeletalAnim.read(file);
 		addDep("framebase", skel.framebase, "skeleton", skelindex.minor);
 	}
 }
 
-async function framesetDeps(cache: CacheFileSource, addDep: DepCallback) {
+const framesetDeps: DepCollector = async (cache, addDep, addHash) => {
 	let framesetindices = await cache.getIndexFile(cacheMajors.frames);
 	for (let index of framesetindices) {
 		if (!index) { continue; }
+		addHash("frameset", index.minor, index.crc);
 		let arch = await cache.getFileArchive(index);
 		if (arch.length != 0) {
 			let frame0 = parseFrames.read(arch[0].buffer);
@@ -172,10 +183,11 @@ async function framesetDeps(cache: CacheFileSource, addDep: DepCallback) {
 	}
 }
 
-async function modelDeps(cache: CacheFileSource, addDep: DepCallback) {
+const modelDeps: DepCollector = async (cache, addDep, addHash) => {
 	let modelindices = await cache.getIndexFile(cacheMajors.models);
 	for (let modelindex of modelindices) {
 		if (!modelindex) { continue; }
+		addHash("model", modelindex.minor, modelindex.crc);
 		let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
 		let model = parseModels.read(file);
 		for (let mesh of model.meshes) {
@@ -186,9 +198,11 @@ async function modelDeps(cache: CacheFileSource, addDep: DepCallback) {
 	}
 }
 
+export type DependencyGraph = (typeof getDependencies) extends ((...args: any[]) => Promise<infer T>) ? T : never;
 export async function getDependencies(cache: CacheFileSource) {
 	let dependentsMap = new Map<string, string[]>();
 	let dependencyMap = new Map<string, string[]>();
+	let hashes = new Map<string, number>();
 	let addDep = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => {
 		let holder = `${holdertype}-${holderId}`;
 		let newdep = `${deptType}-${depId}`;
@@ -196,7 +210,7 @@ export async function getDependencies(cache: CacheFileSource) {
 		let dependencies = dependencyMap.get(newdep);
 		if (!dependencies) {
 			dependencies = [];
-			dependentsMap.set(newdep, dependencies);
+			dependencyMap.set(newdep, dependencies);
 		}
 		if (dependencies.indexOf(holder) == -1) { dependencies.push(holder); }
 		//add dependent
@@ -206,6 +220,10 @@ export async function getDependencies(cache: CacheFileSource) {
 			dependentsMap.set(holder, deps);
 		}
 		if (deps.indexOf(newdep) == -1) { deps.push(newdep); }
+	}
+	let addHash = (deptType: DepTypes, depId: number, hash: number) => {
+		let depname = `${deptType}-${depId}`;
+		hashes.set(depname, hash);
 	}
 
 	globalThis.dependentsMap = dependentsMap;
@@ -218,18 +236,60 @@ export async function getDependencies(cache: CacheFileSource) {
 		animgroupDeps,
 		materialDeps,
 		npcDeps,
-		skeletonDeps,
-		framesetDeps,
+		// skeletonDeps,
+		// framesetDeps,
 		// modelDeps
 	];
 
 	for (let run of runs) {
 		console.log(`starting ${run.name}`);
 		let t = Date.now();
-		await run(cache, addDep);
+		await run(cache, addDep, addHash);
 		console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
 	}
-	return { dependencyMap, dependentsMap };
+
+	let makeDeptName = (deptType: DepTypes, id: number) => {
+		return `${deptType}-${id}`;
+	}
+
+	let cascadeDependencies = (depname: string, list: string[] = []) => {
+		let hash = hashes.get(depname) ?? 0;
+		let hashtext = `${depname}-${hash}`;
+		if (!list.includes(hashtext)) {
+			list.push(hashtext);
+			let deps = dependencyMap.get(depname);
+			if (deps) {
+				for (let dep of deps) {
+					cascadeDependencies(dep, list);
+				}
+			}
+		}
+		return list;
+	}
+
+	let hashDependencies = (depname: string, previouscrc = 0) => {
+		let hash = hashes.get(depname) ?? 0;
+		let [type, id] = depname.split("-");
+		let crc = previouscrc;
+		crc32addInt(depidmap[type], crc);
+		crc32addInt(+id, crc);
+		crc32addInt(+hash, crc);
+		let deps = dependencyMap.get(depname);
+		if (deps) {
+			for (let dep of deps) {
+				crc = hashDependencies(dep, crc);
+			}
+		}
+		return crc;
+	}
+
+	return { dependencyMap, dependentsMap, cascadeDependencies, makeDeptName, hashDependencies };
+}
+
+let staticintbuf = Buffer.alloc(4);
+export function crc32addInt(int: number, crc = 0) {
+	staticintbuf.writeUInt32BE(int);
+	return crc32(staticintbuf, crc);
 }
 
 // let cmd2 = command({

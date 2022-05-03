@@ -14,6 +14,7 @@ import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3
 import { ModelBrowser } from "./scenenodes";
 import { getDependencies } from "../scripts/dependencies";
 import { hashCache } from "../scripts/cachediff";
+import { runMapRender } from "../map/index";
 
 //TODO remove
 globalThis.calculateDependencies = () => getDependencies(hackyCacheFileSource);
@@ -167,7 +168,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	@boundMethod
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
-			let renderer = new ThreeJsRenderer(cnv, {}, hackyCacheFileSource);
+			let renderer = new ThreeJsRenderer(cnv);
 			renderer.automaticFrames = true;
 			console.warn("forcing auto-frames!!");
 			this.setState({ renderer });
@@ -180,6 +181,8 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 			this.setState({ cache: new ThreejsSceneCache(engine) });
 			//TODO remove
 			let source = engine.source;
+			
+			globalThis.runMapRender = () => runMapRender(hackyCacheFileSource, "50,50");
 			globalThis.loadSkeletons = async function run() {
 
 				let skelindex = await source.getIndexFile(cacheMajors.skeletalAnims);

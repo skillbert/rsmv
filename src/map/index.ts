@@ -1,10 +1,10 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect } from "../3d/mapsquare";
+import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride } from "../3d/mapsquare";
 import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
-import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect } from "../cliparser";
+import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect, stringToMapArea } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
 import type { Material, Object3D } from "three";
@@ -14,21 +14,21 @@ import { parseEnums, parseMapZones } from "../opdecoder";
 import { FlatImageData } from "3d/utils";
 import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { RSMapChunk } from "../viewer/scenenodes";
+import { DependencyGraph, getDependencies } from "../scripts/dependencies";
 
 window.addEventListener("keydown", e => {
 	if (e.key == "F5") { document.location.reload(); }
 	// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 });
 
-const watermarkfile = fs.readFileSync(__dirname + "/../assets/watermark.png");
+const watermarkfile = null!;//fs.readFileSync(__dirname + "/../assets/watermark.png");
 
 type Mapconfig = {
-	basedir: string,
 	layers: LayerConfig[],
 	tileimgsize: number,
 	mapsizex: number,
-	mapsizez: number,
-	overwrite: boolean
+	mapsizez: number
 }
 
 type LayerConfig = {
@@ -36,6 +36,7 @@ type LayerConfig = {
 	name: string,
 	pxpersquare: number,
 	level: number,
+	addmipmaps: boolean,
 	subtractlayer?: string
 } & ({
 	mode: "3d",
@@ -45,31 +46,25 @@ type LayerConfig = {
 } | {
 	mode: "map",
 	wallsonly: boolean
+} | {
+	mode: "height"
 });
 
 class MapRender {
 	config: Mapconfig;
-	overwrite: boolean;
 	layers: LayerConfig[];
-	basedir: string;
+	basedir = "";
 	constructor(config: Mapconfig) {
 		this.config = config;
-		this.overwrite = config.overwrite;
 		this.layers = config.layers;
-		this.basedir = config.basedir;
 	}
 	outzoom(layer: string, zoom: number) {
-		return `${this.config.basedir}/${layer}/${zoom}`;
+		return `${this.basedir}/${layer}/${zoom}`;
 	}
-	outpath(layer: string, zoom: number, x: number, y: number, ext = "png") {
+	outpath(layer: string, zoom: number, x: number, y: number, ext: string) {
 		return `${this.outzoom(layer, zoom)}/${x}-${y}.${ext}`;
 	}
-	metapath(chunkx: number, chunkz: number) {
-		return `${this.config.basedir}/meta/${chunkx}-${chunkz}.json`;
-	}
 	makedirs() {
-		fs.mkdirSync(`${this.config.basedir}/meta`, { recursive: true });
-		fs.mkdirSync(`${this.config.basedir}/height`, { recursive: true });
 		for (let layer of this.config.layers) {
 			let zooms = this.getLayerZooms(layer);
 			for (let zoom = zooms.min; zoom <= zooms.max; zoom++) {
@@ -146,139 +141,154 @@ class ProgressUI {
 	}
 }
 
+export async function runMapRender(filesource: CacheFileSource, areaArgument: string) {
+	const tileimgsize = 512;
+	const mapsizez = 200;
+	const mapsizex = 100;
+	let engine = await EngineCache.create(filesource);
+
+	let areas: MapRect[] = [];
+	let mask: MapRect[] | undefined = undefined;
+	if (areaArgument.match(/^w+$/)) {
+		if (areaArgument == "main") {
+
+			//enums 708 seems to be the map select dropdown in-game
+			let file = await filesource.getFileById(cacheMajors.enums, 708);
+			let mapenum = parseEnums.read(file);
+
+			let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
+			mask = mapenum.intArrayValue2!.values
+				.map(q => parseMapZones.read(files[q[1]].buffer))
+				// .filter(q => q.show && q.name)
+				.flatMap(q => q.bounds)
+				.map(q => {
+					let x = q.src.xstart;
+					let z = q.src.zstart;
+					//add +1 since the zones are inclusive of their end coord
+					return { x, z, xsize: q.src.xend - x + 1, zsize: q.src.zend - z + 1 } as MapRect
+				});
+
+			//hardcoded extra bits
+			mask.push({ x: 2176, z: 3456, xsize: 64, zsize: 64 });//prif top ocean doesn't exist on any map
+			mask.push({ x: 2432, z: 2624, xsize: 128, zsize: 128 });//use the original ashdale and hope for the best
+
+
+			areas = mask.map(q => {
+				let x = Math.floor(q.x / 64);
+				let z = Math.floor(q.z / 64);
+				return { x, z, xsize: Math.ceil((q.x + q.xsize) / 64) - x + 1, zsize: Math.ceil((q.z + q.zsize) / 64) - z + 1 };
+			});
+		}
+		if (areaArgument == "test") {
+			areas = [
+				{ x: 47, z: 48, xsize: 2, zsize: 2 }
+			]
+			mask = [
+				{ x: 3032, z: 3150, xsize: 95, zsize: 100 },
+			]
+		}
+		if (areaArgument == "gwd3") {
+			areas = [
+				{ x: 31, z: 20, xsize: 1, zsize: 1 }
+			];
+			mask = [
+				{ x: 1984, z: 1280, xsize: 64, zsize: 64 }
+			]
+		}
+		if (areaArgument == "tower") {
+			areas = [
+				{ x: 49, z: 51, xsize: 1, zsize: 1 }
+			];
+		}
+	} else if (areaArgument.length == 0) {
+		areas = [{ x: 0, z: 0, xsize: 100, zsize: 200 }];
+	} else {
+		let rect = stringToMapArea(areaArgument);
+		if (!rect) {
+			throw new Error("map area argument did not match a preset name and did not resolve to a rectangle");
+		}
+		areas = [rect];
+	}
+	if (areas.length == 0) {
+		throw new Error("no map area or map name");
+	}
+
+	let allfloors = [0, 1, 2, 3];
+
+	let config = new MapRender({
+		tileimgsize,
+		mapsizex,
+		mapsizez,
+		layers: [
+			...allfloors.map<LayerConfig>(level => ({
+				mode: "3d",
+				name: `level-${level}`,
+				dxdy: 0.15, dzdy: 0.5,
+				level,
+				pxpersquare: 64,
+				subtractlayer: (level == 0 ? undefined : `level-0`),
+				addmipmaps: true
+			})),
+			...allfloors.map<LayerConfig>(level => ({
+				mode: "3d",
+				name: `topdown-${level}`,
+				dxdy: 0, dzdy: 0,
+				level,
+				pxpersquare: 64,
+				subtractlayer: (level == 0 ? undefined : `topdown-0`),
+				addmipmaps: true
+			})),
+			...allfloors.map<LayerConfig>(level => ({
+				mode: "map",
+				name: `map-${level}`,
+				level,
+				pxpersquare: 8,
+				wallsonly: false,
+				addmipmaps: true
+			})),
+			...allfloors.map<LayerConfig>(level => ({
+				mode: "map",
+				name: `walls-${level}`,
+				level,
+				pxpersquare: 8,
+				wallsonly: true,
+				addmipmaps: true
+			})),
+			...allfloors.map<LayerConfig>(level => ({
+				mode: "height",
+				name: `height-${level}`,
+				level,
+				pxpersquare: 1,
+				addmipmaps: false
+			}))
+		]
+	});
+
+	// config.makedirs();
+	let progress = new ProgressUI(areas);
+
+	document.body.appendChild(progress.root);
+
+	let getRenderer = () => {
+		let cnv = document.createElement("canvas");
+		return new MapRenderer(cnv, engine);
+	}
+	await downloadMap(getRenderer, engine, areas, mask, config, progress);
+	// await generateMips(config, progress);
+	console.log("done");
+}
+
+
 let cmd = cmdts.command({
 	name: "download",
 	args: {
 		...filesource,
-		...mapareasourceoptional,
 		mapname: cmdts.option({ long: "mapname", defaultValue: () => "" }),
 		overwrite: cmdts.flag({ long: "force", short: "f" }),
 		save: cmdts.option({ long: "save", short: "s", type: cmdts.string, defaultValue: () => "cache/map" }),
 	},
 	handler: async (args) => {
-		const tileimgsize = 512;
-		const mapsizez = 200;
-		const mapsizex = 100;
-		let filesource = await args.source();
-		let engine = await EngineCache.create(filesource);
-
-		let areas: MapRect[] = [];
-		let mask: MapRect[] | undefined = undefined;
-		if (args.mapname) {
-			if (args.mapname == "main") {
-
-				//enums 708 seems to be the map select dropdown in-game
-				let file = await filesource.getFileById(cacheMajors.enums, 708);
-				let mapenum = parseEnums.read(file);
-
-				let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
-				mask = mapenum.intArrayValue2!.values
-					.map(q => parseMapZones.read(files[q[1]].buffer))
-					// .filter(q => q.show && q.name)
-					.flatMap(q => q.bounds)
-					.map(q => {
-						let x = q.src.xstart;
-						let z = q.src.zstart;
-						//add +1 since the zones are inclusive of their end coord
-						return { x, z, xsize: q.src.xend - x + 1, zsize: q.src.zend - z + 1 } as MapRect
-					});
-
-				//hardcoded extra bits
-				mask.push({ x: 2176, z: 3456, xsize: 64, zsize: 64 });//prif top ocean doesn't exist on any map
-				mask.push({ x: 2432, z: 2624, xsize: 128, zsize: 128 });//use the original ashdale and hope for the best
-
-
-				areas = mask.map(q => {
-					let x = Math.floor(q.x / 64);
-					let z = Math.floor(q.z / 64);
-					return { x, z, xsize: Math.ceil((q.x + q.xsize) / 64) - x + 1, zsize: Math.ceil((q.z + q.zsize) / 64) - z + 1 };
-				});
-			}
-			if (args.mapname == "test") {
-				areas = [
-					{ x: 47, z: 48, xsize: 2, zsize: 2 }
-				]
-				mask = [
-					{ x: 3032, z: 3150, xsize: 95, zsize: 100 },
-				]
-			}
-			if (args.mapname == "gwd3") {
-				areas = [
-					{ x: 31, z: 20, xsize: 1, zsize: 1 }
-				];
-				mask = [
-					{ x: 1984, z: 1280, xsize: 64, zsize: 64 }
-				]
-			}
-			if (args.mapname == "tower") {
-				areas = [
-					{ x: 49, z: 51, xsize: 1, zsize: 1 }
-				];
-			}
-		} else {
-			areas = args.area ? [args.area] : [{ x: 0, z: 0, xsize: 100, zsize: 200 }];
-		}
-		if (areas.length == 0) {
-			throw new Error("no map area or map name");
-		}
-
-		let allfloors = [0, 1, 2, 3];
-
-		let config = new MapRender({
-			basedir: path.resolve(args.save),
-			tileimgsize,
-			mapsizex,
-			mapsizez,
-			overwrite: args.overwrite,
-			layers: [
-				...allfloors.map(level => ({
-					mode: "3d",
-					name: `level-${level}`,
-					dxdy: 0.15, dzdy: 0.5,
-					level,
-					pxpersquare: 64,
-					subtractlayer: (level == 0 ? undefined : `level-0`)
-				} as LayerConfig)),
-				...allfloors.map(level => ({
-					mode: "3d",
-					name: `topdown-${level}`,
-					dxdy: 0, dzdy: 0,
-					level,
-					pxpersquare: 64,
-					subtractlayer: (level == 0 ? undefined : `topdown-0`)
-				} as LayerConfig)),
-				...allfloors.map(level => ({
-					mode: "map",
-					name: `map-${level}`,
-					level,
-					pxpersquare: 8,
-					wallsonly: false
-				} as LayerConfig)),
-				...allfloors.map(level => ({
-					mode: "map",
-					name: `walls-${level}`,
-					level,
-					pxpersquare: 8,
-					wallsonly: true
-				} as LayerConfig)),
-				// ...allfloors({
-				// 	mode: "height",
-				// 	name: "height",
-				// 	level: 0,
-				// 	pxpersquare: 1,
-				// }, false)
-			]
-		});
-
-		config.makedirs();
-		let progress = new ProgressUI(areas);
-
-		document.body.appendChild(progress.root);
-
-
-		await downloadMap(engine, areas, mask, config, progress);
-		await generateMips(config, progress);
-		console.log("done");
+		await runMapRender(await args.source(), args.mapname);
 	}
 });
 
@@ -293,21 +303,21 @@ if (argvbase64) {
 	cmdts.run(cmd, cliArguments(argv));
 }
 
-type MaprenderSquare = { prom: Promise<ChunkResult>, x: number, z: number, id: number, used: boolean };
-
-type ChunkResult = { chunks: ChunkData[], grid: TileGrid, model: Object3D, modeldata: ChunkModelData[]; };
+type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number, used: boolean };
 
 export class MapRenderer {
 	renderer: ThreeJsRenderer;
+	engine: EngineCache;
+	scenecache: ThreejsSceneCache | null = null;
 	maxunused = 6;
-	idcounter = 1;
+	idcounter = 0;
 	squares: MaprenderSquare[] = [];
-	chunksource: (x: number, z: number) => Promise<ChunkResult>;
-	constructor(cnv: HTMLCanvasElement, filesource: CacheFileSource, chunksource: (x: number, z: number) => Promise<ChunkResult>) {
-		this.renderer = new ThreeJsRenderer(cnv, { alpha: false }, filesource);
+	constructor(cnv: HTMLCanvasElement, engine: EngineCache) {
+		this.engine = engine;
+		// this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
+		this.renderer = globalThis.render;
 		this.renderer.renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
 		this.renderer.scene.background = new THREE.Color(0, 0, 0);
-		this.chunksource = chunksource; 
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),
@@ -322,13 +332,16 @@ export class MapRenderer {
 
 	getChunk(x: number, z: number) {
 		let existing = this.squares.find(q => q.x == x && q.z == z);
+		if (!this.scenecache || (this.idcounter % 16 == 0)) {
+			this.scenecache = new ThreejsSceneCache(this.engine);
+		}
 		if (existing) {
 			return existing;
 		} else {
 			let square: MaprenderSquare = {
 				x: x,
 				z: z,
-				prom: this.chunksource(x, z),
+				chunk: new RSMapChunk({ x, z, xsize: 1, zsize: 1 }, this.scenecache),
 				id: this.idcounter++,
 				used: false
 			}
@@ -344,21 +357,14 @@ export class MapRenderer {
 				load.push(this.getChunk(x + dx, z + dz))
 			}
 		}
-		let squares = await Promise.all(load.map(q => q.prom));
-		let combined = new THREE.Group();
-		combined.scale.setScalar(1 / 512);
-		squares.forEach(model => {
-			if (model) { combined.add(model.model); }
-		});
-		if (this.renderer.modelnode) { this.renderer.scene.remove(this.renderer.modelnode); }
-		this.renderer.modelnode = combined;
-		this.renderer.scene.add(combined);
+		await Promise.all(load.map(q => q.chunk.model));
+		load.forEach(q => q.chunk.addToScene(this.renderer));
 		let obsolete = this.squares.filter(square => !load.includes(square));
 		obsolete.sort((a, b) => b.id - a.id);
 		let removed = obsolete.slice(this.maxunused);
-		// removed.forEach(q => console.log("removing", q.x, q.z));
-		removed.forEach(r => r.prom.then(q => disposeThreeTree(q.model)));
+		removed.forEach(r => r.chunk.cleanup());
 		this.squares = this.squares.filter(sq => !removed.includes(sq));
+		return load;
 	}
 }
 
@@ -457,11 +463,11 @@ export function isImageEmpty(img: FlatImageData, mode: "black" | "transparent", 
 	return true;
 }
 
-export async function downloadMap(engine: EngineCache, rects: MapRect[], mask: MapRect[] | undefined, config: MapRender, progress: ProgressUI) {
-	let cnv = document.createElement("canvas");
+export async function downloadMap(getRenderer: () => MapRenderer, engine: EngineCache, rects: MapRect[], mask: MapRect[] | undefined, config: MapRender, progress: ProgressUI) {
 	let extraopts: ParsemapOpts = { mask };
-	let chunksource = (x: number, z: number) => downloadMapsquareThree(engine, extraopts, x, z);
-	let maprender = new MapRenderer(cnv, engine.source, chunksource);
+	let maprender = getRenderer();
+
+	let deps = await getDependencies(engine.source);
 
 	let errs: Error[] = [];
 	const zscan = 4;
@@ -472,11 +478,10 @@ export async function downloadMap(engine: EngineCache, rects: MapRect[], mask: M
 				for (let retry = 0; retry <= maxretries; retry++) {
 					try {
 						let zsize = Math.min(zscan, rect.z + rect.zsize - z);
-						await renderMapsquare(engine, { x, z, xsize: 1, zsize }, extraopts, config, maprender, progress);
+						await renderMapsquare(engine, { x, z, xsize: 1, zsize }, extraopts, config, maprender, deps, progress);
 						break;
 					} catch (e) {
-						let cnv = document.createElement("canvas");
-						maprender = new MapRenderer(cnv, engine.source, chunksource);
+						maprender = getRenderer();
 						console.warn(e);
 						errs.push(e);
 					}
@@ -498,45 +503,42 @@ export async function downloadMapsquareThree(engine: EngineCache, extraopts: Par
 	return { grid, chunks, model: file, modeldata };
 }
 
-export async function renderMapsquare(engine: EngineCache, subrect: MapRect, extraopts: ParsemapOpts, config: MapRender, renderer: MapRenderer, progress: ProgressUI) {
-	let takepicture = async (cnf: LayerConfig & { mode: "3d" }, rect: MapRect) => {
-		for (let retry = 0; retry <= 2; retry++) {
-			let img = await renderer!.renderer.takePicture(rect.x, rect.z, rect.xsize, cnf.pxpersquare, cnf.dxdy, cnf.dzdy);
-			//need to check this after the image because it can be lost during the image and three wont know
-			//TODO this shouldn't be needed anymore since guaranteeframe handles it
-			if (renderer!.renderer.renderer.getContext().isContextLost()) {
-				console.log("image failed retrying", rect.x, rect.z);
-				continue;
-			}
-			return img;
-		}
-		throw new Error("failed to take picture");
-	}
-	let setfloors = (floornr: number) => {
+export async function renderMapsquare(engine: EngineCache, subrect: MapRect, extraopts: ParsemapOpts, config: MapRender, renderer: MapRenderer, deps: DependencyGraph, progress: ProgressUI) {
+
+	let setfloors = (chunks: MaprenderSquare[], floornr: number) => {
+		let toggles: Record<string, boolean> = {};
 		for (let i = 0; i < 4; i++) {
-			//TODO reimplement
-			// renderer!.renderer.setValue("floor" + i, i <= floornr);
-			// renderer!.renderer.setValue("objects" + i, i <= floornr);
-			// renderer!.renderer.setValue("map" + i, false);
-			// renderer!.renderer.setValue("mapscenes" + i, false);
-			// renderer!.renderer.setValue("walls" + i, false);
+			toggles["floor" + i] = i <= floornr;
+			toggles["objects" + i] = i <= floornr;
+			toggles["map" + i] = false;
+			toggles["mapscenes" + i] = false;
+			toggles["walls" + i] = false;
+			toggles["floorhidden" + i] = false;
+			toggles["collision" + i] = false;
+		}
+		for (let chunk of chunks) {
+			chunk.chunk.setToggles(toggles);
 		}
 	}
 
-	let nimages = 0;
+	let nchunks = 0;
 	let grouptasks: Promise<any>[] = [];
 	for (let dz = 0; dz < subrect.zsize; dz++) {
 		for (let dx = 0; dx < subrect.xsize; dx++) {
 			let x = subrect.x + dx;
 			let z = subrect.z + dz;
-			let metafilename = config.metapath(x, z);
-			if (!config.overwrite && fs.existsSync(metafilename)) {
-				progress.update(x, z, "sliced"); continue;
-			}
 
-			let meta = {};
 			let imgs: Record<string, any> = {};
 			progress.update(x, z, "rendering");
+			let rootdeps = [
+				deps.makeDeptName("mapsquare", (x - 1) + (z - 1) * worldStride),
+				deps.makeDeptName("mapsquare", (x) + (z - 1) * worldStride),
+				deps.makeDeptName("mapsquare", (x - 1) + (z) * worldStride),
+				deps.makeDeptName("mapsquare", (x) + (z) * worldStride)
+			];
+			let depcrc = rootdeps.reduce((a, v) => deps.hashDependencies(v, a), 0);
+			let depfiles = rootdeps.reduce((a, v) => deps.cascadeDependencies(v, a), []);
+			console.log("dependencies", x, z, depcrc, depfiles);
 
 			let imgfiles = 0;
 			let tiletasks: Promise<any>[] = [];
@@ -544,47 +546,48 @@ export async function renderMapsquare(engine: EngineCache, subrect: MapRect, ext
 				let squares = 1;//cnf.mapsquares ?? 1;//TODO remove or reimplement
 				if (x % squares != 0 || z % squares != 0) { continue; }
 				let area: MapRect = { x: x * 64 - 16, z: z * 64 - 16, xsize: 64 * squares, zsize: 64 * squares };
+				let zooms = config.getLayerZooms(cnf);
 
 				if (cnf.mode == "3d") {
-					await renderer.setArea(x - 1, z - 1, 2, 2);
-					setfloors(cnf.level);
-					let img = await takepicture(cnf, area);
+					let chunks = await renderer.setArea(x - 1, z - 1, squares + 1, squares + 1);
+					setfloors(chunks, cnf.level);
+
+					let img = await renderer!.renderer.takePicture(area.x, area.z, area.xsize, cnf.pxpersquare, cnf.dxdy, cnf.dzdy);
 
 					imgs[cnf.name] = img;
-					let tasks = saveSlices(config, cnf, x, z, img, cnf.subtractlayer && imgs[cnf.subtractlayer]);
-					let savetask = trickleTasks("", 4, tasks);
-					tiletasks.push(savetask)
-					grouptasks.push(savetask);
-					imgfiles += tasks.length;
+					// let tasks = saveSlices(config, cnf, x, z, img, cnf.subtractlayer && imgs[cnf.subtractlayer]);
+					// let savetask = trickleTasks("", 4, tasks);
+					// tiletasks.push(savetask)
+					// grouptasks.push(savetask);
+					// imgfiles += tasks.length;
 				}
 				if (cnf.mode == "map") {
 					//TODO somehow dedupe this with massive memory cost?
 					//TODO this ignores mask
-					let { grid, chunks } = await parseMapsquare(engine, { x: x - 1, z: z - 1, xsize: squares + 1, zsize: squares + 1 }, extraopts);
-					let svg = await svgfloor(engine.source, grid, chunks.flatMap(q => q.locs), area, cnf.level, cnf.pxpersquare, cnf.wallsonly);
-					let zooms = config.getLayerZooms(cnf);
-					fs.writeFileSync(config.outpath(cnf.name, zooms.base, x, config.config.mapsizez - z - 1, "svg"), svg);
+					let chunk = renderer.getChunk(x, z);
+					let svg = await chunk.chunk.renderSvg(cnf.level, cnf.wallsonly, cnf.pxpersquare);
+					// fs.writeFileSync(config.outpath(cnf.name, zooms.base, x, config.config.mapsizez - z - 1, "svg"), svg);
+					imgfiles++;
+				}
+				if (cnf.mode == "height") {
+					let chunk = renderer.getChunk(x, z);
+					let { grid } = await chunk.chunk.model;
+					// fs.writeFileSync(`${config.basedir}/height/${x}-${z}-${cnf.level}.bin`, grid.getHeightFile(x * 64, z * 64, cnf.level, 64, 64));
 					imgfiles++;
 				}
 			}
 
-			//move this inside the generator logic?
-			let { grid } = await renderer.getChunk(x, z).prom;
-			for (let level = 0; level < 4; level++) {
-				fs.writeFileSync(`${config.basedir}/height/${x}-${z}-${level}.bin`, grid.getHeightFile(x * 64, z * 64, level, 64, 64));
-			}
-
-			fs.writeFileSync(metafilename, JSON.stringify(meta, undefined, 2));
+			// fs.writeFileSync(metafilename, JSON.stringify(meta, undefined, 2));
 
 			console.log("imaged", x, z, "files", imgfiles);
 			progress.update(x, z, "imaged");
 			Promise.all(tiletasks).then(() => progress.update(x, z, "sliced"));
-			nimages++;
+			nchunks++;
 			break;
 		}
 	}
 	await Promise.all(grouptasks);
-	return nimages;
+	return nchunks;
 }
 
 function saveSlices(config: MapRender, layercnf: LayerConfig, chunkx: number, chunkz: number, img: FlatImageData, subtract: FlatImageData | undefined) {
@@ -625,7 +628,7 @@ function saveSlices(config: MapRender, layercnf: LayerConfig, chunkx: number, ch
 					}
 					return raster
 						.webp({ quality: 90 })
-						.toFile(config.outpath(layercnf.name, zoom, tilex * muliplier + subx, tiley * muliplier + suby))
+						.toFile(config.outpath(layercnf.name, zoom, tilex * muliplier + subx, tiley * muliplier + suby, "png"))
 				});
 			}
 		}
@@ -658,102 +661,96 @@ function trickleTasks(name: string, parallel: number, tasks: (() => Promise<any>
 	})
 }
 
-export async function generateMips(config: MapRender, progress: ProgressUI) {
-	fs.mkdirSync(`${config.basedir}`, { recursive: true });
-	let skiptime = 0;
-	try {
-		// let meta = fs.statSync(`${config.basedir}/info.json`);
-		// skiptime = +meta.mtime;
-	} catch (e) {
-		console.log("no meta file")
-	}
+// export async function generateMips(config: MapRender, progress: ProgressUI) {
+// 	fs.mkdirSync(`${config.basedir}`, { recursive: true });
+// 	let skiptime = 0;
+// 	try {
+// 		// let meta = fs.statSync(`${config.basedir}/info.json`);
+// 		// skiptime = +meta.mtime;
+// 	} catch (e) {
+// 		console.log("no meta file")
+// 	}
 
-	fs.writeFileSync(`${config.basedir}/info.json`, JSON.stringify(config.config, undefined, "\t"));
+// 	fs.writeFileSync(`${config.basedir}/info.json`, JSON.stringify(config.config, undefined, "\t"));
 
-	let files = fs.readdirSync(`${config.basedir}/meta`);
-	let chunks: { x: number, z: number }[] = [];
-	for (let file of files) {
-		// if (!config.overwrite) {
-		let stat = fs.statSync(`${config.basedir}/meta/${file}`);
-		if (+stat.mtime < skiptime) { continue; }
-		// }
-		let m = file.match(/(\/|^)(\d+)-(\d+)\./);
-		if (!m) {
-			console.log("unexpected file in src dir " + file);
-			continue;
-		}
-		chunks.push({ x: +m[2], z: +m[3] })
-	}
-	console.log(chunks);
-	fs.mkdirSync(`${config.basedir}/height`, { recursive: true });
-	for (let chunk of chunks) {
-		for (let level = 0; level < 4; level++) {
-			fs.copyFileSync(`${config.basedir}/height/${chunk.x}-${chunk.z}-${level}.bin`, `${config.basedir}/height/${chunk.x}-${chunk.z}-${level}.bin`);
-		}
-	}
+// 	let files = fs.readdirSync(`${config.basedir}/meta`);
+// 	let chunks: { x: number, z: number }[] = [];
+// 	for (let file of files) {
+// 		// if (!config.overwrite) {
+// 		let stat = fs.statSync(`${config.basedir}/meta/${file}`);
+// 		if (+stat.mtime < skiptime) { continue; }
+// 		// }
+// 		let m = file.match(/(\/|^)(\d+)-(\d+)\./);
+// 		if (!m) {
+// 			console.log("unexpected file in src dir " + file);
+// 			continue;
+// 		}
+// 		chunks.push({ x: +m[2], z: +m[3] })
+// 	}
+// 	console.log(chunks);
 
+// 	for (let layercnf of config.layers) {
+// 		let zooms = config.getLayerZooms(layercnf);
+// 		let basequeue = new Set<string>();
+// 		chunks.forEach(q => {
+// 			let mult = 0.5;
+// 			basequeue.add(`${Math.floor(q.x * mult)}:${Math.floor((config.config.mapsizez - q.z - 1) * mult)}`);
+// 		});
+// 		let queue = basequeue;
+// 		for (let zoom = zooms.base - 1; zoom >= zooms.min; zoom--) {
+// 			let currentqueue = queue;
+// 			queue = new Set();
+// 			let tasks: (() => Promise<any>)[] = [];
+// 			for (let chunk of currentqueue) {
+// 				let m = chunk.match(/(\d+):(\d+)/)!;
+// 				let x = +m[1];
+// 				let y = +m[2];
+// 				let outfile = config.outpath(layercnf.name, zoom, x, y);
+// 				if (!config.overwrite && fs.existsSync(outfile)) {
+// 					continue;
+// 				}
 
-	for (let layercnf of config.layers) {
-		let zooms = config.getLayerZooms(layercnf);
-		let basequeue = new Set<string>();
-		chunks.forEach(q => {
-			let mult = 0.5;
-			basequeue.add(`${Math.floor(q.x * mult)}:${Math.floor((config.config.mapsizez - q.z - 1) * mult)}`);
-		});
-		let queue = basequeue;
-		for (let zoom = zooms.base - 1; zoom >= zooms.min; zoom--) {
-			let currentqueue = queue;
-			queue = new Set();
-			let tasks: (() => Promise<any>)[] = [];
-			for (let chunk of currentqueue) {
-				let m = chunk.match(/(\d+):(\d+)/)!;
-				let x = +m[1];
-				let y = +m[2];
-				let outfile = config.outpath(layercnf.name, zoom, x, y);
+// 				let overlays: sharp.OverlayOptions[] = [];
+// 				let noriginal = 0;
+// 				for (let dy = 0; dy <= 1; dy++) {
+// 					for (let dx = 0; dx <= 1; dx++) {
+// 						let opts = [
+// 							config.outpath(layercnf.name, zoom + 1, x * 2 + dx, y * 2 + dy),
+// 							config.outpath(layercnf.name, zoom + 1, x * 2 + dx, y * 2 + dy, "svg"),
+// 						];
+// 						if (layercnf.subtractlayer) {
+// 							opts.push(
+// 								config.outpath(layercnf.subtractlayer, zoom + 1, x * 2 + dx, y * 2 + dy),
+// 								config.outpath(layercnf.subtractlayer, zoom + 1, x * 2 + dx, y * 2 + dy, "svg"),
+// 							)
+// 						}
+// 						let fileindex = opts.findIndex(q => fs.existsSync(q));
+// 						if (fileindex < 2) { noriginal++; }
+// 						if (fileindex != -1) {
+// 							let file = opts[fileindex];
+// 							overlays.push({ blend: "over", input: file, gravity: `${dy == 0 ? "north" : "south"}${dx == 0 ? "west" : "east"}` });
+// 						}
+// 					}
+// 				}
 
-				let overlays: sharp.OverlayOptions[] = [];
-				let noriginal = 0;
-				for (let dy = 0; dy <= 1; dy++) {
-					for (let dx = 0; dx <= 1; dx++) {
-						let opts = [
-							config.outpath(layercnf.name, zoom + 1, x * 2 + dx, y * 2 + dy),
-							config.outpath(layercnf.name, zoom + 1, x * 2 + dx, y * 2 + dy, "svg"),
-						];
-						if (layercnf.subtractlayer) {
-							opts.push(
-								config.outpath(layercnf.subtractlayer, zoom + 1, x * 2 + dx, y * 2 + dy),
-								config.outpath(layercnf.subtractlayer, zoom + 1, x * 2 + dx, y * 2 + dy, "svg"),
-							)
-						}
-						let fileindex = opts.findIndex(q => fs.existsSync(q));
-						if (fileindex < 2) { noriginal++; }
-						if (fileindex != -1) {
-							let file = opts[fileindex];
-							overlays.push({ blend: "over", input: file, gravity: `${dy == 0 ? "north" : "south"}${dx == 0 ? "west" : "east"}` });
-						}
-					}
-				}
-
-				if (overlays.length != 0 && noriginal != 0) {
-					queue.add(`${x / 2 | 0}:${y / 2 | 0}`);
-					if (!fs.existsSync(outfile) || config.overwrite) {
-						let cominedsize = config.config.tileimgsize * 2;
-						tasks.push(
-							() => sharp({ create: { channels: 4, width: cominedsize, height: cominedsize, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-								.composite(overlays)
-								.raw()
-								.toBuffer({ resolveWithObject: true })//need to render to force resize after composite
-								.then(combined =>
-									sharp(combined.data, { raw: combined.info })
-										.resize(config.config.tileimgsize, config.config.tileimgsize, { kernel: "mitchell" })
-										.webp({ quality: 90 })
-										.toFile(outfile)
-								)
-						);
-					}
-				}
-			}
-			await trickleTasks(`zoomed mipmaps layer ${layercnf.name} level ${zoom}`, 4, tasks);
-		}
-	}
-}
+// 				if (overlays.length != 0 && noriginal != 0) {
+// 					queue.add(`${x / 2 | 0}:${y / 2 | 0}`);
+// 					let cominedsize = config.config.tileimgsize * 2;
+// 					tasks.push(
+// 						() => sharp({ create: { channels: 4, width: cominedsize, height: cominedsize, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+// 							.composite(overlays)
+// 							.raw()
+// 							.toBuffer({ resolveWithObject: true })//need to render to force resize after composite
+// 							.then(combined =>
+// 								sharp(combined.data, { raw: combined.info })
+// 									.resize(config.config.tileimgsize, config.config.tileimgsize, { kernel: "mitchell" })
+// 									.webp({ quality: 90 })
+// 									.toFile(outfile)
+// 							)
+// 					);
+// 				}
+// 			}
+// 			await trickleTasks(`zoomed mipmaps layer ${layercnf.name} level ${zoom}`, 4, tasks);
+// 		}
+// 	}
+// }

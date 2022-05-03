@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
 import { CacheFileSource } from "../cache";
+import { FlatImageData } from "3d/utils";
 
 let similarangle = (a1: number, a2: number) => {
 	const PI2 = Math.PI * 2;
@@ -12,13 +13,30 @@ let similarangle = (a1: number, a2: number) => {
 	return Math.abs(d) < EPS;
 }
 
-export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean) {
+async function pixelsToPngBase64(pixels: FlatImageData) {
+	if (pixels.channels != 4) { throw new Error("4 image channels expected"); }
+	if (typeof document != "undefined") {
+		let cnv = document.createElement("canvas");
+		cnv.width = pixels.width;
+		cnv.height = pixels.height;
+		let ctx = cnv.getContext("2d")!;
+		let clamped = new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.length);
+		let imgdata = new ImageData(clamped, pixels.width, pixels.height);
+		ctx.putImageData(imgdata, 0, 0);
+		return cnv.toDataURL("image/png");
+	} else {
+		let pngfile = await sharp(pixels.data, { raw: { width: pixels.width, height: pixels.height, channels: pixels.channels } }).png().toBuffer();
+		return "data:image/png;base64," + pngfile.toString("base64");
+	}
+}
 
+
+export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean) {
 	let drawground = !wallsonly;
 	let drawwalls = true;
 	let drawmapscenes = !wallsonly;
 
-	let underlay: Buffer | null = null;
+	let underlay = "";
 	let mapscenes = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
 	let overlays: Map<number, Set<{ x: number, z: number }[]>>[] = [new Map(), new Map(), new Map(), new Map()];
 	let whitelines: { x: number, z: number }[][] = [];
@@ -122,9 +140,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 			}
 		}
 
-		underlay = await sharp(underlaybitmap, { raw: { width: rect.xsize, height: rect.zsize, channels: 4 } })
-			.png()
-			.toBuffer();
+		underlay = await pixelsToPngBase64({ data: underlaybitmap, width: rect.xsize, height: rect.zsize, channels: 4 });
 	}
 
 	let addline = (group: typeof whitelines, tilex: number, tilez: number, corner1: number, corner2: number, rotation: number) => {
@@ -184,8 +200,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 					if (mapscene.sprite_id != undefined) {
 						let spritefile = await source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 						let sprite = parseSprite(spritefile);
-						let pngfile = await sharp(sprite[0].data, { raw: { width: sprite[0].width, height: sprite[0].height, channels: 4 } }).png().toBuffer();
-						src = "data:image/png;base64," + pngfile.toString("base64");
+						src = await pixelsToPngBase64(sprite[0]);
 						width = sprite[0].width;
 						height = sprite[0].height;
 					}
@@ -208,7 +223,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 
 	//background underlays
 	if (underlay) {
-		r += `<image href="data:image/png;base64,${underlay.toString("base64")}" style="image-rendering: pixelated;" width="${rect.xsize}" height="${rect.zsize}"/>\n`;
+		r += `<image href="${underlay}" style="image-rendering: pixelated;" width="${rect.xsize}" height="${rect.zsize}"/>\n`;
 	}
 
 	//tile overlays

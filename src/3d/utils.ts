@@ -26,6 +26,13 @@ export type Stream = {
 	bytesLeft(): number;
 }
 
+/**
+ * used to get an array with enum typing
+ */
+export function arrayEnum<Q extends string>(v: Q[]) {
+	return v;
+}
+
 export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function Stream(this: Stream, data: Buffer) {
 	// Double check the mime type
 	/*if (data[data.length - 4] != 0x4F) // O

@@ -8,7 +8,6 @@ import { ModelModifications, FlatImageData } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
-import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
 import { MountableAnimation } from "3d/animationframes";
@@ -36,7 +35,7 @@ export class ThreeJsRenderer {
 	canvas: HTMLCanvasElement;
 	skybox: { scene: THREE.Object3D, camera: THREE.Camera } | null = null;
 	scene: THREE.Scene;
-	camera: THREE.Camera | THREE.PerspectiveCamera;
+	camera: THREE.PerspectiveCamera;
 	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group;
@@ -46,13 +45,11 @@ export class ThreeJsRenderer {
 	automaticFrames = false;
 	contextLossCount = 0;
 	contextLossCountLastRender = 0;
-	filesource: CacheFileSource;
 	clock = new Clock(true);
 	animationMixers = new Set<AnimationMixer>();
 
-	constructor(canvas: HTMLCanvasElement, params: THREE.WebGLRendererParameters, filesource: CacheFileSource) {
+	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		globalThis.render = this;//TODO remove
-		this.filesource = filesource;
 		this.canvas = canvas;
 		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, powerPreference: "high-performance", antialias: true, ...params });
 		this.renderer.autoClear = false;
@@ -130,7 +127,7 @@ export class ThreeJsRenderer {
 
 
 	@boundMethod
-	async guaranteeRender() {
+	async guaranteeRender(cam: THREE.Camera = this.camera) {
 		let waitContext = () => {
 			if (!this.renderer.getContext().isContextLost()) {
 				return;
@@ -150,7 +147,7 @@ export class ThreeJsRenderer {
 			await waitContext();
 			//it seems like the first render after a context loss is always failed, force 2 renders this way
 			let prerenderlosses = this.contextLossCountLastRender;
-			this.render();
+			this.render(cam);
 			await new Promise(d => setTimeout(d, 1));
 
 			if (this.renderer.getContext().isContextLost()) {
@@ -235,21 +232,23 @@ export class ThreeJsRenderer {
 	// }
 
 	@boundMethod
-	render() {
+	render(cam: THREE.Camera = this.camera) {
 		cancelAnimationFrame(this.queuedFrameId);
 		this.queuedFrameId = 0;
-		if (this.camera instanceof THREE.PerspectiveCamera && this.resizeRendererToDisplaySize()) {
-			const canvas = this.renderer.domElement;
-			this.camera.aspect = canvas.clientWidth / canvas.clientHeight;
-			this.camera.updateProjectionMatrix();
-		}
+
 		let delta = this.clock.getDelta();
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
 		this.animationMixers.forEach(q => q.update(delta));
 
+		if (cam == this.camera && this.resizeRendererToDisplaySize()) {
+			const canvas = this.renderer.domElement;
+			this.camera.aspect = canvas.clientWidth / canvas.clientHeight;
+			this.camera.updateProjectionMatrix();
+		}
+
 		this.renderer.clearColor();
 		this.renderer.clearDepth();
-		if (this.skybox) {
+		if (cam == this.camera && this.skybox) {
 			this.skybox.camera.matrixAutoUpdate = false;
 			this.camera.updateWorldMatrix(true, true);
 			this.skybox.camera.matrix.copy(this.camera.matrixWorld);
@@ -258,7 +257,7 @@ export class ThreeJsRenderer {
 			this.renderer.render(this.skybox.scene, this.skybox.camera);
 			this.renderer.clearDepth()
 		}
-		this.renderer.render(this.scene, this.camera);
+		this.renderer.render(this.scene, cam);
 		this.contextLossCountLastRender = this.contextLossCount;
 
 		if (this.automaticFrames) {
@@ -269,7 +268,7 @@ export class ThreeJsRenderer {
 	@boundMethod
 	forceFrame() {
 		if (!this.queuedFrameId) {
-			this.queuedFrameId = requestAnimationFrame(this.render);
+			this.queuedFrameId = requestAnimationFrame(() => this.render());
 		}
 	}
 
@@ -286,10 +285,9 @@ export class ThreeJsRenderer {
 		this.renderer.setSize(framesize, framesize);
 		cam.projectionMatrix.transpose();
 		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
-		this.camera = cam;
 		let img: Blob | null = null;
 		for (let retry = 0; retry < 5; retry++) {
-			await this.guaranteeRender();
+			await this.guaranteeRender(cam);
 			let ctx = this.renderer.getContext();
 			let pixelbuffer = new Uint8Array(ctx.canvas.width * ctx.canvas.height * 4);
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);

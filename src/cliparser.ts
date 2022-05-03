@@ -50,17 +50,19 @@ export const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Pr
 	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
 };
 
+export function stringToMapArea(str: string) {
+	let [x, z, xsize, zsize] = str.split(/[,\.\/:;]/).map(n => +n);
+	xsize = xsize ?? 1;
+	zsize = zsize ?? xsize;
+	if (isNaN(x) || isNaN(z) || isNaN(xsize) || isNaN(zsize)) { return null; }
+	return { x, z, xsize, zsize };
+}
+
 const MapRectangle: Type<string, MapRect> = {
 	async from(str) {
-		let coordsparts = str.split(/[,x:;-]/);
-		if (coordsparts.length < 2) { throw new Error("need at least x and y in area"); }
-		if (coordsparts.length == 2) { coordsparts.push("1", "1"); }
-		if (coordsparts.length == 3) { coordsparts.push(coordsparts[2]); }
-		let [x, z, xsize, zsize] = coordsparts.map(q => {
-			if (isNaN(+q)) { throw new Error("number expected") }
-			return +q;
-		});
-		return { x, z, xsize, zsize };
+		let rect = stringToMapArea(str);
+		if (!rect) { throw new Error("expected maprect format: x,y,xsize,zsize"); }
+		return rect;
 	},
 	description: "A square of map coordinates as 'x,y', 'x,y,size' or 'x,y,w,h'"
 };
