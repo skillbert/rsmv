@@ -198,6 +198,10 @@ export class ThreejsSceneCache {
 		}
 		return cached;
 	}
+
+	close() {
+		this.source.close();
+	}
 }
 
 

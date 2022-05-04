@@ -47,10 +47,16 @@ type SavedCacheSource = {
 	cachename: string
 });
 
-class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, onOpen: (c: SavedCacheSource) => void }, {}>{
+class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, onOpen: (c: SavedCacheSource) => void }, { lastFolderOpen: FileSystemDirectoryHandle | null }>{
 	constructor(p) {
 		super(p);
-		this.state = {};
+		this.state = {
+			lastFolderOpen: null
+		};
+
+		datastore.get<FileSystemDirectoryHandle>("lastfolderopen").then(f => {
+			if (f) { this.setState({ lastFolderOpen: f }); }
+		});
 	}
 
 	componentDidMount() {
@@ -72,6 +78,14 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 	async clickOpen() {
 		let dir = await showDirectoryPicker();
 		this.props.onOpen({ type: "sqlitehandle", handle: dir });
+	}
+
+	@boundMethod
+	async clickReopen() {
+		if (!this.state.lastFolderOpen) { return; }
+		if (await this.state.lastFolderOpen.requestPermission() == "granted") {
+			this.props.onOpen({ type: "sqlitehandle", handle: this.state.lastFolderOpen });
+		}
 	}
 
 	@boundMethod
@@ -106,8 +120,8 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 				}
 			}));
 			if (folderhandles.length == 1 && filehandles.length == 0) {
-				datastore.set("cachefilehandles", folderhandles[0]);
 				console.log("stored folder " + folderhandles[0].name);
+				datastore.set("lastfolderopen", folderhandles[0]);
 				this.props.onOpen({ type: "sqlitehandle", handle: folderhandles[0] });
 			} else {
 				console.log(`added ${Object.keys(files).length} files`);
@@ -127,9 +141,10 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 				<h2>NXT cache</h2>
 				<p>Drag a folder containing NXT cache files here in order to keep it.</p>
 				<p>Dragging a folder here is the preferred and most supported way to open a cache.</p>
+				{this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
 				<h2>Folder picker</h2>
 				<p>Due to browser limitations this will not let you open a cache at its default location (drag and drop still works)</p>
-				<input type="button" className="sub-btn" onClick={this.clickOpen} value="Open cache" />
+				<input type="button" className="sub-btn" onClick={this.clickOpen} value="Select folder" />
 				<h2>Historical caches</h2>
 				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
 				<StringInput initialid="949" onChange={this.openOpenrs2Cache} />
@@ -233,6 +248,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	closeCache() {
 		datastore.del("openedcache");
 		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
+		this.state.cache?.close();
 		this.setState({ cache: null });
 	}
 
