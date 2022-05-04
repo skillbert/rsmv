@@ -61,6 +61,9 @@ export class Downloader extends CacheFileSource {
 		this.socket.connect(port, address)
 		this.ready = this.state.promise;
 	}
+	getCacheName() {
+		return "live";
+	}
 
 	async setState(statebuilder: () => State<any>) {
 		//oh no...

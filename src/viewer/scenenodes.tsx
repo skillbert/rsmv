@@ -105,7 +105,7 @@ export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cac
 	}
 }
 
-function IdInput({ initialid, onChange }: { initialid?: number, onChange: (id: number) => void }) {
+export function IdInput({ initialid, onChange }: { initialid?: number, onChange: (id: number) => void }) {
 	let [id, setId] = React.useState(initialid ?? 0);
 
 	let incr = () => { setId(id + 1); onChange(id + 1); };
@@ -120,7 +120,7 @@ function IdInput({ initialid, onChange }: { initialid?: number, onChange: (id: n
 		</form>
 	)
 }
-function StringInput({ initialid, onChange }: { initialid?: string, onChange: (id: string) => void }) {
+export function StringInput({ initialid, onChange }: { initialid?: string, onChange: (id: string) => void }) {
 	let [id, setId] = React.useState(initialid ?? "");
 
 	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); };

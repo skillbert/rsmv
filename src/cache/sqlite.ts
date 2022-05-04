@@ -25,6 +25,10 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		this.writable = !!writable;
 	}
 
+	getCacheName() {
+		return `sqlite:${this.cachedir}`;
+	}
+
 	async generateRootIndex() {
 		let files = fs.readdirSync(path.resolve(this.cachedir));
 		console.log("using generated cache index file meta, crc size and version missing");

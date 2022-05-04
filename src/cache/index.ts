@@ -156,25 +156,6 @@ export function unpackBufferArchive(buffer: Buffer, subids: number[]) {
 	}
 	return subbufs;
 }
-// export function rootIndexBufferToObject(metaindex: Buffer) {
-// 	var indices: CacheIndexStub[];
-// 	var offset = 0x0;
-// 	var elements = metaindex.readUInt8(offset++);
-// 	for (var i = 0; i < elements; ++i, offset += 0x50) {
-// 		var element = metaindex.slice(offset, offset + 0x50);
-// 		//skip empty indices
-// 		if (Math.max.apply(null, element) == 0) {
-// 			continue;
-// 		}
-// 		indices.push({
-// 			major: 255,
-// 			minor: i,
-// 			crc: element.readUInt32BE(0),
-// 			version: element.readUInt32BE(0x4)
-// 		};
-// 	}
-// 	return indices;
-// }
 
 export function rootIndexBufferToObject(metaindex: Buffer) {
 	let index = parseRootCacheIndex.read(metaindex);
@@ -211,7 +192,7 @@ export function indexBufferToObject(major: number, buffer: Buffer): CacheIndex[]
 }
 
 const mappedFileIds = {
-	[cacheMajors.items]: 256,//not sure
+	[cacheMajors.items]: 256,
 	[cacheMajors.npcs]: 128,
 	[cacheMajors.structs]: 32,
 	[cacheMajors.enums]: 256,
@@ -219,7 +200,7 @@ const mappedFileIds = {
 	[cacheMajors.sequences]: 128,
 	[cacheMajors.spotanims]: 256,
 	[cacheMajors.achievements]: 128,
-	[cacheMajors.materials]: 10000000//is single index
+	[cacheMajors.materials]: Number.MAX_SAFE_INTEGER//is single index
 }
 
 export function fileIdToArchiveminor(major: number, fileid: number) {
@@ -233,6 +214,9 @@ export function archiveToFileId(major: number, minor: number, subfile: number) {
 }
 
 export class CacheFileSource {
+	getCacheName() {
+		return "unkown";
+	}
 	//could use abstract here but typings get weird
 	getFile(major: number, minor: number, crc?: number): Promise<Buffer> {
 		throw new Error("not implemented");

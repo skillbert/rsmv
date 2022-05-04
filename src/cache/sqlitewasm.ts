@@ -22,6 +22,9 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 			this.callbacks.delete(e.data.id);
 		}
 	}
+	getCacheName() {
+		return `sqlitewasm`;
+	}
 
 	async generateRootIndex() {
 		console.log("using generated cache index file meta, crc size and version missing");

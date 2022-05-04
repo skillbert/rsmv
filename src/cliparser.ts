@@ -8,6 +8,7 @@ import * as updater from "./cache/updater";
 import { GameCacheLoader } from "./cache/sqlite";
 import { MapRect } from "./3d/mapsquare";
 import { RawFileLoader } from "./cache/rawfiles";
+import { Openrs2CacheSource } from "./cache/openrs2loader";
 
 export type Rect = { x: number, y: number, width: number, height: number };
 
@@ -41,6 +42,8 @@ export const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Pr
 					return new GameCacheLoader(arg, !!opts?.writable);
 				case "files":
 					return new RawFileLoader(arg, 0);
+				case "openrs2":
+					return new Openrs2CacheSource(arg);
 				default:
 					throw new Error("unknown mode");
 			}

@@ -30,6 +30,9 @@ export class RawFileLoader extends CacheFileSource {
 			};
 		})
 	}
+	getCacheName() {
+		return `files:${this.cachedir}`;
+	}
 
 	getFile(major: number, minor: number, crc?: number) {
 		let name = this.files.get(minor);
