@@ -23,12 +23,12 @@ npm start
 
 ## Other modes
 ```sh
-#stream models directly from jagex as you browse (default)
+#run directly from runescape cache, uses the default rs cache location by default (default)
+npm start -- --open cache[:<rs cache dir>]
+#stream models directly from jagex as you browse
 npm start -- --open live
 #downloads a local copy of all model files and then run locally, creates a new folder "cache" by default
-npm start -- --open local[:<storage dir>]
-#run directly from runescape cache, uses the default rs cache location by default
-npm start -- --open cache[:<rs cache dir>]
+npm start -- --open openrs2:<cache id>
 ```
 
 ## Jagex copyrights
@@ -37,12 +37,13 @@ Jagex is generally aware of the existence of cache decoding tools like this one 
 
 ## Todo
 * Add back the electron distribution packager
-* Fix the different command line scripts in .bin and src/opcodes
-  * possibly make them part of the build script gulpfile
 * Test in mac/linux
-* jmat and utils/Stream are still using function classes and have very inconsistent typing
 
 ## Credits
-Adam
+Modern version by: Skillbert
 
-Skillbert
+Originally based on code of unknown origin, some edits include: Adam and rs wiki.
+
+2d map based on code by Mej
+
+Cache loader based on code by Villerman
