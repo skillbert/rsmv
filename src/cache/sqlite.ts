@@ -1,11 +1,15 @@
 import * as cache from "./index";
 import { compressSqlite, decompress, decompressSqlite } from "./compression";
-import * as path from "path";
-//only type info, import the actual thing at runtime so it can be avoided if not used
-import type * as sqlite3 from "sqlite3";
-import * as fs from "fs";
 import { cacheMajors } from "../constants";
 import { CacheIndex } from "./index";
+//only type info, import the actual thing at runtime so it can be avoided if not used
+import type * as sqlite3 from "sqlite3";
+
+//make this conditional nodejs require so it can be loaded (but not run) in browsers
+if (typeof __non_webpack_require__ != "undefined") {
+	var path = __non_webpack_require__("path") as typeof import("path");
+	var fs = __non_webpack_require__("fs") as typeof import("fs");
+}
 
 type CacheTable = {
 	db: sqlite3.Database | null,
@@ -55,7 +59,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	}
 
 	openTable(major: number) {
-		let sqlite = require("sqlite3") as typeof import("sqlite3");
+		let sqlite = __non_webpack_require__("sqlite3") as typeof import("sqlite3");
 		if (!this.opentables.get(major)) {
 			let db: CacheTable["db"] = null;
 			let indices: CacheTable["indices"];

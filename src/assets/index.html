@@ -15,7 +15,15 @@
 		<div style="background-color: inherit; height: 30px; filter: saturate(0.5);"></div>
 	</div>
 	<div id="app"></div>
-	<script src="../viewer.js"></script>
+	<script>
+		if (typeof require != "undefined") {
+			require("../electronviewer.js");
+		} else {
+			let script = document.createElement("script");
+			script.src = "../viewer.js";
+			document.body.appendChild(script);
+		}
+	</script>
 </body>
 
 </html>

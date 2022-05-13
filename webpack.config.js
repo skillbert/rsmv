@@ -9,7 +9,7 @@ module.exports = {
 	mode: "development",
 	entry: {
 		main: "./src/main.ts",
-		// viewer: "./src/viewer/",
+		electronviewer: "./src/viewer/",
 		extract: "./src/scripts/extractfiles.ts",
 		indexoverview: "./src/scripts/indexoverview.ts",
 		testdecode: "./src/scripts/testdecode.ts",

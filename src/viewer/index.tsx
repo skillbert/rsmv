@@ -1,14 +1,10 @@
 
-import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSkeletalAnim } from "../opdecoder";
 import { ThreeJsRenderer } from "./threejsrender";
-import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import classNames from "classnames";
 import { boundMethod } from "autobind-decorator";
 import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
-
 import * as datastore from "idb-keyval";
 import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
 import { ModelBrowser, StringInput } from "./scenenodes";
@@ -16,6 +12,11 @@ import { getDependencies } from "../scripts/dependencies";
 import { hashCache } from "../scripts/cachediff";
 import { runMapRender } from "../map/index";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
+import { GameCacheLoader } from "../cache/sqlite";
+
+import type { OpenDialogReturnValue } from "electron/renderer";
+
+const electron = (typeof __non_webpack_require__ != "undefined" ? (__non_webpack_require__("electron/renderer") as typeof import("electron/renderer")) : null);
 
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
@@ -45,6 +46,9 @@ type SavedCacheSource = {
 } | {
 	type: "openrs2",
 	cachename: string
+} | {
+	type: "sqlitenodejs",
+	location: string
 });
 
 class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, onOpen: (c: SavedCacheSource) => void }, { lastFolderOpen: FileSystemDirectoryHandle | null }>{
@@ -78,6 +82,15 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 	async clickOpen() {
 		let dir = await showDirectoryPicker();
 		this.props.onOpen({ type: "sqlitehandle", handle: dir });
+	}
+
+	@boundMethod
+	async clickOpenNative() {
+		if (!electron) { return; }
+		let dir: OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", "%programdata%/jagex/runescape/");
+		if (!dir.canceled) {
+			this.props.onOpen({ type: "sqlitenodejs", location: dir.filePaths[0] });
+		}
 	}
 
 	@boundMethod
@@ -148,24 +161,30 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 				<h2>Historical caches</h2>
 				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
 				<StringInput initialid="949" onChange={this.openOpenrs2Cache} />
+				{electron && (
+					<React.Fragment>
+						<h2>Native NXT cache</h2>
+						<p>Only works when running in electron</p>
+						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cace" />
+					</React.Fragment>
+				)}
 			</React.Fragment>
 		);
 	}
 }
 
-class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null, needsUserActivation: SavedCacheSource | null }> {
+class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null }> {
 	constructor(p) {
 		super(p);
 		this.state = {
 			cache: null,
-			renderer: null,
-			needsUserActivation: null
+			renderer: null
 		};
 		(async () => {
 			let source = await datastore.get<SavedCacheSource>("openedcache");
 			if (source) {
 				if (source.type == "sqlitehandle" && await source.handle.queryPermission() == "prompt") {
-					this.setState({ needsUserActivation: source });
+					//do nothing
 				} else {
 					this.openCache(source);
 				}
@@ -196,6 +215,9 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 		}
 		if (source.type == "openrs2") {
 			cache = new Openrs2CacheSource(source.cachename);
+		}
+		if (electron && source.type == "sqlitenodejs") {
+			cache = new GameCacheLoader(source.location);
 		}
 		datastore.set("openedcache", source);
 		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
@@ -228,8 +250,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 			// };
 
 			this.setState({
-				cache: new ThreejsSceneCache(engine),
-				needsUserActivation: null
+				cache: new ThreejsSceneCache(engine)
 			});
 		}
 	}
@@ -260,7 +281,6 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 				</div>
 				<div id="sidebar">
 					{this.state.cache && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.state.cache.source.getCacheName()}`} />}
-					{this.state.needsUserActivation && <input type="button" className="sub-btn" onClick={() => this.openCache(this.state.needsUserActivation!)} value="Open last" />}
 					{!this.state.cache && (<CacheSelector onOpen={this.openCache} />)}
 					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} />}
 				</div>
