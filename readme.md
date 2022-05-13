@@ -10,26 +10,47 @@ After that run the following commands in your systems console.
 #install the dependencies
 npm i
 #compile the native nodejs dependencies for use in electron
-npm exec electron-rebuild
+npm run buildnative
 
-#build the solution
+#build the native/electron files
 npm run build
-#or start the build script in watch mode
-npm run watch
+#build the web viewer (currently broken because of local fork of sql.js)
+npm run web
+```
 
-#start (defaults to streaming)
+## Running the viewer
+The web viewer needs a server since it uses several API's that aren't allowed on `file://`.
+```sh
+#use a simple http localhost server
+npx http-server dist
+#alternatively run a webpack dev server with HMR
+npm run hot
+```
+Both of these options will host the app at http://localhost:8080/assets/index.html
+
+The electron viewer can be opened with
+```sh
 npm start
 ```
 
-## Other modes
+## Other scripts
+Cache extraction tool
 ```sh
-#run directly from runescape cache, uses the default rs cache location by default (default)
-npm start -- --open cache[:<rs cache dir>]
-#stream models directly from jagex as you browse
-npm start -- --open live
-#downloads a local copy of all model files and then run locally, creates a new folder "cache" by default
-npm start -- --open openrs2:<cache id>
+#to dump item ids 0-100
+node dist/extract   # name of the script
+    -o cache        # open NXT cache at default location
+    -s cache/items  # where to dump the files
+    --mode items    # extraction mode, determines how ids are interpreted and the format of the output
+    -i 0-100        # ids of the files to extract
+
+#to download raw data from groups 10-20 of cache index 53 (png textures)
+node dist/extract
+    -o live         # download files directly from jagex game servers
+	-s cache/textures
+	--mode bin      # dumps the raw file
+	-i 53.10-53.20  # some modes use tuples as id, both tuple interpretation and range interpolation depend on mode
 ```
+The are more tools in src/scripts, most are used for testing, they are also in various degrees of completeness.
 
 ## Jagex copyrights
 Jagex is generally aware of the existence of cache decoding tools like this one and they are extensively used for the runescape wiki. However, in the interest of the games integrity and the future of these tools please do no publicly share leaks or unreleased content found using this tool.
@@ -40,9 +61,9 @@ Jagex is generally aware of the existence of cache decoding tools like this one 
 * Test in mac/linux
 
 ## Credits
-Modern version by: Skillbert
+Modern rewrite by Skillbert
 
-Originally based on code of unknown origin, some edits include: Adam and rs wiki.
+Based on downloader/3d viewer by Sahima, ui by Manpaint
 
 2d map based on code by Mej
 

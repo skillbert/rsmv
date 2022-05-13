@@ -8,7 +8,8 @@
 		"debug": "electron --inspect-brk ./dist/main.js",
 		"filetypes": "gulp filetypes",
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",
-		"webpack": "webpack --watch",
+		"build": "webpack",
+		"watch": "webpack --watch",
 		"hot": "webpack serve --config webpack.config.web.js",
 		"web": "webpack --config webpack.config.web.js",
 		"webrelease": "webpack --config webpack.config.web.js --mode production"
@@ -63,7 +64,7 @@
 		"react": "^17.0.2",
 		"react-dom": "^17.0.2",
 		"sharp": "^0.29.2",
-		"sql.js": "file:../sql.js",
+		"sql.js": "file:./src/libs/sqljsfork",
 		"sqlite3": "^5.0.8",
 		"three": "^0.133.1"
 	}
