@@ -4,10 +4,7 @@
 
 export type identitykit = {
 	bodypart?: number | null
-	model?: {
-		maybe_priority: number,
-		model: number,
-	} | null
+	models?: number[] | null
 	iscopy?: true | null
 	recolor?: [
 		number,

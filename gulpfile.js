@@ -37,6 +37,8 @@ function generateOpcodeTypes() {
 				typesfile += "any;\n";
 				typesfile += "// " + e.toString().replace(/\n/g, "\n//");
 			}
+			//I'm sorry, git made me do this
+			typesfile = typesfile.replace(/(?<!\r)\n/g, "\r\n");
 			file.contents = Buffer.from(typesfile);
 			file.extname = ".d.ts";
 		}
