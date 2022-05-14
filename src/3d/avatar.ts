@@ -91,13 +91,11 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 			if (slot < 0x4000) {
 				let kitid = slot - 0x100;
 				let kit = playerkit[kitid];
-				if (kit) {
-					if (kit.model) {
+				if (kit?.models) {
+					for (let modelid of kit.models) {
 						let model = {
-							modelid: kit.model.model,
-							mods: {
-								replaceColors: kit.recolor ?? []
-							}
+							modelid: modelid,
+							mods: { replaceColors: kit.recolor ?? [] }
 						}
 						models.push(model);
 						kitmods.push({ mods: model.mods, slotid: kit.bodypart ?? -1 });
