@@ -185,7 +185,6 @@ export function indexBufferToObject(major: number, buffer: Buffer): CacheIndex[]
 	let indices = readres.indices;
 	let linear: CacheIndex[] = [];
 	for (let entry of indices) {
-		if (!entry) { debugger; }
 		linear[entry.minor] = Object.assign(entry, { major });
 	}
 	return linear;

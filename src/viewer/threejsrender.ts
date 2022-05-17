@@ -51,7 +51,14 @@ export class ThreeJsRenderer {
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		globalThis.render = this;//TODO remove
 		this.canvas = canvas;
-		this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, powerPreference: "high-performance", antialias: true, ...params });
+		this.renderer = new THREE.WebGLRenderer({
+			canvas,
+			alpha: true,
+			powerPreference: "high-performance",
+			antialias: true,
+			preserveDrawingBuffer: true,
+			...params
+		});
 		this.renderer.autoClear = false;
 		const renderer = this.renderer;
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);

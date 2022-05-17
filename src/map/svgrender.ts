@@ -1,9 +1,10 @@
-import { TileGrid, ChunkData, squareLevels, squareSize, TileVertex, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
+import { TileGridSource, ChunkData, squareLevels, squareSize, TileVertex, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
 import sharp from "sharp";
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
 import { CacheFileSource } from "../cache";
 import { FlatImageData } from "3d/utils";
+import { EngineCache } from "3d/ob3tothree";
 
 let similarangle = (a1: number, a2: number) => {
 	const PI2 = Math.PI * 2;
@@ -13,7 +14,7 @@ let similarangle = (a1: number, a2: number) => {
 	return Math.abs(d) < EPS;
 }
 
-async function pixelsToPngBase64(pixels: FlatImageData) {
+async function pixelsToDataUrl(pixels: FlatImageData,) {
 	if (pixels.channels != 4) { throw new Error("4 image channels expected"); }
 	if (typeof document != "undefined") {
 		let cnv = document.createElement("canvas");
@@ -31,7 +32,7 @@ async function pixelsToPngBase64(pixels: FlatImageData) {
 }
 
 
-export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean) {
+export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean) {
 	let drawground = !wallsonly;
 	let drawwalls = true;
 	let drawmapscenes = !wallsonly;
@@ -81,7 +82,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 						occluded = true;
 					}
 
-					if (typeof tile.raw.overlay != "undefined") {
+					if (tile.raw.overlay) {
 						let vertices = tile.shape.overlay;
 						let colint = getOverlayColor(tile);
 						if (colint == transparent) {
@@ -140,7 +141,7 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 			}
 		}
 
-		underlay = await pixelsToPngBase64({ data: underlaybitmap, width: rect.xsize, height: rect.zsize, channels: 4 });
+		underlay = await pixelsToDataUrl({ data: underlaybitmap, width: rect.xsize, height: rect.zsize, channels: 4 });
 	}
 
 	let addline = (group: typeof whitelines, tilex: number, tilez: number, corner1: number, corner2: number, rotation: number) => {
@@ -193,14 +194,14 @@ export async function svgfloor(source: CacheFileSource, grid: TileGrid, locs: Wo
 			if (drawmapscenes) {
 				let group = mapscenes.get(loc.location.mapscene);
 				if (!group) {
-					let mapscene = grid.engine.mapMapscenes[loc.location.mapscene];
+					let mapscene = engine.mapMapscenes[loc.location.mapscene];
 					let src = "";
 					let width = 0;
 					let height = 0;
 					if (mapscene.sprite_id != undefined) {
-						let spritefile = await source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
+						let spritefile = await engine.source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 						let sprite = parseSprite(spritefile);
-						src = await pixelsToPngBase64(sprite[0]);
+						src = await pixelsToDataUrl(sprite[0]);
 						width = sprite[0].width;
 						height = sprite[0].height;
 					}

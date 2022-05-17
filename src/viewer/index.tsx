@@ -228,7 +228,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 
 			globalThis.calculateDependencies = () => getDependencies(cache!);
 			globalThis.hashCache = () => hashCache(cache!);
-			globalThis.runMapRender = () => runMapRender(cache!, "50,50");
+			globalThis.runMapRender = (area = "52,46") => runMapRender(cache!, area);
 			// //TODO remove
 			// let source = engine.source;
 			// globalThis.loadSkeletons = async function run() {
@@ -259,8 +259,8 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			let renderer = new ThreeJsRenderer(cnv);
-			renderer.automaticFrames = true;
-			console.warn("forcing auto-frames!!");
+			// renderer.automaticFrames = true;
+			// console.warn("forcing auto-frames!!");
 			this.setState({ renderer });
 		}
 	}
@@ -269,7 +269,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	closeCache() {
 		datastore.del("openedcache");
 		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
-		this.state.cache?.close();
+		this.state.cache?.source.close();
 		this.setState({ cache: null });
 	}
 

@@ -606,7 +606,28 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 	return r;
 }
 
-export class TileGrid {
+export interface TileGridSource {
+	getTile(x: number, z: number, level: number): TileProps | undefined
+}
+
+export class CombinedTileGrid implements TileGridSource {
+	//use explicit subgrid bounds since squares at the edge won't be blended correctly
+	grids: { src: TileGridSource, rect: MapRect }[];
+	constructor(grids: { src: TileGridSource, rect: MapRect }[]) {
+		this.grids = grids;
+	}
+
+	getTile(x, z, level) {
+		for (let grid of this.grids) {
+			if (x >= grid.rect.x && x < grid.rect.x + grid.rect.xsize && z >= grid.rect.z && z < grid.rect.z + grid.rect.zsize) {
+				return grid.src.getTile(x, z, level);
+			}
+		}
+		return undefined;
+	}
+}
+
+export class TileGrid implements TileGridSource {
 	engine: EngineCache;
 	area: MapRect;
 	tilemask: undefined | MapRect[];

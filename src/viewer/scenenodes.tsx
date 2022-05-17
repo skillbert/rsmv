@@ -300,7 +300,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
 		let { chunks, grid } = await this.model;
 		let rect: MapRect = { x: this.rect.x * 64, z: this.rect.z * 64, xsize: this.rect.xsize * 64, zsize: this.rect.zsize * 64 };
-		return svgfloor(this.cache.source, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
+		return svgfloor(this.cache.cache, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
 	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
@@ -329,13 +329,13 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		});
 	}
 
-	constructor(rect: MapRect, cache: ThreejsSceneCache) {
+	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
 		super();
 		this.rect = rect;
 		this.cache = cache;
 		this.model = (async () => {
 			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true };
+			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
 			let modeldata = await mapsquareModels(cache.cache, grid, chunks, opts);
 

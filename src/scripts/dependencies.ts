@@ -271,9 +271,9 @@ export async function getDependencies(cache: CacheFileSource) {
 		let hash = hashes.get(depname) ?? 0;
 		let [type, id] = depname.split("-");
 		let crc = previouscrc;
-		crc32addInt(depidmap[type], crc);
-		crc32addInt(+id, crc);
-		crc32addInt(+hash, crc);
+		crc = crc32addInt(depidmap[type], crc);
+		crc = crc32addInt(+id, crc);
+		crc = crc32addInt(+hash, crc);
 		let deps = dependencyMap.get(depname);
 		if (deps) {
 			for (let dep of deps) {
