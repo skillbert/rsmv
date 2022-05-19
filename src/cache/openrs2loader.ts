@@ -9,10 +9,34 @@ type CacheTable = {
 	indices: Promise<cache.CacheIndexFile>
 }
 
+export type Openrs2CacheMeta = {
+	id: 587,
+	scope: string
+	game: string
+	environment: string
+	language: string,
+	builds: { major: number, minor: number | null }[],
+	timestamp: string | null,
+	sources: string[],
+	valid_indexes: number,
+	indexes: number,
+	valid_groups: number,
+	groups: number,
+	valid_keys: number,
+	keys: number,
+	size: number,
+	blocks: number,
+	disk_store_valid: boolean
+};
+
 export class Openrs2CacheSource extends cache.CacheFileSource {
 	cachename: string;
 	opentables = new Map<number, CacheTable>();
 	totalbytes = 0;
+
+	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
+		return fetch("https://archive.openrs2.org/caches.json").then(q => q.json());
+	}
 
 	constructor(cachename: string) {
 		super();

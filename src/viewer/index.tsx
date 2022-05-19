@@ -11,7 +11,7 @@ import { ModelBrowser, StringInput } from "./scenenodes";
 import { getDependencies } from "../scripts/dependencies";
 import { hashCache } from "../scripts/cachediff";
 import { runMapRender } from "../map/index";
-import { Openrs2CacheSource } from "../cache/openrs2loader";
+import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 
 import type { OpenDialogReturnValue } from "electron/renderer";
@@ -50,6 +50,88 @@ type SavedCacheSource = {
 	type: "sqlitenodejs",
 	location: string
 });
+
+
+function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
+	let [caches, setCaches] = React.useState<Openrs2CacheMeta[] | null>(null);
+	let [loading, setLoading] = React.useState(false);
+	let [gameFilter, setGameFilter] = React.useState("");
+	let [yearFilter, setYearfilter] = React.useState("");
+	let [langFilter, setLangfilter] = React.useState("");
+
+	let loadcaches = React.useCallback(() => {
+		setLoading(true);
+		Openrs2CacheSource.getCacheIds().then(setCaches);
+	}, []);
+
+
+	let games: string[] = [];
+	let years: string[] = [];
+	let langs: string[] = [];
+	for (let cache of caches ?? []) {
+		if (cache.timestamp) {
+			let year = "" + new Date(cache.timestamp ?? 0).getUTCFullYear();
+			if (years.indexOf(year) == -1) { years.push(year); }
+		}
+		if (games.indexOf(cache.game) == -1) { games.push(cache.game); }
+		if (langs.indexOf(cache.language) == -1) { langs.push(cache.language); }
+	}
+
+	years.sort((a, b) => (+a) - (+b));
+
+	let showncaches = (caches ?? []).filter(cache => {
+		if (gameFilter && cache.game != gameFilter) { return false; }
+		if (langFilter && cache.language != langFilter) { return false; }
+		if (yearFilter && new Date(cache.timestamp ?? 0).getUTCFullYear() != +yearFilter) { return false; }
+		return true;
+	});
+	return (
+		<React.Fragment>
+			<StringInput initialid={p.initialid + ""} onChange={v => p.onSelect(+v)} />
+			{!loading && !caches && <input type="button" className="sub-btn" onClick={loadcaches} value="More options..." />}
+			{caches && (
+				<React.Fragment>
+					<div style={{ overflowY: "auto" }}>
+						<table>
+							<thead>
+								<tr>
+									<td>
+										<select value={gameFilter} onChange={e => setGameFilter(e.currentTarget.value)}>
+											<option value="">Game</option>
+											{games.map(game => <option key={game} value={game}>{game}</option>)}
+										</select>
+									</td>
+									<td>
+										<select value={langFilter} onChange={e => setLangfilter(e.currentTarget.value)}>
+											<option value="">--</option>
+											{langs.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+										</select>
+									</td>
+									<td>
+										<select value={yearFilter} onChange={e => setYearfilter(e.currentTarget.value)}>
+											<option value="">Date</option>
+											{years.map(year => <option key={year} value={year}>{year}</option>)}
+										</select>
+									</td>
+								</tr>
+							</thead>
+							<tbody>
+								{showncaches.map(cache => (
+									<tr key={cache.language + cache.id} onClick={p.onSelect.bind(null, cache.id)}>
+										<td>{cache.game}</td>
+										<td>{cache.language}</td>
+										<td>{cache.timestamp ? new Date(cache.timestamp).toDateString() : ""}</td>
+										<td>{cache.builds.map(q => q.major + (q.minor ? "." + q.minor : "")).join(",")}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</React.Fragment>
+			)}
+		</React.Fragment>
+	)
+}
 
 class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, onOpen: (c: SavedCacheSource) => void }, { lastFolderOpen: FileSystemDirectoryHandle | null }>{
 	constructor(p) {
@@ -144,8 +226,8 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 	}
 
 	@boundMethod
-	openOpenrs2Cache(cachename: string) {
-		this.props.onOpen({ type: "openrs2", cachename });
+	openOpenrs2Cache(cachename: number) {
+		this.props.onOpen({ type: "openrs2", cachename: cachename + "" });
 	}
 
 	render() {
@@ -160,7 +242,7 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 				<input type="button" className="sub-btn" onClick={this.clickOpen} value="Select folder" />
 				<h2>Historical caches</h2>
 				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
-				<StringInput initialid="949" onChange={this.openOpenrs2Cache} />
+				<OpenRs2IdSelector initialid={949} onSelect={this.openOpenrs2Cache} />
 				{electron && (
 					<React.Fragment>
 						<h2>Native NXT cache</h2>
