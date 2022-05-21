@@ -10,7 +10,7 @@ type CacheTable = {
 }
 
 export type Openrs2CacheMeta = {
-	id: 587,
+	id: number,
 	scope: string
 	game: string
 	environment: string

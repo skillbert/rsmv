@@ -95,6 +95,7 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 						<table>
 							<thead>
 								<tr>
+									<td></td>
 									<td>
 										<select value={gameFilter} onChange={e => setGameFilter(e.currentTarget.value)}>
 											<option value="">Game</option>
@@ -113,11 +114,15 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 											{years.map(year => <option key={year} value={year}>{year}</option>)}
 										</select>
 									</td>
+									<td>
+										Build
+									</td>
 								</tr>
 							</thead>
 							<tbody>
 								{showncaches.map(cache => (
-									<tr key={cache.language + cache.id} onClick={p.onSelect.bind(null, cache.id)}>
+									<tr key={cache.language + cache.id}>
+										<td><input type="button" value="-" className="sub-btn" onClick={p.onSelect.bind(null, cache.id)} /></td>
 										<td>{cache.game}</td>
 										<td>{cache.language}</td>
 										<td>{cache.timestamp ? new Date(cache.timestamp).toDateString() : ""}</td>
