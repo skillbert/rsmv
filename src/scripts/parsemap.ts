@@ -7,9 +7,6 @@ import sharp from "sharp";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { EngineCache } from "../3d/ob3tothree";
 
-//for debugging
-(global as any).fs = require("fs");
-
 let cmd = command({
 	name: "download",
 	args: {

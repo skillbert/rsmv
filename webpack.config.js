@@ -20,7 +20,9 @@ module.exports = {
 		deps: "./src/scripts/dependencies.ts",
 		quickchatlookup: "./src/scripts/quickchatlookup.ts",
 		scrapeavatars: "./src/scripts/scrapeavatars.ts",
-		searchmap: "./src/scripts/searchmap.ts"
+		searchmap: "./src/scripts/searchmap.ts",
+		maprender: "./src/map/",
+		runmap: "./src/map/run.ts"
 	},
 	module: {
 		rules: [

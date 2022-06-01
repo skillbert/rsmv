@@ -45,7 +45,7 @@ let majormap: Record<number, FileAction> = {
 	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: null, getFileName: standardName },
 	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, getFileName: worldmapFilename },
 	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parseEnums, getFileName: chunkedIndexName },
-	[cacheMajors.achievements]: { name: "achievements" as any, comparesubfiles: true, parser: parseAchievement, getFileName: chunkedIndexName },
+	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parseAchievement, getFileName: chunkedIndexName },
 	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parseMaterials, getFileName: chunkedIndexName }
 }
 function getMajorAction(major: number) {

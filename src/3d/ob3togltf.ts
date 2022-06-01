@@ -323,22 +323,16 @@ export function parseOb3Model(modelfile: Buffer) {
 	// console.log(colmap);//TODO remove
 
 	for (let n = 0; n < unkCount1; n++) {
-		console.log("unk1", unkCount1);
-		model.skip(37);
+		// console.log("unk1", unkCount1);
+		model.skip(39);
 	}
 	for (let n = 0; n < unkCount2; n++) {
-		console.log("unk2", unkCount2);
-		model.skip(2);//material id?
-		for (let i = 0; i < 3; i++) {
-			model.skip(2); model.skip(2);//u16 flags mostly 0x0000,0x0040,0x0080, f16 position? mostly -5.0<x<5.0
-			model.skip(2); model.skip(2);//u16 flags, f16?
-			model.skip(2); model.skip(2);//u16 flags, f16?
-			model.skip(2);//i16, mostly -1, otherwise <400
-		}
+		// console.log("unk2", unkCount2);
+		model.skip(50);
 	}
 	for (let n = 0; n < unkCount3; n++) {
-		console.log("unk3", unkCount3);
-		model.skip(16);
+		// console.log("unk3", unkCount3);
+		model.skip(18);
 	}
 
 

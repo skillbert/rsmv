@@ -39,7 +39,7 @@ export class ThreeJsRenderer {
 	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group;
-	cleanModelCallbacks: (() => void)[] = [];
+	cleanModelCallbacks: (() => void)[] = [];//TODO get rid of this
 	floormesh: THREE.Mesh;
 	queuedFrameId = 0;
 	automaticFrames = false;

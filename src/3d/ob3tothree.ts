@@ -14,7 +14,7 @@ import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
 
-(globalThis as any).packedhsl = function (hsl: number) {
+globalThis.packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
 }
 

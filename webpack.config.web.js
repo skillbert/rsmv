@@ -38,7 +38,8 @@ module.exports = {
 			sharp: false,
 			net: false,
 			sqlite3: false,
-			process: require.resolve('process/browser')
+			process: require.resolve('process/browser'),
+			"electron/renderer": false
 		},
 		fallback: {
 			buffer: require.resolve('buffer/'),//weird slash needed to import npm buffer instead of node buffer

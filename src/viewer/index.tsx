@@ -315,7 +315,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 
 			globalThis.calculateDependencies = () => getDependencies(cache!);
 			globalThis.hashCache = () => hashCache(cache!);
-			globalThis.runMapRender = (area = "52,46") => runMapRender(cache!, area);
+			globalThis.runMapRender = (area = "52,46", endpoint: string, auth: string) => runMapRender(cache!, area, endpoint, auth);
 			// //TODO remove
 			// let source = engine.source;
 			// globalThis.loadSkeletons = async function run() {

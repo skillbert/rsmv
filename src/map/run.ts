@@ -1,10 +1,8 @@
 
-import { app, BrowserWindow, powerSaveBlocker } from "electron";
+import { app, BrowserWindow, powerSaveBlocker, ipcMain } from "electron";
 import { runCliApplication, mapareasource } from "../cliparser";
 
-// app.allowRendererProcessReuse = false;
-
-//don't use browser behavoir of blocking gpu access after a opengl crash
+//don't use browser behavoir of blocking gpu access after an opengl crash
 app.disableDomainBlockingFor3DAPIs();
 //don't give up after 3 crashes! keep trying!
 app.commandLine.appendSwitch("disable-gpu-process-crash-limit");
@@ -13,11 +11,12 @@ app.commandLine.appendSwitch("disable-gpu-process-crash-limit");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
-app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
+//actually want our embedded graphics since it has more video memory (all of our RAM)
+// app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
 
 //forces dedicated gpu on windows
 //https://stackoverflow.com/questions/54464276/how-to-force-discrete-gpu-in-electron-js/63668188#63668188
-process.env.SHIM_MCCOMPAT = '0x800000001';
+// process.env.SHIM_MCCOMPAT = '0x800000001';
 
 //prevents computer from sleeping
 const id = powerSaveBlocker.start("prevent-app-suspension");
@@ -29,16 +28,22 @@ function btoa(str: string) {
 
 (async () => {
 	await app.whenReady();
+	
+	ipcMain.handle("getargv", () => ({ argv: process.argv, cwd: process.cwd() }));
+	ipcMain.on("toggledevtools", () => index.webContents.toggleDevTools());
+
 	var index = new BrowserWindow({
 		width: 800, height: 600,
 		webPreferences: {
-			// enableRemoteModule: true,
 			nodeIntegration: true,
 			contextIsolation: false
 		}
 	});
-	await index.loadFile("../assets/maprenderer.html", {
-		search: `?argv=${btoa(JSON.stringify(process.argv))}&cwd=${btoa(process.cwd())}`
-	});
+	await index.loadFile("assets/maprenderer.html");
 	index.webContents.openDevTools();
+
+	app.on("render-process-gone", (e, target, data) => {
+		console.log("render-process-gone", data);
+		// index.reload();
+	});
 })();
