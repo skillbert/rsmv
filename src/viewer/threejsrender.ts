@@ -16,6 +16,7 @@ import { ModelMeshData } from "3d/ob3togltf";
 //TODO remove
 globalThis.THREE = THREE;
 
+
 let lastob3modelcall: { args: any[], inst: ThreeJsRenderer } | null = null;
 if (module.hot) {
 	module.hot.accept("../3d/ob3tothree", () => {
@@ -30,7 +31,7 @@ if (module.hot) {
 }
 
 export type ThreeJsRendererEvents = {
-	select: null | { obj: Mesh, meshdata: ModelExtras & ClickableMesh<any>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
+	select: null | { obj: Mesh, meshdata: Extract<ModelExtras, ClickableMesh<any>>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
 }
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{

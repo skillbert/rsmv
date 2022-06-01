@@ -961,15 +961,15 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 
 			//show data about what we clicked
 			console.log(Array.isArray(e.obj.material) ? e.obj.material : e.obj.userData);
-			if (e.meshdata.modeltype == "locationgroup") {
-				let typedmatch = e.match as typeof e.meshdata.subobjects[number];
+			let meshdata = e.meshdata;
+			if (meshdata.modeltype == "locationgroup") {
+				let typedmatch = e.match as typeof meshdata.subobjects[number];
 				if (typedmatch.modeltype == "location") {
-					let object = await resolveMorphedObject(this.props.cache.source, typedmatch.locationid);
-					selectionData = { ...typedmatch, object };
+					selectionData = typedmatch;
 				}
 			}
-			if (e.meshdata.modeltype == "floor") {
-				let typedmatch = e.match as typeof e.meshdata.subobjects[number];
+			if (meshdata.modeltype == "floor") {
+				let typedmatch = e.match as typeof meshdata.subobjects[number];
 				selectionData = {
 					...e.meshdata,
 					x: typedmatch.x,
