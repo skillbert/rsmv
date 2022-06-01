@@ -33,6 +33,20 @@ if (typeof ipcRenderer != "undefined") {
 	});
 }
 
+let cmd = cmdts.command({
+	name: "download",
+	args: {
+		...filesource,
+		mapname: cmdts.option({ long: "mapname", defaultValue: () => "main" }),
+		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
+		auth: cmdts.option({ long: "auth", short: "p" }),
+		overwrite: cmdts.flag({ long: "overwrite", short: "f" })
+	},
+	handler: async (args) => {
+		await runMapRender(await args.source(), args.mapname, args.endpoint, args.auth);
+	}
+});
+
 const watermarkfile = null!;//fs.readFileSync(__dirname + "/../assets/watermark.png");
 
 type Mapconfig = {
@@ -62,11 +76,11 @@ type LayerConfig = {
 	mode: "height"
 });
 
-async function initMapConfig(endpoint: string, auth: string, version: number) {
+async function initMapConfig(endpoint: string, auth: string, version: number, overwrite: boolean) {
 	let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
 	if (!res.ok) { throw new Error("map config fetch error"); }
 	let config: Mapconfig = await res.json();
-	return new MapRender(endpoint, auth, config, version);
+	return new MapRender(endpoint, auth, config, version, overwrite);
 }
 
 //The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
@@ -79,13 +93,15 @@ class MapRender {
 	endpoint: string;
 	auth: string;
 	version: number;
+	overwrite: boolean;
 	minzoom: number;
-	constructor(endpoint: string, auth: string, config: Mapconfig, version: number) {
+	constructor(endpoint: string, auth: string, config: Mapconfig, version: number, overwrite: boolean) {
 		this.endpoint = endpoint;
 		this.auth = auth;
 		this.config = config;
 		this.layers = config.layers;
 		this.version = version;
+		this.overwrite = overwrite;
 		this.minzoom = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
 	}
 	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
@@ -113,11 +129,15 @@ class MapRender {
 		if (!send.ok) { throw new Error("file symlink failed"); }
 	}
 	async getMetas(names: string[]) {
-		let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.join(","))}`, {
-			headers: { "Authorization": this.auth },
-		});
-		if (!req.ok) { throw new Error("req failed"); }
-		return await req.json() as { hash: number, file: string }[]
+		if (this.overwrite) {
+			return [];
+		} else {
+			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.join(","))}`, {
+				headers: { "Authorization": this.auth },
+			});
+			if (!req.ok) { throw new Error("req failed"); }
+			return await req.json() as { hash: number, file: string }[]
+		}
 	}
 	getFileUrl(name: string, hash: number) {
 		return `${this.endpoint}/getfile?file=${encodeURIComponent(name)}&hash=${+hash}`;
@@ -214,7 +234,7 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string) {
+export async function runMapRender(filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, overwrite = false) {
 	let engine = await EngineCache.create(filesource);
 
 	let areas: MapRect[] = [];
@@ -292,7 +312,7 @@ export async function runMapRender(filesource: CacheFileSource, areaArgument: st
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
 	progress.updateProp("version", "" + deps.maxVersion);
 
-	let config = await initMapConfig(endpoint, auth, deps.maxVersion);
+	let config = await initMapConfig(endpoint, auth, deps.maxVersion, overwrite);
 
 	let getRenderer = () => {
 		let cnv = document.createElement("canvas");
@@ -302,20 +322,6 @@ export async function runMapRender(filesource: CacheFileSource, areaArgument: st
 	// await generateMips(config, progress);
 	console.log("done");
 }
-
-
-let cmd = cmdts.command({
-	name: "download",
-	args: {
-		...filesource,
-		mapname: cmdts.option({ long: "mapname", defaultValue: () => "main" }),
-		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
-		auth: cmdts.option({ long: "auth", short: "p" })
-	},
-	handler: async (args) => {
-		await runMapRender(await args.source(), args.mapname, args.endpoint, args.auth);
-	}
-});
 
 type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number, used: boolean };
 
