@@ -15,7 +15,7 @@ import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
-import { ThreeJsRenderer } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../3d/utils";
@@ -925,16 +925,19 @@ type SceneMapState = {
 		background: string
 	}[],
 	center: { x: number, z: number },
-	toggles: Record<string, boolean>
+	toggles: Record<string, boolean>,
+	selectionData: any
 };
 export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, SceneMapState> {
 	oldautoframe: boolean;
+	selectCleanup: (() => void)[] = [];
 	constructor(p) {
 		super(p);
 		this.state = {
 			chunkgroups: [],
 			center: { x: 0, z: 0 },
-			toggles: Object.create(null)
+			toggles: Object.create(null),
+			selectionData: undefined
 		}
 		this.oldautoframe = this.props.scene.automaticFrames;
 		this.props.scene.automaticFrames = false;
@@ -942,15 +945,53 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 
 	@boundMethod
 	clear() {
+		this.selectCleanup.forEach(q => q());
 		this.props.scene.setSkybox();
 		this.state.chunkgroups.forEach(q => q.chunk.cleanup());
 		this.props.scene.forceFrame();
 		this.setState({ chunkgroups: [], toggles: Object.create(null) });
 	}
 
+	@boundMethod
+	async meshSelected(e: ThreeJsRendererEvents["select"]) {
+		this.selectCleanup.forEach(q => q());
+		let selectionData: any = undefined;
+		if (e) {
+			this.selectCleanup = highlightModelGroup(e.vertexgroups);
+
+			//show data about what we clicked
+			console.log(Array.isArray(e.obj.material) ? e.obj.material : e.obj.userData);
+			if (e.meshdata.modeltype == "locationgroup") {
+				let typedmatch = e.match as typeof e.meshdata.subobjects[number];
+				if (typedmatch.modeltype == "location") {
+					let object = await resolveMorphedObject(this.props.cache.source, typedmatch.locationid);
+					selectionData = { ...typedmatch, object };
+				}
+			}
+			if (e.meshdata.modeltype == "floor") {
+				let typedmatch = e.match as typeof e.meshdata.subobjects[number];
+				selectionData = {
+					...e.meshdata,
+					x: typedmatch.x,
+					z: typedmatch.z,
+					subobjects: undefined,//remove (near) circular ref from json
+					subranges: undefined,
+					tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined }
+				};
+			}
+		};
+		this.setState({ selectionData });
+		this.props.scene.forceFrame();
+	}
+
+	componentDidMount() {
+		this.props.scene.on("select", this.meshSelected);
+	}
+
 	componentWillUnmount() {
 		this.clear();
 		this.props.scene.automaticFrames = this.oldautoframe;
+		this.props.scene.off("select", this.meshSelected);
 	}
 
 	async addArea(rect: MapRect) {
@@ -1116,6 +1157,7 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 					)
 				})}
 				<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
+				<JsonDisplay obj={this.state.selectionData} />
 			</React.Fragment>
 		)
 	}

@@ -4,13 +4,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader, GLTFParser, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData } from '../3d/utils';
+import { ModelModifications, FlatImageData, TypedEmitter } from '../3d/utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
-import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, SkeletonHelper } from "three";
+import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, Raycaster, SkeletonHelper, Vector2 } from "three";
 import { MountableAnimation } from "3d/animationframes";
+import { ModelMeshData } from "3d/ob3togltf";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -28,18 +29,19 @@ if (module.hot) {
 	});
 }
 
+export type ThreeJsRendererEvents = {
+	select: null | { obj: Mesh, meshdata: ModelExtras & ClickableMesh<any>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
+}
 
-
-export class ThreeJsRenderer {
+export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
 	skybox: { scene: THREE.Object3D, camera: THREE.Camera } | null = null;
 	scene: THREE.Scene;
 	camera: THREE.PerspectiveCamera;
-	selectedmodels: { mesh: THREE.Mesh, unselect: () => void }[] = [];
 	controls: InstanceType<typeof OrbitControls>;
 	modelnode: THREE.Group;
-	cleanModelCallbacks: (() => void)[] = [];//TODO get rid of this
+	// cleanModelCallbacks: (() => void)[] = [];//TODO get rid of this
 	floormesh: THREE.Mesh;
 	queuedFrameId = 0;
 	automaticFrames = false;
@@ -49,6 +51,7 @@ export class ThreeJsRenderer {
 	animationMixers = new Set<AnimationMixer>();
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
+		super();
 		globalThis.render = this;//TODO remove
 		this.canvas = canvas;
 		this.renderer = new THREE.WebGLRenderer({
@@ -292,7 +295,6 @@ export class ThreeJsRenderer {
 		this.renderer.setSize(framesize, framesize);
 		cam.projectionMatrix.transpose();
 		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
-		let img: Blob | null = null;
 		for (let retry = 0; retry < 5; retry++) {
 			await this.guaranteeRender(cam);
 			let ctx = this.renderer.getContext();
@@ -301,7 +303,6 @@ export class ThreeJsRenderer {
 			// img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
 			if (this.contextLossCountLastRender != this.contextLossCount) {
 				console.log("context loss during capture");
-				img = null;
 				continue;
 			}
 			let r: FlatImageData = { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 };
@@ -355,6 +356,7 @@ export class ThreeJsRenderer {
 	// }
 
 	setSkybox(skybox?: THREE.Object3D, fogColor?: number[]) {
+		let fogcolobj = (fogColor ? new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255) : null);
 		if (skybox) {
 			let scene = new THREE.Scene();
 			let camera = this.camera.clone();
@@ -363,14 +365,12 @@ export class ThreeJsRenderer {
 			obj.add(skybox);
 			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
 			this.skybox = { scene, camera };
-			if (fogColor) {
-				scene.background = new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255);
-				this.scene.fog = new THREE.Fog("#" + scene.background.getHexString(), 30, 150);
-				this.cleanModelCallbacks.push(() => this.scene.fog = null);
-			}
+			scene.background = fogcolobj;
 		} else {
 			this.skybox = null;
 		}
+
+		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
 	}
 
 	setCameraLimits() {
@@ -386,8 +386,6 @@ export class ThreeJsRenderer {
 		this.controls.update();
 		this.controls.screenSpacePanning = true;
 
-		this.cleanModelCallbacks.forEach(q => q());
-		this.cleanModelCallbacks = [];
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
 		this.floormesh.visible = true;//box.min.y > -1;
 	}
@@ -410,12 +408,6 @@ export class ThreeJsRenderer {
 
 	@boundMethod
 	async click(e: React.MouseEvent | MouseEvent) {
-		//reset previous selection
-		for (let model of this.selectedmodels) {
-			model.unselect();
-		}
-
-		this.selectedmodels = [];
 		let raycaster = new THREE.Raycaster();
 		let cnvrect = this.canvas.getBoundingClientRect();
 		let mousepos = new THREE.Vector2(
@@ -424,6 +416,7 @@ export class ThreeJsRenderer {
 		);
 
 		raycaster.setFromCamera(mousepos, this.camera);
+
 		let intersects = raycaster.intersectObjects(this.scene.children);
 		for (let isct of intersects) {
 			let obj: THREE.Object3D | null = isct.object;
@@ -471,77 +464,57 @@ export class ThreeJsRenderer {
 					}
 				});
 			}
-
-			//update the affected meshes
-			let undos: (() => void)[] = [];
-			for (let submatch of matches) {
-				let color = submatch.mesh.geometry.getAttribute("color");
-				let usecolor = submatch.mesh.geometry.getAttribute("_ra_floortex_usescolor");
-				let oldindices: number[] = [];
-				let oldcols: [number, number, number][] = [];
-				let oldusecols: [number, number, number, number][] = [];
-				//remember old atribute values
-				for (let i = submatch.start; i < submatch.end; i++) {
-					let index = submatch.mesh.geometry.index?.getX(i) ?? i;
-					oldindices.push(index);
-					oldcols.push([color.getX(index), color.getY(index), color.getZ(index)]);
-					if (usecolor) {
-						oldusecols.push([usecolor.getX(index), usecolor.getY(index), usecolor.getZ(index), usecolor.getW(index)]);
-					}
-				}
-				//update the value in a seperate loop since we'll be writing some multiple times
-				for (let i = submatch.start; i < submatch.end; i++) {
-					let index = submatch.mesh.geometry.index?.getX(i) ?? i;
-					oldindices.push(index);
-					color.setXYZ(index, 255, 0, 0);
-					if (usecolor) {
-						usecolor.setXYZW(index, 255, 255, 255, 255);
-					}
-				}
-				undos.push(() => {
-					for (let i = submatch.start; i < submatch.end; i++) {
-						let index = oldindices[i - submatch.start];
-						color.setXYZ(index, ...oldcols[i - submatch.start]);
-						color.needsUpdate = true;
-						if (usecolor) {
-							usecolor.setXYZW(index, ...oldusecols[i - submatch.start]);
-							usecolor.needsUpdate = true;
-						}
-					}
-				});
-				this.selectedmodels.push({
-					mesh: submatch.mesh,
-					unselect() { undos.forEach(undo => undo()); }
-				});
-				color.needsUpdate = true;
-				if (usecolor) { usecolor.needsUpdate = true; }
-			}
-
-			//show data about what we clicked
-			// console.log(obj.material.userData);
-			// if (meshdata.modeltype == "locationgroup") {
-			// 	let typedmatch = match as typeof meshdata.subobjects[number];
-			// 	if (typedmatch.modeltype == "location") {
-			// 		let object = await resolveMorphedObject(this.filesource, typedmatch.locationid);
-			// 		this.uistate.meta = JSON.stringify({ ...typedmatch, object }, undefined, "\t");
-			// 	}
-			// }
-			// if (meshdata.modeltype == "floor") {
-			// 	let typedmatch = match as typeof meshdata.subobjects[number];
-			// 	this.uistate.meta = JSON.stringify({
-			// 		...meshdata,
-			// 		x: typedmatch.x,
-			// 		z: typedmatch.z,
-			// 		subobjects: undefined,//remove (near) circular ref from json
-			// 		subranges: undefined,
-			// 		tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined }
-			// 	}, undefined, "\t");
-			// }
-			break;
+			this.emit("select", { obj, meshdata, match, vertexgroups: matches });
+			return;
 		}
 
-		this.forceFrame();
+		this.emit("select", null);
 	}
 
 
+}
+
+export function highlightModelGroup(vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[]) {
+
+	//update the affected meshes
+	let undos: (() => void)[] = [];
+	for (let submatch of vertexgroups) {
+		let color = submatch.mesh.geometry.getAttribute("color");
+		let usecolor = submatch.mesh.geometry.getAttribute("_ra_floortex_usescolor");
+		let oldindices: number[] = [];
+		let oldcols: [number, number, number][] = [];
+		let oldusecols: [number, number, number, number][] = [];
+		//remember old atribute values
+		for (let i = submatch.start; i < submatch.end; i++) {
+			let index = submatch.mesh.geometry.index?.getX(i) ?? i;
+			oldindices.push(index);
+			oldcols.push([color.getX(index), color.getY(index), color.getZ(index)]);
+			if (usecolor) {
+				oldusecols.push([usecolor.getX(index), usecolor.getY(index), usecolor.getZ(index), usecolor.getW(index)]);
+			}
+		}
+		//update the value in a seperate loop since we'll be writing some multiple times
+		for (let i = submatch.start; i < submatch.end; i++) {
+			let index = submatch.mesh.geometry.index?.getX(i) ?? i;
+			oldindices.push(index);
+			color.setXYZ(index, 255, 0, 0);
+			if (usecolor) {
+				usecolor.setXYZW(index, 255, 255, 255, 255);
+			}
+		}
+		undos.push(() => {
+			for (let i = submatch.start; i < submatch.end; i++) {
+				let index = oldindices[i - submatch.start];
+				color.setXYZ(index, ...oldcols[i - submatch.start]);
+				color.needsUpdate = true;
+				if (usecolor) {
+					usecolor.setXYZW(index, ...oldusecols[i - submatch.start]);
+					usecolor.needsUpdate = true;
+				}
+			}
+		});
+		color.needsUpdate = true;
+		if (usecolor) { usecolor.needsUpdate = true; }
+	}
+	return undos;
 }
