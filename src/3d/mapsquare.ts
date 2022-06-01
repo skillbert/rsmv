@@ -1901,18 +1901,22 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				let rawtile = tile.raw;
 				let shape = tile.shape;
 				let hasneighbours = tile.next01 && tile.next10 && tile.next11;
+
 				//it somehow prefers to split the tile in a way that keeps underlays together
-				// if (shape == defaulttileshape && hasneighbours) {
-				// 	//something going on with underlay materials but unclear what
-				// 	// if (tile.rawUnderlay == tile.next11!.rawUnderlay && tile.next01!.rawUnderlay != tile.next10!.rawUnderlay) {
-				// 	// 	shape = defaulttileshape;
-				// 	// } else
-				// 	 if (Math.abs(tile.y - tile.y11) > Math.abs(tile.y10 - tile.y01)) {
-				// 		shape = defaulttileshape;
-				// 	} else {
-				// 		shape = defaulttileshapeflipped;
-				// 	}
-				// }
+				if (shape == defaulttileshape && hasneighbours) {
+
+					let dcpos = Math.abs(tile.underlayprops.color[0] - tile.next11!.underlayprops.color[0])
+						+ Math.abs(tile.underlayprops.color[1] - tile.next11!.underlayprops.color[1])
+						+ Math.abs(tile.underlayprops.color[2] - tile.next11!.underlayprops.color[2]);
+					let dcinv = Math.abs(tile.next01!.underlayprops.color[0] - tile.next10!.underlayprops.color[0])
+						+ Math.abs(tile.next01!.underlayprops.color[1] - tile.next10!.underlayprops.color[1])
+						+ Math.abs(tile.next01!.underlayprops.color[2] - tile.next10!.underlayprops.color[2]);
+
+					//TODO still not quite the right criteria
+					if (dcpos < dcinv) {
+						shape = defaulttileshapeflipped;
+					}
+				}
 
 				if (keeptileinfo) {
 					tileinfos.push({ tile, x, z, level: tilelevel });
