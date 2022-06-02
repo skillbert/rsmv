@@ -842,7 +842,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 		}
 		if (cnf.mode == "height") {
 			let thiscnf = cnf;
-			let filename = config.makeFileName(thiscnf.name, zooms.base, x, y, "bin");
+			let filename = `${thiscnf.name}/${x}-${z}.bin`;
 			chunktasks.push({
 				layer: thiscnf,
 				file: filename,
