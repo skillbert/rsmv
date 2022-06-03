@@ -29,13 +29,13 @@ import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
-import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput } from "./scriptsui";
+import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "testdecode";
 
 
 
-export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cache: ThreejsSceneCache }, { search: string, mode: LookupMode }> {
+export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cache: ThreejsSceneCache, onSelectFile: (f: UIScriptFile | null) => void }, { search: string, mode: LookupMode }> {
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -101,7 +101,7 @@ export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cac
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "testdecode" })} onClick={() => this.setMode("testdecode")}>Test</div>
 				</div>
-				<ModeComp cache={this.props.cache} scene={this.props.render} initialId={this.state.search} />
+				<ModeComp cache={this.props.cache} scene={this.props.render} initialId={this.state.search} onSelectFile={this.props.onSelectFile} />
 			</React.Fragment>
 		);
 	}
@@ -435,7 +435,7 @@ function ScenarioControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioCom
 	)
 }
 
-export class SceneScenario extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { components: ScenarioComponent[], addType: keyof typeof primitiveModelInits }>{
+export class SceneScenario extends React.Component<LookupModeProps, { components: ScenarioComponent[], addType: keyof typeof primitiveModelInits }>{
 
 	models = new Map<ScenarioComponent, RSModel>();
 
@@ -586,7 +586,7 @@ async function locToModel(cache: ThreejsSceneCache, id: number) {
 	return { models, animids, loc: obj };
 }
 
-export class ScenePlayer extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { avaitems: items[] | null, animset: animgroupconfigs | null }> {
+export class ScenePlayer extends React.Component<LookupModeProps, { avaitems: items[] | null, animset: animgroupconfigs | null }> {
 	model: RSModel | null = null;
 	modelid = "";
 
@@ -641,7 +641,7 @@ function JsonDisplay(p: { obj: any }) {
 	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
 }
 
-export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }> {
+export class SceneRawModel extends React.Component<LookupModeProps> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -673,7 +673,7 @@ export class SceneRawModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 }
 
-export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { matdata: materials | null }> {
+export class SceneMaterial extends React.Component<LookupModeProps, { matdata: materials | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -737,7 +737,7 @@ export class SceneMaterial extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 }
 
-export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { locdata: objects | null }> {
+export class SceneLocation extends React.Component<LookupModeProps, { locdata: objects | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -782,7 +782,7 @@ export class SceneLocation extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 }
 
-export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { itemdata: items | null }> {
+export class SceneItem extends React.Component<LookupModeProps, { itemdata: items | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -831,7 +831,7 @@ export class SceneItem extends React.Component<{ scene: ThreeJsRenderer, cache: 
 		)
 	}
 }
-export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { npcdata: npcs | null }> {
+export class SceneNpc extends React.Component<LookupModeProps, { npcdata: npcs | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -876,7 +876,7 @@ export class SceneNpc extends React.Component<{ scene: ThreeJsRenderer, cache: T
 	}
 }
 
-export class SceneSpotAnim extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { animdata: spotanims | null }> {
+export class SceneSpotAnim extends React.Component<LookupModeProps, { animdata: spotanims | null }> {
 	model: RSModel | null = null;
 	modelid: number = -1;
 
@@ -930,7 +930,7 @@ type SceneMapState = {
 	toggles: Record<string, boolean>,
 	selectionData: any
 };
-export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, SceneMapState> {
+export class SceneMapModel extends React.Component<LookupModeProps, SceneMapState> {
 	oldautoframe: boolean;
 	selectCleanup: (() => void)[] = [];
 	constructor(p) {
@@ -1208,7 +1208,7 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 	)
 }
 
-class TestDecode extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { script: "test" | "extract", running: UIScriptOutput | null }>{
+class TestDecode extends React.Component<LookupModeProps, { script: "test" | "extract", running: UIScriptOutput | null }>{
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -1232,50 +1232,15 @@ class TestDecode extends React.Component<{ scene: ThreeJsRenderer, cache: Threej
 				</div>
 				{this.state.script == "test" && <TestFilesScript source={this.props.cache.source} onRun={this.onRun} />}
 				{this.state.script == "extract" && <ExtractFilesScript source={this.props.cache.source} onRun={this.onRun} />}
-				<OutputUI output={this.state.running} />
+				<OutputUI output={this.state.running} onSelectFile={this.props.onSelectFile} />
 			</React.Fragment>
 		);
 	}
 }
 
-function TrivialHexViewer(p: { data: Buffer }) {
+type LookupModeProps = { scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string, onSelectFile: (f: UIScriptFile | null) => void }
 
-	let resulthex = "";
-	let resultchrs = "";
-	let buf = p.data;
-
-	let linesize = 16;
-	let groupsize = 8;
-
-	outer: for (let lineindex = 0; ; lineindex += linesize) {
-		if (lineindex != 0) {
-			resulthex += "\n";
-			resultchrs += "\n";
-		}
-		for (let groupindex = 0; groupindex < linesize; groupindex += groupsize) {
-			if (groupindex != 0) {
-				resulthex += "  ";
-				resultchrs += " ";
-			}
-			for (let chrindex = 0; chrindex < groupsize; chrindex++) {
-				let i = lineindex + groupindex + chrindex;
-				if (i >= buf.length) { break outer; }
-				let byte = buf[i];
-
-				if (chrindex != 0) { resulthex += " "; }
-				resulthex += byte.toString(16).padStart(2, "0");
-				resultchrs += String.fromCharCode(byte);
-			}
-		}
-	}
-
-	return (
-		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resulthex}</div>
-	)
-}
-
-
-const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, any> }> = {
+const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<LookupModeProps, any> }> = {
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,

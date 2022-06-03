@@ -3,6 +3,7 @@ export const cacheMajors = {
 	config: 2,
 	mapsquares: 5,
 
+	oldmodels: 7,
 	sprites: 8,
 	objects: 16,
 	enums: 17,

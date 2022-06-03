@@ -66,7 +66,7 @@ const BufferTypes = {
 	uint: { constr: Uint32Array },
 };
 
-var debugdata: null | { structstack: object[], opcodes: { op: number | string, index: number }[] } = null;
+var debugdata: null | { structstack: object[], opcodes: { op: number | string, index: number, stacksize: number }[] } = null;
 export function getDebug(trigger: boolean) {
 	let ret = debugdata;
 	//TODO structstack is obsolete because of the stack in state
@@ -281,7 +281,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 				let parser = map.get(opt);
 				if (!parser) { throw new Error("unknown chunk 0x" + opt.toString(16).toUpperCase()); }
 				if (debugdata) {
-					debugdata.opcodes.push({ op: parser.key as string, index: state.scan - 1 });
+					debugdata.opcodes.push({ op: parser.key as string, index: state.scan - 1, stacksize: state.stack.length });
 				}
 				r[parser.key] = parser.parser.read(state);
 			}
@@ -437,7 +437,7 @@ function structParser<T extends Record<string, any>>(props: { [key in keyof T]: 
 			state.stack.push(r);
 			state.hiddenstack.push(hidden);
 			for (let key of keys) {
-				if (debugdata) { debugdata.opcodes.push({ op: key, index: state.scan }); }
+				if (debugdata) { debugdata.opcodes.push({ op: key, index: state.scan, stacksize: state.stack.length }); }
 				let v = props[key].read(state);
 				if (v !== undefined) {
 					if (key[0] == "$") {

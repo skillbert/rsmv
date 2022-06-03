@@ -15,6 +15,10 @@ import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 
 import type { OpenDialogReturnValue } from "electron/renderer";
+import { UIScriptFile } from "./scriptsui";
+import { DecodeErrorJson } from "scripts/testdecode";
+import prettyJson from "json-stringify-pretty-compact";
+
 
 const electron = (typeof __non_webpack_require__ != "undefined" ? (__non_webpack_require__("electron/renderer") as typeof import("electron/renderer")) : null);
 
@@ -261,12 +265,13 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 	}
 }
 
-class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null }> {
+class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null, openedFile: UIScriptFile | null }> {
 	constructor(p) {
 		super(p);
 		this.state = {
 			cache: null,
-			renderer: null
+			renderer: null,
+			openedFile: null
 		};
 		(async () => {
 			let source = await datastore.get<SavedCacheSource>("openedcache");
@@ -361,20 +366,124 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 		this.setState({ cache: null });
 	}
 
+	@boundMethod
+	selectFile(file: UIScriptFile | null) {
+		this.setState({ openedFile: file });
+	}
+
 	render() {
 		return (
 			<div id="content">
-				<div className="canvas-container">
-					<canvas id="viewer" ref={this.initCnv}></canvas>
-				</div>
+				<canvas id="viewer" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
+				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.selectFile} />}
 				<div id="sidebar">
 					{!this.state.cache && (<CacheSelector onOpen={this.openCache} />)}
 					{this.state.cache && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.state.cache.source.getCacheName()}`} />}
-					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} />}
+					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} onSelectFile={this.selectFile} />}
 				</div>
 			</div >
 		);
 	}
+}
+
+function bufToHexView(buf: Buffer) {
+	let resulthex = "";
+	let resultchrs = "";
+
+	let linesize = 16;
+	let groupsize = 8;
+
+	outer: for (let lineindex = 0; ; lineindex += linesize) {
+		if (lineindex != 0) {
+			resulthex += "\n";
+			resultchrs += "\n";
+		}
+		for (let groupindex = 0; groupindex < linesize; groupindex += groupsize) {
+			if (groupindex != 0) {
+				resulthex += "  ";
+				resultchrs += " ";
+			}
+			for (let chrindex = 0; chrindex < groupsize; chrindex++) {
+				let i = lineindex + groupindex + chrindex;
+				if (i >= buf.length) { break outer; }
+				let byte = buf[i];
+
+				if (chrindex != 0) { resulthex += " "; }
+				resulthex += byte.toString(16).padStart(2, "0");
+				resultchrs += (byte < 0x20 ? "." : String.fromCharCode(byte));
+			}
+		}
+	}
+	return { resulthex, resultchrs };
+}
+
+function TrivialHexViewer(p: { data: Buffer }) {
+	let { resulthex } = bufToHexView(p.data);
+	return (
+		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resulthex}</div>
+	)
+}
+
+function FileDecodeErrorViewer(p: { file: string }) {
+	let err: DecodeErrorJson = JSON.parse(p.file);
+	let remainder = Buffer.from(err.remainder, "hex");
+	let remainderhex = bufToHexView(remainder);
+	return (
+		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>
+			{err.error}
+			<tr>Chunks</tr>
+			<table>
+				<tbody>
+					{err.chunks.map((q, i) => {
+						let hexview = bufToHexView(Buffer.from(q.bytes, "hex"));
+						return (
+							<tr key={q.offset + "-" + i}>
+								<td>{hexview.resulthex}</td>
+								<td>{hexview.resultchrs}</td>
+								<td>{q.text}</td>
+							</tr>
+						);
+					})}
+					<tr>
+						<td>{remainderhex.resulthex}</td>
+						<td>{remainderhex.resultchrs}</td>
+						<td>remainder: {remainder.byteLength}</td>
+					</tr>
+				</tbody>
+			</table>
+			<tr>State</tr>
+			{prettyJson(err.state)}
+		</div>
+	);
+}
+
+function SimpleTextViewer(p: { file: string }) {
+	return (
+		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>
+			{p.file}
+		</div>
+	);
+}
+
+function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFile | null) => void }) {
+	let el: React.ReactNode = null;
+	let filedata = p.file.data;
+	if (typeof filedata == "string") {
+		if (p.file.type == "filedecodeerror") {
+			el = <FileDecodeErrorViewer file={filedata} />;
+		} else {
+			el = <SimpleTextViewer file={filedata} />;
+		}
+	} else {
+		el = <TrivialHexViewer data={filedata} />
+	}
+
+	return (
+		<div style={{ overflow: "auto" }}>
+			<div>{p.file.name} - {p.file.type ?? "no type"} <span onClick={e => p.onSelectFile(null)}>x</span></div>
+			{el}
+		</div>
+	);
 }
 
 start();

@@ -11,7 +11,7 @@ type ScriptState = "running" | "canceled" | "error" | "done";
 export interface ScriptOutput {
 	state: ScriptState;
 	log(...args: any[]): void;
-	writeFile(name: string, data: Buffer | string): Promise<void>;
+	writeFile(name: string, data: Buffer | string, type?: string): Promise<void>;
 	setState(state: ScriptState): void;
 	run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null>;
 }
@@ -28,7 +28,7 @@ export class CLIScriptOutput implements ScriptOutput {
 		console.log(...args);
 	}
 
-	writeFile(name: string, data: Buffer) {
+	writeFile(name: string, data: Buffer, type?: string) {
 		return fs.promises.writeFile(path.resolve(this.dir, name), data);
 	}
 
@@ -52,7 +52,7 @@ export class CLIScriptOutput implements ScriptOutput {
 	}
 }
 
-type UIScriptFile = { name: string, data: Buffer };
+export type UIScriptFile = { name: string, data: Buffer, type: string };
 export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undefined, statechange: undefined }> implements ScriptOutput {
 	state: ScriptState = "running";
 	logs: string[] = [];
@@ -65,8 +65,8 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		this.emit("log", str);
 	}
 
-	async writeFile(name: string, data: Buffer) {
-		this.files.push({ name, data });
+	async writeFile(name: string, data: Buffer, type?: string) {
+		this.files.push({ name, data, type: type ?? "" });
 		if (this.outdirhandles) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
 	}
@@ -127,7 +127,7 @@ function useForceUpdate() {
 	return forceUpdate;
 }
 
-export function OutputUI(p: { output?: UIScriptOutput | null }) {
+export function OutputUI(p: { output?: UIScriptOutput | null, onSelectFile: (f: UIScriptFile | null) => void }) {
 	let [tab, setTab] = React.useState<"console" | "files">("console");
 	let [selected, setSelected] = React.useState(null);
 
@@ -140,10 +140,6 @@ export function OutputUI(p: { output?: UIScriptOutput | null }) {
 			p.output?.off("writefile", forceUpdate);
 		}
 	}, [p.output]);
-
-	let setFileSelect = React.useCallback((file: UIScriptFile) => {
-
-	}, []);
 
 	return (
 		<div>
@@ -158,13 +154,13 @@ export function OutputUI(p: { output?: UIScriptOutput | null }) {
 				<div className={classNames("rsmv-icon-button", { active: tab == "files" })} onClick={e => setTab("files")}>Files</div>
 			</div>
 			{tab == "console" && <UIScriptConsole output={p.output} />}
-			{tab == "files" && <UIScriptFiles output={p.output} onSelect={setFileSelect} />}
+			{tab == "files" && <UIScriptFiles output={p.output} onSelect={p.onSelectFile} />}
 		</div>
 	)
 
 }
 
-export function UIScriptFiles(p: { output?: UIScriptOutput | null, onSelect: (file: UIScriptFile) => void }) {
+export function UIScriptFiles(p: { output?: UIScriptOutput | null, onSelect: (file: UIScriptFile | null) => void }) {
 	let [files, setFiles] = React.useState(p.output?.files);
 
 	useEffect(() => {
