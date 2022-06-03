@@ -69,6 +69,7 @@ const BufferTypes = {
 var debugdata: null | { structstack: object[], opcodes: { op: number | string, index: number }[] } = null;
 export function getDebug(trigger: boolean) {
 	let ret = debugdata;
+	//TODO structstack is obsolete because of the stack in state
 	debugdata = trigger ? { structstack: [], opcodes: [] } : null;
 	return ret;
 }
@@ -277,11 +278,11 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 				let opt = opcodetype.read(state);
 				hidden.$opcode = opt;
 				if (!hasexplicitnull && opt == 0) { break; }
-				if (debugdata) {
-					debugdata.opcodes.push({ op: opt, index: state.scan - 1 });
-				}
 				let parser = map.get(opt);
 				if (!parser) { throw new Error("unknown chunk 0x" + opt.toString(16).toUpperCase()); }
+				if (debugdata) {
+					debugdata.opcodes.push({ op: parser.key as string, index: state.scan - 1 });
+				}
 				r[parser.key] = parser.parser.read(state);
 			}
 			state.stack.pop();
@@ -339,9 +340,12 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 		getJsonSchema() {
 			return {
 				type: "object",
-				properties: Object.fromEntries([...map.values()].map((prop) => {
-					return [prop.key, prop.parser.getJsonSchema()];
-				}))
+				properties: Object.fromEntries([...map.values()]
+					.filter(prop => !(prop.key as string).startsWith("$"))
+					.map((prop) => {
+						return [prop.key, prop.parser.getJsonSchema()];
+					})
+				)
 			}
 		}
 	}
@@ -503,7 +507,7 @@ function structParser<T extends Record<string, any>>(props: { [key in keyof T]: 
 					.filter(([key]) => !key.startsWith("$"))
 					.map(([key, prop]) => [key, (prop as ChunkParser).getJsonSchema()])
 				),
-				required: keys
+				required: keys.filter(k => !k.startsWith("$"))
 			}
 		}
 	}
@@ -698,7 +702,7 @@ function chunkedArrayParser<T extends object>(lengthtype: ChunkParser<number>, c
 						.filter(([key]) => !key.startsWith("$"))
 						.map(([key, prop]) => [key, (prop as ChunkParser).getJsonSchema()])
 					),
-					required: keys
+					required: keys.filter(k => !k.startsWith("$"))
 				}
 			};
 		}

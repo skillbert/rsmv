@@ -1,4 +1,4 @@
-import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
+import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { ParsedTexture } from "./textures";

@@ -7,7 +7,7 @@ import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, pa
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { parseSprite } from "../3d/sprite";
 import sharp from "sharp";
-import { FlatImageData, Stream } from "../3d/utils";
+import { FlatImageData, Stream } from "../utils";
 import * as cache from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
 import { crc32_backward, forge } from "../libs/crc32util";

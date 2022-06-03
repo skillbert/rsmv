@@ -9,7 +9,7 @@ import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parseEnums, parseMapZones } from "../opdecoder";
-import { FlatImageData } from "3d/utils";
+import { FlatImageData } from "../utils";
 import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { RSMapChunk } from "../viewer/scenenodes";
@@ -136,7 +136,7 @@ class MapRender {
 				headers: { "Authorization": this.auth },
 			});
 			if (!req.ok) { throw new Error("req failed"); }
-			return await req.json() as { hash: number, file: string }[]
+			return await req.json() as { hash: number, file: string, time: number }[]
 		}
 	}
 	getFileUrl(name: string, hash: number) {

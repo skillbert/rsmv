@@ -1,4 +1,4 @@
-import { Stream, packedHSL2HSL, HSL2RGB } from "./utils";
+import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
 import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";

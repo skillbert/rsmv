@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData } from '../3d/utils';
+import { ModelModifications, FlatImageData } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';
@@ -11,14 +11,13 @@ import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from 
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
-import * as ReactDOM from "react-dom";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
 import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
-import { TypedEmitter } from "../3d/utils";
+import { TypedEmitter } from "../utils";
 import { objects } from "../../generated/objects";
 import { items } from "../../generated/items";
 import { materials } from "../../generated/materials";
@@ -28,16 +27,18 @@ import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import prettyJson from "json-stringify-pretty-compact";
 import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
+import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
+import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
+import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput } from "./scriptsui";
 
-type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario";
+type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "testdecode";
 
 
 
-export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cache: ThreejsSceneCache }, { search: string, hist: string[], mode: LookupMode }> {
+export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cache: ThreejsSceneCache }, { search: string, mode: LookupMode }> {
 	constructor(p) {
 		super(p);
 		this.state = {
-			hist: [],
 			mode: localStorage.rsmv_lastmode ?? "model",
 			search: localStorage.rsmv_lastsearch ?? "0"
 		};
@@ -98,6 +99,7 @@ export class ModelBrowser extends React.Component<{ render: ThreeJsRenderer, cac
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Material IDs</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "testdecode" })} onClick={() => this.setMode("testdecode")}>Test</div>
 				</div>
 				<ModeComp cache={this.props.cache} scene={this.props.render} initialId={this.state.search} />
 			</React.Fragment>
@@ -1163,6 +1165,115 @@ export class SceneMapModel extends React.Component<{ scene: ThreeJsRenderer, cac
 	}
 }
 
+function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+	let [files, setFiles] = React.useState("");
+	let [mode, setMode] = React.useState("");
+
+	let run = () => {
+		let output = new UIScriptOutput();
+		output.run(extractCacheFiles, p.source, { files, mode, batched: true, batchlimit: 512 });
+		p.onRun(output);
+	}
+
+	return (
+		<React.Fragment>
+			<StringInput onChange={setFiles} initialid={files} />
+			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
+				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+			</select>
+			<input type="button" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+
+function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+	let [mode, setMode] = React.useState("");
+
+	let run = () => {
+		let modefactory = cacheFileDecodeModes[mode];
+		if (!modefactory) { return; }
+		let output = new UIScriptOutput();
+		let opts = defaultTestDecodeOpts();
+		output.run(testDecode, p.source, modefactory({}), opts);
+		p.onRun(output);
+	}
+
+	return (
+		<React.Fragment>
+			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
+				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+			</select>
+			<input type="button" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+
+class TestDecode extends React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, { script: "test" | "extract", running: UIScriptOutput | null }>{
+	constructor(p) {
+		super(p);
+		this.state = {
+			script: this.props.initialId as any,
+			running: null
+		}
+	}
+
+	@boundMethod
+	async onRun(output: UIScriptOutput) {
+		localStorage.rsmv_lastsearch = this.state.script;
+		this.setState({ running: output });
+	}
+
+	render() {
+		return (
+			<React.Fragment>
+				<div className="sidebar-browser-tab-strip">
+					<div className={classNames("rsmv-icon-button", { active: this.state.script == "test" })} onClick={() => this.setState({ script: "test" })}>Test</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.script == "extract" })} onClick={() => this.setState({ script: "extract" })}>Extract</div>
+				</div>
+				{this.state.script == "test" && <TestFilesScript source={this.props.cache.source} onRun={this.onRun} />}
+				{this.state.script == "extract" && <ExtractFilesScript source={this.props.cache.source} onRun={this.onRun} />}
+				<OutputUI output={this.state.running} />
+			</React.Fragment>
+		);
+	}
+}
+
+function TrivialHexViewer(p: { data: Buffer }) {
+
+	let resulthex = "";
+	let resultchrs = "";
+	let buf = p.data;
+
+	let linesize = 16;
+	let groupsize = 8;
+
+	outer: for (let lineindex = 0; ; lineindex += linesize) {
+		if (lineindex != 0) {
+			resulthex += "\n";
+			resultchrs += "\n";
+		}
+		for (let groupindex = 0; groupindex < linesize; groupindex += groupsize) {
+			if (groupindex != 0) {
+				resulthex += "  ";
+				resultchrs += " ";
+			}
+			for (let chrindex = 0; chrindex < groupsize; chrindex++) {
+				let i = lineindex + groupindex + chrindex;
+				if (i >= buf.length) { break outer; }
+				let byte = buf[i];
+
+				if (chrindex != 0) { resulthex += " "; }
+				resulthex += byte.toString(16).padStart(2, "0");
+				resultchrs += String.fromCharCode(byte);
+			}
+		}
+	}
+
+	return (
+		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resulthex}</div>
+	)
+}
+
 
 const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<{ scene: ThreeJsRenderer, cache: ThreejsSceneCache, initialId: string }, any> }> = {
 	model: SceneRawModel,
@@ -1173,5 +1284,6 @@ const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<
 	npc: SceneNpc,
 	object: SceneLocation,
 	spotanim: SceneSpotAnim,
-	scenario: SceneScenario
+	scenario: SceneScenario,
+	testdecode: TestDecode
 }

@@ -124,35 +124,42 @@ export function packBufferArchive(buffers: Buffer[]) {
 }
 
 export function unpackBufferArchive(buffer: Buffer, subids: number[]) {
+	if (subids.length == 1) {
+		let r: SubFile[] = [{
+			buffer: buffer,
+			offset: 0,
+			size: buffer.byteLength,
+			fileid: subids[0]
+		}];
+		return r;
+	}
+
+	let nchunks = buffer.readUInt8(buffer.length - 1);
+	var suboffsetScan = buffer.length - 1 - (4 * subids.length * nchunks);
 	var subbufs: SubFile[] = [];
 	var scan = 0x0;
-	if (subids.length != 1) {
-		//TODO i think this endbyte thing is bullshit?
-		//whats in our missing byte?
-		let endbyte = buffer.readUInt8(buffer.length - 1);
-		if (endbyte != 1) { console.log("unexpected archive end byte", endbyte) }
-	}
-	var suboffsetScan = buffer.length - 1 - (4 * subids.length);
-	var lastRecordSize = 0;
-
-	for (var j = 0; j < subids.length; ++j) {
-		let size: number;
-		if (subids.length == 1) {
-			size = buffer.byteLength;
-		} else {
+	for (let chunkindex = 0; chunkindex < nchunks; chunkindex++) {
+		var lastRecordSize = 0;
+		for (var fileindex = 0; fileindex < subids.length; ++fileindex) {
 			//the field contains the difference in size from the last record?
 			lastRecordSize += buffer.readInt32BE(suboffsetScan);
 			suboffsetScan += 4;
-			size = lastRecordSize;
+			let size = lastRecordSize;
+
+			let recordBuffer = buffer.slice(scan, scan + size);
+			scan += size;
+			let oldchunk = subbufs[fileindex];
+			if (oldchunk) {
+				oldchunk.buffer = Buffer.concat([oldchunk.buffer, recordBuffer]);
+			} else {
+				subbufs[fileindex] = {
+					buffer: recordBuffer,
+					offset: scan,
+					size,
+					fileid: subids[fileindex]
+				};
+			}
 		}
-		let recordBuffer = buffer.slice(scan, scan + size);
-		scan += size;
-		subbufs.push({
-			buffer: recordBuffer,
-			offset: scan,
-			size,
-			fileid: subids[j]
-		})
 	}
 	return subbufs;
 }

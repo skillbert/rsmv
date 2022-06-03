@@ -1,4 +1,4 @@
-import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
+import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
 import { ModelData, parseOb3Model } from '../3d/ob3togltf';

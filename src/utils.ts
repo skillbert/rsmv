@@ -1,5 +1,4 @@
 
-//TODO there must be a better place for this one
 //structure similar to ImageData, but without prototype chain or clamped constraint, easy to consume with sharp
 export type FlatImageData = { data: Uint8Array, width: number, height: number, channels: 4 };
 
@@ -31,6 +30,15 @@ export type Stream = {
  */
 export function arrayEnum<Q extends string>(v: Q[]) {
 	return v;
+}
+
+/**
+ * Used to provide literal typing of map keys while also constraining each value
+ */
+export function constrainedMap<Q>() {
+	return function <T extends { [key: string]: Q }>(v: T) {
+		return v as { [k in keyof T]: Q };
+	}
 }
 
 export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function Stream(this: Stream, data: Buffer) {

@@ -3,8 +3,8 @@ import sharp from "sharp";
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
 import { CacheFileSource } from "../cache";
-import { FlatImageData } from "3d/utils";
-import { EngineCache } from "3d/ob3tothree";
+import { FlatImageData } from "../utils";
+import { EngineCache } from "../3d/ob3tothree";
 
 let similarangle = (a1: number, a2: number) => {
 	const PI2 = Math.PI * 2;

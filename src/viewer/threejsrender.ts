@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader, GLTFParser, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData, TypedEmitter } from '../3d/utils';
+import { ModelModifications, FlatImageData, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 

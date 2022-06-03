@@ -6,7 +6,7 @@ import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, Sub
 import { defaultMorphId, squareSize } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
-import { arrayEnum } from "../3d/utils";
+import { arrayEnum } from "../utils";
 
 const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum"]);
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));

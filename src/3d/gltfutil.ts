@@ -1,4 +1,4 @@
-import { Stream } from "./utils";
+import { Stream } from "../utils";
 
 export const TextEncoderPolyfill = (typeof TextEncoder != "undefined" ? TextEncoder : require("util").TextEncoder) as typeof TextEncoder;
 export type vartypeEnum = 0x1400 | 0x1401 | 0x1402 | 0x1403 | 0x1404 | 0x1405 | 0x1406 | 0x140a | 0x140b;

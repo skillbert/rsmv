@@ -55,9 +55,9 @@ type SavedCacheSource = {
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
 	let [caches, setCaches] = React.useState<Openrs2CacheMeta[] | null>(null);
 	let [loading, setLoading] = React.useState(false);
-	let [gameFilter, setGameFilter] = React.useState("");
+	let [gameFilter, setGameFilter] = React.useState("runescape");
 	let [yearFilter, setYearfilter] = React.useState("");
-	let [langFilter, setLangfilter] = React.useState("");
+	let [langFilter, setLangfilter] = React.useState("en");
 
 	let loadcaches = React.useCallback(() => {
 		setLoading(true);
@@ -85,6 +85,7 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 		if (yearFilter && new Date(cache.timestamp ?? 0).getUTCFullYear() != +yearFilter) { return false; }
 		return true;
 	});
+	showncaches.sort((a, b) => +new Date(a.timestamp ?? 0) - +new Date(b.timestamp ?? 0));
 	return (
 		<React.Fragment>
 			<StringInput initialid={p.initialid + ""} onChange={v => p.onSelect(+v)} />
@@ -367,8 +368,8 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 					<canvas id="viewer" ref={this.initCnv}></canvas>
 				</div>
 				<div id="sidebar">
-					{this.state.cache && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.state.cache.source.getCacheName()}`} />}
 					{!this.state.cache && (<CacheSelector onOpen={this.openCache} />)}
+					{this.state.cache && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.state.cache.source.getCacheName()}`} />}
 					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} />}
 				</div>
 			</div >

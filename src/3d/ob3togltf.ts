@@ -1,4 +1,4 @@
-import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "./utils";
+import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
 import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, AttributeSoure } from "./gltfutil";
 import * as THREE from "three";
 
