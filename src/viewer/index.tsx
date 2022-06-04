@@ -18,6 +18,7 @@ import type { OpenDialogReturnValue } from "electron/renderer";
 import { UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
+import { TypedEmitter } from "../utils";
 
 
 const electron = (typeof __non_webpack_require__ != "undefined" ? (__non_webpack_require__("electron/renderer") as typeof import("electron/renderer")) : null);
@@ -265,7 +266,28 @@ class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, on
 	}
 }
 
+export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null }>{
+	source: CacheFileSource;
+	sceneCache: ThreejsSceneCache;
+	renderer: ThreeJsRenderer;
+
+	constructor(cache: ThreejsSceneCache, render: ThreeJsRenderer) {
+		super();
+		this.sceneCache = cache;
+		this.source = cache.source;
+		this.renderer = render;
+	}
+
+	@boundMethod
+	openFile(file: UIScriptFile | null) {
+		this.emit("openfile", file);
+	}
+}
+
+
 class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null, openedFile: UIScriptFile | null }> {
+	appctx: UIContext | null = null;
+
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -322,25 +344,8 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 			globalThis.calculateDependencies = () => getDependencies(cache!);
 			globalThis.hashCache = () => hashCache(cache!);
 			globalThis.runMapRender = (area = "52,46", endpoint: string, auth: string) => runMapRender(cache!, area, endpoint, auth);
-			// //TODO remove
-			// let source = engine.source;
-			// globalThis.loadSkeletons = async function run() {
 
-			// 	let skelindex = await source.getIndexFile(cacheMajors.skeletalAnims);
 
-			// 	let files: Buffer[] = [];
-			// 	for (let index of skelindex) {
-			// 		if (!index) { continue; }
-			// 		if (files.length % 50 == 0) { console.log(files.length); }
-			// 		files.push(await source.getFile(index.major, index.minor, index.crc));
-			// 	}
-
-			// 	return function* () {
-			// 		for (let file of files) {
-			// 			yield parseSkeletalAnim.read(file);
-			// 		}
-			// 	}
-			// };
 
 			this.setState({
 				cache: new ThreejsSceneCache(engine)
@@ -366,20 +371,40 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 		this.setState({ cache: null });
 	}
 
+	componentWillUnmount() {
+		this.fixAppctx(true)
+	}
+
 	@boundMethod
-	selectFile(file: UIScriptFile | null) {
+	openFile(file: UIScriptFile | null) {
 		this.setState({ openedFile: file });
 	}
 
+	fixAppctx(dispose = false) {
+		if (!dispose && this.state.renderer && this.state.cache) {
+			if (!this.appctx) {
+				this.appctx = new UIContext(this.state.cache, this.state.renderer);
+				this.appctx.on("openfile", this.openFile);
+			}
+		} else {
+			if (this.appctx) {
+				this.appctx.off("openfile", this.openFile);
+				this.appctx = null;
+			}
+		}
+		return this.appctx;
+	}
+
 	render() {
+		let appctx = this.fixAppctx();
 		return (
 			<div id="content">
 				<canvas id="viewer" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
-				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.selectFile} />}
+				{appctx && this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={appctx.openFile} />}
 				<div id="sidebar">
 					{!this.state.cache && (<CacheSelector onOpen={this.openCache} />)}
-					{this.state.cache && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.state.cache.source.getCacheName()}`} />}
-					{this.state.cache && this.state.renderer && <ModelBrowser cache={this.state.cache} render={this.state.renderer} onSelectFile={this.selectFile} />}
+					{appctx && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${appctx.source.getCacheName()}`} />}
+					{appctx && <ModelBrowser ctx={appctx} />}
 				</div>
 			</div >
 		);

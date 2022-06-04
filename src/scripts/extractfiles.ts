@@ -313,12 +313,14 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 
 
 	let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
-	let currentBatch: { name: string, startIndex: CacheIndex, arch: SubFile[], outputs: (string | Buffer)[] } | null = null;
+	let currentBatch: { name: string, startIndex: CacheIndex, arch: SubFile[], outputs: (string | Buffer)[], batchchunknr: number } | null = null;
 	let flushbatch = () => {
 		if (currentBatch) {
 			//return promise instead of async function so we only switch stacks when actually doing anything
 			return (async () => {
-				let filename = `${args.mode}-${currentBatch.startIndex.major}_${currentBatch.startIndex.minor}.batch.${mode.ext}`;
+				let filename = `${args.mode}-${currentBatch.startIndex.major}_${currentBatch.startIndex.minor}.batch`;
+				if (batchMaxFiles != -1) { filename += "." + currentBatch.batchchunknr; }
+				filename += `.${mode.ext}`;
 				output.writeFile(filename, mode.combineSubs(currentBatch.outputs));
 				currentBatch = null;
 			})();
@@ -337,10 +339,19 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
 		let res = mode.read(file.buffer, logicalid);
 		if (args.batched) {
-			if (!currentBatch || (batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles) || (batchSubfile && currentBatch.arch != arch)) {
+			let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;
+			let newarch = currentBatch && currentBatch.arch != arch
+			if (!currentBatch || maxedbatchsize || (batchSubfile && newarch)) {
+				let nextbatchchunknr = (newarch || !maxedbatchsize || !currentBatch ? 0 : currentBatch.batchchunknr + 1);
 				let p = flushbatch();
 				if (p) { await p; }
-				currentBatch = { name: "", startIndex: fileid.index, arch, outputs: [] };
+				currentBatch = {
+					name: "",
+					startIndex: fileid.index,
+					arch,
+					outputs: [],
+					batchchunknr: nextbatchchunknr
+				};
 			}
 			currentBatch.outputs.push(res);
 		} else {

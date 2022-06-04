@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import * as React from "react";
 import { boundMethod } from "autobind-decorator";
 import classNames from "classnames";
+import { UIContext } from "viewer";
 
 type ScriptState = "running" | "canceled" | "error" | "done";
 
@@ -127,9 +128,8 @@ function useForceUpdate() {
 	return forceUpdate;
 }
 
-export function OutputUI(p: { output?: UIScriptOutput | null, onSelectFile: (f: UIScriptFile | null) => void }) {
+export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
 	let [tab, setTab] = React.useState<"console" | "files">("console");
-	let [selected, setSelected] = React.useState(null);
 
 	let forceUpdate = useForceUpdate();
 	useEffect(() => {
@@ -154,7 +154,7 @@ export function OutputUI(p: { output?: UIScriptOutput | null, onSelectFile: (f: 
 				<div className={classNames("rsmv-icon-button", { active: tab == "files" })} onClick={e => setTab("files")}>Files</div>
 			</div>
 			{tab == "console" && <UIScriptConsole output={p.output} />}
-			{tab == "files" && <UIScriptFiles output={p.output} onSelect={p.onSelectFile} />}
+			{tab == "files" && <UIScriptFiles output={p.output} onSelect={p.ctx.openFile} />}
 		</div>
 	)
 
