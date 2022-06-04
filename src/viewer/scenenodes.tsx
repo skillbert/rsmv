@@ -1181,7 +1181,7 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
 				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
 			</select>
-			<input type="button" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }
@@ -1203,7 +1203,7 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
 				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
 			</select>
-			<input type="button" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }

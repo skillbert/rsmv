@@ -1,8 +1,8 @@
 import { filesource, cliArguments } from "../cliparser";
-import { run, command } from "cmd-ts";
+import { run, command, option } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
-import { getDebug } from "../opcode_reader";
+import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { DecodeMode, cacheFileDecodeModes } from "./extractfiles";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
@@ -49,6 +49,8 @@ export function defaultTestDecodeOpts() {
 		outmode: "json" as "json" | "hextext" | "original" | "none"
 	};
 }
+
+
 
 export async function testDecode(output: ScriptOutput, source: CacheFileSource, mode: DecodeMode, opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
@@ -114,9 +116,17 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 		}
 
 		getDebug(true);
+		let state: DecodeState = {
+			buffer: file.file,
+			stack: [],
+			hiddenstack: [],
+			scan: 0,
+			startoffset: 0,
+			endoffset: file.file.byteLength
+		};
 		try {
 			// output.log("reading ", file.major, file.minor, file.subfile);
-			let res = decoder.read(file.file);
+			let res = decoder.readInternal(state);
 			// if(file.file.length>30){throw new Error("success")}
 			// if(res.player && res.player.unk16!=0){throw new Error("unk16")}
 			// if (res.player) {
@@ -148,15 +158,17 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 					};
 					let index = 0;
 					let outindex = 0;
-					let lastopstr = "";
-					for (let op of debugdata.opcodes) {
-						let bytes = file.file.slice(index, op.index).toString("hex");
-						outindex += op.index - index;
-						err.chunks.push({ offset: index, bytes, text: lastopstr });
-						index = op.index;
-						lastopstr = " ".repeat(op.stacksize - 1) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
+					for (let i = 0; i < debugdata.opcodes.length; i++) {
+						let op = debugdata.opcodes[i];
+						let endindex = (i + 1 < debugdata.opcodes.length ? debugdata.opcodes[i + 1].index : state.scan);
+						let bytes = file.file.slice(index, endindex).toString("hex");
+						outindex += endindex - index;
+						let opstr = " ".repeat(op.stacksize - 1) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
+						err.chunks.push({ offset: index, bytes, text: opstr });
+						index = endindex;
 					}
 					err.remainder = file.file.slice(index).toString("hex");
+					// err.state = state.stack[state.stack.length - 1] ?? null;
 					err.state = debugdata.structstack[debugdata.structstack.length - 1] ?? null;
 
 					if (opts.outmode == "json") {

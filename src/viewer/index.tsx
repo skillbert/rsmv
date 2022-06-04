@@ -431,7 +431,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
 	return (
 		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>
 			{err.error}
-			<tr>Chunks</tr>
+			<div>Chunks</div>
 			<table>
 				<tbody>
 					{err.chunks.map((q, i) => {
@@ -451,7 +451,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
 					</tr>
 				</tbody>
 			</table>
-			<tr>State</tr>
+			<div>State</div>
 			{prettyJson(err.state)}
 		</div>
 	);

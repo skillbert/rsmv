@@ -74,7 +74,7 @@ export function getDebug(trigger: boolean) {
 	return ret;
 }
 
-type DecodeState = {
+export type DecodeState = {
 	stack: object[],
 	hiddenstack: object[],
 	scan: number,
@@ -279,10 +279,10 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 				hidden.$opcode = opt;
 				if (!hasexplicitnull && opt == 0) { break; }
 				let parser = map.get(opt);
-				if (!parser) { throw new Error("unknown chunk 0x" + opt.toString(16).toUpperCase()); }
 				if (debugdata) {
-					debugdata.opcodes.push({ op: parser.key as string, index: state.scan - 1, stacksize: state.stack.length });
+					debugdata.opcodes.push({ op: (parser ? parser.key as string : `_0x${opt.toString(16)}_`), index: state.scan - 1, stacksize: state.stack.length });
 				}
+				if (!parser) { throw new Error("unknown chunk 0x" + opt.toString(16).toUpperCase()); }
 				r[parser.key] = parser.parser.read(state);
 			}
 			state.stack.pop();

@@ -10,6 +10,7 @@ const typedef = commentJson.parse(require("./opcodes/typedef.json")) as any;
 const scratchbuf = Object.assign(Buffer.alloc(1024 * 100), { scan: 0 });
 
 let bytesleftoverwarncount = 0;
+
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser<T>;
 
@@ -21,15 +22,7 @@ export class FileParser<T> {
 		this.parser.setReferenceParent?.(null);
 	}
 
-	read(buffer: Buffer) {
-		let state = {
-			buffer,
-			stack: [],
-			hiddenstack: [],
-			scan: 0,
-			startoffset: 0,
-			endoffset: buffer.byteLength
-		};
+	readInternal(state: opcode_reader.DecodeState) {
 		let res = this.parser.read(state);
 		if (state.scan != state.endoffset) {
 			bytesleftoverwarncount++;
@@ -42,11 +35,23 @@ export class FileParser<T> {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
-			if (buffer.byteLength < 100000) {
+			if (state.buffer.byteLength < 100000) {
 				throw new Error(`bytes left over after decoding file: ${state.endoffset - state.scan}`);
 			}
 		}
 		return res;
+	}
+
+	read(buffer: Buffer) {
+		let state: opcode_reader.DecodeState = {
+			buffer,
+			stack: [],
+			hiddenstack: [],
+			scan: 0,
+			startoffset: 0,
+			endoffset: buffer.byteLength
+		};
+		return this.readInternal(state);
 	}
 
 	write(obj: T) {
