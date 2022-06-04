@@ -340,7 +340,6 @@ export class MapRenderer {
 		//TODO revert to using local renderer
 		this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
 		// this.renderer = globalThis.render;
-		this.renderer.renderer.renderLists
 		this.renderer.renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
 		this.renderer.scene.background = new THREE.Color(0, 0, 0);
 		cnv.addEventListener("webglcontextlost", async () => {

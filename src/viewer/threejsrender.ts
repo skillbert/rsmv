@@ -1,17 +1,12 @@
 import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTFLoader, GLTFParser, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
-import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache } from '../3d/ob3tothree';
 import { ModelModifications, FlatImageData, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
 import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, Raycaster, SkeletonHelper, Vector2 } from "three";
-import { MountableAnimation } from "3d/animationframes";
-import { ModelMeshData } from "3d/ob3togltf";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -391,22 +386,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.floormesh.visible = true;//box.min.y > -1;
 	}
 
-	export(type: "gltf") {
-		return new Promise<Buffer>(resolve => {
-			let q = new GLTFExporter();
-			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: true, embedImages: true, animations: this.modelnode?.children[0].animations });
-		});
-		// return new Promise<Buffer>(resolve => {
-		// 	let q = new ColladaExporter();
-		// 	q.parse(this.modelnode!, res => resolve(res as any), {});
-		// });
-
-		// let q = new USDZExporter();
-		// return q.parse(this.modelnode!).then(file => {
-		// 	return file;
-		// });
-	}
-
 	@boundMethod
 	async click(e: React.MouseEvent | MouseEvent) {
 		let raycaster = new THREE.Raycaster();
@@ -473,6 +452,33 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	}
 
 
+}
+
+export async function saveGltf(node: THREE.Object3D) {
+	let savehandle = await showSaveFilePicker({
+		//@ts-ignore
+		id: "savegltf",
+		startIn: "downloads",
+		suggestedName: "model.glb",
+		types: [
+			{ description: 'GLTF model', accept: { 'application/gltf': ['.glb', '.gltf'] } },
+		]
+	});
+	let modelexprt = await exportThreeJsGltf(node);
+	let str = await savehandle.createWritable();
+	await str.write(modelexprt);
+	await str.close();
+}
+
+export function exportThreeJsGltf(node: THREE.Object3D) {
+	return new Promise<Buffer>(resolve => {
+		let exporter = new GLTFExporter();
+		exporter.parse(node, gltf => resolve(gltf as any), {
+			binary: true,
+			embedImages: true,
+			animations: node.animations
+		});
+	});
 }
 
 export function highlightModelGroup(vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[]) {

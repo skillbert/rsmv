@@ -41,7 +41,8 @@ export class CLIScriptOutput implements ScriptOutput {
 		try {
 			return await fn(this, ...args);
 		} catch (e) {
-			if (this.state == "canceled") {
+			if (this.state != "canceled") {
+				this.log(e);
 				this.setState("error");
 			}
 			return null;
@@ -110,7 +111,8 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		try {
 			return await fn(this, ...args);
 		} catch (e) {
-			if (this.state == "canceled") {
+			if (this.state != "canceled") {
+				this.log(e);
 				this.setState("error");
 			}
 			return null;
@@ -132,7 +134,7 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 	let [tab, setTab] = React.useState<"console" | "files">("console");
 
 	let forceUpdate = useForceUpdate();
-	useEffect(() => {
+	React.useLayoutEffect(() => {
 		p.output?.on("statechange", forceUpdate);
 		p.output?.on("writefile", forceUpdate);
 		() => {

@@ -357,8 +357,8 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			let renderer = new ThreeJsRenderer(cnv);
-			// renderer.automaticFrames = true;
-			// console.warn("forcing auto-frames!!");
+			renderer.automaticFrames = true;
+			console.warn("forcing auto-frames!!");
 			this.setState({ renderer });
 		}
 	}

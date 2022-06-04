@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData } from '../utils';
+import { ModelModifications, FlatImageData, constrainedMap } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';
@@ -44,42 +44,6 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 			search: localStorage.rsmv_lastsearch ?? "0"
 		};
 	}
-
-	// @boundMethod
-	// async exportModel() {
-	// 	let savehandle = await showSaveFilePicker({
-	// 		id: "savegltf",
-	// 		startIn: "downloads",
-	// 		suggestedName: "model.glb",
-	// 		types: [
-	// 			{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
-	// 		]
-	// 	});
-	// 	let modelexprt = await this.props.render.export("gltf");
-	// 	let str = await savehandle.createWritable();
-	// 	await str.write(modelexprt);
-	// 	await str.close();
-	// 	// let dir = await showDirectoryPicker({
-	// 	// 	id: "savegltf",
-	// 	// 	startIn: "downloads",
-	// 	// 	suggestedName: "model.gltf",
-	// 	// 	types: [
-	// 	// 		{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
-	// 	// 	]
-	// 	// });
-	// 	// let modelfiles = await (this.renderer as any).export();
-	// 	// console.log(modelfiles);
-	// 	// let mainfile = await dir.getFileHandle("model.dae", { create: true });
-	// 	// let str = await mainfile.createWritable();
-	// 	// await str.write(modelfiles.data).then(() => str.close());
-
-	// 	// await Promise.all(modelfiles.textures.map(async tex => {
-	// 	// 	let file = await dir.getFileHandle(tex.name + "." + tex.ext, { create: true });
-	// 	// 	let str = await file.createWritable();
-	// 	// 	await str.write(tex.data);
-	// 	// 	await str.close();
-	// 	// }));
-	// }
 
 	setMode(mode: LookupMode) {
 		localStorage.rsmv_lastmode = mode;
@@ -152,7 +116,6 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 	targetAnimId = -1;
 	skeletontype: "none" | "baked" | "full" = "none";
 	skeletonHelper: SkeletonHelper | null = null;
-
 
 	cleanup() {
 		this.listeners = {};
@@ -513,6 +476,7 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 						<option value="spotanim">spotanim</option>
 						<option value="loc">location</option>
 						<option value="player">player</option>
+						<option value="item">item</option>
 					</select>
 					<StringInput onChange={this.addComp} />
 				</div>
@@ -525,16 +489,17 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	}
 }
 
-const primitiveModelInits = {
+const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number | string) => Promise<SimpleModelInfo<any>>>()({
 	npc: npcToModel,
 	player: playerToModel,
 	spotanim: spotAnimToModel,
 	model: modelToModel,
-	loc: locToModel
-}
+	loc: locToModel,
+	item: itemToModel
+});
 
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
-	return { models: [{ modelid: id, mods: {} }], animids: [] };
+	return { models: [{ modelid: id, mods: {} }], animids: [], info: {} };
 }
 
 async function playerToModel(cache: ThreejsSceneCache, name: string) {
@@ -559,7 +524,11 @@ async function npcToModel(cache: ThreejsSceneCache, id: number) {
 	if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 	if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 	let models = modelids.map(q => ({ modelid: q, mods }));
-	return { npc, models, animids: anims };
+	return {
+		info: npc,
+		models,
+		animids: anims
+	};
 }
 
 async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
@@ -568,7 +537,7 @@ async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 	if (animdata.replace_colors) { mods.replaceColors = animdata.replace_colors; }
 	if (animdata.replace_materials) { mods.replaceMaterials = animdata.replace_materials; }
 	let models = (animdata.model ? [{ modelid: animdata.model, mods }] : []);
-	return { models, animids: (animdata.sequence ? [animdata.sequence] : []), animdata };
+	return { models, animids: (animdata.sequence ? [animdata.sequence] : []), info: animdata };
 }
 
 async function locToModel(cache: ThreejsSceneCache, id: number) {
@@ -584,342 +553,185 @@ async function locToModel(cache: ThreejsSceneCache, id: number) {
 	if (obj?.probably_animation) {
 		animids = [obj.probably_animation];
 	}
-	return { models, animids, loc: obj };
+	return { models, animids, info: obj };
+}
+async function itemToModel(cache: ThreejsSceneCache, id: number) {
+	let item = parseItem.read(await cache.getFileById(cacheMajors.items, id));
+	if (!item.baseModel && item.noteTemplate) {
+		item = parseItem.read(await cache.getFileById(cacheMajors.items, item.noteTemplate));
+	}
+	let mods: ModelModifications = {};
+	if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
+	if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
+	let models = (item.baseModel ? [{ modelid: item.baseModel, mods }] : [])
+
+	return { models, animids: [], info: item };
 }
 
-export class ScenePlayer extends React.Component<LookupModeProps, { avaitems: items[] | null, animset: animgroupconfigs | null }> {
-	model: RSModel | null = null;
-	modelid = "";
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			avaitems: null,
-			animset: null
-		};
-	}
-
-	componentWillUnmount() {
-		this.setModel("");
-	}
-
-	@boundMethod
-	async setModel(modelid: string) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let items: items[] = [];
-			let animset: animgroupconfigs | null = null;
-			if (modelid != "") {
-				let avainfo = await playerToModel(this.props.ctx.sceneCache, modelid);
-				items = avainfo.items;
-				animset = avainfo.animset;
-				this.model = new RSModel(avainfo.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(avainfo.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ avaitems: items, animset });
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<StringInput onChange={this.setModel} initialid={this.props.initialId} />
-				{this.state.avaitems?.map((item, index) => {
-					return <div key={index}>{item.name ?? "no name"}</div>
-				})}
-				<JsonDisplay obj={this.state.animset} />
-			</React.Fragment>
-		)
-	}
+function ScenePlayer(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(p.initialId, p.ctx, playerToModel);
+	return (
+		<React.Fragment>
+			<StringInput onChange={setId} initialid={p.initialId} />
+			<div>
+				{data?.info.items.map((q, i) => (
+					<div key={i}>{q.name ?? "??"}</div>
+				))}
+			</div>
+			<JsonDisplay obj={data?.info.animset} />
+		</React.Fragment>
+	)
 }
 
 function JsonDisplay(p: { obj: any }) {
 	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
 }
 
-export class SceneRawModel extends React.Component<LookupModeProps> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			if (modelid != -1) {
-				this.model = new RSModel([{ modelid: modelid, mods: {} }], this.props.ctx.sceneCache);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-			</React.Fragment>
-		)
-	}
+type SimpleModelInfo<T = object> = {
+	models: SimpleModelDef,
+	animids: number[],
+	info: T
 }
 
-export class SceneMaterial extends React.Component<LookupModeProps, { matdata: materials | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			matdata: null
-		};
+async function getMaterialData(sceneCache: ThreejsSceneCache, modelid: number) {
+	let assetid = 93776;//"RuneTek_Asset" jagex test model
+	let mods: ModelModifications = {
+		replaceMaterials: [[4314, modelid]]
+	};
+	// modelids = [67768];//is a cube but has transparent vertices
+	// mods.replaceMaterials = [
+	// 	[8868, +searchid]
+	// ];
+	let mat = sceneCache.cache.getMaterialData(modelid);
+	let texs: Record<string, { texid: number, filesize: number, img0: ImageData }> = {};
+	let addtex = async (name: string, texid: number) => {
+		let file = await sceneCache.source.getFile(cacheMajors.texturesDds, texid);
+		let parsed = new ParsedTexture(file, true);
+		//bit of a waste to get decode the whole thing just to get meta data, but w/e
+		let img0 = await parsed.toImageData(0);
+		texs[name] = { texid, filesize: file.length, img0 };
 	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let matdata: materials | null = null;
-			if (modelid != -1) {
-				let assetid = 93776;//"RuneTek_Asset" jagex test model
-				let mods: ModelModifications = {
-					replaceMaterials: [[4314, modelid]]
-				};
-				// modelids = [67768];//is a cube but has transparent vertices
-				// mods.replaceMaterials = [
-				// 	[8868, +searchid]
-				// ];
-				let mat = this.props.ctx.sceneCache.cache.getMaterialData(modelid);
-				let info: any = { mat };
-				let addtex = async (name: string, texid: number) => {
-					let file = await this.props.ctx.sceneCache.source.getFile(cacheMajors.texturesDds, texid);
-					let parsed = new ParsedTexture(file, false);
-					//bit of a waste to get decode the whole thing just to get meta data, but w/e
-					let img0 = await parsed.toImageData(0);
-					info[name] = { texid, filesize: file.length, width: img0.width, height: img0.height };
-				}
-				for (let tex in mat.textures) {
-					if (mat.textures[tex] != 0) {
-						await addtex(tex, mat.textures[tex]);
-					}
-				}
-				this.model = new RSModel([{ modelid: assetid, mods }], this.props.ctx.sceneCache);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.setState({ matdata });
-			this.modelid = modelid;
+	for (let tex in mat.textures) {
+		if (mat.textures[tex] != 0) {
+			await addtex(tex, mat.textures[tex]);
 		}
 	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.matdata} />
-			</React.Fragment>
-		)
-	}
+	return {
+		models: [{ modelid: assetid, mods }],
+		animids: [],
+		info: { texs, obj: mat }
+	};
 }
 
-export class SceneLocation extends React.Component<LookupModeProps, { locdata: objects | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			locdata: null
-		};
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
+function ImageData(p: { img: ImageData }) {
+	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
+		if (cnv) {
+			cnv.width = p.img.width;
+			cnv.height = p.img.height;
+			let ctx = cnv.getContext("2d")!;
+			ctx.putImageData(p.img, 0, 0);
 		}
-		if (this.modelid != modelid) {
-			let obj: objects | null = null;
-			if (modelid != -1) {
-				let data = await locToModel(this.props.ctx.sceneCache, modelid);
-				obj = data.loc;
-				this.model = new RSModel(data.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(data.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ locdata: obj });
-		}
-	}
+	}, [p.img]);
 
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.locdata} />
-			</React.Fragment>
-		)
-	}
+	return (
+		<canvas ref={ref} style={{ maxWidth: "100%" }} />
+	)
 }
 
-export class SceneItem extends React.Component<LookupModeProps, { itemdata: items | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			itemdata: null
-		};
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let item: items | null = null;
-			if (modelid != -1) {
-				item = parseItem.read(await this.props.ctx.sceneCache.getFileById(cacheMajors.items, modelid));
-				console.log(item);
-				if (!item.baseModel && item.noteTemplate) {
-					item = parseItem.read(await this.props.ctx.sceneCache.getFileById(cacheMajors.items, item.noteTemplate));
-				}
-				let mods: ModelModifications = {};
-				if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
-				if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
-				this.model = new RSModel((item.baseModel ? [{ modelid: item.baseModel, mods }] : []), this.props.ctx.sceneCache);
-				this.model.addToScene(this.props.ctx.renderer);
+function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T>>) {
+	let idref = React.useRef(initial);
+	let [visible, setVisible] = React.useState<SimpleModelInfo<T> | null>(null);
+	let setter = React.useCallback((id: ID) => {
+		idref.current = id;
+		let prom = getter(ctx.sceneCache, id);
+		prom.then(res => {
+			if (idref.current == id) {
+				localStorage.rsmv_lastsearch = id;
+				setVisible(res);
 			}
-			this.modelid = modelid;
-			this.setState({ itemdata: item });
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.itemdata} />
-			</React.Fragment>
-		)
-	}
-}
-export class SceneNpc extends React.Component<LookupModeProps, { npcdata: npcs | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			npcdata: null
-		}
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let npc: npcs | null = null;
-			if (modelid != -1) {
-				let npcdata = await npcToModel(this.props.ctx.sceneCache, modelid);
-				npc = npcdata.npc;
-				this.model = new RSModel(npcdata.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(npcdata.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
+		})
+	}, []);
+	React.useEffect(() => {
+		if (visible) {
+			let model = new RSModel(visible.models, ctx.sceneCache);
+			if (visible.animids.length != 0) {
+				model.setAnimation(visible.animids[0]);
 			}
-			this.modelid = modelid;
-			this.setState({ npcdata: npc });
+			model.addToScene(ctx.renderer);
+			return () => {
+				model.cleanup();
+			}
 		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.npcdata} />
-			</React.Fragment>
-		)
-	}
+	}, [visible]);
+	return [visible, setter] as [state: SimpleModelInfo<T> | null, setter: (id: ID) => void];
 }
 
-export class SceneSpotAnim extends React.Component<LookupModeProps, { animdata: spotanims | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
+function SceneMaterial(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, getMaterialData);
 
-	constructor(p) {
-		super(p);
-		this.state = {
-			animdata: null
-		}
-	}
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<div style={{ overflowY: "auto" }}>
+				{data && Object.entries(data.info.texs).map(([name, img]) => (
+					<div key={name}>
+						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
+						<ImageData img={img.img0} />
+					</div>
+				))}
+				<JsonDisplay obj={data?.info.obj} />
+			</div>
+		</React.Fragment>
+	)
+}
 
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
+function SceneRawModel(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, modelToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+		</React.Fragment>
+	)
+}
 
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let animdata: spotanims | null = null;
-			if (modelid != -1) {
-				let data = await spotAnimToModel(this.props.ctx.sceneCache, modelid);
-				animdata = data.animdata;
-				this.model = new RSModel(data.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(data.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ animdata });
-		}
-	}
+function SceneLocation(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, locToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
+}
 
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.animdata} />
-			</React.Fragment>
-		)
-	}
+function SceneItem(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, itemToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
+}
+
+function SceneNpc(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, npcToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
+}
+
+function SceneSpotAnim(p: LookupModeProps) {
+	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, spotAnimToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
 }
 type SceneMapState = {
 	chunkgroups: {
@@ -1168,7 +980,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
 	let [files, setFiles] = React.useState("");
-	let [mode, setMode] = React.useState("");
+	let [mode, setMode] = React.useState(Object.keys(cacheFileDecodeModes)[0]);
 
 	let run = () => {
 		let output = new UIScriptOutput();
@@ -1243,15 +1055,15 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 
 type LookupModeProps = { initialId: string, ctx: UIContext }
 
-const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<LookupModeProps, any> }> = {
+const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,
-	map: SceneMapModel,
 	material: SceneMaterial,
 	npc: SceneNpc,
 	object: SceneLocation,
 	spotanim: SceneSpotAnim,
+	map: SceneMapModel,
 	scenario: SceneScenario,
 	scripts: ScriptsUI
 }

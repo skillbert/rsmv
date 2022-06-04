@@ -238,7 +238,7 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 	let animid = animset.baseAnims!.idle;
 
 	let animids = (animid == -1 ? [] : [animid]);
-	return { models, animids, items, animset };
+	return { models, animids, info: { items, animset } };
 }
 
 export function appearanceUrl(name: string) {
