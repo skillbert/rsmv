@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import * as React from "react";
 import { boundMethod } from "autobind-decorator";
 import classNames from "classnames";
-import { UIContext } from "viewer";
+import { UIContext } from "./maincomponents";
 
 type ScriptState = "running" | "canceled" | "error" | "done";
 

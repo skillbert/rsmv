@@ -18,19 +18,13 @@ import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf }
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
-import { objects } from "../../generated/objects";
-import { items } from "../../generated/items";
-import { materials } from "../../generated/materials";
-import { npcs } from "../../generated/npcs";
-import { spotanims } from "../../generated/spotanims";
-import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import prettyJson from "json-stringify-pretty-compact";
 import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
-import { UIContext } from "./index"
+import { UIContext } from "./maincomponents";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -1014,10 +1008,10 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 
 	return (
 		<React.Fragment>
-			<StringInput onChange={setFiles} initialid={files} />
 			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
 				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
 			</select>
+			<StringInput onChange={setFiles} initialid={files} />
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
@@ -1063,14 +1057,14 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 	render() {
 		return (
 			<React.Fragment>
-				<div>Script runner</div>
+				<h2>Script runner</h2>
 				<div className="sidebar-browser-tab-strip">
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "test" })} onClick={() => this.setState({ script: "test" })}>Test</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "extract" })} onClick={() => this.setState({ script: "extract" })}>Extract</div>
 				</div>
 				{this.state.script == "test" && <TestFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
 				{this.state.script == "extract" && <ExtractFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
-				<div>Script output</div>
+				<h2>Script output</h2>
 				<OutputUI output={this.state.running} ctx={this.props.ctx} />
 			</React.Fragment>
 		);

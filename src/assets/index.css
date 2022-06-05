@@ -1,11 +1,14 @@
 /*//TODO Maybe introduce scss (SASS) to tame this thing a little*/
 
-:root {
+.rsmv-input {
+}
+
+#content {
 	--main-bg-colour: #232323;
 	--secondary-bg-colour: #282e2e;
 	--highlight: #438ab5;
 }
-body {
+#content {
 	margin: 0px;
 	padding: 0px;
 	overflow: hidden;
@@ -48,26 +51,6 @@ body {
 }
 .credits {
 	text-align: center;
-}
-#background {
-	position: absolute;
-	top: 0px;
-	bottom: 0px;
-	left: 0px;
-	right: 0px;
-	background-color: inherit;
-}
-#background > div {
-	position: absolute;
-	top: 0px;
-	bottom: 0px;
-	left: 0px;
-	right: 0px;
-}
-#electron-titlebar {
-	margin: 0px;
-	padding: 0px;
-	height: 30px !important;
 }
 #content {
 	position: absolute;
@@ -120,7 +103,8 @@ body {
 	vertical-align: middle;
 }
 
-input[type="text"] {
+#content input[type="text"],
+#content select {
 	background-color: #000000aa;
 	border: 1px solid #88888888;
 	border-radius: 3px;
@@ -131,7 +115,8 @@ input[type="text"] {
 	min-width: 100px;
 }
 
-input[type="text"]:focus {
+#content input[type="text"]:focus,
+#content select:focus {
 	outline-color: #1e96e0;
 }
 
@@ -168,21 +153,21 @@ input[type="text"]:focus {
 	user-select: text;
 }
 
-::-webkit-scrollbar {
+#content ::-webkit-scrollbar {
 	width: 8px;
 }
 
-::-webkit-scrollbar-thumb {
+#content ::-webkit-scrollbar-thumb {
 	background-color: #8397a5;
 	border-radius: 4px;
 	margin-right: 5px;
 }
 
-::-webkit-scrollbar-thumb:active {
+#content ::-webkit-scrollbar-thumb:active {
 	background-color: #438ab5;
 }
 
-::-webkit-scrollbar-track {
+#content ::-webkit-scrollbar-track {
 	background-color: #00000033;
 	border-radius: 4px;
 }
