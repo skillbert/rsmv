@@ -234,6 +234,12 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		for (let i = 0; i < model.bonecount; i++) { nullbones.push(skinnedroot); }
 		nullskeleton = new Skeleton(nullbones as any);
 		skinnedroot.bind(nullskeleton);
+		//This is so dumb, the root object has to be a skinnedmesh in order for the skeleton to bind correctly
+		//however, you cannot have a skinnedmesh without geometry when exporting to GLTF
+		//This hack seems to work, but will probably explode some time in the future
+		//sorry future self 
+		//@ts-ignore
+		skinnedroot.isSkinnedMesh = false;
 	} else {
 		rootnode = new Mesh();
 	}

@@ -14,7 +14,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
@@ -55,13 +55,13 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 		return (
 			<React.Fragment>
 				<div className="sidebar-browser-tab-strip">
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Obj/Locs IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Locs</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setMode("avatar")}>Avatar</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setMode("map")}>Map</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Material IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Materials</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
@@ -131,7 +131,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 		this.renderscene = scene;
 		scene.animationMixers.add(this.mixer);
 		node.add(this.rootnode);
-		if (this.skeletonHelper) { node.add(this.skeletonHelper); }
+		if (this.skeletonHelper) { scene.scene.add(this.skeletonHelper); }
 		scene.forceFrame();
 	}
 
@@ -340,7 +340,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 }
 
 type ScenarioComponent = {
-	modelkey: string,//`${"model" | "spotanim" | "npc" | "player"}:${string}`;
+	modelkey: string,
 	modelinit: SimpleModelDef,
 	anims: { startTime: number, animid: number }[]
 }
@@ -568,32 +568,7 @@ async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	return { models, animids: [], info: item };
 }
 
-function ScenePlayer(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(p.initialId, p.ctx, playerToModel);
-	return (
-		<React.Fragment>
-			<StringInput onChange={setId} initialid={p.initialId} />
-			<div>
-				{data?.info.items.map((q, i) => (
-					<div key={i}>{q.name ?? "??"}</div>
-				))}
-			</div>
-			<JsonDisplay obj={data?.info.animset} />
-		</React.Fragment>
-	)
-}
-
-function JsonDisplay(p: { obj: any }) {
-	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
-}
-
-type SimpleModelInfo<T = object> = {
-	models: SimpleModelDef,
-	animids: number[],
-	info: T
-}
-
-async function getMaterialData(sceneCache: ThreejsSceneCache, modelid: number) {
+async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 	let assetid = 93776;//"RuneTek_Asset" jagex test model
 	let mods: ModelModifications = {
 		replaceMaterials: [[4314, modelid]]
@@ -623,6 +598,44 @@ async function getMaterialData(sceneCache: ThreejsSceneCache, modelid: number) {
 	};
 }
 
+function ScenePlayer(p: LookupModeProps) {
+	let [data, model, setId] = useAsyncModelData(p.initialId, p.ctx, playerToModel);
+	return (
+		<React.Fragment>
+			<StringInput onChange={setId} initialid={p.initialId} />
+			<ExportModelButton model={model} />
+			<div>
+				{data?.info.items.map((q, i) => (
+					<div key={i}>{q.name ?? "??"}</div>
+				))}
+			</div>
+			<JsonDisplay obj={data?.info.animset} />
+		</React.Fragment>
+	)
+}
+
+function ExportModelButton(p: { model: RSModel["loaded"] | null }) {
+	let exportmodel = () => {
+		if (p.model) {
+			saveGltf(p.model.mesh);
+		}
+	}
+
+	return (
+		<input type="button" className="sub-btn" disabled={!p.model} value="Export model" onClick={exportmodel} />
+	)
+}
+
+function JsonDisplay(p: { obj: any }) {
+	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
+}
+
+type SimpleModelInfo<T = object> = {
+	models: SimpleModelDef,
+	animids: number[],
+	info: T
+}
+
 function ImageData(p: { img: ImageData }) {
 	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
 		if (cnv) {
@@ -640,34 +653,40 @@ function ImageData(p: { img: ImageData }) {
 
 function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T>>) {
 	let idref = React.useRef(initial);
-	let [visible, setVisible] = React.useState<SimpleModelInfo<T> | null>(null);
+	let [loadedModel, setLoadedModel] = React.useState<RSModel["loaded"] | null>(null);
+	let [visible, setVisible] = React.useState<{ info: SimpleModelInfo<T>, id: ID } | null>(null);
 	let setter = React.useCallback((id: ID) => {
 		idref.current = id;
 		let prom = getter(ctx.sceneCache, id);
 		prom.then(res => {
 			if (idref.current == id) {
 				localStorage.rsmv_lastsearch = id;
-				setVisible(res);
+				setVisible({ info: res, id });
 			}
 		})
 	}, []);
-	React.useEffect(() => {
+	React.useLayoutEffect(() => {
 		if (visible) {
-			let model = new RSModel(visible.models, ctx.sceneCache);
-			if (visible.animids.length != 0) {
-				model.setAnimation(visible.animids[0]);
+			let model = new RSModel(visible.info.models, ctx.sceneCache);
+			if (visible.info.animids.length != 0) {
+				model.setAnimation(visible.info.animids[0]);
 			}
 			model.addToScene(ctx.renderer);
+			model.model.then(m => {
+				if (visible && idref.current == visible.id) {
+					setLoadedModel(m);
+				}
+			});
 			return () => {
 				model.cleanup();
 			}
 		}
 	}, [visible]);
-	return [visible, setter] as [state: SimpleModelInfo<T> | null, setter: (id: ID) => void];
+	return [visible?.info, loadedModel, setter] as [state: SimpleModelInfo<T> | null, model: RSModel["loaded"] | null, setter: (id: ID) => void];
 }
 
 function SceneMaterial(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, getMaterialData);
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, materialToModel);
 
 	return (
 		<React.Fragment>
@@ -686,49 +705,54 @@ function SceneMaterial(p: LookupModeProps) {
 }
 
 function SceneRawModel(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, modelToModel);
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, modelToModel);
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model} />
 		</React.Fragment>
 	)
 }
 
 function SceneLocation(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, locToModel);
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, locToModel);
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
 }
 
 function SceneItem(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, itemToModel);
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, itemToModel);
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
 }
 
 function SceneNpc(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, npcToModel);
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, npcToModel);
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
 }
 
 function SceneSpotAnim(p: LookupModeProps) {
-	let [data, setId] = useAsyncModelData(+p.initialId, p.ctx, spotAnimToModel);
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, spotAnimToModel);
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
