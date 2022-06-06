@@ -23,7 +23,7 @@ module.hot?.accept(["../3d/ob3tothree", "../3d/ob3togltf"]);
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
-const tiledimensions = 512;
+export const tiledimensions = 512;
 export const squareSize = 64;
 export const squareLevels = 4;
 const heightScale = 1 / 16;

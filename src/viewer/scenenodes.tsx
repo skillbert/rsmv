@@ -25,6 +25,7 @@ import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
 import { UIContext } from "./maincomponents";
+import { tiledimensions } from "../3d/mapsquare";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -333,13 +334,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 	}
 }
 
-type ScenarioComponent = {
-	modelkey: string,
-	modelinit: SimpleModelDef,
-	anims: { startTime: number, animid: number }[]
-}
-
-
 class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
 	el: HTMLInputElement | null = null;
 	@boundMethod
@@ -364,44 +358,117 @@ class InputCommitted extends React.Component<React.DetailedHTMLProps<React.Input
 	}
 }
 
-function ScenarioAnimControl(p: { anim: ScenarioComponent["anims"][number], onChange: (v: ScenarioComponent["anims"][number] | null) => void }) {
-	return (
-		<form>
-			<InputCommitted type="number" value={p.anim.animid} onChange={e => p.onChange({ ...p.anim, animid: +e.currentTarget.value })} />
-			<InputCommitted type="number" value={p.anim.startTime} onChange={e => p.onChange({ ...p.anim, startTime: +e.currentTarget.value })} />
-			<div onClick={() => p.onChange(null)}>delete</div>
-		</form>
-	);
+function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioComponent | null, onChange: (v: ScenarioAction | null) => void }) {
+	const action = p.action;
+	let targetname = p.comp?.modelkey ?? "??";
+	let remove = <span onClick={() => p.onChange(null)}>delete</span>;
+	switch (action.type) {
+		case "anim": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<InputCommitted type="number" value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "delay": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span >{p.action.type}</span>
+					<InputCommitted type="number" value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "location": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr 1fr 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<InputCommitted type="number" value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.y} onChange={e => p.onChange({ ...action, y: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "translate": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr 1fr 1fr 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<InputCommitted type="number" value={action.dx} onChange={e => p.onChange({ ...action, dx: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.dz} onChange={e => p.onChange({ ...action, dz: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "visibility": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<label><input type="checkbox" checked={action.visible} onClick={e => p.onChange({ ...action, visible: e.currentTarget.checked })} /></label>
+					{remove}
+				</div>
+			);
+		}
+	}
 }
 
-function ScenarioControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
+function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
 	return (
 		<div>
 			<div>{p.comp.modelkey}</div>
-			{p.comp.anims.map((anim, i) => {
-				let onchange = (v: ScenarioComponent["anims"][number] | null) => {
-					let newanims = p.comp.anims.slice();
-					if (v) { newanims[i] = v; }
-					else { newanims.splice(i, 1); }
-					p.onChange({ ...p.comp, anims: newanims });
-				};
-				return <ScenarioAnimControl key={i} anim={anim} onChange={onchange} />
-			})}
-			<div onClick={e => p.onChange({ ...p.comp, anims: [...p.comp.anims, { animid: -1, startTime: 0 }] })}>add anim</div>
 			<div onClick={e => p.onChange(null)}>delete</div>
 		</div>
 	)
 }
 
-export class SceneScenario extends React.Component<LookupModeProps, { components: ScenarioComponent[], addType: keyof typeof primitiveModelInits }>{
+type ScenarioComponent = {
+	modelkey: string,
+	modelinit: SimpleModelDef,
+}
 
+type ScenarioAction = {
+	type: "location",
+	target: number,
+	x: number,
+	y: number,
+	z: number
+} | {
+	type: "translate",
+	target: number,
+	dx: number,
+	dy: number,
+	dz: number,
+	duration: number
+} | {
+	type: "anim",
+	target: number,
+	animid: number
+} | {
+	type: "delay",
+	target: -1,
+	duration: number
+} | {
+	type: "visibility",
+	target: number,
+	visible: boolean
+}
+
+export class SceneScenario extends React.Component<LookupModeProps, { components: Record<number, ScenarioComponent>, actions: ScenarioAction[], addActionTarget: number, addModelType: keyof typeof primitiveModelInits, addActionType: ScenarioAction["type"] }>{
 	models = new Map<ScenarioComponent, RSModel>();
+	idcounter = 0;
 
 	constructor(p) {
 		super(p);
 		this.state = {
-			components: [],
-			addType: "model"
+			components: {},
+			actions: [],
+			addModelType: "model",
+			addActionType: "anim",
+			addActionTarget: -1
 		};
 	}
 
@@ -412,24 +479,51 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	@boundMethod
 	async addComp(id: string) {
 		let prim: { models: SimpleModelDef, animids: number[] };
-		if (this.state.addType == "player") {
+		if (this.state.addModelType == "player") {
 			prim = await playerToModel(this.props.ctx.sceneCache, id);
 		} else {
-			let conv = primitiveModelInits[this.state.addType];
+			let conv = primitiveModelInits[this.state.addModelType];
 			prim = await conv(this.props.ctx.sceneCache, +id);
 		}
-		this.editComp(this.state.components.length, {
-			modelkey: `${this.state.addType}:${id}`,
-			modelinit: prim.models,
-			anims: prim.animids.map(q => ({ startTime: 0, animid: q }))
+		let compid = this.idcounter++;
+		this.editComp(compid, {
+			modelkey: `${this.state.addModelType}:${id}`,
+			modelinit: prim.models
 		});
+		if (prim.animids.length != 0) {
+			this.editAction(this.state.actions.length, { type: "anim", target: compid, animid: prim.animids[0] });
+		}
+	}
+	@boundMethod
+	addAction() {
+		let action: ScenarioAction;
+		switch (this.state.addActionType) {
+			case "anim":
+				action = { type: "anim", target: 0, animid: 0 };
+				break;
+			case "delay":
+				action = { type: "delay", target: -1, duration: 0 };
+				break;
+			case "location":
+				action = { type: "location", target: 0, x: 0, y: 0, z: 0 }
+				break;
+			case "translate":
+				action = { type: "translate", target: 0, dx: 0, dy: 0, dz: 0, duration: 1 };
+				break;
+			case "visibility":
+				action = { type: "visibility", target: 0, visible: true };
+				break;
+			default:
+				throw new Error("unknown action " + this.state.addActionType);
+		}
+		this.editAction(this.state.actions.length, action);
 	}
 
-	editComp(index: number, newcomp: ScenarioComponent | null) {
-		let components = this.state.components.slice();
-		let oldcomp = components[index];
+	editComp(compid: number, newcomp: ScenarioComponent | null) {
+		let components = { ...this.state.components };
+		let oldcomp = this.state.components[compid];
 		let model = this.models.get(oldcomp);
-		if (oldcomp?.modelkey != newcomp?.modelkey) {
+		if (!newcomp || oldcomp?.modelkey != newcomp.modelkey) {
 			if (model) {
 				model.cleanup();
 				model = undefined;
@@ -437,34 +531,82 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 			if (newcomp) {
 				model = new RSModel(newcomp?.modelinit, this.props.ctx.sceneCache);
 				model.addToScene(this.props.ctx.renderer);
-				for (let anim of newcomp.anims) {
-					model.loadAnimation(anim.animid);
-				}
 			}
 		}
 		this.models.delete(oldcomp);
 		if (model && newcomp) {
 			this.models.set(newcomp, model);
-			if (newcomp.anims.length != 0) { model.setAnimation(newcomp.anims[0].animid); }
 		}
-		if (newcomp) { components[index] = newcomp; }
-		else { components.splice(index, 1); }
+		if (newcomp) { components[compid] = newcomp; }
+		else { delete components[compid]; }
 		this.setState({ components });
 		this.restartAnims();
 	}
 
+	editAction(index: number, newaction: ScenarioAction | null) {
+		let actions = this.state.actions.slice();
+
+		if (newaction?.type == "anim") {
+			let model = this.modelIdToModel(newaction.target);
+			model?.loadAnimation(newaction.animid);
+		}
+
+		if (newaction) { actions[index] = newaction; }
+		else { actions.splice(index, 1); }
+		this.setState({ actions });
+		this.restartAnims();
+	}
+
+	modelIdToModel(id: number) {
+		let modelinfo = this.state.components[id];
+		return this.models.get(modelinfo);
+	}
+
 	@boundMethod
-	restartAnims() {
+	async restartAnims() {
+		//TODO ensure this function loops and only one instance is looping
+		let totalduration = 0;
 		for (let model of this.models.values()) {
 			model.mixer.setTime(0);
+		}
+		for (const action of this.state.actions) {
+			switch (action.type) {
+				case "anim": {
+					this.modelIdToModel(action.target)?.setAnimation(action.animid);
+					break;
+				}
+				case "location": {
+					let model = this.modelIdToModel(action.target);
+					model?.rootnode.position.set(action.x * tiledimensions, action.y * tiledimensions, action.z * tiledimensions);
+					break;
+				}
+				case "delay": {
+					totalduration += action.duration;
+					await new Promise(d => setTimeout(d, action.duration));
+					break;
+				}
+				case "visibility": {
+					let model = this.modelIdToModel(action.target);
+					if (model) { model.rootnode.visible = action.visible; }
+					break;
+				}
+				case "translate": {
+					//TODO
+					break;
+				}
+			}
 		}
 	}
 
 	render() {
 		return (
 			<React.Fragment>
+				<h2>Models</h2>
+				{Object.entries(this.state.components).map(([id, comp]) => {
+					return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
+				})}
 				<div>
-					<select value={this.state.addType} onChange={e => this.setState({ addType: e.currentTarget.value as any })}>
+					<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
 						<option value="model">model</option>
 						<option value="npc">npc</option>
 						<option value="spotanim">spotanim</option>
@@ -474,9 +616,24 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 					</select>
 					<StringInput onChange={this.addComp} />
 				</div>
-				{this.state.components.map((comp, i) => {
-					return <ScenarioControl key={i} comp={comp} onChange={e => this.editComp(i, e)} />;
+				<h2>Action sequence</h2>
+				{this.state.actions.map((a, i) => {
+					let comp = this.state.components[a.target]
+					return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
 				})}
+				<div>
+					<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
+						<option value="location">Location</option>
+						<option value="translate">Translate</option>
+						<option value="anim">Anim</option>
+						<option value="delay">Delay</option>
+						<option value="visibility">Visibility</option>
+					</select>
+					<select value={this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
+						{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key}:{c.modelkey}</option>)}
+					</select>
+					<input type="button" className="sub-btn" value={`add ${this.state.addActionType}`} onClick={this.addAction} />
+				</div>
 				<div onClick={this.restartAnims}>restart</div>
 			</React.Fragment>
 		)
