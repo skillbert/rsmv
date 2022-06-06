@@ -12,6 +12,7 @@ export interface ScriptOutput {
 	state: ScriptState;
 	log(...args: any[]): void;
 	setUI(ui: HTMLElement | null): void;
+	mkDir(name: string): Promise<any>;
 	writeFile(name: string, data: Buffer | string, type?: string): Promise<void>;
 	setState(state: ScriptState): void;
 	run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null>;
@@ -31,7 +32,10 @@ export class CLIScriptOutput implements ScriptOutput {
 
 	setUI() { }
 
-	writeFile(name: string, data: Buffer, type?: string) {
+	mkDir(name: string) {
+		return fs.promises.mkdir(path.resolve(this.dir, name), { recursive: true });
+	}
+	writeFile(name: string, data: Buffer | string, type?: string) {
 		return fs.promises.writeFile(path.resolve(this.dir, name), data);
 	}
 
@@ -43,6 +47,7 @@ export class CLIScriptOutput implements ScriptOutput {
 		try {
 			return await fn(this, ...args);
 		} catch (e) {
+			console.warn(e);
 			if (this.state != "canceled") {
 				this.log(e);
 				this.setState("error");
@@ -56,12 +61,13 @@ export class CLIScriptOutput implements ScriptOutput {
 	}
 }
 
-export type UIScriptFile = { name: string, data: Buffer, type: string };
+export type UIScriptFile = { name: string, data: Buffer | string, type: string };
 export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undefined, statechange: undefined }> implements ScriptOutput {
 	state: ScriptState = "running";
 	logs: string[] = [];
 	files: UIScriptFile[] = [];
-	outdirhandles: Map<string, FileSystemDirectoryHandle> | null = null;
+	rootdirhandle: FileSystemDirectoryHandle | null = null;
+	outdirhandles = new Map<string, FileSystemDirectoryHandle | null>();
 	outputui: HTMLElement | null = null;
 
 	log(...args: any[]) {
@@ -70,9 +76,13 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		this.emit("log", str);
 	}
 
-	async writeFile(name: string, data: Buffer, type?: string) {
+	async mkDir(name: string) {
+		this.outdirhandles.set(name, null);
+		this.emit("writefile", undefined);
+	}
+	async writeFile(name: string, data: Buffer | string, type?: string) {
 		this.files.push({ name, data, type: type ?? "" });
-		if (this.outdirhandles) { await this.saveLocalFile(name, data); }
+		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
 	}
 	setState(state: ScriptState) {
@@ -90,24 +100,32 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		this.outdirhandles = new Map();
 		this.outdirhandles.set("", dir);
 		if (retroactive) {
+			for (let [dir, handle] of this.outdirhandles.entries()) {
+				if (!handle) { await this.mkdirLocal(dir.split("/")); }
+			}
 			await Promise.all(this.files.map(q => this.saveLocalFile(q.name, q.data)));
 		}
 		this.emit("statechange", undefined);
 	}
 
-	async saveLocalFile(filename: string, file: Buffer) {
-		if (!this.outdirhandles) { throw new Error("tried to save without dir handle"); }
-		let parts = filename.split("/");
-		let name = parts.splice(-1, 1)[0];
-		let dirname = parts.join("/");
-		let dir = this.outdirhandles.get(dirname)
+	async mkdirLocal(path: string[]) {
+		let dirname = path.join("/");
+		let dir = this.outdirhandles.get(dirname);
 		if (!dir) {
-			dir = this.outdirhandles.get("")!;
-			for (let part of parts) {
+			dir = this.rootdirhandle!;
+			for (let part of path) {
 				dir = await dir.getDirectoryHandle(part, { create: true });
 			}
 			this.outdirhandles.set(dirname, dir);
 		}
+		return dir;
+	}
+
+	async saveLocalFile(filename: string, file: Buffer | string) {
+		if (!this.outdirhandles) { throw new Error("tried to save without dir handle"); }
+		let parts = filename.split("/");
+		let name = parts.splice(-1, 1)[0];
+		let dir = await this.mkdirLocal(parts);
 		let filehandle = await dir.getFileHandle(name, { create: true });
 		let writable = await filehandle.createWritable({ keepExistingData: false });
 		await writable.write(file);
@@ -118,6 +136,7 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		try {
 			return await fn(this, ...args);
 		} catch (e) {
+			console.warn(e);
 			if (this.state != "canceled") {
 				this.log(e);
 				this.setState("error");
@@ -163,8 +182,8 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 				{p.output?.state}
 				{p.output?.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
 			</div>
-			{p.output && !p.output.outdirhandles && <input type="button" className="sub-btn" value={"Save files " + p.output?.files.length} onClick={async e => p.output?.setSaveDirHandle(await showDirectoryPicker({}))} />}
-			{p.output?.outdirhandles && <div>Saved files to disk: {p.output.files.length}</div>}
+			{p.output && !p.output.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.output?.files.length} onClick={async e => p.output?.setSaveDirHandle(await showDirectoryPicker({}))} />}
+			{p.output?.rootdirhandle && <div>Saved files to disk: {p.output.files.length}</div>}
 			<div className="sidebar-browser-tab-strip">
 				<div className={classNames("rsmv-icon-button", { active: tab == "ui" })} onClick={e => setTab("ui")}>UI</div>
 				<div className={classNames("rsmv-icon-button", { active: tab == "console" })} onClick={e => setTab("console")}>Console</div>

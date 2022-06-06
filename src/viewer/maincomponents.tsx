@@ -265,7 +265,7 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null }>{
 }
 
 
-export async function openSavedCache(source: SavedCacheSource) {
+export async function openSavedCache(source: SavedCacheSource, remember: boolean) {
 	let handle: FileSystemDirectoryHandle | null = null;
 	let cache: CacheFileSource | null = null;
 	if (source.type == "sqliteblobs" || source.type == "sqlitehandle") {
@@ -295,9 +295,10 @@ export async function openSavedCache(source: SavedCacheSource) {
 	if (electron && source.type == "sqlitenodejs") {
 		cache = new GameCacheLoader(source.location);
 	}
-	datastore.set("openedcache", source);
-	navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
-
+	if (remember) {
+		datastore.set("openedcache", source);
+		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
+	}
 	if (!cache) {
 		return null;
 	}
@@ -307,6 +308,7 @@ export async function openSavedCache(source: SavedCacheSource) {
 
 		return new ThreejsSceneCache(engine);
 	}
+	return null;
 }
 
 

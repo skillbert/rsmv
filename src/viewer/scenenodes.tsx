@@ -24,10 +24,11 @@ import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
-import { UIContext } from "./maincomponents";
+import { CacheSelector, openSavedCache, SavedCacheSource, UIContext } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
+import { diffCaches } from "../scripts/cachediff";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -340,6 +341,13 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 			return this.loaded;
 		})();
 	}
+}
+
+function LabeledInput(p: { label: string, children: React.ReactNode }) {
+	return <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr" }}>
+		<div>{p.label}</div>
+		{p.children}
+	</div>
 }
 
 class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
@@ -670,7 +678,7 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 				{Object.entries(this.state.components).map(([id, comp]) => {
 					return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
 				})}
-				<div>
+				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
 					<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
 						<option value="model">model</option>
 						<option value="npc">npc</option>
@@ -687,7 +695,7 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 					let comp = this.state.components[a.target]
 					return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
 				})}
-				<div>
+				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
 					<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
 						<option value="location">Location</option>
 						<option value="anim">Anim</option>
@@ -1239,10 +1247,14 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 
 	return (
 		<React.Fragment>
-			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
-			</select>
-			<InputCommitted onChange={e => setFiles(e.currentTarget.value)} value={files} />
+			<LabeledInput label="Mode">
+				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
+					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+				</select>
+			</LabeledInput>
+			<LabeledInput label="File ranges">
+				<InputCommitted type="text" onChange={e => setFiles(e.currentTarget.value)} value={files} />
+			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
@@ -1259,8 +1271,36 @@ function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 
 	return (
 		<React.Fragment>
-			<InputCommitted onChange={e => setEndpoint(e.currentTarget.value)} value={endpoint} />
-			<InputCommitted onChange={e => setAuth(e.currentTarget.value)} value={auth} />
+			<LabeledInput label="Endpoint">
+				<InputCommitted type="text" onChange={e => setEndpoint(e.currentTarget.value)} value={endpoint} />
+			</LabeledInput>
+			<LabeledInput label="Auth">
+				<InputCommitted type="text" onChange={e => setAuth(e.currentTarget.value)} value={auth} />
+			</LabeledInput>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+	let [cache2, setCache2] = React.useState<ThreejsSceneCache | null>(null);
+	let openCache = async (s: SavedCacheSource) => {
+		setCache2(await openSavedCache(s, false));
+	}
+
+	React.useEffect(() => () => cache2?.source.close(), [cache2]);
+
+	let run = async () => {
+		let output = new UIScriptOutput();
+		let source2 = await cache2;
+		if (!source2) { return; }
+		output.run(diffCaches, p.source, source2.source);
+		p.onRun(output);
+	}
+
+	return (
+		<React.Fragment>
+			{!cache2 && <CacheSelector onOpen={openCache} />}
+			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.source.getCacheName()}`} onClick={e => setCache2(null)} />}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
@@ -1280,15 +1320,17 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 
 	return (
 		<React.Fragment>
-			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
-			</select>
+			<LabeledInput label="Mode">
+				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
+					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+				</select>
+			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }
 
-class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "extract" | "maprender", running: UIScriptOutput | null }>{
+class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "extract" | "maprender" | "diff", running: UIScriptOutput | null }>{
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -1311,10 +1353,12 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "test" })} onClick={() => this.setState({ script: "test" })}>Test</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "extract" })} onClick={() => this.setState({ script: "extract" })}>Extract</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "maprender" })} onClick={() => this.setState({ script: "maprender" })}>Maprender</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.script == "diff" })} onClick={() => this.setState({ script: "diff" })}>Diff</div>
 				</div>
 				{this.state.script == "test" && <TestFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
 				{this.state.script == "extract" && <ExtractFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
 				{this.state.script == "maprender" && <MaprenderScript source={this.props.ctx.source} onRun={this.onRun} />}
+				{this.state.script == "diff" && <CacheDiffScript source={this.props.ctx.source} onRun={this.onRun} />}
 				<h2>Script output</h2>
 				<OutputUI output={this.state.running} ctx={this.props.ctx} />
 			</React.Fragment>

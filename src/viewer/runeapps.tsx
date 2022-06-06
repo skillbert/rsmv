@@ -34,7 +34,7 @@ class RSMVApp extends React.Component<{}, { renderer: ThreeJsRenderer | null, ca
 
 	@boundMethod
 	async openCache(source: SavedCacheSource) {
-		let cache = await openSavedCache(source);
+		let cache = await openSavedCache(source, true);
 		if (cache) { this.setState({ cache }) };
 	}
 

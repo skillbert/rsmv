@@ -42,7 +42,7 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 
 	@boundMethod
 	async openCache(source: SavedCacheSource) {
-		let cache = await openSavedCache(source);
+		let cache = await openSavedCache(source, true);
 		if (cache) { this.setState({ cache }) };
 	}
 
