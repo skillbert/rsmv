@@ -16,7 +16,7 @@ let cmd = command({
 		mode: option({ long: "mode", short: "m", type: oneOf(["model", "height", "objects", "floor"]), defaultValue: () => "model" as any })
 	},
 	handler: async (args) => {
-		let opts: ParsemapOpts = { centered: true, invisibleLayers: false };
+		let opts: ParsemapOpts = { invisibleLayers: false };
 		let filesource = await args.source();
 		let engine = await EngineCache.create(filesource);
 		let { chunks, grid } = await parseMapsquare(engine, args.area, opts);

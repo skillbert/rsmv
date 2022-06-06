@@ -15,6 +15,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { RSMapChunk } from "../viewer/scenenodes";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { ipcRenderer } from "electron/renderer";
+import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 
 if (typeof ipcRenderer != "undefined") {
 	window.addEventListener("keydown", e => {
@@ -43,7 +44,8 @@ let cmd = cmdts.command({
 		overwrite: cmdts.flag({ long: "overwrite", short: "f" })
 	},
 	handler: async (args) => {
-		await runMapRender(await args.source(), args.mapname, args.endpoint, args.auth);
+		let output = new CLIScriptOutput("");
+		await runMapRender(output, await args.source(), args.mapname, args.endpoint, args.auth);
 	}
 });
 
@@ -234,7 +236,7 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, overwrite = false) {
+export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, overwrite = false) {
 	let engine = await EngineCache.create(filesource);
 
 	let areas: MapRect[] = [];
@@ -305,7 +307,6 @@ export async function runMapRender(filesource: CacheFileSource, areaArgument: st
 
 	let progress = new ProgressUI(areas);
 	document.body.appendChild(progress.root);
-	// await new Promise(q => setTimeout(q, 1));
 
 	progress.updateProp("deps", "starting dependency graph");
 	let deps = await getDependencies(engine.source);
@@ -319,8 +320,7 @@ export async function runMapRender(filesource: CacheFileSource, areaArgument: st
 		return new MapRenderer(cnv, engine, { mask });
 	}
 	await downloadMap(getRenderer, engine, deps, areas, config, progress);
-	// await generateMips(config, progress);
-	console.log("done");
+	output.log("done");
 }
 
 type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number, used: boolean };
@@ -576,7 +576,7 @@ export async function downloadMap(getRenderer: () => MapRenderer, engine: Engine
 
 export async function downloadMapsquareThree(engine: EngineCache, extraopts: ParsemapOpts, x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
-	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false, ...extraopts };
+	let opts: ParsemapOpts = { padfloor: true, invisibleLayers: false, ...extraopts };
 	let { chunks, grid } = await parseMapsquare(engine, { x, z, xsize: 1, zsize: 1 }, opts);
 	let modeldata = await mapsquareModels(engine, grid, chunks, opts);
 	let scene = new ThreejsSceneCache(engine);

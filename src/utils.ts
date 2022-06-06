@@ -25,6 +25,10 @@ export type Stream = {
 	bytesLeft(): number;
 }
 
+export function delay(ms: number) {
+	return new Promise(d => setTimeout(d, ms))
+}
+
 /**
  * used to get an array with enum typing
  */

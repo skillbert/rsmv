@@ -1,11 +1,11 @@
 import * as THREE from "three";
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData, constrainedMap } from '../utils';
+import { ModelModifications, FlatImageData, constrainedMap, delay } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';
-import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid } from '../3d/mapsquare';
+import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
@@ -26,6 +26,8 @@ import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testd
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
 import { UIContext } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
+import { animgroupconfigs } from "../../generated/animgroupconfigs";
+import { runMapRender } from "../map";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -234,9 +236,10 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 
 export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> }>;
-	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> } | null = null;
+	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string>, sky: { skybox: Object3D, fogColor: number[] } | null } | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
+	rootskybox = new THREE.Group();
 	mixer = new AnimationMixer(this.rootnode);
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
@@ -245,6 +248,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 	cleanup() {
 		this.listeners = {};
 		this.rootnode.removeFromParent();
+		this.rootskybox.removeFromParent();
 		if (this.renderscene) {
 			this.renderscene.animationMixers.delete(this.mixer);
 		}
@@ -268,6 +272,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		this.renderscene = scene;
 		scene.animationMixers.add(this.mixer);
 		node.add(this.rootnode);
+		scene.setSkybox(this.rootskybox);
 		scene.forceFrame();
 	}
 
@@ -295,16 +300,11 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		this.rect = rect;
 		this.cache = cache;
 		this.model = (async () => {
-			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true, ...extraopts };
+			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: true, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
 			let modeldata = await mapsquareModels(cache.cache, grid, chunks, opts);
-
 			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
-
-			if (chunkmodels.length != 0) {
-				this.rootnode.add(...chunkmodels);
-			}
+			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
 			let groups = new Set<string>();
 			this.rootnode.traverse(node => {
@@ -327,7 +327,15 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 				}
 			});
 
-			this.loaded = { grid, chunks, chunkmodels, groups };
+			if (chunkmodels.length != 0) {
+				this.rootnode.add(...chunkmodels);
+			}
+			if (sky) {
+				this.rootskybox.add(sky.skybox);
+				//TODO update fog
+			}
+
+			this.loaded = { grid, chunks, chunkmodels, groups, sky };
 			this.onModelLoaded();
 			return this.loaded;
 		})();
@@ -362,12 +370,24 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 	const action = p.action;
 	let targetname = p.comp?.modelkey ?? "??";
 	let remove = <span onClick={() => p.onChange(null)}>delete</span>;
+	let inputstyle: React.CSSProperties = { width: "50px" };
 	switch (action.type) {
 		case "anim": {
 			return (
 				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
 					<span>{p.action.type} {targetname}</span>
-					<InputCommitted type="number" value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "animset": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<select value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })}>
+						{Object.entries(action.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
 					{remove}
 				</div>
 			);
@@ -376,7 +396,7 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 			return (
 				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
 					<span >{p.action.type}</span>
-					<InputCommitted type="number" value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
 					{remove}
 				</div>
 			);
@@ -385,21 +405,10 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 			return (
 				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr 1fr 1fr min-content" }}>
 					<span>{p.action.type} {targetname}</span>
-					<InputCommitted type="number" value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
-					<InputCommitted type="number" value={action.y} onChange={e => p.onChange({ ...action, y: +e.currentTarget.value })} />
-					<InputCommitted type="number" value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
-					{remove}
-				</div>
-			);
-		}
-		case "translate": {
-			return (
-				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr 1fr 1fr 1fr min-content" }}>
-					<span>{p.action.type} {targetname}</span>
-					<InputCommitted type="number" value={action.dx} onChange={e => p.onChange({ ...action, dx: +e.currentTarget.value })} />
-					<InputCommitted type="number" value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
-					<InputCommitted type="number" value={action.dz} onChange={e => p.onChange({ ...action, dz: +e.currentTarget.value })} />
-					<InputCommitted type="number" value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.level} step={1} onChange={e => p.onChange({ ...action, level: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
 					{remove}
 				</div>
 			);
@@ -427,26 +436,26 @@ function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: Sc
 
 type ScenarioComponent = {
 	modelkey: string,
-	modelinit: SimpleModelDef,
+	simpleModel: SimpleModelDef | null,
+	mapRect: MapRect | null
 }
 
 type ScenarioAction = {
 	type: "location",
 	target: number,
 	x: number,
-	y: number,
-	z: number
-} | {
-	type: "translate",
-	target: number,
-	dx: number,
+	z: number,
+	level: number,
 	dy: number,
-	dz: number,
-	duration: number
 } | {
 	type: "anim",
 	target: number,
 	animid: number
+} | {
+	type: "animset",
+	target: number,
+	animid: number,
+	anims: Record<string, number>
 } | {
 	type: "delay",
 	target: -1,
@@ -457,9 +466,11 @@ type ScenarioAction = {
 	visible: boolean
 }
 
-export class SceneScenario extends React.Component<LookupModeProps, { components: Record<number, ScenarioComponent>, actions: ScenarioAction[], addActionTarget: number, addModelType: keyof typeof primitiveModelInits, addActionType: ScenarioAction["type"] }>{
-	models = new Map<ScenarioComponent, RSModel>();
+export class SceneScenario extends React.Component<LookupModeProps, { components: Record<number, ScenarioComponent>, actions: ScenarioAction[], addActionTarget: number, addModelType: keyof typeof primitiveModelInits | "map", addActionType: ScenarioAction["type"] }>{
+	models = new Map<ScenarioComponent, RSModel | RSMapChunk>();
 	idcounter = 0;
+	mapoffset: { x: number, z: number } | null = null;
+	mapgrid = new CombinedTileGrid([]);
 
 	constructor(p) {
 		super(p);
@@ -478,20 +489,37 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 
 	@boundMethod
 	async addComp(id: string) {
-		let prim: { models: SimpleModelDef, animids: number[] };
-		if (this.state.addModelType == "player") {
-			prim = await playerToModel(this.props.ctx.sceneCache, id);
+		if (this.state.addModelType == "map") {
+			let rect = stringToMapArea(id);
+			if (!rect) { throw new Error("invalid map rect"); }
+			let compid = this.idcounter++;
+			this.editComp(compid, {
+				modelkey: `${this.state.addModelType}:${id}`,
+				simpleModel: null,
+				mapRect: rect
+			});
 		} else {
-			let conv = primitiveModelInits[this.state.addModelType];
-			prim = await conv(this.props.ctx.sceneCache, +id);
-		}
-		let compid = this.idcounter++;
-		this.editComp(compid, {
-			modelkey: `${this.state.addModelType}:${id}`,
-			modelinit: prim.models
-		});
-		if (prim.animids.length != 0) {
-			this.editAction(this.state.actions.length, { type: "anim", target: compid, animid: prim.animids[0] });
+			let prim: SimpleModelInfo;
+			if (this.state.addModelType == "player") {
+				prim = await playerToModel(this.props.ctx.sceneCache, id);
+			} else {
+				let conv = primitiveModelInits[this.state.addModelType];
+				prim = await conv(this.props.ctx.sceneCache, +id);
+			}
+			let compid = this.idcounter++;
+			this.editComp(compid, {
+				modelkey: `${this.state.addModelType}:${id}`,
+				simpleModel: prim.models,
+				mapRect: null
+			});
+			if (Object.keys(prim.anims).length != 0) {
+				this.editAction(this.state.actions.length, {
+					type: "animset",
+					target: compid,
+					animid: prim.anims.default ?? Object.keys(prim.anims)[0],
+					anims: prim.anims
+				});
+			}
 		}
 	}
 	@boundMethod
@@ -499,19 +527,16 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 		let action: ScenarioAction;
 		switch (this.state.addActionType) {
 			case "anim":
-				action = { type: "anim", target: 0, animid: 0 };
+				action = { type: "anim", target: this.state.addActionTarget, animid: 0 };
 				break;
 			case "delay":
 				action = { type: "delay", target: -1, duration: 0 };
 				break;
 			case "location":
-				action = { type: "location", target: 0, x: 0, y: 0, z: 0 }
-				break;
-			case "translate":
-				action = { type: "translate", target: 0, dx: 0, dy: 0, dz: 0, duration: 1 };
+				action = { type: "location", target: this.state.addActionTarget, level: 0, x: 0, z: 0, dy: 0 }
 				break;
 			case "visibility":
-				action = { type: "visibility", target: 0, visible: true };
+				action = { type: "visibility", target: this.state.addActionTarget, visible: true };
 				break;
 			default:
 				throw new Error("unknown action " + this.state.addActionType);
@@ -529,7 +554,22 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 				model = undefined;
 			}
 			if (newcomp) {
-				model = new RSModel(newcomp?.modelinit, this.props.ctx.sceneCache);
+				if (newcomp.simpleModel) {
+					model = new RSModel(newcomp.simpleModel, this.props.ctx.sceneCache);
+				} else if (newcomp.mapRect) {
+					model = new RSMapChunk(newcomp.mapRect, this.props.ctx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
+					model.on("loaded", this.updateGrids);
+					let hasmap = Object.values(this.state.components).some(q => q.mapRect);
+					if (!hasmap || !this.mapoffset) {
+						this.mapoffset = {
+							x: (newcomp.mapRect.x + newcomp.mapRect.xsize / 2) * squareSize,
+							z: (newcomp.mapRect.z + newcomp.mapRect.zsize / 2) * squareSize
+						};
+					}
+					model.rootnode.position.set(-this.mapoffset.x * tiledimensions, 0, -this.mapoffset.z * tiledimensions);
+				} else {
+					throw new Error("invalid model init");
+				}
 				model.addToScene(this.props.ctx.renderer);
 			}
 		}
@@ -546,9 +586,11 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	editAction(index: number, newaction: ScenarioAction | null) {
 		let actions = this.state.actions.slice();
 
-		if (newaction?.type == "anim") {
+		if (newaction?.type == "anim" || newaction?.type == "animset") {
 			let model = this.modelIdToModel(newaction.target);
-			model?.loadAnimation(newaction.animid);
+			if (model instanceof RSModel) {
+				model.loadAnimation(newaction.animid);
+			}
 		}
 
 		if (newaction) { actions[index] = newaction; }
@@ -563,35 +605,58 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	}
 
 	@boundMethod
+	updateGrids() {
+		let grids: { src: TileGrid, rect: MapRect }[] = [];
+		for (let comp of Object.values(this.state.components)) {
+			if (!comp.mapRect) { continue };
+			let model = this.models.get(comp) as RSMapChunk | undefined;
+			if (!model?.loaded) { continue; }
+			grids.push({
+				src: model.loaded.grid,
+				rect: {
+					x: model.rect.x * squareSize,
+					z: model.rect.z * squareSize,
+					xsize: model.rect.xsize * squareSize,
+					zsize: model.rect.zsize * squareSize
+				}
+			});
+		}
+		this.mapgrid = new CombinedTileGrid(grids);
+	}
+
+	@boundMethod
 	async restartAnims() {
 		//TODO ensure this function loops and only one instance is looping
+		//otherwise we might be using old data from before setstate
+		await delay(1);
 		let totalduration = 0;
 		for (let model of this.models.values()) {
 			model.mixer.setTime(0);
 		}
 		for (const action of this.state.actions) {
 			switch (action.type) {
+				case "animset":
 				case "anim": {
-					this.modelIdToModel(action.target)?.setAnimation(action.animid);
+					let model = this.modelIdToModel(action.target);
+					if (model instanceof RSModel) {
+						model.setAnimation(action.animid);
+					}
 					break;
 				}
 				case "location": {
 					let model = this.modelIdToModel(action.target);
-					model?.rootnode.position.set(action.x * tiledimensions, action.y * tiledimensions, action.z * tiledimensions);
+					let groundy = getTileHeight(this.mapgrid, action.x + (this.mapoffset?.x ?? 0), action.z + (this.mapoffset?.z ?? 0), action.level);
+					model?.rootnode.position.set(action.x * tiledimensions, groundy + action.dy * tiledimensions, action.z * tiledimensions);
 					break;
 				}
 				case "delay": {
 					totalduration += action.duration;
-					await new Promise(d => setTimeout(d, action.duration));
+					await delay(action.duration);
 					break;
 				}
 				case "visibility": {
 					let model = this.modelIdToModel(action.target);
 					if (model) { model.rootnode.visible = action.visible; }
-					break;
-				}
-				case "translate": {
-					//TODO
 					break;
 				}
 			}
@@ -613,6 +678,7 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 						<option value="loc">location</option>
 						<option value="player">player</option>
 						<option value="item">item</option>
+						<option value="map">map</option>
 					</select>
 					<StringInput onChange={this.addComp} />
 				</div>
@@ -624,13 +690,12 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 				<div>
 					<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
 						<option value="location">Location</option>
-						<option value="translate">Translate</option>
 						<option value="anim">Anim</option>
 						<option value="delay">Delay</option>
 						<option value="visibility">Visibility</option>
 					</select>
 					<select value={this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
-						{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key}:{c.modelkey}</option>)}
+						{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key} - {c.modelkey}</option>)}
 					</select>
 					<input type="button" className="sub-btn" value={`add ${this.state.addActionType}`} onClick={this.addAction} />
 				</div>
@@ -650,7 +715,7 @@ const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number
 });
 
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
-	return { models: [{ modelid: id, mods: {} }], animids: [], info: {} };
+	return { models: [{ modelid: id, mods: {} }], anims: {}, info: {} };
 }
 
 async function playerToModel(cache: ThreejsSceneCache, name: string) {
@@ -661,15 +726,38 @@ async function playerToModel(cache: ThreejsSceneCache, name: string) {
 	return avainfo;
 }
 
+export function serializeAnimset(group: animgroupconfigs) {
+	let anims: Record<string, number> = {};
+
+	if (group.baseAnims) {
+		anims.default = group.baseAnims.idle;
+		anims.walk = group.baseAnims.walk;
+	}
+	if (group.idleVariations) {
+		let totalchance = group.idleVariations.reduce((a, v) => a + v.probably_chance, 0);
+		for (let i in group.idleVariations) {
+			let variation = group.idleVariations[i];
+			anims[`idle${i}_${variation.probably_chance}/${totalchance}`] = variation.animid;
+		}
+	}
+	//TODO yikes
+	for (let key of Object.keys(group)) {
+		if (typeof group[key] == "number") {
+			anims[key] = group[key];
+		}
+	}
+
+	return anims;
+}
+
 async function npcToModel(cache: ThreejsSceneCache, id: number) {
 	let npc = parseNpc.read(await cache.getFileById(cacheMajors.npcs, id));
-	let anims: number[] = [];
+	let anims: Record<string, number> = {};
 	let modelids = npc.models ?? [];
 	if (npc.animation_group) {
 		let arch = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 		let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
-		let forcedanim = globalThis.forcedanim;
-		anims.push(forcedanim ?? animgroup.idleVariations?.[0]?.animid ?? animgroup.baseAnims?.idle);
+		anims = serializeAnimset(animgroup);
 	}
 	let mods: ModelModifications = {};
 	if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
@@ -678,7 +766,7 @@ async function npcToModel(cache: ThreejsSceneCache, id: number) {
 	return {
 		info: npc,
 		models,
-		animids: anims
+		anims
 	};
 }
 
@@ -688,13 +776,15 @@ async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 	if (animdata.replace_colors) { mods.replaceColors = animdata.replace_colors; }
 	if (animdata.replace_materials) { mods.replaceMaterials = animdata.replace_materials; }
 	let models = (animdata.model ? [{ modelid: animdata.model, mods }] : []);
-	return { models, animids: (animdata.sequence ? [animdata.sequence] : []), info: animdata };
+	let anims: Record<string, number> = {};
+	if (animdata.sequence) { anims.default = animdata.sequence; }
+	return { models, anims, info: animdata };
 }
 
 async function locToModel(cache: ThreejsSceneCache, id: number) {
 	let obj = await resolveMorphedObject(cache.source, id);
 	let mods: ModelModifications = {};
-	let animids: number[] = [];
+	let anims: Record<string, number> = {};
 	let models: SimpleModelDef = [];
 	if (obj) {
 		if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
@@ -702,9 +792,9 @@ async function locToModel(cache: ThreejsSceneCache, id: number) {
 		models = obj.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [];
 	}
 	if (obj?.probably_animation) {
-		animids = [obj.probably_animation];
+		anims.default = obj.probably_animation;
 	}
-	return { models, animids, info: obj };
+	return { models, anims, info: obj };
 }
 async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	let item = parseItem.read(await cache.getFileById(cacheMajors.items, id));
@@ -716,7 +806,7 @@ async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
 	let models = (item.baseModel ? [{ modelid: item.baseModel, mods }] : [])
 
-	return { models, animids: [], info: item };
+	return { models, anims: {}, info: item };
 }
 
 async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
@@ -744,7 +834,7 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 	}
 	return {
 		models: [{ modelid: assetid, mods }],
-		animids: [],
+		anims: {},
 		info: { texs, obj: mat }
 	};
 }
@@ -783,7 +873,7 @@ function JsonDisplay(p: { obj: any }) {
 
 type SimpleModelInfo<T = object> = {
 	models: SimpleModelDef,
-	animids: number[],
+	anims: Record<string, number>,
 	info: T
 }
 
@@ -819,8 +909,8 @@ function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: T
 	React.useLayoutEffect(() => {
 		if (visible) {
 			let model = new RSModel(visible.info.models, ctx.sceneCache);
-			if (visible.info.animids.length != 0) {
-				model.setAnimation(visible.info.animids[0]);
+			if (visible.info.anims.default) {
+				model.setAnimation(visible.info.anims.default);
 			}
 			model.addToScene(ctx.renderer);
 			model.model.then(m => {
@@ -987,21 +1077,6 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	async addArea(rect: MapRect) {
 		let chunk = new RSMapChunk(rect, this.props.ctx.sceneCache);
 		chunk.once("loaded", async () => {
-			let mainchunk = chunk.loaded!.chunks[0];
-			let skybox: Object3D | undefined = undefined;
-			let fogColor = [0, 0, 0, 0];
-			if (mainchunk?.extra.unk00?.unk20) {
-				fogColor = mainchunk.extra.unk00.unk20.slice(1);
-			}
-			if (mainchunk?.extra.unk80) {
-				let envarch = await this.props.ctx.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
-				let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
-				let env = parseEnvironments.read(envfile.buffer);
-				if (typeof env.model == "number") {
-					skybox = await ob3ModelToThreejsNode(this.props.ctx.sceneCache, [await this.props.ctx.sceneCache.getFileById(cacheMajors.models, env.model)]);
-				}
-			}
-
 			let combined = chunk.rootnode;
 
 			let toggles = this.state.toggles;
@@ -1016,7 +1091,6 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			chunk.addToScene(this.props.ctx.renderer);
 			chunk.setToggles(toggles);
 
-			this.props.ctx.renderer.setSkybox(skybox, fogColor);
 			this.setState({ toggles });
 		});
 
@@ -1168,7 +1242,25 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
 				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
 			</select>
-			<StringInput onChange={setFiles} initialid={files} />
+			<InputCommitted onChange={e => setFiles(e.currentTarget.value)} value={files} />
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+	let [endpoint, setEndpoint] = React.useState("");
+	let [auth, setAuth] = React.useState("");
+
+	let run = () => {
+		let output = new UIScriptOutput();
+		output.run(runMapRender, p.source, "main", endpoint, auth);
+		p.onRun(output);
+	}
+
+	return (
+		<React.Fragment>
+			<InputCommitted onChange={e => setEndpoint(e.currentTarget.value)} value={endpoint} />
+			<InputCommitted onChange={e => setAuth(e.currentTarget.value)} value={auth} />
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
@@ -1196,7 +1288,7 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 	)
 }
 
-class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "extract", running: UIScriptOutput | null }>{
+class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "extract" | "maprender", running: UIScriptOutput | null }>{
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -1218,9 +1310,11 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 				<div className="sidebar-browser-tab-strip">
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "test" })} onClick={() => this.setState({ script: "test" })}>Test</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "extract" })} onClick={() => this.setState({ script: "extract" })}>Extract</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.script == "maprender" })} onClick={() => this.setState({ script: "maprender" })}>Maprender</div>
 				</div>
 				{this.state.script == "test" && <TestFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
 				{this.state.script == "extract" && <ExtractFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
+				{this.state.script == "maprender" && <MaprenderScript source={this.props.ctx.source} onRun={this.onRun} />}
 				<h2>Script output</h2>
 				<OutputUI output={this.state.running} ctx={this.props.ctx} />
 			</React.Fragment>

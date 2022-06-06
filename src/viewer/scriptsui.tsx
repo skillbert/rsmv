@@ -3,7 +3,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { useEffect } from "react";
 import * as React from "react";
-import { boundMethod } from "autobind-decorator";
 import classNames from "classnames";
 import { UIContext } from "./maincomponents";
 
@@ -12,6 +11,7 @@ type ScriptState = "running" | "canceled" | "error" | "done";
 export interface ScriptOutput {
 	state: ScriptState;
 	log(...args: any[]): void;
+	setUI(ui: HTMLElement | null): void;
 	writeFile(name: string, data: Buffer | string, type?: string): Promise<void>;
 	setState(state: ScriptState): void;
 	run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null>;
@@ -28,6 +28,8 @@ export class CLIScriptOutput implements ScriptOutput {
 	log(...args: any[]) {
 		console.log(...args);
 	}
+
+	setUI() { }
 
 	writeFile(name: string, data: Buffer, type?: string) {
 		return fs.promises.writeFile(path.resolve(this.dir, name), data);
@@ -60,6 +62,7 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 	logs: string[] = [];
 	files: UIScriptFile[] = [];
 	outdirhandles: Map<string, FileSystemDirectoryHandle> | null = null;
+	outputui: HTMLElement | null = null;
 
 	log(...args: any[]) {
 		let str = args.join(" ");
@@ -74,6 +77,10 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 	}
 	setState(state: ScriptState) {
 		this.state = state;
+		this.emit("statechange", undefined);
+	}
+	setUI(el: HTMLElement | null) {
+		this.outputui = el;
 		this.emit("statechange", undefined);
 	}
 
@@ -130,8 +137,15 @@ function useForceUpdate() {
 	return forceUpdate;
 }
 
+export function DomWrap(p: { el: HTMLElement | null | undefined }) {
+	let ref = (el: HTMLElement | null) => {
+		p.el && el && el.appendChild(p.el);
+	}
+	return <div ref={ref}></div>
+}
+
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
-	let [tab, setTab] = React.useState<"console" | "files">("console");
+	let [tab, setTab] = React.useState<"console" | "files" | "ui">("ui");
 
 	let forceUpdate = useForceUpdate();
 	React.useLayoutEffect(() => {
@@ -152,9 +166,11 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 			{p.output && !p.output.outdirhandles && <input type="button" className="sub-btn" value={"Save files " + p.output?.files.length} onClick={async e => p.output?.setSaveDirHandle(await showDirectoryPicker({}))} />}
 			{p.output?.outdirhandles && <div>Saved files to disk: {p.output.files.length}</div>}
 			<div className="sidebar-browser-tab-strip">
+				<div className={classNames("rsmv-icon-button", { active: tab == "ui" })} onClick={e => setTab("ui")}>UI</div>
 				<div className={classNames("rsmv-icon-button", { active: tab == "console" })} onClick={e => setTab("console")}>Console</div>
 				<div className={classNames("rsmv-icon-button", { active: tab == "files" })} onClick={e => setTab("files")}>Files</div>
 			</div>
+			{tab == "ui" && <DomWrap el={p.output?.outputui} />}
 			{tab == "console" && <UIScriptConsole output={p.output} />}
 			{tab == "files" && <UIScriptFiles output={p.output} onSelect={p.ctx.openFile} />}
 		</div>
