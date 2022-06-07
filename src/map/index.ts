@@ -339,8 +339,7 @@ export class MapRenderer {
 		//TODO revert to using local renderer
 		this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
 		// this.renderer = globalThis.render;
-		this.renderer.renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
-		this.renderer.scene.background = new THREE.Color(0, 0, 0);
+		this.renderer.addSceneElement({ options: { opaqueBackground: true } });
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),

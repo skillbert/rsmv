@@ -5,8 +5,8 @@ import { ModelModifications, FlatImageData, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
-import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
-import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, Raycaster, SkeletonHelper, Vector2 } from "three";
+import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
+import { AnimationMixer, Clock, Material, Mesh, Object3D } from "three";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -29,22 +29,34 @@ export type ThreeJsRendererEvents = {
 	select: null | { obj: Mesh, meshdata: Extract<ModelExtras, ClickableMesh<any>>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
 }
 
+export type ThreeJsSceneElement = {
+	modelnode?: Object3D,
+	skybox?: Object3D,
+	fogColor?: number[],
+	animationMixer?: AnimationMixer,
+	options?: {
+		opaqueBackground?: boolean,
+		hideFloor?: boolean
+	}
+}
+
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
-	renderer: THREE.WebGLRenderer;
-	canvas: HTMLCanvasElement;
-	skybox: { scene: THREE.Object3D, camera: THREE.Camera } | null = null;
-	scene: THREE.Scene;
-	camera: THREE.PerspectiveCamera;
-	controls: InstanceType<typeof OrbitControls>;
-	modelnode: THREE.Group;
+	private renderer: THREE.WebGLRenderer;
+	private canvas: HTMLCanvasElement;
+	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
+	private scene: THREE.Scene;
+	private camera: THREE.PerspectiveCamera;
+	private controls: InstanceType<typeof OrbitControls>;
+	private modelnode: THREE.Group;
 	// cleanModelCallbacks: (() => void)[] = [];//TODO get rid of this
-	floormesh: THREE.Mesh;
-	queuedFrameId = 0;
-	automaticFrames = false;
-	contextLossCount = 0;
-	contextLossCountLastRender = 0;
-	clock = new Clock(true);
-	animationMixers = new Set<AnimationMixer>();
+	private floormesh: THREE.Mesh;
+	private queuedFrameId = 0;
+	private automaticFrames = false;
+	private contextLossCount = 0;
+	private contextLossCountLastRender = 0;
+	private clock = new Clock(true);
+
+	private sceneElements = new Set<ThreeJsSceneElement>();
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -118,6 +130,63 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
 		scene.add(hemilight);
+	}
+
+	addSceneElement(el: ThreeJsSceneElement) {
+		this.sceneElements.add(el);
+		this.sceneElementsChanged();
+	}
+
+	removeSceneElement(el: ThreeJsSceneElement) {
+		this.sceneElements.delete(el);
+		this.sceneElementsChanged();
+	}
+
+	sceneElementsChanged() {
+		let skybox: Object3D | null = null;
+		let fogColor: number[] | null = null;
+		let animated = false;
+		let opaqueBackground = false;
+		let showfloor = true;
+		let nodeDeleteList = new Set(this.modelnode.children);
+		for (let el of this.sceneElements) {
+			if (el.skybox) { skybox = el.skybox; }
+			if (el.fogColor) { fogColor = el.fogColor; }
+			if (el.animationMixer) { animated = true; }
+			if (el.options?.opaqueBackground) { opaqueBackground = true; }
+			if (el.options?.hideFloor) { showfloor = false; }
+			if (el.modelnode) {
+				nodeDeleteList.delete(el.modelnode);
+				if (el.modelnode.parent != this.modelnode) {
+					this.modelnode.add(el.modelnode);
+				}
+			}
+		}
+		nodeDeleteList.forEach(q => this.modelnode.remove(q));
+
+		this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
+		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
+		this.automaticFrames = animated;
+		this.floormesh.visible = showfloor;
+
+		//fog/skybox
+		let fogcolobj = (fogColor ? new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255) : null);
+		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
+		if (skybox) {
+			let scene = this.skybox?.scene ?? new THREE.Scene();
+			let camera = this.skybox?.camera ?? this.camera.clone();
+			let obj = new THREE.Object3D();
+			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
+			obj.add(skybox);
+			scene.clear();
+			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
+			scene.background = fogcolobj;
+			this.skybox = { scene, camera };
+		} else {
+			this.skybox = null;
+		}
+
+		this.forceFrame();
 	}
 
 	resizeRendererToDisplaySize() {
@@ -244,7 +313,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		let delta = this.clock.getDelta();
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
-		this.animationMixers.forEach(q => q.update(delta));
+		this.sceneElements.forEach(q => q.animationMixer?.update(delta));
 
 		if (cam == this.camera && this.resizeRendererToDisplaySize()) {
 			const canvas = this.renderer.domElement;
@@ -351,24 +420,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	// 	return { rootnode };
 	// }
 
-	setSkybox(skybox?: THREE.Object3D, fogColor?: number[]) {
-		let fogcolobj = (fogColor ? new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255) : null);
-		if (skybox) {
-			let scene = new THREE.Scene();
-			let camera = this.camera.clone();
-			let obj = new THREE.Object3D();
-			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
-			obj.add(skybox);
-			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
-			this.skybox = { scene, camera };
-			scene.background = fogcolobj;
-		} else {
-			this.skybox = null;
-		}
-
-		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
-	}
-
 	setCameraLimits() {
 		// compute the box that contains all the stuff
 		// from root and below
@@ -383,7 +434,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.controls.screenSpacePanning = true;
 
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
-		this.floormesh.visible = true;//box.min.y > -1;
 	}
 
 	@boundMethod

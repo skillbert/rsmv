@@ -42,8 +42,6 @@ class RSMVApp extends React.Component<{}, { renderer: ThreeJsRenderer | null, ca
 	initCnv(cnv: HTMLCanvasElement | null) {
 		if (cnv) {
 			let renderer = new ThreeJsRenderer(cnv);
-			renderer.automaticFrames = true;
-			console.warn("forcing auto-frames!!");
 			this.setState({ renderer });
 		}
 	}

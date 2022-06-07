@@ -14,7 +14,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
@@ -114,23 +114,21 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 	targetAnimId = -1;
 	skeletontype: "none" | "baked" | "full" = "none";
 	skeletonHelper: SkeletonHelper | null = null;
+	sceneElement: ThreeJsSceneElement | null = null;
 
 	cleanup() {
 		this.listeners = {};
-		this.rootnode.removeFromParent();
-		this.skeletonHelper?.removeFromParent();
-		if (this.renderscene) {
-			this.renderscene.animationMixers.delete(this.mixer);
-		}
+		if (this.sceneElement) { this.renderscene?.removeSceneElement(this.sceneElement); }
 		this.renderscene = null;
 	}
 
-	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
+	addToScene(scene: ThreeJsRenderer) {
+		this.sceneElement = {
+			modelnode: this.rootnode,
+			animationMixer: this.mixer
+		}
 		this.renderscene = scene;
-		scene.animationMixers.add(this.mixer);
-		node.add(this.rootnode);
-		if (this.skeletonHelper) { scene.scene.add(this.skeletonHelper); }
-		scene.forceFrame();
+		scene.addSceneElement(this.sceneElement);
 	}
 
 	onModelLoaded() {
@@ -181,8 +179,9 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 		this.mixer.stopAllAction();
 		let action = this.mixer.clipAction(clip, mesh);
 		action.play();
+		this.skeletonHelper?.removeFromParent();
 		this.skeletonHelper = new SkeletonHelper(mesh);
-		this.renderscene?.scene.add(this.skeletonHelper);
+		this.rootnode.add(this.skeletonHelper);
 		this.mountedanim = clip;
 	}
 
@@ -245,14 +244,10 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
 	rect: MapRect;
+	sceneElement: ThreeJsSceneElement | null = null;
 
 	cleanup() {
 		this.listeners = {};
-		this.rootnode.removeFromParent();
-		this.rootskybox.removeFromParent();
-		if (this.renderscene) {
-			this.renderscene.animationMixers.delete(this.mixer);
-		}
 
 		//only clear vertex memory for now, materials might be reused and are up to the scenecache
 		this.model.then(q => q.chunkmodels.forEach(node => {
@@ -260,6 +255,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 				if (obj instanceof Mesh) { obj.geometry.dispose(); }
 			});
 		}))
+		if (this.sceneElement) {
+			this.renderscene?.removeSceneElement(this.sceneElement);
+		}
 		this.renderscene = null;
 	}
 
@@ -269,12 +267,15 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		return svgfloor(this.cache.cache, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
-	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
+	addToScene(scene: ThreeJsRenderer) {
 		this.renderscene = scene;
-		scene.animationMixers.add(this.mixer);
-		node.add(this.rootnode);
-		scene.setSkybox(this.rootskybox);
-		scene.forceFrame();
+		this.sceneElement = {
+			modelnode: this.rootnode,
+			animationMixer: this.mixer,
+			skybox: this.rootskybox,
+			options: { hideFloor: true }
+		};
+		scene.addSceneElement(this.sceneElement);
 	}
 
 	onModelLoaded() {
@@ -1043,7 +1044,6 @@ type SceneMapState = {
 	selectionData: any
 };
 export class SceneMapModel extends React.Component<LookupModeProps, SceneMapState> {
-	oldautoframe: boolean;
 	selectCleanup: (() => void)[] = [];
 	constructor(p) {
 		super(p);
@@ -1053,16 +1053,12 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			toggles: Object.create(null),
 			selectionData: undefined
 		}
-		this.oldautoframe = this.props.ctx.renderer.automaticFrames;
-		this.props.ctx.renderer.automaticFrames = false;
 	}
 
 	@boundMethod
 	clear() {
 		this.selectCleanup.forEach(q => q());
-		this.props.ctx.renderer.setSkybox();
 		this.state.chunkgroups.forEach(q => q.chunk.cleanup());
-		this.props.ctx.renderer.forceFrame();
 		this.setState({ chunkgroups: [], toggles: Object.create(null) });
 	}
 
@@ -1104,7 +1100,6 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 	componentWillUnmount() {
 		this.clear();
-		this.props.ctx.renderer.automaticFrames = this.oldautoframe;
 		this.props.ctx.renderer.off("select", this.meshSelected);
 	}
 
