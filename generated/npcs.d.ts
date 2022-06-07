@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\npcs.json'
+// This source data is located at '..\src\opcodes\npcs.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type npcs = {

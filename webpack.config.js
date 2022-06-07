@@ -13,6 +13,7 @@ module.exports = {
 		cli: "./src/cli.ts",
 		// opcode_reader: "./src/opcode_reader.ts",
 		// searchmap: "./src/scripts/searchmap.ts",
+		buildfiletypes: "./src/buildfiletypes.ts",
 		maprender: "./src/map/",
 		runmap: "./src/map/run.ts"
 	},
