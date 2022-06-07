@@ -30,18 +30,23 @@ import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
-import { UIContext } from "./index"
+import { UIContext } from "./index";
+import sharp from "sharp";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
 
 
-export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: string, mode: LookupMode }> {
+export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: string, mode: LookupMode, fileName: string, fileDownloadUrl: string }> {
+	doFileDownload: HTMLAnchorElement | null;
+
 	constructor(p) {
 		super(p);
 		this.state = {
 			mode: localStorage.rsmv_lastmode ?? "model",
-			search: localStorage.rsmv_lastsearch ?? "0"
+			search: localStorage.rsmv_lastsearch ?? "0",
+			fileName: '',
+			fileDownloadUrl: '',
 		};
 	}
 
@@ -81,6 +86,34 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 	// 	// }));
 	// }
 
+	@boundMethod
+	toggleFloor() {
+		this.props.ctx.renderer.toggleFloormesh!();
+	}
+
+	@boundMethod
+	saveImage() {
+		if (this.props.ctx.renderer.canvas) {
+			this.props.ctx.renderer.canvas.toBlob((blob) => {
+				if (blob === null ) {
+					return;
+				}
+				blob.arrayBuffer().then((ab) => {
+					sharp(Buffer.from(ab)).trim().toBuffer((e,d,i) => {
+						let url = URL.createObjectURL(new Blob([d], { type: 'image/png' }));
+						this.setState({
+							fileName: localStorage.rsmv_lastsearch + '.png',
+							fileDownloadUrl: url
+						});
+						this.doFileDownload!.click();
+						URL.revokeObjectURL(url);
+						this.setState({ fileName: '', fileDownloadUrl: '' });
+					})
+				});
+			});
+		}
+	}
+
 	setMode(mode: LookupMode) {
 		localStorage.rsmv_lastmode = mode;
 		this.setState({ mode, search: "" });
@@ -88,6 +121,8 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 
 	render() {
 		let ModeComp = LookupModeComponentMap[this.state.mode];
+		let showFunctionButtons = this.state.mode == "item" || this.state.mode == "npc" || this.state.mode == "object" || this.state.mode == "avatar" 
+			|| this.state.mode == "model" || this.state.mode == "material" || this.state.mode == "spotanim" || this.state.mode == "scenario";
 		return (
 			<React.Fragment>
 				<div className="sidebar-browser-tab-strip">
@@ -102,6 +137,18 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
 				</div>
+				{showFunctionButtons &&
+					<div className="sidebar-browser-tab-strip-function">
+						<input type="button" className="function-btn" onClick={this.toggleFloor} value={`Toggle floor`} />
+						<a
+							style={{ display: "none" }}
+							download={this.state.fileName}
+							href={this.state.fileDownloadUrl}
+							ref={e => this.doFileDownload = e}
+						></a>
+						<input type="button" className="function-btn" onClick={this.saveImage} value={`Export`} />
+					</div>
+				}			
 				{ModeComp && <ModeComp initialId={this.state.search} ctx={this.props.ctx} />}
 			</React.Fragment>
 		);

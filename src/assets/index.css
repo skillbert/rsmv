@@ -187,6 +187,13 @@ input[type="text"]:focus {
 	border-radius: 4px;
 }
 
+.function-btn {
+	background-repeat: no-repeat;
+	background-color: #fbcc4a;
+	border-color: #fbcc4a;
+	margin: 2px;
+}
+
 .rsmv-icon-button {
 	position: relative;
 	margin: 5px;
@@ -265,6 +272,11 @@ input[type="text"]:focus {
 .sidebar-browser-tab-strip {
 	display: grid;
 	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.sidebar-browser-tab-strip-function {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	padding-bottom: 5px;
 }
 #sidebar-browser-tab-data-container {
 	display: flex;

@@ -472,7 +472,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.emit("select", null);
 	}
 
-
+	toggleFloormesh(val?: boolean) {
+		if (val === undefined) {
+			this.floormesh.visible = !this.floormesh.visible;
+		} else {
+			this.floormesh.visible = val;
+		}
+		this.forceFrame();
+	}
 }
 
 export function highlightModelGroup(vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[]) {
