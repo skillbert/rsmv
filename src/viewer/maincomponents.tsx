@@ -238,7 +238,7 @@ export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSou
 					<React.Fragment>
 						<h2>Native NXT cache</h2>
 						<p>Only works when running in electron</p>
-						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cace" />
+						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cache" />
 					</React.Fragment>
 				)}
 			</React.Fragment>

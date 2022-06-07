@@ -46,7 +46,7 @@ export type ThreeJsSceneElement = {
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private renderer: THREE.WebGLRenderer;
-	private canvas: HTMLCanvasElement;
+	canvas: HTMLCanvasElement;
 	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
 	private scene: THREE.Scene;
 	private camera: THREE.PerspectiveCamera;
@@ -531,7 +531,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.emit("select", null);
 	}
 
-	toggleFloormesh(val?: boolean) {
+	toggleFloorMesh(val?: boolean) {
 		if (val === undefined) {
 			this.floormesh.visible = !this.floormesh.visible;
 		} else {

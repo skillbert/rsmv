@@ -50,7 +50,7 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 
 	@boundMethod
 	toggleFloor() {
-		this.props.ctx.renderer.toggleFloormesh!();
+		this.props.ctx.renderer.toggleFloorMesh!();
 	}
 
 	@boundMethod
