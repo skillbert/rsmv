@@ -151,7 +151,7 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 }
 
 function forceUpdateReducer(i: number) { return i + 1; }
-function useForceUpdate() {
+export function useForceUpdate() {
 	const [, forceUpdate] = React.useReducer(forceUpdateReducer, 0);
 	return forceUpdate;
 }

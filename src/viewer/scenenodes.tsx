@@ -8,7 +8,7 @@ import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
-import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
+import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseModels, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
@@ -23,7 +23,7 @@ import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
-import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
+import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
 import { CacheSelector, openSavedCache, SavedCacheSource, UIContext } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
@@ -307,6 +307,14 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
+			if (chunkmodels.length != 0) {
+				this.rootnode.add(...chunkmodels);
+			}
+			if (sky) {
+				this.rootskybox.add(sky.skybox);
+				//TODO update fog
+			}
+
 			let groups = new Set<string>();
 			this.rootnode.traverse(node => {
 				if (node.userData.modelgroup) {
@@ -327,14 +335,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 					}
 				}
 			});
-
-			if (chunkmodels.length != 0) {
-				this.rootnode.add(...chunkmodels);
-			}
-			if (sky) {
-				this.rootskybox.add(sky.skybox);
-				//TODO update fog
-			}
 
 			this.loaded = { grid, chunks, chunkmodels, groups, sky };
 			this.onModelLoaded();
@@ -723,7 +723,10 @@ const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number
 });
 
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
-	return { models: [{ modelid: id, mods: {} }], anims: {}, info: {} };
+	let modelfile = await cache.source.getFileById(cacheMajors.models, id);
+	let modeldata = parseOb3Model(modelfile);
+	let info = parseModels.read(modelfile);
+	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info } };
 }
 
 async function playerToModel(cache: ThreejsSceneCache, name: string) {
@@ -736,7 +739,7 @@ async function playerToModel(cache: ThreejsSceneCache, name: string) {
 
 export function serializeAnimset(group: animgroupconfigs) {
 	let anims: Record<string, number> = {};
-
+	anims.tpose = -1;
 	if (group.baseAnims) {
 		anims.default = group.baseAnims.idle;
 		anims.walk = group.baseAnims.walk;
@@ -751,7 +754,9 @@ export function serializeAnimset(group: animgroupconfigs) {
 	//TODO yikes
 	for (let key of Object.keys(group)) {
 		if (typeof group[key] == "number") {
-			anims[key] = group[key];
+			if (Object.values(anims).indexOf(group[key]) == -1) {
+				anims[key] = group[key];
+			}
 		}
 	}
 
@@ -848,11 +853,19 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 }
 
 function ScenePlayer(p: LookupModeProps) {
-	let [data, model, setId] = useAsyncModelData(p.initialId, p.ctx, playerToModel);
+	const [data, model, setId] = useAsyncModelData(p.initialId, p.ctx, playerToModel);
+	const forceUpdate = useForceUpdate();
 	return (
 		<React.Fragment>
 			<StringInput onChange={setId} initialid={p.initialId} />
-			<ExportModelButton model={model} />
+			<ExportModelButton model={model?.loaded} />
+			{model && data && (
+				<LabeledInput label="Animation">
+					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
+						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
+				</LabeledInput>
+			)}
 			<div>
 				{data?.info.items.map((q, i) => (
 					<div key={i}>{q.name ?? "??"}</div>
@@ -863,7 +876,7 @@ function ScenePlayer(p: LookupModeProps) {
 	)
 }
 
-function ExportModelButton(p: { model: RSModel["loaded"] | null }) {
+function ExportModelButton(p: { model: RSModel["loaded"] | null | undefined }) {
 	let exportmodel = () => {
 		if (p.model) {
 			saveGltf(p.model.mesh);
@@ -902,7 +915,7 @@ function ImageData(p: { img: ImageData }) {
 
 function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T>>) {
 	let idref = React.useRef(initial);
-	let [loadedModel, setLoadedModel] = React.useState<RSModel["loaded"] | null>(null);
+	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
 	let [visible, setVisible] = React.useState<{ info: SimpleModelInfo<T>, id: ID } | null>(null);
 	let setter = React.useCallback((id: ID) => {
 		idref.current = id;
@@ -923,7 +936,7 @@ function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: T
 			model.addToScene(ctx.renderer);
 			model.model.then(m => {
 				if (visible && idref.current == visible.id) {
-					setLoadedModel(m);
+					setLoadedModel(model);
 				}
 			});
 			return () => {
@@ -931,7 +944,7 @@ function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: T
 			}
 		}
 	}, [visible]);
-	return [visible?.info, loadedModel, setter] as [state: SimpleModelInfo<T> | null, model: RSModel["loaded"] | null, setter: (id: ID) => void];
+	return [visible?.info, loadedModel, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, setter: (id: ID) => void];
 }
 
 function SceneMaterial(p: LookupModeProps) {
@@ -958,17 +971,22 @@ function SceneRawModel(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model} />
+			<ExportModelButton model={model?.loaded} />
+			<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
+			<JsonDisplay obj={data?.info.info} />
 		</React.Fragment>
 	)
 }
 
 function SceneLocation(p: LookupModeProps) {
-	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, locToModel);
+	const [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, locToModel);
+	const forceUpdate = useForceUpdate();
+	const anim = data?.anims.default ?? -1;
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model} />
+			<ExportModelButton model={model?.loaded} />
+			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
@@ -979,18 +997,26 @@ function SceneItem(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model} />
+			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
 }
 
 function SceneNpc(p: LookupModeProps) {
-	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, npcToModel);
+	const [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, npcToModel);
+	const forceUpdate = useForceUpdate();
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model} />
+			<ExportModelButton model={model?.loaded} />
+			{model && data && (
+				<LabeledInput label="Animation">
+					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
+						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
+				</LabeledInput>
+			)}
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
@@ -1001,7 +1027,7 @@ function SceneSpotAnim(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model} />
+			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
