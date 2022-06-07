@@ -6,7 +6,8 @@ import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationMixer, Clock, Material, Mesh, Object3D } from "three";
+import { AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, PerspectiveCamera } from "three";
+import { VR360Render } from "./vr360camera";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -29,10 +30,13 @@ export type ThreeJsRendererEvents = {
 	select: null | { obj: Mesh, meshdata: Extract<ModelExtras, ClickableMesh<any>>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
 }
 
+export interface ThreeJsSceneElementSource {
+	getSceneElements(): ThreeJsSceneElement
+}
+
 export type ThreeJsSceneElement = {
 	modelnode?: Object3D,
-	skybox?: Object3D,
-	fogColor?: number[],
+	sky?: { skybox: THREE.Object3D<THREE.Event> | null, fogColor: number[] } | null
 	animationMixer?: AnimationMixer,
 	options?: {
 		opaqueBackground?: boolean,
@@ -48,7 +52,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private camera: THREE.PerspectiveCamera;
 	private controls: InstanceType<typeof OrbitControls>;
 	private modelnode: THREE.Group;
-	// cleanModelCallbacks: (() => void)[] = [];//TODO get rid of this
 	private floormesh: THREE.Mesh;
 	private queuedFrameId = 0;
 	private automaticFrames = false;
@@ -56,7 +59,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private contextLossCountLastRender = 0;
 	private clock = new Clock(true);
 
-	private sceneElements = new Set<ThreeJsSceneElement>();
+	private sceneElements = new Set<ThreeJsSceneElementSource>();
+	private animationMixers = new Set<AnimationMixer>();
+	private vr360cam: VR360Render | null = null;
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -130,29 +135,31 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
 		scene.add(hemilight);
+
+		this.sceneElementsChanged();
 	}
 
-	addSceneElement(el: ThreeJsSceneElement) {
+	addSceneElement(el: ThreeJsSceneElementSource) {
 		this.sceneElements.add(el);
 		this.sceneElementsChanged();
 	}
 
-	removeSceneElement(el: ThreeJsSceneElement) {
+	removeSceneElement(el: ThreeJsSceneElementSource) {
 		this.sceneElements.delete(el);
 		this.sceneElementsChanged();
 	}
 
 	sceneElementsChanged() {
-		let skybox: Object3D | null = null;
-		let fogColor: number[] | null = null;
+		let sky: ThreeJsSceneElement["sky"] = null;
 		let animated = false;
 		let opaqueBackground = false;
 		let showfloor = true;
 		let nodeDeleteList = new Set(this.modelnode.children);
-		for (let el of this.sceneElements) {
-			if (el.skybox) { skybox = el.skybox; }
-			if (el.fogColor) { fogColor = el.fogColor; }
-			if (el.animationMixer) { animated = true; }
+		this.animationMixers.clear();
+		for (let source of this.sceneElements) {
+			let el = source.getSceneElements();
+			if (el.sky) { sky = el.sky; }
+			if (el.animationMixer) { this.animationMixers.add(el.animationMixer); }
 			if (el.options?.opaqueBackground) { opaqueBackground = true; }
 			if (el.options?.hideFloor) { showfloor = false; }
 			if (el.modelnode) {
@@ -170,14 +177,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.floormesh.visible = showfloor;
 
 		//fog/skybox
-		let fogcolobj = (fogColor ? new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255) : null);
+		let fogcolobj = (sky?.fogColor ? new THREE.Color(sky.fogColor[0] / 255, sky.fogColor[1] / 255, sky.fogColor[2] / 255) : null);
 		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
-		if (skybox) {
+		if (sky?.skybox) {
 			let scene = this.skybox?.scene ?? new THREE.Scene();
 			let camera = this.skybox?.camera ?? this.camera.clone();
 			let obj = new THREE.Object3D();
 			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
-			obj.add(skybox);
+			obj.add(sky.skybox);
 			scene.clear();
 			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
 			scene.background = fogcolobj;
@@ -313,7 +320,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		let delta = this.clock.getDelta();
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
-		this.sceneElements.forEach(q => q.animationMixer?.update(delta));
+		this.animationMixers.forEach(q => q.update(delta));
 
 		if (cam == this.camera && this.resizeRendererToDisplaySize()) {
 			const canvas = this.renderer.domElement;
@@ -323,21 +330,44 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.renderer.clearColor();
 		this.renderer.clearDepth();
-		if (cam == this.camera && this.skybox) {
-			this.skybox.camera.matrixAutoUpdate = false;
-			this.camera.updateWorldMatrix(true, true);
-			this.skybox.camera.matrix.copy(this.camera.matrixWorld);
-			this.skybox.camera.matrix.setPosition(0, 0, 0);
-			this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
-			this.renderer.render(this.skybox.scene, this.skybox.camera);
-			this.renderer.clearDepth()
+		if (!globalThis.vr360) {
+			if (cam == this.camera && this.skybox) {
+				this.skybox.camera.matrixAutoUpdate = false;
+				this.camera.updateWorldMatrix(true, true);
+				this.skybox.camera.matrix.copy(this.camera.matrixWorld);
+				this.skybox.camera.matrix.setPosition(0, 0, 0);
+				this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
+				this.renderer.render(this.skybox.scene, this.skybox.camera);
+				this.renderer.clearDepth();
+			}
+			this.renderer.render(this.scene, cam);
+			this.contextLossCountLastRender = this.contextLossCount;
+		} else {
+			if (!this.vr360cam) {
+				this.vr360cam = new VR360Render(this.renderer, 512, 0.1, 1000);
+				this.camera.add(this.vr360cam.cubeCamera);
+				globalThis.cube = this.vr360cam.cubeCamera;
+			}
+			this.renderCube(this.vr360cam);
+			this.vr360cam.render(this.renderer);
 		}
-		this.renderer.render(this.scene, cam);
-		this.contextLossCountLastRender = this.contextLossCount;
-
 		if (this.automaticFrames) {
 			this.forceFrame();
 		}
+	}
+
+	renderCube(render: VR360Render) {
+		render.cubeRenderTarget.clear(this.renderer, true, true, false);
+		if (this.skybox) {
+			render.skyCubeCamera.matrixAutoUpdate = false;
+			render.cubeCamera.updateWorldMatrix(true, true);
+			render.skyCubeCamera.matrix.copy(render.cubeCamera.matrixWorld);
+			render.skyCubeCamera.matrix.setPosition(0, 0, 0);
+			render.skyCubeCamera.updateMatrixWorld(true);
+			render.skyCubeCamera.update(this.renderer, this.skybox.scene);
+			render.cubeRenderTarget.clear(this.renderer, false, true, false);
+		}
+		render.cubeCamera.update(this.renderer, this.scene);
 	}
 
 	@boundMethod

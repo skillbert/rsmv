@@ -14,7 +14,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
@@ -99,7 +99,7 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 
 export type SimpleModelDef = { modelid: number, mods: ModelModifications }[];
 
-export class RSModel extends TypedEmitter<{ loaded: undefined }>{
+export class RSModel extends TypedEmitter<{ loaded: undefined }> implements ThreeJsSceneElementSource {
 	model: Promise<{ modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip }>;
 	loaded: { modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip } | null = null;
 	cache: ThreejsSceneCache;
@@ -114,21 +114,23 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 	targetAnimId = -1;
 	skeletontype: "none" | "baked" | "full" = "none";
 	skeletonHelper: SkeletonHelper | null = null;
-	sceneElement: ThreeJsSceneElement | null = null;
 
 	cleanup() {
 		this.listeners = {};
-		if (this.sceneElement) { this.renderscene?.removeSceneElement(this.sceneElement); }
+		this.renderscene?.removeSceneElement(this);
 		this.renderscene = null;
 	}
 
-	addToScene(scene: ThreeJsRenderer) {
-		this.sceneElement = {
+	getSceneElements() {
+		return {
 			modelnode: this.rootnode,
 			animationMixer: this.mixer
 		}
+	}
+
+	addToScene(scene: ThreeJsRenderer) {
 		this.renderscene = scene;
-		scene.addSceneElement(this.sceneElement);
+		scene.addSceneElement(this);
 	}
 
 	onModelLoaded() {
@@ -234,17 +236,15 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 }
 
 
-export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
+export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements ThreeJsSceneElementSource {
 	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> }>;
 	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string>, sky: { skybox: Object3D, fogColor: number[] } | null } | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
-	rootskybox = new THREE.Group();
 	mixer = new AnimationMixer(this.rootnode);
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
 	rect: MapRect;
-	sceneElement: ThreeJsSceneElement | null = null;
 
 	cleanup() {
 		this.listeners = {};
@@ -255,9 +255,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 				if (obj instanceof Mesh) { obj.geometry.dispose(); }
 			});
 		}))
-		if (this.sceneElement) {
-			this.renderscene?.removeSceneElement(this.sceneElement);
-		}
+		this.renderscene?.removeSceneElement(this);
 		this.renderscene = null;
 	}
 
@@ -267,21 +265,24 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		return svgfloor(this.cache.cache, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
-	addToScene(scene: ThreeJsRenderer) {
-		this.renderscene = scene;
-		this.sceneElement = {
+	getSceneElements() {
+		return {
 			modelnode: this.rootnode,
 			animationMixer: this.mixer,
-			skybox: this.rootskybox,
+			sky: this.loaded?.sky,
 			options: { hideFloor: true }
 		};
-		scene.addSceneElement(this.sceneElement);
+	}
+
+	addToScene(scene: ThreeJsRenderer) {
+		this.renderscene = scene;
+		scene.addSceneElement(this);
 	}
 
 	onModelLoaded() {
 		this.setToggles(this.toggles);
 		this.emit("loaded", undefined);
-		this.renderscene?.forceFrame();
+		this.renderscene?.sceneElementsChanged();
 		this.renderscene?.setCameraLimits();
 	}
 
@@ -310,10 +311,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 
 			if (chunkmodels.length != 0) {
 				this.rootnode.add(...chunkmodels);
-			}
-			if (sky) {
-				this.rootskybox.add(sky.skybox);
-				//TODO update fog
 			}
 
 			let groups = new Set<string>();
@@ -1104,7 +1101,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	}
 
 	async addArea(rect: MapRect) {
-		let chunk = new RSMapChunk(rect, this.props.ctx.sceneCache);
+		let chunk = new RSMapChunk(rect, this.props.ctx.sceneCache, { skybox: true });
 		chunk.once("loaded", async () => {
 			let combined = chunk.rootnode;
 
