@@ -263,28 +263,6 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	avatars: standardFile(parseAvatars, standardIndex(0)),
 });
 
-let cmd2 = command({
-	name: "run",
-	args: {
-		...filesource,
-		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-		mode: option({ long: "mode", short: "m", type: string, defaultValue: () => "bin" }),
-		files: option({ long: "ids", short: "i", type: string, defaultValue: () => "" }),
-		edit: flag({ long: "edit", short: "e" }),
-		fixhash: flag({ long: "fixhash", short: "h" }),
-		batched: flag({ long: "batched", short: "b" }),
-		batchlimit: option({ long: "batchsize", type: number, defaultValue: () => -1 })
-	},
-	handler: async (args) => {
-		let outdir = path.resolve(args.save);
-		fs.mkdirSync(outdir, { recursive: true });
-		let output = new CLIScriptOutput(outdir);
-		let source = await args.source({ writable: args.edit });
-		await output.run(extractCacheFiles, source, args);
-		source.close();
-	}
-});
-
 export async function extractCacheFiles(output: ScriptOutput, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }

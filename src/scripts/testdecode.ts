@@ -1,35 +1,8 @@
-import { filesource, cliArguments } from "../cliparser";
-import { run, command, option } from "cmd-ts";
-import * as fs from "fs";
-import * as path from "path";
 import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { DecodeMode, cacheFileDecodeModes } from "./extractfiles";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 
-
-
-let cmd = command({
-	name: "download",
-	args: {
-		...filesource
-	},
-	handler: async (args) => {
-		const errdir = "./cache5/errs";
-		fs.mkdirSync(errdir, { recursive: true });
-		let olderrfiles = fs.readdirSync(errdir);
-		if (olderrfiles.find(q => !q.match(/^err/))) {
-			throw new Error("file not starting with 'err' in error dir");
-		}
-		olderrfiles.forEach(q => fs.unlinkSync(path.resolve(errdir, q)));
-
-		let output = new CLIScriptOutput(errdir);
-
-		let source = await args.source();
-		let mode = cacheFileDecodeModes.objects({});
-		await testDecode(output, source, mode, defaultTestDecodeOpts());
-	}
-});
 
 export type DecodeErrorJson = {
 	chunks: { offset: number, bytes: string, text: string }[],
@@ -49,8 +22,6 @@ export function defaultTestDecodeOpts() {
 		outmode: "json" as "json" | "hextext" | "original" | "none"
 	};
 }
-
-
 
 export async function testDecode(output: ScriptOutput, source: CacheFileSource, mode: DecodeMode, opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
@@ -125,17 +96,7 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 			endoffset: file.file.byteLength
 		};
 		try {
-			// output.log("reading ", file.major, file.minor, file.subfile);
-			let res = decoder.readInternal(state);
-			// if(file.file.length>30){throw new Error("success")}
-			// if(res.player && res.player.unk16!=0){throw new Error("unk16")}
-			// if (res.player) {
-			// 	for (let [key, v] of Object.entries(res.player)) {
-			// 		if (!key.startsWith("cust")) { continue; }
-			// 		let q = v as any as NonNullable<typeof res.player>["cust0"];
-			// 		if (q && q.type & 1) { throw new Error("model"); }
-			// 	}
-			// }
+			decoder.readInternal(state);
 			nsuccess++;
 			return true;
 		} catch (e) {
@@ -222,5 +183,3 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 
 	output.log("completed files:", nsuccess);
 }
-
-// 	run(cmd, cliArguments());

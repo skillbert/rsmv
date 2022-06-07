@@ -288,23 +288,8 @@ export async function getDependencies(cache: CacheFileSource) {
 	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies };
 }
 
-let staticintbuf = Buffer.alloc(4);
+const staticintbuf = Buffer.alloc(4);
 export function crc32addInt(int: number, crc = 0) {
 	staticintbuf.writeUInt32BE(int);
 	return crc32(staticintbuf, crc);
 }
-
-// let cmd2 = command({
-// 	name: "run",
-// 	args: {
-// 		...filesource
-// 	},
-// 	handler: async (args) => {
-// 		let cache = await args.source();
-// 		getDependencies(cache);
-// 	}
-// });
-
-// run(cmd2, cliArguments());
-
-// setTimeout(() => { }, 10000000);

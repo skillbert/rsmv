@@ -344,9 +344,16 @@ function bufToHexView(buf: Buffer) {
 }
 
 function TrivialHexViewer(p: { data: Buffer }) {
-	let { resulthex } = bufToHexView(p.data);
+	let { resulthex, resultchrs } = bufToHexView(p.data);
 	return (
-		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resulthex}</div>
+		<table>
+			<tbody>
+				<tr>
+					<td style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resulthex}</td>
+					<td style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resultchrs}</td>
+				</tr>
+			</tbody>
+		</table>
 	)
 }
 

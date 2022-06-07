@@ -1,9 +1,6 @@
-import { cliArguments } from "../cliparser";
-import { command, number, option, run } from "cmd-ts";
 import fetch from "node-fetch";
-import fs from "fs";
-import path from "path";
 import { avatarStringToBytes, lowname } from "../3d/avatar";
+import { ScriptOutput } from "../viewer/scriptsui";
 
 
 async function getPlayerNames(cat: number, subcat: number, page: number) {
@@ -24,31 +21,18 @@ async function getPlayerAvatar(name: string) {
 	return avatarStringToBytes(await res.text());
 }
 
-
-let cmd2 = command({
-	name: "run",
-	args: {
-		save: option({ long: "save", short: "s" }),
-		skip: option({ long: "skip", short: "i", type: number, defaultValue: () => 0 }),
-		max: option({ long: "max", short: "m", type: number, defaultValue: () => 500 })
-	},
-	handler: async (args) => {
-		fs.mkdirSync(args.save, { recursive: true });
-		let count = 0;
-		const pagesize = 25;
-		let startpage = Math.floor(args.skip / pagesize);
-		for (let page = startpage; count < args.max; page++) {
-			let players = await getPlayerNames(0, 0, page);
-			for (let player of players) {
-				let data = await getPlayerAvatar(player);
-				if (data) {
-					fs.writeFileSync(path.resolve(args.save, `playerdata_${lowname(player)}.bin`), data);
-					count++;
-				}
+export async function scrapePlayerAvatars(output: ScriptOutput, skip: number, max: number) {
+	let count = 0;
+	const pagesize = 25;
+	let startpage = Math.floor(skip / pagesize);
+	for (let page = startpage; count < max; page++) {
+		let players = await getPlayerNames(0, 0, page);
+		for (let player of players) {
+			let data = await getPlayerAvatar(player);
+			if (data) {
+				output.writeFile(`playerdata_${lowname(player)}.bin`, data);
+				count++;
 			}
 		}
 	}
-});
-
-
-run(cmd2, cliArguments());
+}
