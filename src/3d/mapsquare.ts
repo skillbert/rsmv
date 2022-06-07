@@ -2,7 +2,7 @@ import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { ParsedTexture } from "./textures";
-import { parseMapscenes, parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseMapsquareWaterTiles, parseObject } from "../opdecoder";
+import { parseEnvironments, parseMapscenes, parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseMapsquareWaterTiles, parseObject } from "../opdecoder";
 import { ScanBuffer } from "opcode_reader";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -10,7 +10,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { parseOb3Model, ModelMeshData, ModelData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache } from "./ob3tothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ob3ModelToThreejsNode } from "./ob3tothree";
 import { BufferAttribute, DataTexture, MeshBasicMaterial, Object3D, Quaternion, Vector3 } from "three";
 import { materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
@@ -23,7 +23,7 @@ module.hot?.accept(["../3d/ob3tothree", "../3d/ob3togltf"]);
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
-const tiledimensions = 512;
+export const tiledimensions = 512;
 export const squareSize = 64;
 export const squareLevels = 4;
 const heightScale = 1 / 16;
@@ -531,7 +531,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 	let gridoffsetx = rootx;
 	let gridoffsetz = rootz;
 	let origin = new Vector3().applyMatrix4(matrix);
-	let centery = grid.getHeight((origin.x + gridoffsetx) / tiledimensions, (origin.z + gridoffsetz) / tiledimensions, morph.level);
+	let centery = getTileHeight(grid, (origin.x + gridoffsetx) / tiledimensions, (origin.z + gridoffsetz) / tiledimensions, morph.level);
 
 	let pos = mesh.attributes.pos;
 	if (mesh.attributes.pos.itemSize != 3) {
@@ -558,11 +558,11 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 
 			if (followceiling) {
 				let wceiling = vertexy * yscale;
-				let floory = grid.getHeight(gridx, gridz, morph.level);
-				let ceily = grid.getHeight(gridx, gridz, morph.level + 1);
+				let floory = getTileHeight(grid, gridx, gridz, morph.level);
+				let ceily = getTileHeight(grid, gridx, gridz, morph.level + 1);
 				vector.y += -vertexy + ceily * wceiling + floory * (1 - wceiling);
 			} else {
-				vector.y += grid.getHeight(gridx, gridz, morph.level);
+				vector.y += getTileHeight(grid, gridx, gridz, morph.level);
 			}
 		} else {
 			vector.y += centery;
@@ -617,7 +617,7 @@ export class CombinedTileGrid implements TileGridSource {
 		this.grids = grids;
 	}
 
-	getTile(x, z, level) {
+	getTile(x: number, z: number, level: number) {
 		for (let grid of this.grids) {
 			if (x >= grid.rect.x && x < grid.rect.x + grid.rect.xsize && z >= grid.rect.z && z < grid.rect.z + grid.rect.zsize) {
 				return grid.src.getTile(x, z, level);
@@ -625,6 +625,22 @@ export class CombinedTileGrid implements TileGridSource {
 		}
 		return undefined;
 	}
+}
+
+export function getTileHeight(grid: TileGridSource, x: number, z: number, level: number) {
+	let xfloor = Math.floor(x);
+	let zfloor = Math.floor(z);
+
+	//TODO saturate weight to edge in case it's outside bounds
+	let w00 = (1 - (x - xfloor)) * (1 - (z - zfloor));
+	let w01 = (x - xfloor) * (1 - (z - zfloor));
+	let w10 = (1 - (x - xfloor)) * (z - zfloor);
+	let w11 = (x - xfloor) * (z - zfloor);
+	let tile = grid.getTile(xfloor, zfloor, level);
+	//can be empty if the region has gaps
+	if (!tile) { return 0; }
+
+	return tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11;
 }
 
 export class TileGrid implements TileGridSource {
@@ -668,25 +684,6 @@ export class TileGrid implements TileGridSource {
 			}
 		}
 		return file;
-	}
-
-	getHeight(x: number, z: number, level: number) {
-		let xfloor = Math.floor(x);
-		let zfloor = Math.floor(z);
-		let x0 = Math.max(this.xoffset, Math.min(this.xoffset + this.width - 1, xfloor));
-		let z0 = Math.max(this.zoffset, Math.min(this.zoffset + this.height - 1, zfloor));
-
-		//TODO saturate weight to edge in case it's outside bounds
-		let w00 = (1 - (x - xfloor)) * (1 - (z - zfloor));
-		let w01 = (x - xfloor) * (1 - (z - zfloor));
-		let w10 = (1 - (x - xfloor)) * (z - zfloor);
-		let w11 = (x - xfloor) * (z - zfloor);
-
-		let tile = this.getTile(x0, z0, level);
-		//can be empty if the region has gaps
-		if (!tile) { return 0; }
-
-		return tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11;
 	}
 	getTile(x: number, z: number, level: number) {
 		x -= this.xoffset;
@@ -911,7 +908,7 @@ export class TileGrid implements TileGridSource {
 	}
 }
 
-export type ParsemapOpts = { centered?: boolean, padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, mask?: MapRect[] };
+export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, skybox?: boolean, mask?: MapRect[] };
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
 export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
@@ -970,6 +967,23 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 	return { grid, chunks };
 }
 
+export async function mapsquareSkybox(cache: ThreejsSceneCache, mainchunk: ChunkData) {
+	let skybox = new Object3D();
+	let fogColor = [0, 0, 0, 0];
+	if (mainchunk?.extra.unk00?.unk20) {
+		fogColor = mainchunk.extra.unk00.unk20.slice(1);
+	}
+	if (mainchunk?.extra.unk80) {
+		let envarch = await cache.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
+		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
+		let env = parseEnvironments.read(envfile.buffer);
+		if (typeof env.model == "number") {
+			skybox = await ob3ModelToThreejsNode(cache, [await cache.getFileById(cacheMajors.models, env.model)]);
+		}
+	}
+	return { skybox, fogColor };
+}
+
 export async function mapsquareModels(engine: EngineCache, grid: TileGrid, chunks: ChunkData[], opts?: ParsemapOpts) {
 	let squareDatas: ChunkModelData[] = [];
 
@@ -1004,15 +1018,15 @@ export async function mapsquareModels(engine: EngineCache, grid: TileGrid, chunk
 
 		for (let level = 0; level < squareLevels; level++) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, true, false));
-			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
-		}
-		if (opts?.invisibleLayers) {
-			for (let level = 0; level < squareLevels; level++) {
+			if (opts?.map2d) {
+				floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
+			}
+			if (opts?.invisibleLayers) {
 				floors.push(mapsquareMesh(grid, chunk, level, atlas, true));
 			}
 		}
 		let models = mapsquareObjectModels(chunk.locs);
-		let overlays = await mapsquareOverlays(engine, grid, chunk.locs);
+		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(engine, grid, chunk.locs));
 		squareDatas.push({
 			chunk,
 			floors,

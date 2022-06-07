@@ -10,15 +10,28 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	dbfiles: Record<string, Blob> = {};
 	worker: Worker;
 	msgidcounter = 1;
-	callbacks = new Map<number, { resolve: (res: any) => void, reject: (err: Error) => void }>();
+	callbacks = new Map<number, { resolve: (res: any) => void, reject: (err: Error) => void, reqpacket: WorkerPackets }>();
 	constructor() {
 		super();
 		//@ts-ignore this whole line gets consumed by webpack, turns to static string in webpack
 		this.worker = new Worker(new URL("./sqlitewasmworker.ts", import.meta.url));
 		this.worker.onmessage = e => {
 			let handler = this.callbacks.get(e.data.id);
-			if (e.data.error) { handler?.reject(new Error(e.data.error)); }
-			else { handler?.resolve(e.data.packet); }
+			if (e.data.error) {
+				if (handler) {
+					let err = e.data.error;
+					if (handler.reqpacket.type == "getfile") {
+						err += `\n in getfile ${handler.reqpacket.major}.${handler.reqpacket.minor}`;
+					} else if (handler.reqpacket.type == "getindex") {
+						err += `\n in getindex ${handler.reqpacket.major}`;
+					} else {
+						err += `\n in other ${handler.reqpacket.type}`;
+					}
+					handler.reject(new Error(err));
+				}
+			} else {
+				handler?.resolve(e.data.packet);
+			}
 			this.callbacks.delete(e.data.id);
 		}
 	}
@@ -53,7 +66,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	sendWorker(packet: WorkerPackets) {
 		let id = this.msgidcounter++;
 		this.worker.postMessage({ id, packet });
-		return new Promise((resolve, reject) => this.callbacks.set(id, { resolve, reject }));
+		return new Promise((resolve, reject) => this.callbacks.set(id, { resolve, reject, reqpacket: packet }));
 	}
 
 	giveBlobs(blobs: Record<string, Blob>) {

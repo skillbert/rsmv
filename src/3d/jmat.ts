@@ -1,3 +1,4 @@
+import { HSL2RGB, packedHSL2HSL } from "../utils";
 import { parseMaterials } from "../opdecoder";
 
 export type MaterialData = {
@@ -10,7 +11,8 @@ export type MaterialData = {
 		compound?: number
 	},
 	uvAnim: { u: number, v: number } | undefined,
-	vertexColors: boolean
+	vertexColors: boolean,
+	materialColor: [number, number, number],
 	alphamode: "opaque" | "cutoff" | "blend",
 	alphacutoff: number,
 	raw: ReturnType<typeof parseMaterials["read"]> | null
@@ -21,6 +23,7 @@ export function defaultMaterial(): MaterialData {
 		textures: {},
 		uvAnim: undefined,
 		vertexColors: true,
+		materialColor: [255, 255, 255],
 		alphamode: "opaque",
 		alphacutoff: 0.1,
 		raw: null
@@ -50,7 +53,15 @@ export function convertMaterial(data: Buffer) {
 			mat.uvAnim = { u: (raw.animtexU ?? 0) * scale, v: (raw.animtexV ?? 0) * scale };
 		}
 		// mat.vertexColors = (raw.alphamode != 2);
-		mat.vertexColors = !raw.extra || raw.extra.colorint != 0;
+		// mat.vertexColors = !raw.extra || raw.extra.colorint != 0;
+		mat.vertexColors = !raw.extra || raw.extra.unknownbool;
+		if (raw.extra) {
+			if (raw.extra.colorint != 0) {
+				mat.materialColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));
+			} else {
+				// mat.vertexColors = true;
+			}
+		}
 	} else if (rawparsed.v1) {
 		let raw = rawparsed.v1;
 		//this is very wrong

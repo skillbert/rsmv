@@ -3,7 +3,7 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import { parseAnimgroupConfigs, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
 import { ob3ModelToThreejsNode, ThreejsSceneCache } from "./ob3tothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL, Stream } from "../utils";
-import { SimpleModelDef } from "../viewer/scenenodes";
+import { SimpleModelDef, serializeAnimset } from "../viewer/scenenodes";
 import { items } from "../../generated/items";
 
 export function avatarStringToBytes(text: string) {
@@ -235,10 +235,9 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 	let animsetarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let animsetfile = animsetarch[animgroup];
 	let animset = parseAnimgroupConfigs.read(animsetfile.buffer);
-	let animid = animset.baseAnims!.idle;
 
-	let animids = (animid == -1 ? [] : [animid]);
-	return { models, animids, items, animset };
+	let anims = serializeAnimset(animset);
+	return { models, anims, info: { items, animset } };
 }
 
 export function appearanceUrl(name: string) {

@@ -10,24 +10,16 @@ import { ModelBrowser, StringInput } from "./scenenodes";
 import { UIScriptFile } from "./scriptsui";
 import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache } from "./maincomponents";
 
-if (module.hot) {
-	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
+export function unload() {
+	ReactDOM.unmountComponentAtNode(document.getElementById("rsmv_app")!);
 }
 
-function start() {
-	window.addEventListener("keydown", e => {
-		if (e.key == "F5") { document.location.reload(); }
-		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
-	});
-
-	ReactDOM.render(<App />, document.getElementById("app"));
-
-	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
-	//across tab reloads
-	navigator.serviceWorker.register('./contextholder.js', { scope: './', });
+export function start() {
+	let parent = document.getElementById("rsmv_app")!;
+	ReactDOM.render(<RSMVApp />, parent);
 }
 
-class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null, openedFile: UIScriptFile | null }> {
+class RSMVApp extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null, openedFile: UIScriptFile | null }> {
 	appctx: UIContext | null = null;
 
 	constructor(p) {
@@ -101,4 +93,3 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 		);
 	}
 }
-start();

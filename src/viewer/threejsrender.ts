@@ -1,17 +1,13 @@
 import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTFLoader, GLTFParser, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js";
-import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache } from '../3d/ob3tothree';
 import { ModelModifications, FlatImageData, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
-import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject } from '../3d/mapsquare';
-import { AnimationAction, AnimationClip, AnimationMixer, Clock, Material, Mesh, Raycaster, SkeletonHelper, Vector2 } from "three";
-import { MountableAnimation } from "3d/animationframes";
-import { ModelMeshData } from "3d/ob3togltf";
+import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
+import { AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, PerspectiveCamera } from "three";
+import { VR360Render } from "./vr360camera";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -34,22 +30,38 @@ export type ThreeJsRendererEvents = {
 	select: null | { obj: Mesh, meshdata: Extract<ModelExtras, ClickableMesh<any>>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
 }
 
+export interface ThreeJsSceneElementSource {
+	getSceneElements(): ThreeJsSceneElement
+}
+
+export type ThreeJsSceneElement = {
+	modelnode?: Object3D,
+	sky?: { skybox: THREE.Object3D<THREE.Event> | null, fogColor: number[] } | null
+	animationMixer?: AnimationMixer,
+	options?: {
+		opaqueBackground?: boolean,
+		hideFloor?: boolean
+	}
+}
+
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
-	renderer: THREE.WebGLRenderer;
-	canvas: HTMLCanvasElement;
-	skybox: { scene: THREE.Object3D, camera: THREE.Camera } | null = null;
-	scene: THREE.Scene;
-	camera: THREE.PerspectiveCamera;
-	controls: InstanceType<typeof OrbitControls>;
-	modelnode: THREE.Group;
-	// cleanModelCallbacks: (() => void)[] = [];//TODO get rid of this
-	floormesh: THREE.Mesh;
-	queuedFrameId = 0;
-	automaticFrames = false;
-	contextLossCount = 0;
-	contextLossCountLastRender = 0;
-	clock = new Clock(true);
-	animationMixers = new Set<AnimationMixer>();
+	private renderer: THREE.WebGLRenderer;
+	private canvas: HTMLCanvasElement;
+	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
+	private scene: THREE.Scene;
+	private camera: THREE.PerspectiveCamera;
+	private controls: InstanceType<typeof OrbitControls>;
+	private modelnode: THREE.Group;
+	private floormesh: THREE.Mesh;
+	private queuedFrameId = 0;
+	private automaticFrames = false;
+	private contextLossCount = 0;
+	private contextLossCountLastRender = 0;
+	private clock = new Clock(true);
+
+	private sceneElements = new Set<ThreeJsSceneElementSource>();
+	private animationMixers = new Set<AnimationMixer>();
+	private vr360cam: VR360Render | null = null;
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -123,6 +135,65 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
 		scene.add(hemilight);
+
+		this.sceneElementsChanged();
+	}
+
+	addSceneElement(el: ThreeJsSceneElementSource) {
+		this.sceneElements.add(el);
+		this.sceneElementsChanged();
+	}
+
+	removeSceneElement(el: ThreeJsSceneElementSource) {
+		this.sceneElements.delete(el);
+		this.sceneElementsChanged();
+	}
+
+	sceneElementsChanged() {
+		let sky: ThreeJsSceneElement["sky"] = null;
+		let animated = false;
+		let opaqueBackground = false;
+		let showfloor = true;
+		let nodeDeleteList = new Set(this.modelnode.children);
+		this.animationMixers.clear();
+		for (let source of this.sceneElements) {
+			let el = source.getSceneElements();
+			if (el.sky) { sky = el.sky; }
+			if (el.animationMixer) { this.animationMixers.add(el.animationMixer); }
+			if (el.options?.opaqueBackground) { opaqueBackground = true; }
+			if (el.options?.hideFloor) { showfloor = false; }
+			if (el.modelnode) {
+				nodeDeleteList.delete(el.modelnode);
+				if (el.modelnode.parent != this.modelnode) {
+					this.modelnode.add(el.modelnode);
+				}
+			}
+		}
+		nodeDeleteList.forEach(q => this.modelnode.remove(q));
+
+		this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
+		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
+		this.automaticFrames = animated;
+		this.floormesh.visible = showfloor;
+
+		//fog/skybox
+		let fogcolobj = (sky?.fogColor ? new THREE.Color(sky.fogColor[0] / 255, sky.fogColor[1] / 255, sky.fogColor[2] / 255) : null);
+		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
+		if (sky?.skybox) {
+			let scene = this.skybox?.scene ?? new THREE.Scene();
+			let camera = this.skybox?.camera ?? this.camera.clone();
+			let obj = new THREE.Object3D();
+			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
+			obj.add(sky.skybox);
+			scene.clear();
+			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
+			scene.background = fogcolobj;
+			this.skybox = { scene, camera };
+		} else {
+			this.skybox = null;
+		}
+
+		this.forceFrame();
 	}
 
 	resizeRendererToDisplaySize() {
@@ -259,21 +330,44 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.renderer.clearColor();
 		this.renderer.clearDepth();
-		if (cam == this.camera && this.skybox) {
-			this.skybox.camera.matrixAutoUpdate = false;
-			this.camera.updateWorldMatrix(true, true);
-			this.skybox.camera.matrix.copy(this.camera.matrixWorld);
-			this.skybox.camera.matrix.setPosition(0, 0, 0);
-			this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
-			this.renderer.render(this.skybox.scene, this.skybox.camera);
-			this.renderer.clearDepth()
+		if (!globalThis.vr360) {
+			if (cam == this.camera && this.skybox) {
+				this.skybox.camera.matrixAutoUpdate = false;
+				this.camera.updateWorldMatrix(true, true);
+				this.skybox.camera.matrix.copy(this.camera.matrixWorld);
+				this.skybox.camera.matrix.setPosition(0, 0, 0);
+				this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
+				this.renderer.render(this.skybox.scene, this.skybox.camera);
+				this.renderer.clearDepth();
+			}
+			this.renderer.render(this.scene, cam);
+			this.contextLossCountLastRender = this.contextLossCount;
+		} else {
+			if (!this.vr360cam) {
+				this.vr360cam = new VR360Render(this.renderer, 512, 0.1, 1000);
+				this.camera.add(this.vr360cam.cubeCamera);
+				globalThis.cube = this.vr360cam.cubeCamera;
+			}
+			this.renderCube(this.vr360cam);
+			this.vr360cam.render(this.renderer);
 		}
-		this.renderer.render(this.scene, cam);
-		this.contextLossCountLastRender = this.contextLossCount;
-
 		if (this.automaticFrames) {
 			this.forceFrame();
 		}
+	}
+
+	renderCube(render: VR360Render) {
+		render.cubeRenderTarget.clear(this.renderer, true, true, false);
+		if (this.skybox) {
+			render.skyCubeCamera.matrixAutoUpdate = false;
+			render.cubeCamera.updateWorldMatrix(true, true);
+			render.skyCubeCamera.matrix.copy(render.cubeCamera.matrixWorld);
+			render.skyCubeCamera.matrix.setPosition(0, 0, 0);
+			render.skyCubeCamera.updateMatrixWorld(true);
+			render.skyCubeCamera.update(this.renderer, this.skybox.scene);
+			render.cubeRenderTarget.clear(this.renderer, false, true, false);
+		}
+		render.cubeCamera.update(this.renderer, this.scene);
 	}
 
 	@boundMethod
@@ -356,24 +450,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	// 	return { rootnode };
 	// }
 
-	setSkybox(skybox?: THREE.Object3D, fogColor?: number[]) {
-		let fogcolobj = (fogColor ? new THREE.Color(fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255) : null);
-		if (skybox) {
-			let scene = new THREE.Scene();
-			let camera = this.camera.clone();
-			let obj = new THREE.Object3D();
-			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
-			obj.add(skybox);
-			scene.add(obj, camera, new THREE.AmbientLight(0xffffff));
-			this.skybox = { scene, camera };
-			scene.background = fogcolobj;
-		} else {
-			this.skybox = null;
-		}
-
-		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
-	}
-
 	setCameraLimits() {
 		// compute the box that contains all the stuff
 		// from root and below
@@ -388,23 +464,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.controls.screenSpacePanning = true;
 
 		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
-		this.floormesh.visible = true;//box.min.y > -1;
-	}
-
-	export(type: "gltf") {
-		return new Promise<Buffer>(resolve => {
-			let q = new GLTFExporter();
-			q.parse(this.modelnode!, gltf => resolve(gltf as any), { binary: true, embedImages: true, animations: this.modelnode?.children[0].animations });
-		});
-		// return new Promise<Buffer>(resolve => {
-		// 	let q = new ColladaExporter();
-		// 	q.parse(this.modelnode!, res => resolve(res as any), {});
-		// });
-
-		// let q = new USDZExporter();
-		// return q.parse(this.modelnode!).then(file => {
-		// 	return file;
-		// });
 	}
 
 	@boundMethod
@@ -480,6 +539,33 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 		this.forceFrame();
 	}
+}
+
+export async function saveGltf(node: THREE.Object3D) {
+	let savehandle = await showSaveFilePicker({
+		//@ts-ignore
+		id: "savegltf",
+		startIn: "downloads",
+		suggestedName: "model.glb",
+		types: [
+			{ description: 'GLTF model', accept: { 'application/gltf': ['.glb', '.gltf'] } },
+		]
+	});
+	let modelexprt = await exportThreeJsGltf(node);
+	let str = await savehandle.createWritable();
+	await str.write(modelexprt);
+	await str.close();
+}
+
+export function exportThreeJsGltf(node: THREE.Object3D) {
+	return new Promise<Buffer>(resolve => {
+		let exporter = new GLTFExporter();
+		exporter.parse(node, gltf => resolve(gltf as any), {
+			binary: true,
+			embedImages: true,
+			animations: node.animations
+		});
+	});
 }
 
 export function highlightModelGroup(vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[]) {

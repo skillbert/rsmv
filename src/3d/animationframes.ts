@@ -271,6 +271,11 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		let postrotate = new Quaternion();
 		let skippedbones = 0;
 		for (let trans of transforms) {
+			if (trans.id == 0) {
+				//don't emit keyframetrack for static root bone, since it is a noop and
+				//bone name doesn't match (doing this messes with export)
+				continue;
+			}
 			if (trans.id >= model.bonecount) {
 				skippedbones++;
 				continue;

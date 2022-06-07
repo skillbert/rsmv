@@ -69,7 +69,7 @@ export class FileParser<T> {
 export const parseCacheIndex = new FileParser<import("../generated/cacheindex").cacheindex>(require("./opcodes/cacheindex.json"));
 export const parseNpc = new FileParser<import("../generated/npcs").npcs>(require("./opcodes/npcs.jsonc"));
 export const parseItem = new FileParser<import("../generated/items").items>(require("./opcodes/items.json"));
-export const parseObject = new FileParser<import("../generated/objects").objects>(require("./opcodes/objects.json"));
+export const parseObject = new FileParser<import("../generated/objects").objects>(require("./opcodes/objects.jsonc"));
 export const parseAchievement = new FileParser<import("../generated/achievements").achievements>(require("./opcodes/achievements.jsonc"));
 export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.jsonc"));
 export const parseMapsquareWaterTiles = new FileParser<import("../generated/mapsquare_watertiles").mapsquare_watertiles>(require("./opcodes/mapsquare_watertiles.json"));

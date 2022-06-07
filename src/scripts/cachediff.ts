@@ -8,6 +8,7 @@ import { archiveToFileId, CacheFileSource, fileIdToArchiveminor } from "../cache
 import * as fs from "fs";
 import prettyJson from "json-stringify-pretty-compact";
 import { crc32 } from "../libs/crc32util";
+import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 
 
 type FileAction = {
@@ -54,33 +55,120 @@ function getMajorAction(major: number) {
 	return action;
 }
 
-export async function hashCache(source: CacheFileSource, onlymajors: number[] | undefined = undefined) {
-	let allmajors = await source.getIndexFile(cacheMajors.index);
+export async function diffCaches(output: ScriptOutput, sourcea: CacheFileSource, sourceb: CacheFileSource) {
+	let majors: number[] = [];
+	let roota = await sourcea.getIndexFile(cacheMajors.index);
+	let rootb = await sourceb.getIndexFile(cacheMajors.index);
+	let rootmaxlen = Math.max(roota.length, rootb.length);
+	for (let i = 0; i < rootmaxlen; i++) {
+		if (roota[i] && !rootb[i]) { output.log(`major ${i} removed`); }
+		if (!roota[i] && rootb[i]) { output.log(`major ${i} added`); }
+		if (roota[i] && rootb[i]) { majors.push(i); }
+	}
 
-	let hashes: number[][] = [];
-	for (let major = 0; major < allmajors.length; major++) {
-		let subhashes: number[] = [];
-		hashes[major] = subhashes;
-		if (!allmajors[major] || onlymajors && !onlymajors.includes(major)) { continue; }
+	let changes: FileEdit[] = [];
 
-		let indices = await source.getIndexFile(major);
+	for (let major of majors) {
+		if (output.state != "running") { break; }
+		let indexa = await sourcea.getIndexFile(major);
+		let indexb = await sourceb.getIndexFile(major);
+		let len = Math.max(indexa.length, indexb.length);
+
 		let action = getMajorAction(major);
-		for (let i = 0; i < indices.length; i++) {
-			let index = indices[i];
-			if (!index) { continue; }
-			if (action.comparesubfiles) {
-				let arch = await source.getFileArchive(index);
-				for (let sub of arch) {
-					let fileid = archiveToFileId(major, index.minor, sub.fileid);
-					subhashes[fileid] = crc32(sub.buffer);
+		output.log(`checking major ${major} ${action.name} subfiles:${action.comparesubfiles}`);
+
+		for (let i = 0; i < len; i++) {
+			if (output.state != "running") { break; }
+			let metaa = indexa[i], metab = indexb[i];
+			if (metaa || metab) {
+				if (!metaa || !metab || metaa.version != metab.version) {
+					if (action.comparesubfiles) {
+						let archa = (metaa ? await sourcea.getFileArchive(metaa) : []);
+						let archb = (metab ? await sourceb.getFileArchive(metab) : []);
+
+						for (let a = 0, b = 0; ;) {
+							let filea = archa[a], fileb = archb[b];
+							if (filea && (!fileb || filea.fileid < fileb.fileid)) {
+								a++;
+								changes.push({
+									type: "delete", major: metaa.major, minor: metaa.minor, subfile: filea.fileid,
+									action, before: filea.buffer, after: null
+								});
+							} else if (fileb && (!filea || fileb.fileid < filea.fileid)) {
+								b++;
+								changes.push({
+									type: "add", major: metab.major, minor: metab.minor, subfile: fileb.fileid,
+									action, before: null, after: fileb.buffer
+								});
+							} else if (filea && fileb && filea.fileid == fileb.fileid) {
+								if (Buffer.compare(filea.buffer, fileb.buffer) != 0) {
+									changes.push({
+										type: "edit", major: metaa.major, minor: metaa.minor, subfile: filea.fileid,
+										action, before: filea.buffer, after: fileb.buffer
+									});
+								}
+								a++;
+								b++;
+							} else if (!filea && !fileb) {
+								break;
+							} else {
+								output.log(filea, fileb);
+								throw new Error("shouldnt happen");
+							}
+						}
+					} else {
+						if (!metaa) {
+							changes.push({
+								type: "add", major: metab.major, minor: metab.minor,
+								subfile: -1, action,
+								before: null,
+								after: await sourceb.getFile(metab.major, metab.minor, metab.crc).catch(() => null)
+							});
+						}
+						else if (!metab) {
+							changes.push({
+								type: "delete", major: metaa.major, minor: metaa.minor,
+								subfile: -1, action,
+								before: await sourcea.getFile(metaa.major, metaa.minor, metaa.crc).catch(() => null),
+								after: null
+							});
+						} else {
+							changes.push({
+								type: "edit", major: metaa.major, minor: metaa.minor,
+								subfile: -1, action,
+								before: await sourcea.getFile(metaa.major, metaa.minor, metaa.crc).catch(() => null),
+								after: await sourceb.getFile(metab.major, metab.minor, metab.crc).catch(() => null)
+							});
+						}
+					}
 				}
-			} else {
-				subhashes[index.minor] = index.crc;
 			}
 		}
 	}
 
-	return hashes;
+	for (let change of changes) {
+		let name = change.action.getFileName(change.major, change.minor, change.subfile);
+		let dir = `${change.action.name}`;
+		await output.mkDir(dir);
+		if (change.action.parser) {
+			if (change.before) {
+				let parsedbefore = change.action.parser.read(change.before);
+				await output.writeFile(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
+			}
+			if (change.after) {
+				let parsedafter = change.action.parser.read(change.after);
+				await output.writeFile(`${dir}/${name}-after.json`, prettyJson(parsedafter));
+			}
+		} else {
+			if (change.before) {
+				await output.writeFile(`${dir}/${name}-before.bin`, change.before);
+			}
+			if (change.after) {
+				await output.writeFile(`${dir}/${name}-after.bin`, change.after);
+			}
+		}
+	}
+	return changes;
 }
 
 let cmd2 = command({
@@ -93,118 +181,9 @@ let cmd2 = command({
 		let sourcea = await args.a();
 		let sourceb = await args.b();
 
-		let majors: number[] = [];
-		let roota = await sourcea.getIndexFile(cacheMajors.index);
-		let rootb = await sourceb.getIndexFile(cacheMajors.index);
-		let rootmaxlen = Math.max(roota.length, rootb.length);
-		for (let i = 0; i < rootmaxlen; i++) {
-			if (roota[i] && !rootb[i]) { console.log(`major ${i} removed`); }
-			if (!roota[i] && rootb[i]) { console.log(`major ${i} added`); }
-			if (roota[i] && rootb[i]) { majors.push(i); }
-		}
+		let output = new CLIScriptOutput("cache5/changes2");
+		let changes = await diffCaches(output, sourcea, sourceb);
 
-		let changes: FileEdit[] = [];
-
-		for (let major of majors) {
-			let indexa = await sourcea.getIndexFile(major);
-			let indexb = await sourceb.getIndexFile(major);
-			let len = Math.max(indexa.length, indexb.length);
-
-			let action = getMajorAction(major);
-
-
-			for (let i = 0; i < len; i++) {
-				let metaa = indexa[i], metab = indexb[i];
-				if (metaa || metab) {
-					if (!metaa || !metab || metaa.version != metab.version) {
-						if (action.comparesubfiles) {
-							let archa = (metaa ? await sourcea.getFileArchive(metaa) : []);
-							let archb = (metab ? await sourceb.getFileArchive(metab) : []);
-
-							for (let a = 0, b = 0; ;) {
-								let filea = archa[a], fileb = archb[b];
-								if (filea && (!fileb || filea.fileid < fileb.fileid)) {
-									a++;
-									changes.push({
-										type: "delete", major: metaa.major, minor: metaa.minor, subfile: filea.fileid,
-										action, before: filea.buffer, after: null
-									});
-								} else if (fileb && (!filea || fileb.fileid < filea.fileid)) {
-									b++;
-									changes.push({
-										type: "add", major: metab.major, minor: metab.minor, subfile: fileb.fileid,
-										action, before: null, after: fileb.buffer
-									});
-								} else if (filea && fileb && filea.fileid == fileb.fileid) {
-									if (Buffer.compare(filea.buffer, fileb.buffer) != 0) {
-										changes.push({
-											type: "edit", major: metaa.major, minor: metaa.minor, subfile: filea.fileid,
-											action, before: filea.buffer, after: fileb.buffer
-										});
-									}
-									a++;
-									b++;
-								} else if (!filea && !fileb) {
-									break;
-								} else {
-									console.log(filea, fileb);
-									throw new Error("shouldnt happen");
-								}
-							}
-						} else {
-							if (!metaa) {
-								changes.push({
-									type: "add", major: metab.major, minor: metab.minor,
-									subfile: -1, action,
-									before: null,
-									after: await sourceb.getFile(metab.major, metab.minor, metab.crc)
-								});
-							}
-							else if (!metab) {
-								changes.push({
-									type: "delete", major: metaa.major, minor: metaa.minor,
-									subfile: -1, action,
-									before: await sourcea.getFile(metaa.major, metaa.minor, metaa.crc),
-									after: null
-								});
-							} else {
-								changes.push({
-									type: "edit", major: metaa.major, minor: metaa.minor,
-									subfile: -1, action,
-									before: await sourcea.getFile(metaa.major, metaa.minor, metaa.crc),
-									after: await sourceb.getFile(metab.major, metab.minor, metab.crc)
-								});
-							}
-						}
-					}
-				}
-			}
-		}
-
-		let rootdir = "cache5/changes2";
-
-		for (let change of changes) {
-			let name = change.action.getFileName(change.major, change.minor, change.subfile);
-			let dir = `${rootdir}/${change.action.name}`;
-			fs.mkdirSync(dir, { recursive: true });
-			if (change.action.parser) {
-				if (change.before) {
-					let parsedbefore = change.action.parser.read(change.before);
-					fs.writeFileSync(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
-				}
-				if (change.after) {
-					let parsedafter = change.action.parser.read(change.after);
-					fs.writeFileSync(`${dir}/${name}-after.json`, prettyJson(parsedafter));
-				}
-			} else {
-				if (change.before) {
-					fs.writeFileSync(`${dir}/${name}-before.bin`, change.before);
-				}
-				if (change.after) {
-					fs.writeFileSync(`${dir}/${name}-after.bin`, change.after);
-				}
-			}
-		}
 		sourcea.close();
 		sourceb.close();
 	}

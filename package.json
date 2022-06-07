@@ -1,5 +1,5 @@
 {
-	"name": "gloopvis",
+	"name": "alt1cache",
 	"version": "0.1.0",
 	"description": "A viewer for NXT client models and materials",
 	"main": "dist/main.js",

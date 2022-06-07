@@ -9,7 +9,14 @@ module.exports = {
 	devtool: false,
 	mode: "development",
 	entry: {
-		viewer: "./src/viewer/"
+		viewer: "./src/viewer/",
+		runeapps: {
+			import: "./src/viewer/runeapps.tsx",
+			library: {
+				type: "umd",
+				name: { root: "RSMV", amd: "rsmv", commonjs: "rsmv" }
+			}
+		}
 	},
 	module: {
 		rules: [
@@ -52,7 +59,7 @@ module.exports = {
 	externalsType: "commonjs",
 	output: {
 		filename: '[name].js',
-		path: path.resolve(__dirname, 'dist'),
+		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [
 		new CopyWebpackPlugin({

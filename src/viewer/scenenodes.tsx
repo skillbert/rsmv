@@ -1,36 +1,34 @@
 import * as THREE from "three";
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData } from '../utils';
+import { ModelModifications, FlatImageData, constrainedMap, delay } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';
-import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid } from '../3d/mapsquare';
+import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
-import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
+import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseModels, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
-import { objects } from "../../generated/objects";
-import { items } from "../../generated/items";
-import { materials } from "../../generated/materials";
-import { npcs } from "../../generated/npcs";
-import { spotanims } from "../../generated/spotanims";
-import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import prettyJson from "json-stringify-pretty-compact";
 import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
-import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile } from "./scriptsui";
-import { UIContext } from "./index";
+import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
+import { CacheSelector, openSavedCache, SavedCacheSource, UIContext } from "./maincomponents";
+import { tiledimensions } from "../3d/mapsquare";
+import { animgroupconfigs } from "../../generated/animgroupconfigs";
+import { runMapRender } from "../map";
+import { diffCaches } from "../scripts/cachediff";
 import sharp from "sharp";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
@@ -49,42 +47,6 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 			fileDownloadUrl: '',
 		};
 	}
-
-	// @boundMethod
-	// async exportModel() {
-	// 	let savehandle = await showSaveFilePicker({
-	// 		id: "savegltf",
-	// 		startIn: "downloads",
-	// 		suggestedName: "model.glb",
-	// 		types: [
-	// 			{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
-	// 		]
-	// 	});
-	// 	let modelexprt = await this.props.render.export("gltf");
-	// 	let str = await savehandle.createWritable();
-	// 	await str.write(modelexprt);
-	// 	await str.close();
-	// 	// let dir = await showDirectoryPicker({
-	// 	// 	id: "savegltf",
-	// 	// 	startIn: "downloads",
-	// 	// 	suggestedName: "model.gltf",
-	// 	// 	types: [
-	// 	// 		{ description: 'GLTF model', accept: { 'application/gltfl': ['.glb', '.gltf'] } },
-	// 	// 	]
-	// 	// });
-	// 	// let modelfiles = await (this.renderer as any).export();
-	// 	// console.log(modelfiles);
-	// 	// let mainfile = await dir.getFileHandle("model.dae", { create: true });
-	// 	// let str = await mainfile.createWritable();
-	// 	// await str.write(modelfiles.data).then(() => str.close());
-
-	// 	// await Promise.all(modelfiles.textures.map(async tex => {
-	// 	// 	let file = await dir.getFileHandle(tex.name + "." + tex.ext, { create: true });
-	// 	// 	let str = await file.createWritable();
-	// 	// 	await str.write(tex.data);
-	// 	// 	await str.close();
-	// 	// }));
-	// }
 
 	@boundMethod
 	toggleFloor() {
@@ -126,13 +88,13 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 		return (
 			<React.Fragment>
 				<div className="sidebar-browser-tab-strip">
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs IDs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Obj/Locs IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Locs</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setMode("avatar")}>Avatar</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setMode("map")}>Map</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Material IDs</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Materials</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
@@ -184,7 +146,7 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 
 export type SimpleModelDef = { modelid: number, mods: ModelModifications }[];
 
-export class RSModel extends TypedEmitter<{ loaded: undefined }>{
+export class RSModel extends TypedEmitter<{ loaded: undefined }> implements ThreeJsSceneElementSource {
 	model: Promise<{ modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip }>;
 	loaded: { modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip } | null = null;
 	cache: ThreejsSceneCache;
@@ -200,23 +162,22 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 	skeletontype: "none" | "baked" | "full" = "none";
 	skeletonHelper: SkeletonHelper | null = null;
 
-
 	cleanup() {
 		this.listeners = {};
-		this.rootnode.removeFromParent();
-		this.skeletonHelper?.removeFromParent();
-		if (this.renderscene) {
-			this.renderscene.animationMixers.delete(this.mixer);
-		}
+		this.renderscene?.removeSceneElement(this);
 		this.renderscene = null;
 	}
 
-	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
+	getSceneElements() {
+		return {
+			modelnode: this.rootnode,
+			animationMixer: this.mixer
+		}
+	}
+
+	addToScene(scene: ThreeJsRenderer) {
 		this.renderscene = scene;
-		scene.animationMixers.add(this.mixer);
-		node.add(this.rootnode);
-		if (this.skeletonHelper) { node.add(this.skeletonHelper); }
-		scene.forceFrame();
+		scene.addSceneElement(this);
 	}
 
 	onModelLoaded() {
@@ -267,8 +228,9 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 		this.mixer.stopAllAction();
 		let action = this.mixer.clipAction(clip, mesh);
 		action.play();
+		this.skeletonHelper?.removeFromParent();
 		this.skeletonHelper = new SkeletonHelper(mesh);
-		this.renderscene?.scene.add(this.skeletonHelper);
+		this.rootnode.add(this.skeletonHelper);
 		this.mountedanim = clip;
 	}
 
@@ -321,9 +283,9 @@ export class RSModel extends TypedEmitter<{ loaded: undefined }>{
 }
 
 
-export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
+export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements ThreeJsSceneElementSource {
 	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> }>;
-	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> } | null = null;
+	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string>, sky: { skybox: Object3D, fogColor: number[] } | null } | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
 	mixer = new AnimationMixer(this.rootnode);
@@ -333,10 +295,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 
 	cleanup() {
 		this.listeners = {};
-		this.rootnode.removeFromParent();
-		if (this.renderscene) {
-			this.renderscene.animationMixers.delete(this.mixer);
-		}
 
 		//only clear vertex memory for now, materials might be reused and are up to the scenecache
 		this.model.then(q => q.chunkmodels.forEach(node => {
@@ -344,6 +302,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 				if (obj instanceof Mesh) { obj.geometry.dispose(); }
 			});
 		}))
+		this.renderscene?.removeSceneElement(this);
 		this.renderscene = null;
 	}
 
@@ -353,17 +312,24 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		return svgfloor(this.cache.cache, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
-	addToScene(scene: ThreeJsRenderer, node = scene.modelnode) {
+	getSceneElements() {
+		return {
+			modelnode: this.rootnode,
+			animationMixer: this.mixer,
+			sky: this.loaded?.sky,
+			options: { hideFloor: true }
+		};
+	}
+
+	addToScene(scene: ThreeJsRenderer) {
 		this.renderscene = scene;
-		scene.animationMixers.add(this.mixer);
-		node.add(this.rootnode);
-		scene.forceFrame();
+		scene.addSceneElement(this);
 	}
 
 	onModelLoaded() {
 		this.setToggles(this.toggles);
 		this.emit("loaded", undefined);
-		this.renderscene?.forceFrame();
+		this.renderscene?.sceneElementsChanged();
 		this.renderscene?.setCameraLimits();
 	}
 
@@ -384,12 +350,11 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 		this.rect = rect;
 		this.cache = cache;
 		this.model = (async () => {
-			//TODO enable centered again
-			let opts: ParsemapOpts = { centered: true, invisibleLayers: true, collision: true, padfloor: true, ...extraopts };
+			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: true, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
 			let modeldata = await mapsquareModels(cache.cache, grid, chunks, opts);
-
 			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
+			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
 			if (chunkmodels.length != 0) {
 				this.rootnode.add(...chunkmodels);
@@ -416,19 +381,19 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }>{
 				}
 			});
 
-			this.loaded = { grid, chunks, chunkmodels, groups };
+			this.loaded = { grid, chunks, chunkmodels, groups, sky };
 			this.onModelLoaded();
 			return this.loaded;
 		})();
 	}
 }
 
-type ScenarioComponent = {
-	modelkey: string,//`${"model" | "spotanim" | "npc" | "player"}:${string}`;
-	modelinit: SimpleModelDef,
-	anims: { startTime: number, animid: number }[]
+function LabeledInput(p: { label: string, children: React.ReactNode }) {
+	return <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr" }}>
+		<div>{p.label}</div>
+		{p.children}
+	</div>
 }
-
 
 class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
 	el: HTMLInputElement | null = null;
@@ -454,44 +419,120 @@ class InputCommitted extends React.Component<React.DetailedHTMLProps<React.Input
 	}
 }
 
-function ScenarioAnimControl(p: { anim: ScenarioComponent["anims"][number], onChange: (v: ScenarioComponent["anims"][number] | null) => void }) {
-	return (
-		<form>
-			<InputCommitted type="number" value={p.anim.animid} onChange={e => p.onChange({ ...p.anim, animid: +e.currentTarget.value })} />
-			<InputCommitted type="number" value={p.anim.startTime} onChange={e => p.onChange({ ...p.anim, startTime: +e.currentTarget.value })} />
-			<div onClick={() => p.onChange(null)}>delete</div>
-		</form>
-	);
+function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioComponent | null, onChange: (v: ScenarioAction | null) => void }) {
+	const action = p.action;
+	let targetname = p.comp?.modelkey ?? "??";
+	let remove = <span onClick={() => p.onChange(null)}>delete</span>;
+	let inputstyle: React.CSSProperties = { width: "50px" };
+	switch (action.type) {
+		case "anim": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<InputCommitted type="number" style={inputstyle} value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "animset": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<select value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })}>
+						{Object.entries(action.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
+					{remove}
+				</div>
+			);
+		}
+		case "delay": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span >{p.action.type}</span>
+					<InputCommitted type="number" style={inputstyle} value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "location": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr 1fr 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<InputCommitted type="number" style={inputstyle} value={action.level} step={1} onChange={e => p.onChange({ ...action, level: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
+					<InputCommitted type="number" style={inputstyle} value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
+					{remove}
+				</div>
+			);
+		}
+		case "visibility": {
+			return (
+				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+					<span>{p.action.type} {targetname}</span>
+					<label><input type="checkbox" checked={action.visible} onClick={e => p.onChange({ ...action, visible: e.currentTarget.checked })} /></label>
+					{remove}
+				</div>
+			);
+		}
+	}
 }
 
-function ScenarioControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
+function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
 	return (
 		<div>
 			<div>{p.comp.modelkey}</div>
-			{p.comp.anims.map((anim, i) => {
-				let onchange = (v: ScenarioComponent["anims"][number] | null) => {
-					let newanims = p.comp.anims.slice();
-					if (v) { newanims[i] = v; }
-					else { newanims.splice(i, 1); }
-					p.onChange({ ...p.comp, anims: newanims });
-				};
-				return <ScenarioAnimControl key={i} anim={anim} onChange={onchange} />
-			})}
-			<div onClick={e => p.onChange({ ...p.comp, anims: [...p.comp.anims, { animid: -1, startTime: 0 }] })}>add anim</div>
 			<div onClick={e => p.onChange(null)}>delete</div>
 		</div>
 	)
 }
 
-export class SceneScenario extends React.Component<LookupModeProps, { components: ScenarioComponent[], addType: keyof typeof primitiveModelInits }>{
+type ScenarioComponent = {
+	modelkey: string,
+	simpleModel: SimpleModelDef | null,
+	mapRect: MapRect | null
+}
 
-	models = new Map<ScenarioComponent, RSModel>();
+type ScenarioAction = {
+	type: "location",
+	target: number,
+	x: number,
+	z: number,
+	level: number,
+	dy: number,
+} | {
+	type: "anim",
+	target: number,
+	animid: number
+} | {
+	type: "animset",
+	target: number,
+	animid: number,
+	anims: Record<string, number>
+} | {
+	type: "delay",
+	target: -1,
+	duration: number
+} | {
+	type: "visibility",
+	target: number,
+	visible: boolean
+}
+
+export class SceneScenario extends React.Component<LookupModeProps, { components: Record<number, ScenarioComponent>, actions: ScenarioAction[], addActionTarget: number, addModelType: keyof typeof primitiveModelInits | "map", addActionType: ScenarioAction["type"] }>{
+	models = new Map<ScenarioComponent, RSModel | RSMapChunk>();
+	idcounter = 0;
+	mapoffset: { x: number, z: number } | null = null;
+	mapgrid = new CombinedTileGrid([]);
 
 	constructor(p) {
 		super(p);
 		this.state = {
-			components: [],
-			addType: "model"
+			components: {},
+			actions: [],
+			addModelType: "model",
+			addActionType: "anim",
+			addActionTarget: -1
 		};
 	}
 
@@ -501,87 +542,236 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 
 	@boundMethod
 	async addComp(id: string) {
-		let prim: { models: SimpleModelDef, animids: number[] };
-		if (this.state.addType == "player") {
-			prim = await playerToModel(this.props.ctx.sceneCache, id);
+		if (this.state.addModelType == "map") {
+			let rect = stringToMapArea(id);
+			if (!rect) { throw new Error("invalid map rect"); }
+			let compid = this.idcounter++;
+			this.editComp(compid, {
+				modelkey: `${this.state.addModelType}:${id}`,
+				simpleModel: null,
+				mapRect: rect
+			});
 		} else {
-			let conv = primitiveModelInits[this.state.addType];
-			prim = await conv(this.props.ctx.sceneCache, +id);
+			let prim: SimpleModelInfo;
+			if (this.state.addModelType == "player") {
+				prim = await playerToModel(this.props.ctx.sceneCache, id);
+			} else {
+				let conv = primitiveModelInits[this.state.addModelType];
+				prim = await conv(this.props.ctx.sceneCache, +id);
+			}
+			let compid = this.idcounter++;
+			this.editComp(compid, {
+				modelkey: `${this.state.addModelType}:${id}`,
+				simpleModel: prim.models,
+				mapRect: null
+			});
+			if (Object.keys(prim.anims).length != 0) {
+				this.editAction(this.state.actions.length, {
+					type: "animset",
+					target: compid,
+					animid: prim.anims.default ?? Object.keys(prim.anims)[0],
+					anims: prim.anims
+				});
+			}
 		}
-		this.editComp(this.state.components.length, {
-			modelkey: `${this.state.addType}:${id}`,
-			modelinit: prim.models,
-			anims: prim.animids.map(q => ({ startTime: 0, animid: q }))
-		});
+	}
+	@boundMethod
+	addAction() {
+		let action: ScenarioAction;
+		switch (this.state.addActionType) {
+			case "anim":
+				action = { type: "anim", target: this.state.addActionTarget, animid: 0 };
+				break;
+			case "delay":
+				action = { type: "delay", target: -1, duration: 0 };
+				break;
+			case "location":
+				action = { type: "location", target: this.state.addActionTarget, level: 0, x: 0, z: 0, dy: 0 }
+				break;
+			case "visibility":
+				action = { type: "visibility", target: this.state.addActionTarget, visible: true };
+				break;
+			default:
+				throw new Error("unknown action " + this.state.addActionType);
+		}
+		this.editAction(this.state.actions.length, action);
 	}
 
-	editComp(index: number, newcomp: ScenarioComponent | null) {
-		let components = this.state.components.slice();
-		let oldcomp = components[index];
+	editComp(compid: number, newcomp: ScenarioComponent | null) {
+		let components = { ...this.state.components };
+		let oldcomp = this.state.components[compid];
 		let model = this.models.get(oldcomp);
-		if (oldcomp?.modelkey != newcomp?.modelkey) {
+		if (!newcomp || oldcomp?.modelkey != newcomp.modelkey) {
 			if (model) {
 				model.cleanup();
 				model = undefined;
 			}
 			if (newcomp) {
-				model = new RSModel(newcomp?.modelinit, this.props.ctx.sceneCache);
-				model.addToScene(this.props.ctx.renderer);
-				for (let anim of newcomp.anims) {
-					model.loadAnimation(anim.animid);
+				if (newcomp.simpleModel) {
+					model = new RSModel(newcomp.simpleModel, this.props.ctx.sceneCache);
+				} else if (newcomp.mapRect) {
+					model = new RSMapChunk(newcomp.mapRect, this.props.ctx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
+					model.on("loaded", this.updateGrids);
+					let hasmap = Object.values(this.state.components).some(q => q.mapRect);
+					if (!hasmap || !this.mapoffset) {
+						this.mapoffset = {
+							x: (newcomp.mapRect.x + newcomp.mapRect.xsize / 2) * squareSize,
+							z: (newcomp.mapRect.z + newcomp.mapRect.zsize / 2) * squareSize
+						};
+					}
+					model.rootnode.position.set(-this.mapoffset.x * tiledimensions, 0, -this.mapoffset.z * tiledimensions);
+				} else {
+					throw new Error("invalid model init");
 				}
+				model.addToScene(this.props.ctx.renderer);
 			}
 		}
 		this.models.delete(oldcomp);
 		if (model && newcomp) {
 			this.models.set(newcomp, model);
-			if (newcomp.anims.length != 0) { model.setAnimation(newcomp.anims[0].animid); }
 		}
-		if (newcomp) { components[index] = newcomp; }
-		else { components.splice(index, 1); }
+		if (newcomp) { components[compid] = newcomp; }
+		else { delete components[compid]; }
 		this.setState({ components });
 		this.restartAnims();
 	}
 
+	editAction(index: number, newaction: ScenarioAction | null) {
+		let actions = this.state.actions.slice();
+
+		if (newaction?.type == "anim" || newaction?.type == "animset") {
+			let model = this.modelIdToModel(newaction.target);
+			if (model instanceof RSModel) {
+				model.loadAnimation(newaction.animid);
+			}
+		}
+
+		if (newaction) { actions[index] = newaction; }
+		else { actions.splice(index, 1); }
+		this.setState({ actions });
+		this.restartAnims();
+	}
+
+	modelIdToModel(id: number) {
+		let modelinfo = this.state.components[id];
+		return this.models.get(modelinfo);
+	}
+
 	@boundMethod
-	restartAnims() {
+	updateGrids() {
+		let grids: { src: TileGrid, rect: MapRect }[] = [];
+		for (let comp of Object.values(this.state.components)) {
+			if (!comp.mapRect) { continue };
+			let model = this.models.get(comp) as RSMapChunk | undefined;
+			if (!model?.loaded) { continue; }
+			grids.push({
+				src: model.loaded.grid,
+				rect: {
+					x: model.rect.x * squareSize,
+					z: model.rect.z * squareSize,
+					xsize: model.rect.xsize * squareSize,
+					zsize: model.rect.zsize * squareSize
+				}
+			});
+		}
+		this.mapgrid = new CombinedTileGrid(grids);
+	}
+
+	@boundMethod
+	async restartAnims() {
+		//TODO ensure this function loops and only one instance is looping
+		//otherwise we might be using old data from before setstate
+		await delay(1);
+		let totalduration = 0;
 		for (let model of this.models.values()) {
 			model.mixer.setTime(0);
+		}
+		for (const action of this.state.actions) {
+			switch (action.type) {
+				case "animset":
+				case "anim": {
+					let model = this.modelIdToModel(action.target);
+					if (model instanceof RSModel) {
+						model.setAnimation(action.animid);
+					}
+					break;
+				}
+				case "location": {
+					let model = this.modelIdToModel(action.target);
+					let groundy = getTileHeight(this.mapgrid, action.x + (this.mapoffset?.x ?? 0), action.z + (this.mapoffset?.z ?? 0), action.level);
+					model?.rootnode.position.set(action.x * tiledimensions, groundy + action.dy * tiledimensions, action.z * tiledimensions);
+					break;
+				}
+				case "delay": {
+					totalduration += action.duration;
+					await delay(action.duration);
+					break;
+				}
+				case "visibility": {
+					let model = this.modelIdToModel(action.target);
+					if (model) { model.rootnode.visible = action.visible; }
+					break;
+				}
+			}
 		}
 	}
 
 	render() {
 		return (
 			<React.Fragment>
-				<div>
-					<select value={this.state.addType} onChange={e => this.setState({ addType: e.currentTarget.value as any })}>
+				<h2>Models</h2>
+				{Object.entries(this.state.components).map(([id, comp]) => {
+					return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
+				})}
+				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+					<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
 						<option value="model">model</option>
 						<option value="npc">npc</option>
 						<option value="spotanim">spotanim</option>
 						<option value="loc">location</option>
 						<option value="player">player</option>
+						<option value="item">item</option>
+						<option value="map">map</option>
 					</select>
 					<StringInput onChange={this.addComp} />
 				</div>
-				{this.state.components.map((comp, i) => {
-					return <ScenarioControl key={i} comp={comp} onChange={e => this.editComp(i, e)} />;
+				<h2>Action sequence</h2>
+				{this.state.actions.map((a, i) => {
+					let comp = this.state.components[a.target]
+					return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
 				})}
+				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
+					<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
+						<option value="location">Location</option>
+						<option value="anim">Anim</option>
+						<option value="delay">Delay</option>
+						<option value="visibility">Visibility</option>
+					</select>
+					<select value={this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
+						{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key} - {c.modelkey}</option>)}
+					</select>
+					<input type="button" className="sub-btn" value={`add ${this.state.addActionType}`} onClick={this.addAction} />
+				</div>
 				<div onClick={this.restartAnims}>restart</div>
 			</React.Fragment>
 		)
 	}
 }
 
-const primitiveModelInits = {
+const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number | string) => Promise<SimpleModelInfo<any>>>()({
 	npc: npcToModel,
 	player: playerToModel,
 	spotanim: spotAnimToModel,
 	model: modelToModel,
-	loc: locToModel
-}
+	loc: locToModel,
+	item: itemToModel
+});
 
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
-	return { models: [{ modelid: id, mods: {} }], animids: [] };
+	let modelfile = await cache.source.getFileById(cacheMajors.models, id);
+	let modeldata = parseOb3Model(modelfile);
+	let info = parseModels.read(modelfile);
+	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info } };
 }
 
 async function playerToModel(cache: ThreejsSceneCache, name: string) {
@@ -592,21 +782,50 @@ async function playerToModel(cache: ThreejsSceneCache, name: string) {
 	return avainfo;
 }
 
+export function serializeAnimset(group: animgroupconfigs) {
+	let anims: Record<string, number> = {};
+	anims.tpose = -1;
+	if (group.baseAnims) {
+		anims.default = group.baseAnims.idle;
+		anims.walk = group.baseAnims.walk;
+	}
+	if (group.idleVariations) {
+		let totalchance = group.idleVariations.reduce((a, v) => a + v.probably_chance, 0);
+		for (let i in group.idleVariations) {
+			let variation = group.idleVariations[i];
+			anims[`idle${i}_${variation.probably_chance}/${totalchance}`] = variation.animid;
+		}
+	}
+	//TODO yikes
+	for (let key of Object.keys(group)) {
+		if (typeof group[key] == "number") {
+			if (Object.values(anims).indexOf(group[key]) == -1) {
+				anims[key] = group[key];
+			}
+		}
+	}
+
+	return anims;
+}
+
 async function npcToModel(cache: ThreejsSceneCache, id: number) {
 	let npc = parseNpc.read(await cache.getFileById(cacheMajors.npcs, id));
-	let anims: number[] = [];
+	let anims: Record<string, number> = {};
 	let modelids = npc.models ?? [];
 	if (npc.animation_group) {
 		let arch = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 		let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
-		let forcedanim = globalThis.forcedanim;
-		anims.push(forcedanim ?? animgroup.idleVariations?.[0]?.animid ?? animgroup.baseAnims?.idle);
+		anims = serializeAnimset(animgroup);
 	}
 	let mods: ModelModifications = {};
 	if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 	if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 	let models = modelids.map(q => ({ modelid: q, mods }));
-	return { npc, models, animids: anims };
+	return {
+		info: npc,
+		models,
+		anims
+	};
 }
 
 async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
@@ -615,13 +834,15 @@ async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 	if (animdata.replace_colors) { mods.replaceColors = animdata.replace_colors; }
 	if (animdata.replace_materials) { mods.replaceMaterials = animdata.replace_materials; }
 	let models = (animdata.model ? [{ modelid: animdata.model, mods }] : []);
-	return { models, animids: (animdata.sequence ? [animdata.sequence] : []), animdata };
+	let anims: Record<string, number> = {};
+	if (animdata.sequence) { anims.default = animdata.sequence; }
+	return { models, anims, info: animdata };
 }
 
 async function locToModel(cache: ThreejsSceneCache, id: number) {
 	let obj = await resolveMorphedObject(cache.source, id);
 	let mods: ModelModifications = {};
-	let animids: number[] = [];
+	let anims: Record<string, number> = {};
 	let models: SimpleModelDef = [];
 	if (obj) {
 		if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
@@ -629,344 +850,232 @@ async function locToModel(cache: ThreejsSceneCache, id: number) {
 		models = obj.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [];
 	}
 	if (obj?.probably_animation) {
-		animids = [obj.probably_animation];
+		anims.default = obj.probably_animation;
 	}
-	return { models, animids, loc: obj };
+	return { models, anims, info: obj };
+}
+async function itemToModel(cache: ThreejsSceneCache, id: number) {
+	let item = parseItem.read(await cache.getFileById(cacheMajors.items, id));
+	if (!item.baseModel && item.noteTemplate) {
+		item = parseItem.read(await cache.getFileById(cacheMajors.items, item.noteTemplate));
+	}
+	let mods: ModelModifications = {};
+	if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
+	if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
+	let models = (item.baseModel ? [{ modelid: item.baseModel, mods }] : [])
+
+	return { models, anims: {}, info: item };
 }
 
-export class ScenePlayer extends React.Component<LookupModeProps, { avaitems: items[] | null, animset: animgroupconfigs | null }> {
-	model: RSModel | null = null;
-	modelid = "";
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			avaitems: null,
-			animset: null
-		};
+async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
+	let assetid = 93776;//"RuneTek_Asset" jagex test model
+	let mods: ModelModifications = {
+		replaceMaterials: [[4314, modelid]]
+	};
+	// modelids = [67768];//is a cube but has transparent vertices
+	// mods.replaceMaterials = [
+	// 	[8868, +searchid]
+	// ];
+	let mat = sceneCache.cache.getMaterialData(modelid);
+	let texs: Record<string, { texid: number, filesize: number, img0: ImageData }> = {};
+	let addtex = async (name: string, texid: number) => {
+		let file = await sceneCache.source.getFile(cacheMajors.texturesDds, texid);
+		let parsed = new ParsedTexture(file, true);
+		//bit of a waste to get decode the whole thing just to get meta data, but w/e
+		let img0 = await parsed.toImageData(0);
+		texs[name] = { texid, filesize: file.length, img0 };
 	}
-
-	componentWillUnmount() {
-		this.setModel("");
-	}
-
-	@boundMethod
-	async setModel(modelid: string) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let items: items[] = [];
-			let animset: animgroupconfigs | null = null;
-			if (modelid != "") {
-				let avainfo = await playerToModel(this.props.ctx.sceneCache, modelid);
-				items = avainfo.items;
-				animset = avainfo.animset;
-				this.model = new RSModel(avainfo.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(avainfo.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ avaitems: items, animset });
+	for (let tex in mat.textures) {
+		if (mat.textures[tex] != 0) {
+			await addtex(tex, mat.textures[tex]);
 		}
 	}
+	return {
+		models: [{ modelid: assetid, mods }],
+		anims: {},
+		info: { texs, obj: mat }
+	};
+}
 
-	render() {
-		return (
-			<React.Fragment>
-				<StringInput onChange={this.setModel} initialid={this.props.initialId} />
-				{this.state.avaitems?.map((item, index) => {
-					return <div key={index}>{item.name ?? "no name"}</div>
-				})}
-				<JsonDisplay obj={this.state.animset} />
-			</React.Fragment>
-		)
+function ScenePlayer(p: LookupModeProps) {
+	const [data, model, setId] = useAsyncModelData(p.initialId, p.ctx, playerToModel);
+	const forceUpdate = useForceUpdate();
+	return (
+		<React.Fragment>
+			<StringInput onChange={setId} initialid={p.initialId} />
+			<ExportModelButton model={model?.loaded} />
+			{model && data && (
+				<LabeledInput label="Animation">
+					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
+						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
+				</LabeledInput>
+			)}
+			<div>
+				{data?.info.items.map((q, i) => (
+					<div key={i}>{q.name ?? "??"}</div>
+				))}
+			</div>
+			<JsonDisplay obj={data?.info.animset} />
+		</React.Fragment>
+	)
+}
+
+function ExportModelButton(p: { model: RSModel["loaded"] | null | undefined }) {
+	let exportmodel = () => {
+		if (p.model) {
+			saveGltf(p.model.mesh);
+		}
 	}
+
+	return (
+		<input type="button" className="sub-btn" disabled={!p.model} value="Export model" onClick={exportmodel} />
+	)
 }
 
 function JsonDisplay(p: { obj: any }) {
 	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
 }
 
-export class SceneRawModel extends React.Component<LookupModeProps> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			if (modelid != -1) {
-				this.model = new RSModel([{ modelid: modelid, mods: {} }], this.props.ctx.sceneCache);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-			</React.Fragment>
-		)
-	}
+type SimpleModelInfo<T = object> = {
+	models: SimpleModelDef,
+	anims: Record<string, number>,
+	info: T
 }
 
-export class SceneMaterial extends React.Component<LookupModeProps, { matdata: materials | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			matdata: null
-		};
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
+function ImageData(p: { img: ImageData }) {
+	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
+		if (cnv) {
+			cnv.width = p.img.width;
+			cnv.height = p.img.height;
+			let ctx = cnv.getContext("2d")!;
+			ctx.putImageData(p.img, 0, 0);
 		}
-		if (this.modelid != modelid) {
-			let matdata: materials | null = null;
-			if (modelid != -1) {
-				let assetid = 93776;//"RuneTek_Asset" jagex test model
-				let mods: ModelModifications = {
-					replaceMaterials: [[4314, modelid]]
-				};
-				// modelids = [67768];//is a cube but has transparent vertices
-				// mods.replaceMaterials = [
-				// 	[8868, +searchid]
-				// ];
-				let mat = this.props.ctx.sceneCache.cache.getMaterialData(modelid);
-				let info: any = { mat };
-				let addtex = async (name: string, texid: number) => {
-					let file = await this.props.ctx.sceneCache.source.getFile(cacheMajors.texturesDds, texid);
-					let parsed = new ParsedTexture(file, false);
-					//bit of a waste to get decode the whole thing just to get meta data, but w/e
-					let img0 = await parsed.toImageData(0);
-					info[name] = { texid, filesize: file.length, width: img0.width, height: img0.height };
+	}, [p.img]);
+
+	return (
+		<canvas ref={ref} style={{ maxWidth: "100%" }} />
+	)
+}
+
+function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T>>) {
+	let idref = React.useRef(initial);
+	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
+	let [visible, setVisible] = React.useState<{ info: SimpleModelInfo<T>, id: ID } | null>(null);
+	let setter = React.useCallback((id: ID) => {
+		idref.current = id;
+		let prom = getter(ctx.sceneCache, id);
+		prom.then(res => {
+			if (idref.current == id) {
+				localStorage.rsmv_lastsearch = id;
+				setVisible({ info: res, id });
+			}
+		})
+	}, []);
+	React.useLayoutEffect(() => {
+		if (visible) {
+			let model = new RSModel(visible.info.models, ctx.sceneCache);
+			if (visible.info.anims.default) {
+				model.setAnimation(visible.info.anims.default);
+			}
+			model.addToScene(ctx.renderer);
+			model.model.then(m => {
+				if (visible && idref.current == visible.id) {
+					setLoadedModel(model);
 				}
-				for (let tex in mat.textures) {
-					if (mat.textures[tex] != 0) {
-						await addtex(tex, mat.textures[tex]);
-					}
-				}
-				this.model = new RSModel([{ modelid: assetid, mods }], this.props.ctx.sceneCache);
-				this.model.addToScene(this.props.ctx.renderer);
+			});
+			return () => {
+				model.cleanup();
 			}
-			this.setState({ matdata });
-			this.modelid = modelid;
 		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.matdata} />
-			</React.Fragment>
-		)
-	}
+	}, [visible]);
+	return [visible?.info, loadedModel, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, setter: (id: ID) => void];
 }
 
-export class SceneLocation extends React.Component<LookupModeProps, { locdata: objects | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
+function SceneMaterial(p: LookupModeProps) {
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, materialToModel);
 
-	constructor(p) {
-		super(p);
-		this.state = {
-			locdata: null
-		};
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let obj: objects | null = null;
-			if (modelid != -1) {
-				let data = await locToModel(this.props.ctx.sceneCache, modelid);
-				obj = data.loc;
-				this.model = new RSModel(data.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(data.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ locdata: obj });
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.locdata} />
-			</React.Fragment>
-		)
-	}
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<div style={{ overflowY: "auto" }}>
+				{data && Object.entries(data.info.texs).map(([name, img]) => (
+					<div key={name}>
+						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
+						<ImageData img={img.img0} />
+					</div>
+				))}
+				<JsonDisplay obj={data?.info.obj} />
+			</div>
+		</React.Fragment>
+	)
 }
 
-export class SceneItem extends React.Component<LookupModeProps, { itemdata: items | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			itemdata: null
-		};
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let item: items | null = null;
-			if (modelid != -1) {
-				item = parseItem.read(await this.props.ctx.sceneCache.getFileById(cacheMajors.items, modelid));
-				console.log(item);
-				if (!item.baseModel && item.noteTemplate) {
-					item = parseItem.read(await this.props.ctx.sceneCache.getFileById(cacheMajors.items, item.noteTemplate));
-				}
-				let mods: ModelModifications = {};
-				if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
-				if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
-				this.model = new RSModel((item.baseModel ? [{ modelid: item.baseModel, mods }] : []), this.props.ctx.sceneCache);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ itemdata: item });
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.itemdata} />
-			</React.Fragment>
-		)
-	}
-}
-export class SceneNpc extends React.Component<LookupModeProps, { npcdata: npcs | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
-
-	constructor(p) {
-		super(p);
-		this.state = {
-			npcdata: null
-		}
-	}
-
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
-
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let npc: npcs | null = null;
-			if (modelid != -1) {
-				let npcdata = await npcToModel(this.props.ctx.sceneCache, modelid);
-				npc = npcdata.npc;
-				this.model = new RSModel(npcdata.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(npcdata.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ npcdata: npc });
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.npcdata} />
-			</React.Fragment>
-		)
-	}
+function SceneRawModel(p: LookupModeProps) {
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, modelToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model?.loaded} />
+			<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
+			<JsonDisplay obj={data?.info.info} />
+		</React.Fragment>
+	)
 }
 
-export class SceneSpotAnim extends React.Component<LookupModeProps, { animdata: spotanims | null }> {
-	model: RSModel | null = null;
-	modelid: number = -1;
+function SceneLocation(p: LookupModeProps) {
+	const [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, locToModel);
+	const forceUpdate = useForceUpdate();
+	const anim = data?.anims.default ?? -1;
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model?.loaded} />
+			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
+}
 
-	constructor(p) {
-		super(p);
-		this.state = {
-			animdata: null
-		}
-	}
+function SceneItem(p: LookupModeProps) {
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, itemToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model?.loaded} />
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
+}
 
-	componentWillUnmount() {
-		this.setModel(-1);
-	}
+function SceneNpc(p: LookupModeProps) {
+	const [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, npcToModel);
+	const forceUpdate = useForceUpdate();
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model?.loaded} />
+			{model && data && (
+				<LabeledInput label="Animation">
+					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
+						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
+				</LabeledInput>
+			)}
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
+}
 
-	@boundMethod
-	async setModel(modelid: number) {
-		localStorage.rsmv_lastsearch = modelid;
-		if (this.model && this.modelid != modelid) {
-			this.model.cleanup();
-		}
-		if (this.modelid != modelid) {
-			let animdata: spotanims | null = null;
-			if (modelid != -1) {
-				let data = await spotAnimToModel(this.props.ctx.sceneCache, modelid);
-				animdata = data.animdata;
-				this.model = new RSModel(data.models, this.props.ctx.sceneCache);
-				this.model.setAnimation(data.animids[0] ?? -1);
-				this.model.addToScene(this.props.ctx.renderer);
-			}
-			this.modelid = modelid;
-			this.setState({ animdata });
-		}
-	}
-
-	render() {
-		return (
-			<React.Fragment>
-				<IdInput onChange={this.setModel} initialid={+this.props.initialId} />
-				<JsonDisplay obj={this.state.animdata} />
-			</React.Fragment>
-		)
-	}
+function SceneSpotAnim(p: LookupModeProps) {
+	let [data, model, setId] = useAsyncModelData(+p.initialId, p.ctx, spotAnimToModel);
+	return (
+		<React.Fragment>
+			<IdInput onChange={setId} initialid={+p.initialId} />
+			<ExportModelButton model={model?.loaded} />
+			<JsonDisplay obj={data?.info} />
+		</React.Fragment>
+	)
 }
 type SceneMapState = {
 	chunkgroups: {
@@ -979,7 +1088,6 @@ type SceneMapState = {
 	selectionData: any
 };
 export class SceneMapModel extends React.Component<LookupModeProps, SceneMapState> {
-	oldautoframe: boolean;
 	selectCleanup: (() => void)[] = [];
 	constructor(p) {
 		super(p);
@@ -989,16 +1097,12 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			toggles: Object.create(null),
 			selectionData: undefined
 		}
-		this.oldautoframe = this.props.ctx.renderer.automaticFrames;
-		this.props.ctx.renderer.automaticFrames = false;
 	}
 
 	@boundMethod
 	clear() {
 		this.selectCleanup.forEach(q => q());
-		this.props.ctx.renderer.setSkybox();
 		this.state.chunkgroups.forEach(q => q.chunk.cleanup());
-		this.props.ctx.renderer.forceFrame();
 		this.setState({ chunkgroups: [], toggles: Object.create(null) });
 	}
 
@@ -1040,28 +1144,12 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 	componentWillUnmount() {
 		this.clear();
-		this.props.ctx.renderer.automaticFrames = this.oldautoframe;
 		this.props.ctx.renderer.off("select", this.meshSelected);
 	}
 
 	async addArea(rect: MapRect) {
-		let chunk = new RSMapChunk(rect, this.props.ctx.sceneCache);
+		let chunk = new RSMapChunk(rect, this.props.ctx.sceneCache, { skybox: true });
 		chunk.once("loaded", async () => {
-			let mainchunk = chunk.loaded!.chunks[0];
-			let skybox: Object3D | undefined = undefined;
-			let fogColor = [0, 0, 0, 0];
-			if (mainchunk?.extra.unk00?.unk20) {
-				fogColor = mainchunk.extra.unk00.unk20.slice(1);
-			}
-			if (mainchunk?.extra.unk80) {
-				let envarch = await this.props.ctx.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
-				let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
-				let env = parseEnvironments.read(envfile.buffer);
-				if (typeof env.model == "number") {
-					skybox = await ob3ModelToThreejsNode(this.props.ctx.sceneCache, [await this.props.ctx.sceneCache.getFileById(cacheMajors.models, env.model)]);
-				}
-			}
-
 			let combined = chunk.rootnode;
 
 			let toggles = this.state.toggles;
@@ -1076,7 +1164,6 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			chunk.addToScene(this.props.ctx.renderer);
 			chunk.setToggles(toggles);
 
-			this.props.ctx.renderer.setSkybox(skybox, fogColor);
 			this.setState({ toggles });
 		});
 
@@ -1215,7 +1302,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
 	let [files, setFiles] = React.useState("");
-	let [mode, setMode] = React.useState("");
+	let [mode, setMode] = React.useState(Object.keys(cacheFileDecodeModes)[0]);
 
 	let run = () => {
 		let output = new UIScriptOutput();
@@ -1225,10 +1312,60 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 
 	return (
 		<React.Fragment>
-			<StringInput onChange={setFiles} initialid={files} />
-			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
-			</select>
+			<LabeledInput label="Mode">
+				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
+					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+				</select>
+			</LabeledInput>
+			<LabeledInput label="File ranges">
+				<InputCommitted type="text" onChange={e => setFiles(e.currentTarget.value)} value={files} />
+			</LabeledInput>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+	let [endpoint, setEndpoint] = React.useState("");
+	let [auth, setAuth] = React.useState("");
+
+	let run = () => {
+		let output = new UIScriptOutput();
+		output.run(runMapRender, p.source, "main", endpoint, auth);
+		p.onRun(output);
+	}
+
+	return (
+		<React.Fragment>
+			<LabeledInput label="Endpoint">
+				<InputCommitted type="text" onChange={e => setEndpoint(e.currentTarget.value)} value={endpoint} />
+			</LabeledInput>
+			<LabeledInput label="Auth">
+				<InputCommitted type="text" onChange={e => setAuth(e.currentTarget.value)} value={auth} />
+			</LabeledInput>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+	let [cache2, setCache2] = React.useState<ThreejsSceneCache | null>(null);
+	let openCache = async (s: SavedCacheSource) => {
+		setCache2(await openSavedCache(s, false));
+	}
+
+	React.useEffect(() => () => cache2?.source.close(), [cache2]);
+
+	let run = async () => {
+		let output = new UIScriptOutput();
+		let source2 = await cache2;
+		if (!source2) { return; }
+		output.run(diffCaches, p.source, source2.source);
+		p.onRun(output);
+	}
+
+	return (
+		<React.Fragment>
+			{!cache2 && <CacheSelector onOpen={openCache} />}
+			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.source.getCacheName()}`} onClick={e => setCache2(null)} />}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
@@ -1248,15 +1385,17 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 
 	return (
 		<React.Fragment>
-			<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-				{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
-			</select>
+			<LabeledInput label="Mode">
+				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
+					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+				</select>
+			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }
 
-class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "extract", running: UIScriptOutput | null }>{
+class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "extract" | "maprender" | "diff", running: UIScriptOutput | null }>{
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -1274,14 +1413,18 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 	render() {
 		return (
 			<React.Fragment>
-				<div>Script runner</div>
+				<h2>Script runner</h2>
 				<div className="sidebar-browser-tab-strip">
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "test" })} onClick={() => this.setState({ script: "test" })}>Test</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "extract" })} onClick={() => this.setState({ script: "extract" })}>Extract</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.script == "maprender" })} onClick={() => this.setState({ script: "maprender" })}>Maprender</div>
+					<div className={classNames("rsmv-icon-button", { active: this.state.script == "diff" })} onClick={() => this.setState({ script: "diff" })}>Diff</div>
 				</div>
 				{this.state.script == "test" && <TestFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
 				{this.state.script == "extract" && <ExtractFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
-				<div>Script output</div>
+				{this.state.script == "maprender" && <MaprenderScript source={this.props.ctx.source} onRun={this.onRun} />}
+				{this.state.script == "diff" && <CacheDiffScript source={this.props.ctx.source} onRun={this.onRun} />}
+				<h2>Script output</h2>
 				<OutputUI output={this.state.running} ctx={this.props.ctx} />
 			</React.Fragment>
 		);
@@ -1290,15 +1433,15 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 
 type LookupModeProps = { initialId: string, ctx: UIContext }
 
-const LookupModeComponentMap: Record<LookupMode, { new(p: any): React.Component<LookupModeProps, any> }> = {
+const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,
-	map: SceneMapModel,
 	material: SceneMaterial,
 	npc: SceneNpc,
 	object: SceneLocation,
 	spotanim: SceneSpotAnim,
+	map: SceneMapModel,
 	scenario: SceneScenario,
 	scripts: ScriptsUI
 }

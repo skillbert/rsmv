@@ -15,6 +15,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { RSMapChunk } from "../viewer/scenenodes";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { ipcRenderer } from "electron/renderer";
+import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 
 if (typeof ipcRenderer != "undefined") {
 	window.addEventListener("keydown", e => {
@@ -43,11 +44,10 @@ let cmd = cmdts.command({
 		overwrite: cmdts.flag({ long: "overwrite", short: "f" })
 	},
 	handler: async (args) => {
-		await runMapRender(await args.source(), args.mapname, args.endpoint, args.auth);
+		let output = new CLIScriptOutput("");
+		await runMapRender(output, await args.source(), args.mapname, args.endpoint, args.auth);
 	}
 });
-
-const watermarkfile = null!;//fs.readFileSync(__dirname + "/../assets/watermark.png");
 
 type Mapconfig = {
 	layers: LayerConfig[],
@@ -234,7 +234,7 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, overwrite = false) {
+export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, overwrite = false) {
 	let engine = await EngineCache.create(filesource);
 
 	let areas: MapRect[] = [];
@@ -305,7 +305,7 @@ export async function runMapRender(filesource: CacheFileSource, areaArgument: st
 
 	let progress = new ProgressUI(areas);
 	document.body.appendChild(progress.root);
-	// await new Promise(q => setTimeout(q, 1));
+	output.setUI(progress.root);
 
 	progress.updateProp("deps", "starting dependency graph");
 	let deps = await getDependencies(engine.source);
@@ -318,9 +318,8 @@ export async function runMapRender(filesource: CacheFileSource, areaArgument: st
 		let cnv = document.createElement("canvas");
 		return new MapRenderer(cnv, engine, { mask });
 	}
-	await downloadMap(getRenderer, engine, deps, areas, config, progress);
-	// await generateMips(config, progress);
-	console.log("done");
+	await downloadMap(output, getRenderer, engine, deps, areas, config, progress);
+	output.log("done");
 }
 
 type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number, used: boolean };
@@ -340,9 +339,7 @@ export class MapRenderer {
 		//TODO revert to using local renderer
 		this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
 		// this.renderer = globalThis.render;
-		this.renderer.renderer.renderLists
-		this.renderer.renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
-		this.renderer.scene.background = new THREE.Color(0, 0, 0);
+		this.renderer.addSceneElement({ getSceneElements() { return { options: { opaqueBackground: true } }; } });
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),
@@ -524,7 +521,7 @@ async function pixelsToImageFile(pixels: FlatImageData, format: "png" | "webp", 
 	}
 }
 
-export async function downloadMap(getRenderer: () => MapRenderer, engine: EngineCache, deps: DependencyGraph, rects: MapRect[], config: MapRender, progress: ProgressUI) {
+export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRenderer, engine: EngineCache, deps: DependencyGraph, rects: MapRect[], config: MapRender, progress: ProgressUI) {
 	let maprender = getRenderer();
 
 	let errs: Error[] = [];
@@ -549,12 +546,13 @@ export async function downloadMap(getRenderer: () => MapRenderer, engine: Engine
 	//now that it's sorted its cheap to remove dupes
 	let prefilterlen = chunks.length;
 	chunks = chunks.filter((v, i, arr) => (i == 0 || v.x != arr[i - 1].x || v.z != arr[i - 1].z));
-	console.log("filtered out dupes", prefilterlen - chunks.length);
+	output.log("filtered out dupes", prefilterlen - chunks.length);
 
 	let mipper = new MipScheduler(config, progress);
 
 	let completed = 0;
 	for (let chunk of chunks) {
+		if (output.state != "running") { break; }
 		for (let retry = 0; retry <= maxretries; retry++) {
 			try {
 				await renderMapsquare(engine, config, maprender, deps, mipper, progress, chunk.x, chunk.z);
@@ -572,12 +570,12 @@ export async function downloadMap(getRenderer: () => MapRenderer, engine: Engine
 		}
 	}
 	await mipper.run(true);
-	console.log(errs);
+	output.log(errs);
 }
 
 export async function downloadMapsquareThree(engine: EngineCache, extraopts: ParsemapOpts, x: number, z: number) {
 	console.log(`generating mapsquare ${x} ${z}`);
-	let opts: ParsemapOpts = { centered: false, padfloor: true, invisibleLayers: false, ...extraopts };
+	let opts: ParsemapOpts = { padfloor: true, invisibleLayers: false, ...extraopts };
 	let { chunks, grid } = await parseMapsquare(engine, { x, z, xsize: 1, zsize: 1 }, opts);
 	let modeldata = await mapsquareModels(engine, grid, chunks, opts);
 	let scene = new ThreejsSceneCache(engine);
@@ -884,53 +882,6 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 	//TODO returning a promise just gets flattened with our currnet async execution
 	return finish;
 }
-
-function saveSlices(config: MapRender, layercnf: LayerConfig, chunkx: number, chunkz: number, img: FlatImageData, subtract: FlatImageData | undefined) {
-	let tilex = chunkx;
-	let tiley = config.config.mapsizez - chunkz - 1;//(layercnf.mapsquares ?? 1);
-
-	let basemultiplier = 1 / 1;//(layercnf.mapsquares ?? 1);
-
-	let inputsize = layercnf.pxpersquare * 64;//* (layercnf.mapsquares ?? 1);
-	let zooms = config.getLayerZooms(layercnf);
-	let tasks: any[] = [];
-	for (let zoom = zooms.base; zoom <= zooms.max; zoom++) {
-		let size = inputsize >> (zoom - zooms.base);
-		let muliplier = basemultiplier * (1 << (zoom - zooms.base));
-		for (let suby = 0; suby * size < inputsize; suby++) {
-			for (let subx = 0; subx * size < inputsize; subx++) {
-				let x = subx * size;
-				//weird y offset because the image is flipped
-				let y = inputsize - size - suby * size;
-				if (subtract && isImageEqual(img, subtract, x, y, size, size)) {
-					continue;
-				}
-
-				tasks.push(() => {
-					let raster = sharp(img.data, { raw: img })
-						.extract({ left: x, top: y, width: size, height: size })
-						.flip()
-						.resize(config.config.tileimgsize, config.config.tileimgsize, { kernel: "mitchell" })
-						.withMetadata({
-							exif: {
-								IFD0: {
-									Copyright: 'RuneApps'
-								}
-							}
-						})
-					if (zoom == zooms.max) {
-						raster = raster.composite([{ gravity: "center", input: watermarkfile }])
-					}
-					return raster
-						.webp({ quality: 90 })
-						.toFile(config.makeFileName(layercnf.name, zoom, tilex * muliplier + subx, tiley * muliplier + suby, "png"))
-				});
-			}
-		}
-	}
-	return tasks;
-}
-
 
 function trickleTasks(name: string, parallel: number, tasks: (() => Promise<any>)[]) {
 	if (name) { console.log(`starting ${name}, ${tasks.length} tasks`); }
