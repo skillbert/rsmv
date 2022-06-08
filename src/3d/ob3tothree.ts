@@ -107,10 +107,18 @@ export class EngineCache {
 	}
 
 	getMaterialData(id: number) {
-		if (id == -1) { return defaultMaterial(); }
-		let file = this.materialArchive.get(id);
-		if (!file) { throw new Error("material " + id + " not found"); }
-		return convertMaterial(file);
+		let cached = this.materialCache.get(id);
+		if (!cached) {
+			if (id == -1) {
+				cached = defaultMaterial();
+			} else {
+				let file = this.materialArchive.get(id);
+				if (!file) { throw new Error("material " + id + " not found"); }
+				cached = convertMaterial(file);
+			}
+			this.materialCache.set(id, cached);
+		}
+		return cached;
 	}
 }
 
