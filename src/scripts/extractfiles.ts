@@ -1,13 +1,8 @@
-import { filesource, cliArguments } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf, optional } from "cmd-ts";
-import * as fs from "fs";
-import * as path from "path";
+
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { FlatImageData, constrainedMap } from "../utils";
-import { GameCacheLoader } from "../cache/sqlite";
-import { crc32_backward, forge } from "../libs/crc32util";
 import prettyJson from "json-stringify-pretty-compact";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
@@ -374,4 +369,3 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 	output.log("done");
 }
 
-// run(cmd2, cliArguments());

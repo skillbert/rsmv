@@ -29,6 +29,7 @@ import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
 import { diffCaches } from "../scripts/cachediff";
+import { JsonSearch } from "./jsonsearch";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -348,7 +349,7 @@ function LabeledInput(p: { label: string, children: React.ReactNode }) {
 	</div>
 }
 
-class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
+export class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
 	el: HTMLInputElement | null = null;
 	@boundMethod
 	onChange(e: Event) {
@@ -917,10 +918,12 @@ function useAsyncModelData<ID, T>(initial: ID, ctx: UIContextReady | null, gette
 	let idref = React.useRef(initial);
 	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
 	let [visible, setVisible] = React.useState<{ info: SimpleModelInfo<T>, id: ID } | null>(null);
+	let ctxref = React.useRef(ctx);
+	ctxref.current = ctx;
 	let setter = React.useCallback((id: ID) => {
-		if (!ctx) { return; }
+		if (!ctxref.current) { return; }
 		idref.current = id;
-		let prom = getter(ctx.sceneCache, id);
+		let prom = getter(ctxref.current.sceneCache, id);
 		prom.then(res => {
 			if (idref.current == id) {
 				localStorage.rsmv_lastsearch = id;
@@ -998,6 +1001,7 @@ function SceneItem(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			{/* {p.ctx && <JsonSearch cache={p.ctx.sceneCache.cache} onSelect={setId} mode="items" />} */}
 			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
