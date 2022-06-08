@@ -20,21 +20,19 @@ function start() {
 		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 	});
 
-	ReactDOM.render(<App />, document.getElementById("app"));
+	let ctx = new UIContext();
+
+	ReactDOM.render(<App ctx={ctx} />, document.getElementById("app"));
 
 	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
 	//across tab reloads
 	navigator.serviceWorker.register('./contextholder.js', { scope: './', });
 }
 
-class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache: ThreejsSceneCache | null, openedFile: UIScriptFile | null }> {
-	appctx: UIContext | null = null;
-
+class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile | null }> {
 	constructor(p) {
 		super(p);
 		this.state = {
-			cache: null,
-			renderer: null,
 			openedFile: null
 		};
 		datastore.get<SavedCacheSource>("openedcache").then(c => c && this.openCache(c));
@@ -43,27 +41,47 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 	@boundMethod
 	async openCache(source: SavedCacheSource) {
 		let cache = await openSavedCache(source, true);
-		if (cache) { this.setState({ cache }) };
+		if (cache) {
+			this.props.ctx.setCacheSource(cache);
+
+			try {
+				let engine = await EngineCache.create(cache);
+				console.log("engine loaded");
+				this.props.ctx.setSceneCache(new ThreejsSceneCache(engine));
+			} catch (e) {
+				console.log("failed to create scenecache");
+				console.error(e);
+			}
+		};
 	}
 
 	@boundMethod
 	initCnv(cnv: HTMLCanvasElement | null) {
-		if (cnv) {
-			let renderer = new ThreeJsRenderer(cnv);
-			this.setState({ renderer });
-		}
+		this.props.ctx.setRenderer(cnv ? new ThreeJsRenderer(cnv) : null);
 	}
 
 	@boundMethod
 	closeCache() {
 		datastore.del("openedcache");
 		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
-		this.state.cache?.source.close();
-		this.setState({ cache: null });
+		this.props.ctx.source?.close();
+		this.props.ctx.setCacheSource(null);
+		this.props.ctx.setSceneCache(null);
+	}
+
+	@boundMethod
+	stateChanged() {
+		this.forceUpdate();
+	}
+
+	componentDidMount() {
+		this.props.ctx.on("openfile", this.openFile);
+		this.props.ctx.on("statechange", this.stateChanged);
 	}
 
 	componentWillUnmount() {
-		this.fixAppctx(true)
+		this.props.ctx.off("openfile", this.openFile);
+		this.props.ctx.off("statechange", this.stateChanged);
 	}
 
 	@boundMethod
@@ -71,31 +89,15 @@ class App extends React.Component<{}, { renderer: ThreeJsRenderer | null, cache:
 		this.setState({ openedFile: file });
 	}
 
-	fixAppctx(dispose = false) {
-		if (!dispose && this.state.renderer && this.state.cache) {
-			if (!this.appctx) {
-				this.appctx = new UIContext(this.state.cache, this.state.renderer);
-				this.appctx.on("openfile", this.openFile);
-			}
-		} else {
-			if (this.appctx) {
-				this.appctx.off("openfile", this.openFile);
-				this.appctx = null;
-			}
-		}
-		return this.appctx;
-	}
-
 	render() {
-		let appctx = this.fixAppctx();
 		return (
 			<div id="content">
 				<canvas id="viewer" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
-				{appctx && this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={appctx.openFile} />}
+				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
 				<div id="sidebar">
-					{!this.state.cache && (<CacheSelector onOpen={this.openCache} />)}
-					{appctx && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${appctx.source.getCacheName()}`} />}
-					{appctx && <ModelBrowser ctx={appctx} />}
+					{!this.props.ctx.source && (<CacheSelector onOpen={this.openCache} />)}
+					{this.props.ctx.source && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.props.ctx.source.getCacheName()}`} />}
+					{this.props.ctx.source && <ModelBrowser ctx={this.props.ctx} />}
 				</div>
 			</div >
 		);

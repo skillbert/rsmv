@@ -17,8 +17,14 @@ import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { TypedEmitter } from "../utils";
 
-
-const electron = (typeof __non_webpack_require__ != "undefined" ? (__non_webpack_require__("electron/renderer") as typeof import("electron/renderer")) : null);
+const electron = (() => {
+	try {
+		if (typeof __non_webpack_require__ != "undefined") {
+			return __non_webpack_require__("electron/renderer") as typeof import("electron/renderer");
+		}
+	} catch (e) { }
+	return null;
+})();
 
 export type SavedCacheSource = {
 	type: string
@@ -246,17 +252,37 @@ export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSou
 	}
 }
 
-export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null }>{
-	source: CacheFileSource;
-	sceneCache: ThreejsSceneCache;
-	renderer: ThreeJsRenderer;
+export type UIContextReady = UIContext & { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
 
-	constructor(cache: ThreejsSceneCache, render: ThreeJsRenderer) {
+//i should figure out this redux thing...
+export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, statechange: undefined }>{
+	source: CacheFileSource | null;
+	sceneCache: ThreejsSceneCache | null;
+	renderer: ThreeJsRenderer | null;
+
+	constructor() {
 		super();
-		this.sceneCache = cache;
-		this.source = cache.source;
-		this.renderer = render;
 	}
+
+	setCacheSource(source: CacheFileSource | null) {
+		this.source = source;
+		this.emit("statechange", undefined)
+	}
+
+	setSceneCache(sceneCache: ThreejsSceneCache | null) {
+		this.sceneCache = sceneCache;
+		this.emit("statechange", undefined)
+	}
+
+	setRenderer(renderer: ThreeJsRenderer | null) {
+		this.renderer = renderer;
+		this.emit("statechange", undefined);
+	}
+
+	canRender(): this is UIContextReady {
+		return !!this.source && !!this.sceneCache && !!this.renderer;
+	}
+
 
 	@boundMethod
 	openFile(file: UIScriptFile | null) {
@@ -299,16 +325,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 		datastore.set("openedcache", source);
 		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
 	}
-	if (!cache) {
-		return null;
-	}
-	if (cache) {
-		let engine = await EngineCache.create(cache);
-		console.log("engine loaded");
-
-		return new ThreejsSceneCache(engine);
-	}
-	return null;
+	return cache;
 }
 
 

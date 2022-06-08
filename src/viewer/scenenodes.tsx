@@ -24,7 +24,7 @@ import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
-import { CacheSelector, openSavedCache, SavedCacheSource, UIContext } from "./maincomponents";
+import { CacheSelector, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
@@ -64,7 +64,7 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
 				</div>
-				{ModeComp && <ModeComp initialId={this.state.search} ctx={this.props.ctx} />}
+				{ModeComp && <ModeComp initialId={this.state.search} ctx={this.props.ctx.canRender() ? this.props.ctx : null} partial={this.props.ctx} />}
 			</React.Fragment>
 		);
 	}
@@ -495,6 +495,7 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 
 	@boundMethod
 	async addComp(id: string) {
+		if (!this.props.ctx) { return; }
 		if (this.state.addModelType == "map") {
 			let rect = stringToMapArea(id);
 			if (!rect) { throw new Error("invalid map rect"); }
@@ -551,6 +552,7 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	}
 
 	editComp(compid: number, newcomp: ScenarioComponent | null) {
+		if (!this.props.ctx) { return; }
 		let components = { ...this.state.components };
 		let oldcomp = this.state.components[compid];
 		let model = this.models.get(oldcomp);
@@ -911,11 +913,12 @@ function ImageData(p: { img: ImageData }) {
 	)
 }
 
-function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T>>) {
+function useAsyncModelData<ID, T>(initial: ID, ctx: UIContextReady | null, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T>>) {
 	let idref = React.useRef(initial);
 	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
 	let [visible, setVisible] = React.useState<{ info: SimpleModelInfo<T>, id: ID } | null>(null);
 	let setter = React.useCallback((id: ID) => {
+		if (!ctx) { return; }
 		idref.current = id;
 		let prom = getter(ctx.sceneCache, id);
 		prom.then(res => {
@@ -926,7 +929,7 @@ function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: T
 		})
 	}, []);
 	React.useLayoutEffect(() => {
-		if (visible) {
+		if (visible && ctx) {
 			let model = new RSModel(visible.info.models, ctx.sceneCache);
 			if (visible.info.anims.default) {
 				model.setAnimation(visible.info.anims.default);
@@ -941,7 +944,7 @@ function useAsyncModelData<ID, T>(initial: ID, ctx: UIContext, getter: (cache: T
 				model.cleanup();
 			}
 		}
-	}, [visible]);
+	}, [visible, ctx]);
 	return [visible?.info, loadedModel, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, setter: (id: ID) => void];
 }
 
@@ -1088,20 +1091,26 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			}
 		};
 		this.setState({ selectionData });
-		this.props.ctx.renderer.forceFrame();
+		this.props.ctx?.renderer.forceFrame();
 	}
 
 	componentDidMount() {
-		this.props.ctx.renderer.on("select", this.meshSelected);
+		//TODO this is a leak if ctx changes while mounted
+		this.props.ctx?.renderer.on("select", this.meshSelected);
 	}
 
 	componentWillUnmount() {
 		this.clear();
-		this.props.ctx.renderer.off("select", this.meshSelected);
+		//TODO this is a leak if ctx changes while mounted
+		this.props.ctx?.renderer.off("select", this.meshSelected);
 	}
 
 	async addArea(rect: MapRect) {
-		let chunk = new RSMapChunk(rect, this.props.ctx.sceneCache, { skybox: true });
+		const sceneCache = this.props.ctx?.sceneCache;
+		const renderer = this.props.ctx?.renderer;
+		if (!sceneCache || !renderer) { return; }
+
+		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true });
 		chunk.once("loaded", async () => {
 			let combined = chunk.rootnode;
 
@@ -1114,7 +1123,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 			let center = this.state.center;
 			combined.position.add(new Vector3(-center.x, 0, -center.z));
-			chunk.addToScene(this.props.ctx.renderer);
+			chunk.addToScene(renderer);
 			chunk.setToggles(toggles);
 
 			this.setState({ toggles });
@@ -1161,7 +1170,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	}
 
 	render() {
-		this.props.ctx.renderer.forceFrame();
+		this.props.ctx?.renderer.forceFrame();
 		let toggles: Record<string, string[]> = {};
 		for (let toggle of Object.keys(this.state.toggles)) {
 			let m = toggle.match(/^(\D+?)(\d.*)?$/);
@@ -1300,25 +1309,25 @@ function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 	)
 }
 function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
-	let [cache2, setCache2] = React.useState<ThreejsSceneCache | null>(null);
+	let [cache2, setCache2] = React.useState<CacheFileSource | null>(null);
 	let openCache = async (s: SavedCacheSource) => {
 		setCache2(await openSavedCache(s, false));
 	}
 
-	React.useEffect(() => () => cache2?.source.close(), [cache2]);
+	React.useEffect(() => () => cache2?.close(), [cache2]);
 
 	let run = async () => {
 		let output = new UIScriptOutput();
 		let source2 = await cache2;
 		if (!source2) { return; }
-		output.run(diffCaches, p.source, source2.source);
+		output.run(diffCaches, p.source, source2);
 		p.onRun(output);
 	}
 
 	return (
 		<React.Fragment>
 			{!cache2 && <CacheSelector onOpen={openCache} />}
-			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.source.getCacheName()}`} onClick={e => setCache2(null)} />}
+			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheName()}`} onClick={e => setCache2(null)} />}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
@@ -1364,6 +1373,8 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 	}
 
 	render() {
+		const source = this.props.partial.source;
+		if (!source) { throw new Error("trying to render modelbrowser wouth source loaded"); }
 		return (
 			<React.Fragment>
 				<h2>Script runner</h2>
@@ -1373,18 +1384,18 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: "test" | "ext
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "maprender" })} onClick={() => this.setState({ script: "maprender" })}>Maprender</div>
 					<div className={classNames("rsmv-icon-button", { active: this.state.script == "diff" })} onClick={() => this.setState({ script: "diff" })}>Diff</div>
 				</div>
-				{this.state.script == "test" && <TestFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
-				{this.state.script == "extract" && <ExtractFilesScript source={this.props.ctx.source} onRun={this.onRun} />}
-				{this.state.script == "maprender" && <MaprenderScript source={this.props.ctx.source} onRun={this.onRun} />}
-				{this.state.script == "diff" && <CacheDiffScript source={this.props.ctx.source} onRun={this.onRun} />}
+				{this.state.script == "test" && <TestFilesScript source={source} onRun={this.onRun} />}
+				{this.state.script == "extract" && <ExtractFilesScript source={source} onRun={this.onRun} />}
+				{this.state.script == "maprender" && <MaprenderScript source={source} onRun={this.onRun} />}
+				{this.state.script == "diff" && <CacheDiffScript source={source} onRun={this.onRun} />}
 				<h2>Script output</h2>
-				<OutputUI output={this.state.running} ctx={this.props.ctx} />
+				<OutputUI output={this.state.running} ctx={this.props.partial} />
 			</React.Fragment>
 		);
 	}
 }
 
-type LookupModeProps = { initialId: string, ctx: UIContext }
+type LookupModeProps = { initialId: string, ctx: UIContextReady | null, partial: UIContext }
 
 const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {
 	model: SceneRawModel,
