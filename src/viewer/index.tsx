@@ -14,7 +14,12 @@ if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
 }
 
-function start() {
+
+export function unload(rootelement: HTMLElement) {
+	ReactDOM.unmountComponentAtNode(rootelement);
+}
+
+export function start(rootelement: HTMLElement) {
 	window.addEventListener("keydown", e => {
 		if (e.key == "F5") { document.location.reload(); }
 		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
@@ -22,7 +27,7 @@ function start() {
 
 	let ctx = new UIContext();
 
-	ReactDOM.render(<App ctx={ctx} />, document.getElementById("app"));
+	ReactDOM.render(<App ctx={ctx} />, rootelement);
 
 	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
 	//across tab reloads
@@ -103,4 +108,3 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 		);
 	}
 }
-start();

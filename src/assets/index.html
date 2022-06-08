@@ -11,12 +11,15 @@
 <body>
 	<div id="app"></div>
 	<script>
+		let rootel = document.getElementById("app");
 		if (typeof require != "undefined") {
-			require("../electronviewer.js");
+			let rsmvimport = require("../electronviewer.js");
+			rsmvimport.start(rootel);
 		} else {
-			let script = document.createElement("script");
-			script.src = "../viewer.js";
-			document.body.appendChild(script);
+			let viewerscript = document.createElement("script");
+			viewerscript.src = "../viewer.js";
+			document.body.appendChild(viewerscript);
+			viewerscript.onload = () => RSMV.start(rootel);
 		}
 	</script>
 </body>
