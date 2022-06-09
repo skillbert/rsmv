@@ -93,7 +93,8 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 			hiddenstack: [],
 			scan: 0,
 			startoffset: 0,
-			endoffset: file.file.byteLength
+			endoffset: file.file.byteLength,
+			args: {}
 		};
 		try {
 			decoder.readInternal(state);

@@ -1,4 +1,5 @@
 
+import { write } from "fs";
 import type * as jsonschema from "json-schema";
 
 type PrimitiveInt = {
@@ -45,11 +46,12 @@ export type ComposedChunk = string
 	| [type: "nullarray", optcodeType: ComposedChunk, valueType: ComposedChunk]
 	| [type: "bytesleft"]
 	| [type: "ref", ref: string, bitrange?: [number, number], offset?: number]
+	| [type: "arg", ref: string,]
 	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
-	| [type: "opt", condition: (number | string | [ref: string, value: string | number, compare: CompareMode]), value: ComposedChunk]
+	| [type: "opt", condition: (number | [ref: string, value: number, compare: CompareMode]), value: ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
 	| [type: "struct", ...props: [name: string, value: any]]
-//dont add tupple here since it messes up all typings as it has overlap with the first string prop
+	| [type: "tuple", ...props: any[]]//ComposedChunk[] can't write type since it would be circular
 
 
 type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
@@ -80,7 +82,8 @@ export type DecodeState = {
 	scan: number,
 	endoffset: number,
 	startoffset: number,
-	buffer: Buffer
+	buffer: Buffer,
+	args: Record<string, any>
 }
 
 type EncodeState = {
@@ -88,7 +91,7 @@ type EncodeState = {
 	buffer: Buffer
 }
 
-type ResolvedReference = {
+export type ResolvedReference = {
 	stackdepth: number,
 	owner: ChunkParser,
 	resolve(v: unknown, oldvalue: number): number
@@ -99,15 +102,13 @@ export type ChunkParser<T = any> = {
 	write(state: EncodeState, v: unknown): void,
 	setReferenceParent?(parent: ChunkParserContainer | null): void,
 	getTypescriptType(indent: string): string,
-	getJsonSchema(): jsonschema.JSONSchema6Definition,
-	condName?: string,
-	condValue?: number,
-	condMode?: CompareMode
+	getJsonSchema(): jsonschema.JSONSchema6Definition
 }
-type ChunkParserContainer<T = any> = ChunkParser<T> & {
+
+export type ChunkParserContainer<T = any> = ChunkParser<T> & {
 	resolveReference(name: string, childresolve: ResolvedReference): ResolvedReference,
 	setReferenceParent(parent: ChunkParserContainer | null): void,
-}
+};
 
 function resolveAlias(typename: string, typedef: TypeDef) {
 	let newtype: Primitive<any> | ComposedChunk | string = typename;
@@ -135,11 +136,11 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 			return resolveAlias(chunkdef, typedef);
 		case "object":
 			if (!Array.isArray(chunkdef)) {
-				let mappedobj: Record<string, ChunkParser> = {};
+				let mappedobj: Record<string, { op: number, parser: ChunkParser }> = {};
 				for (let key in chunkdef) {
-					if (key.startsWith("$")) { continue; }//TODO remove?
+					if (key.startsWith("$")) { continue; }
 					let op = chunkdef[key];
-					mappedobj[op.name] = optParser(buildParser(op.read, typedef), "$opcode", parseInt(key), "eq");
+					mappedobj[op.name] = { op: parseInt(key), parser: buildParser(op.read, typedef) };
 				}
 				return opcodesParser(buildParser(chunkdef.$opcode ?? "unsigned byte", typedef), mappedobj);
 			} else {
@@ -158,17 +159,21 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					case "opt": {
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type opt`);
 						let cond: string;
-						let valuearg = chunkdef[1];
+						let arg1 = chunkdef[1];
+						let valuearg: ChunkParser;
 						let cmpmode: CompareMode = "eq";
-						if (Array.isArray(valuearg)) {
-							cond = valuearg[0];
-							cmpmode = valuearg[2] ?? "eq";
-							valuearg = valuearg[1];
+						if (Array.isArray(arg1)) {
+							cond = arg1[0];
+							cmpmode = arg1[2] ?? "eq";
+							if (typeof arg1[1] == "number") {
+								valuearg = literalValueParser({ primitive: "value", value: arg1[1] });
+							} else {
+								valuearg = buildParser(arg1[1], typedef);
+							}
 						} else {
 							cond = "$opcode";
-							valuearg = chunkdef[1] as number | string;
+							valuearg = literalValueParser({ primitive: "value", value: chunkdef[1] });
 						}
-						if (typeof valuearg == "string") { valuearg = parseInt(valuearg) }
 						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg, cmpmode);
 					}
 					case "chunkedarray": {
@@ -205,15 +210,13 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						}
 						return structParser(props);
 					}
-					// Tuple
+					case "tuple": {
+						return tuppleParser(chunkdef.slice(1).map(d => buildParser(d, typedef)));
+					}
 					default: {
-						//@ts-ignore
-						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(chunkdef)}`);
-						let props: ChunkParser[] = [];
-						for (let prop of chunkdef as ComposedChunk[]) {
-							props.push(buildParser(prop, typedef));
+						if (hardcodes[chunkdef[0]]) {
+							return hardcodes[chunkdef[0]](chunkdef.slice(1));
 						}
-						return tuppleParser(props);
 					}
 				}
 			}
@@ -249,13 +252,12 @@ function validateStringType(primitive: PrimitiveString) {
 	if (!(primitive.termination === null || typeof primitive.termination === "number")) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'termination' must be null or the string's length in bytes`);
 }
 
-function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<number>, opts: { [key in keyof T]: ChunkParser<T[key]> }): ChunkParser<Partial<T>> {
+function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<number>, opts: { [key in keyof T]: { op: number, parser: ChunkParser<T[key]> } }): ChunkParser<Partial<T>> {
 	let map = new Map<number, { key: keyof T, parser: ChunkParser }>();
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	for (let key in opts) {
 		let opt = opts[key];
-		if (opt.condName != "$opcode" || typeof opt.condValue != "number" || opt.condMode != "eq") { throw new Error("option in opcode set that is not conditional on '$opcode'"); }
-		map.set(opt.condValue, { key: key, parser: opt });
+		map.set(opt.op, { key: key, parser: opt.parser });
 	}
 	let hasexplicitnull = !!map.get(0);
 	let refparent: ChunkParserContainer | null = null;
@@ -294,10 +296,10 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 			if (typeof value != "object") { throw new Error("oject expected") }
 			for (let key in value) {
 				if (key.startsWith("$")) { continue; }
-				let parser = opts[key];
-				if (!parser) { throw new Error("unknown property " + key); }
-				opcodetype.write(state, parser.condValue);
-				parser.write(state, value[key]);
+				let opt = opts[key];
+				if (!opt) { throw new Error("unknown property " + key); }
+				opcodetype.write(state, opt.op);
+				opt.parser.write(state, value[key]);
 			}
 			if (hasexplicitnull) {
 				opcodetype.write(state, 0);
@@ -306,7 +308,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 		setReferenceParent(parent) {
 			refparent = parent;
 			opcodetype.setReferenceParent?.(r);
-			(Object.values(opts) as ChunkParser[]).forEach(q => q.setReferenceParent?.(r));
+			Object.values(opts).forEach(q => q.parser.setReferenceParent?.(r));
 		},
 		resolveReference(name, childresolve) {
 			let targetprop = Object.entries(opts).find(([name, parser]) => parser == childresolve.owner)?.[0];
@@ -408,6 +410,10 @@ function tuppleParser(props: ChunkParser[]) {
 function buildReference(name: string, container: ChunkParserContainer | null, startingpoint: ResolvedReference) {
 	if (!container) { throw new Error("reference " + name + " could not be resolved"); }
 	return container.resolveReference(name, startingpoint);
+}
+
+function externalArgParser() {
+
 }
 
 function refgetter(owner: ChunkParser, refparent: ChunkParserContainer | null, propname: string, resolve: (v: unknown, old: number) => number) {
@@ -514,13 +520,14 @@ function structParser<T extends Record<string, any>>(props: { [key in keyof T]: 
 	return r;
 }
 
-function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | null> {
+function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: ChunkParser, compare: CompareMode): ChunkParser<T | null> {
 	let refparent: ChunkParserContainer | null = null;
 	let ref: ReturnType<typeof refgetter>;
 	let r: ChunkParserContainer<T | null> = {
 		read(state) {
 			let value = ref.read(state);
-			if (!checkCondition(r, value)) {
+			let cmpvalue = condvalue.read(state);
+			if (!checkCondition(compare, cmpvalue, value)) {
 				return null;
 			}
 			return type.read(state);
@@ -535,7 +542,9 @@ function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, 
 			type.setReferenceParent?.(r);
 
 			ref = refgetter(r, parent, condvar, (v: unknown, oldvalue: number) => {
-				return forceCondition(r, oldvalue, v != null);
+				// return forceCondition(compare,, oldvalue, v != null);
+				//need a ref to condvalue here and resolve that
+				throw new Error("not implemented");
 			});
 		},
 		resolveReference(name, child) {
@@ -557,49 +566,46 @@ function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, 
 					{ type: "null" }
 				]
 			}
-		},
-		condName: condvar,
-		condValue: condvalue,
-		condMode: compare,
+		}
 	};
 	return r;
 }
 
-function forceCondition(parser: ChunkParser, oldvalue: number, state: boolean) {
-	switch (parser.condMode!) {
+function forceCondition(condMode: CompareMode, compValue: number, oldvalue: number, state: boolean) {
+	switch (condMode) {
 		case "eq":
-			return state ? parser.condValue! : oldvalue;
+			return state ? compValue : oldvalue;
 		case "eqnot":
-			return state ? oldvalue : parser.condValue!;
+			return state ? oldvalue : compValue;
 		case "bitflag":
-			return (state ? oldvalue | (1 << parser.condValue!) : oldvalue & ~(1 << parser.condValue!));
+			return (state ? oldvalue | (1 << compValue) : oldvalue & ~(1 << compValue));
 		case "bitor":
-			return (state ? oldvalue | parser.condValue! : oldvalue & ~parser.condValue!);
+			return (state ? oldvalue | compValue : oldvalue & ~compValue);
 		case "bitand":
-			return (state ? oldvalue | parser.condValue! : oldvalue & ~parser.condValue!);
+			return (state ? oldvalue | compValue : oldvalue & ~compValue);
 		case "bitflagnot":
-			return (state ? oldvalue & ~(1 << parser.condValue!) : oldvalue | (1 << parser.condValue!));
+			return (state ? oldvalue & ~(1 << compValue) : oldvalue | (1 << compValue));
 		default:
-			throw new Error("unknown condition " + parser.condMode);
+			throw new Error("unknown condition " + condMode);
 	}
 }
 
-function checkCondition(parser: ChunkParser, v: number) {
-	switch (parser.condMode!) {
+function checkCondition(condmode: CompareMode, compValue: number, v: number) {
+	switch (condmode) {
 		case "eq":
-			return v == parser.condValue!;
+			return v == compValue!;
 		case "eqnot":
-			return v != parser.condValue!;
+			return v != compValue;
 		case "bitflag":
-			return (v & (1 << parser.condValue!)) != 0;
+			return (v & (1 << compValue)) != 0;
 		case "bitor":
-			return (v & parser.condValue!) != 0;
+			return (v & compValue) != 0;
 		case "bitand":
-			return (v & parser.condValue!) == parser.condValue!;
+			return (v & compValue) == compValue;
 		case "bitflagnot":
-			return (v & (1 << parser.condValue!)) == 0;
+			return (v & (1 << compValue)) == 0;
 		default:
-			throw new Error("unkown condition " + parser.condMode);
+			throw new Error("unkown condition " + condmode);
 	}
 }
 
@@ -1170,7 +1176,7 @@ function booleanParser(): ChunkParser<boolean> {
 }
 
 
-let hardcodes: Record<string, () => ChunkParser> = {
+let hardcodes: Record<string, (args: unknown[]) => ChunkParser> = {
 	playeritem: function () {
 		return {
 			read(state) {
@@ -1183,6 +1189,25 @@ let hardcodes: Record<string, () => ChunkParser> = {
 			write(state, value) { throw new Error("not implemented"); },
 			getTypescriptType() { return "number"; },
 			getJsonSchema() { return { type: "integer", minimum: -1, maximum: 0xffff - 0x4000 - 1 }; }
+		}
+	},
+	itemvar: function (args) {
+		let type = args[0];
+		if (typeof type != "string" || !["ref", "matcount", "colorcount", "modelcount"].includes(type)) { throw new Error(); }
+
+		return {
+			read(state) {
+				if (type == "ref") { state.args.activeitem = (state.args.activeitem ?? -1) + 1; }
+				let ref = state.args.items[state.args.activeitem];
+				if (type == "ref") { return ref; }
+				else if (type == "matcount") { return ref.materials.length; }
+				else if (type == "modelcount") { return ref.models.length; }
+				else if (type == "colorcount") { return ref.colors.length; }
+				else { throw new Error(); }
+			},
+			write() { throw new Error("not implemented"); },
+			getTypescriptType() { return (type == "ref" ? "any" : "number"); },
+			getJsonSchema() { return { type: (type == "ref" ? "any" : "integer") } }
 		}
 	}
 }
@@ -1204,7 +1229,7 @@ function primitiveParser(primitive: Primitive<any>): ChunkParser {
 		case "hardcode":
 			let parser = hardcodes[primitive.name];
 			if (!parser) { throw new Error(`hardcode parser ${primitive.name} does not exist`); }
-			return parser();
+			return parser([]);
 		default:
 			//@ts-ignore
 			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);

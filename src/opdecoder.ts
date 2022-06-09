@@ -16,8 +16,6 @@ export class FileParser<T> {
 
 	constructor(_opcodes: string) {
 		let opcodeobj = commentJson.parse(_opcodes, undefined, true);
-		// const typedef = JSON.parse(fs.readFileSync(__dirname + "/opcodes/typedef.json", "utf-8"));
-		// const _opcodes = JSON.parse(fs.readFileSync(opcodePath, "utf-8"));
 		this.parser = opcode_reader.buildParser(opcodeobj as any, typedef as any);
 		this.parser.setReferenceParent?.(null);
 	}
@@ -49,7 +47,8 @@ export class FileParser<T> {
 			hiddenstack: [],
 			scan: 0,
 			startoffset: 0,
-			endoffset: buffer.byteLength
+			endoffset: buffer.byteLength,
+			args: {}
 		};
 		return this.readInternal(state);
 	}

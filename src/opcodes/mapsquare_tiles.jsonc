@@ -16,7 +16,7 @@
 			["unk02",["opt",["flags",1,"bitflag"],"ushort"]],
 			["unk04",["opt",["flags",2,"bitflag"],"ushort"]],
 			["unk08",["opt",["flags",3,"bitflag"],"ushort"]],
-			["unk10",["opt",["flags",4,"bitflag"],["ushort","ushort","ushort"]]],
+			["unk10",["opt",["flags",4,"bitflag"],["tuple","ushort","ushort","ushort"]]],
 			["unk20",["opt",["flags",5,"bitflag"],["array",4,"ubyte"]]],
 			["unk40",["opt",["flags",6,"bitflag"],"ushort"]],
 			["unk80",["opt",["flags",7,"bitflag"],"ushort"]]
@@ -34,7 +34,7 @@
 			["extra1f",["opt",["extraflags",31,"bitand"],"ushort"]]
 		]]},
 		"0x02": { "name": "unk02", "read":["array",3,"float"]},
-		"0x03": { "name": "unk03", "read":["short","float"]},
+		"0x03": { "name": "unk03", "read":["tuple","short","float"]},
 		"0x80": { "name": "unk80", "read":["struct",
 			["environment","ushort"],
 			["always00",["buffer",8,"hex"]]
