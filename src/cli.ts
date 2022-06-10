@@ -100,13 +100,16 @@ const quickchat = command({
 const scrapeavatars = command({
 	name: "run",
 	args: {
+		...filesource,
 		save: option({ long: "save", short: "s" }),
 		skip: option({ long: "skip", short: "i", type: cmdts.number, defaultValue: () => 0 }),
-		max: option({ long: "max", short: "m", type: cmdts.number, defaultValue: () => 500 })
+		max: option({ long: "max", short: "m", type: cmdts.number, defaultValue: () => 500 }),
+		json: flag({ long: "json", short: "j" })
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput(args.save);
-		await output.run(scrapePlayerAvatars, args.skip, args.max);
+		let source = (args.json ? await args.source() : null);
+		await output.run(scrapePlayerAvatars, source, args.skip, args.max, args.json);
 	}
 });
 

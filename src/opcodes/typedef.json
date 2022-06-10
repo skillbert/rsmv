@@ -31,18 +31,17 @@
 	"playeritem":       { "primitive": "hardcode", "name": "playeritem" },
 
 	"playeritemedit":   ["struct",
-		["type","ubyte"],
-		["model",["opt",["type",0,"bitflag"],["varuint","varuint"]]],
-		["flag2",["opt",["type",1,"bitflag"],"true"]],
-		["color",["opt",["type",2,"bitflag"],["struct",
-			["type","ushort"],
-			["col2",["opt",["type",12816],["array",4,"ushort"]]],
-			["col4",["opt",["type",8719],["array",8,"ushort"]]]
+		["$type","ubyte"],
+		["model",["opt",["$type",0,"bitflag"],["array",["itemvar","modelcount"],"varuint"]]],
+		["flag2",["opt",["$type",1,"bitflag"],"true"]],
+		["color",["opt",["$type",2,"bitflag"],["struct",
+			["$coltype","ushort"],
+			["col2",["opt",["$coltype",12816],["array",["itemvar","colorcount"],"ushort"]]],
+			["col4",["opt",["$coltype",8719],["array",4,["tuple","ushort","ushort"]]]]
 		]]],
-		["texture",["opt",["type",3,"bitflag"],["struct",
+		["material",["opt",["$type",3,"bitflag"],["struct",
 			["header","ubyte"],
-			["tex0","ushort"],
-			["tex1","ushort"]
+			["materials",["array",["itemvar","matcount"],"ushort"]]
 		]]]
 	],
 

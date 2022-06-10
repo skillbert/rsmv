@@ -7,7 +7,7 @@ const typedef = commentJson.parse(require("./opcodes/typedef.json")) as any;
 //alloc a large static buffer to write data to without knowing the data size
 //then copy what we need out of it
 //the buffer is reused so it saves a ton of buffer allocs
-const scratchbuf = Object.assign(Buffer.alloc(1024 * 100), { scan: 0 });
+const scratchbuf = Buffer.alloc(1024 * 100);
 
 let bytesleftoverwarncount = 0;
 
@@ -40,7 +40,7 @@ export class FileParser<T> {
 		return res;
 	}
 
-	read(buffer: Buffer) {
+	read(buffer: Buffer, args?: Record<string, any>) {
 		let state: opcode_reader.DecodeState = {
 			buffer,
 			stack: [],
@@ -48,7 +48,7 @@ export class FileParser<T> {
 			scan: 0,
 			startoffset: 0,
 			endoffset: buffer.byteLength,
-			args: {}
+			args: args ?? {}
 		};
 		return this.readInternal(state);
 	}
@@ -58,10 +58,9 @@ export class FileParser<T> {
 		this.parser.write(state, obj);
 		if (state.scan > scratchbuf.byteLength) { throw new Error("tried to write file larger than scratchbuffer size"); }
 		//do the weird prototype slice since we need a copy, not a ref
-		let r: Buffer = Uint8Array.prototype.slice.call(scratchbuf, 0, scratchbuf.scan);
+		let r: Buffer = Uint8Array.prototype.slice.call(scratchbuf, 0, state.scan);
 		//clear it for next use
-		scratchbuf.fill(0, 0, scratchbuf.scan);
-		scratchbuf.scan = 0;
+		scratchbuf.fill(0, 0, state.scan);
 		return r;
 	}
 }
@@ -91,6 +90,7 @@ export const parseQuickchatCategories = new FileParser<import("../generated/quic
 export const parseQuickchatLines = new FileParser<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc"));
 export const parseEnvironments = new FileParser<import("../generated/environments").environments>(require("./opcodes/environments.jsonc"));
 export const parseAvatars = new FileParser<import("../generated/avatars").avatars>(require("./opcodes/avatars.jsonc"));
+export const parseAvatarOverrides = new FileParser<import("../generated/avataroverrides").avataroverrides>(require("./opcodes/avataroverrides.jsonc"));
 export const parseIdentitykit = new FileParser<import("../generated/identitykit").identitykit>(require("./opcodes/identitykit.jsonc"));
 export const parseStructs = new FileParser<import("../generated/structs").structs>(require("./opcodes/structs.jsonc"));
 export const parseParams = new FileParser<import("../generated/params").params>(require("./opcodes/params.jsonc"));

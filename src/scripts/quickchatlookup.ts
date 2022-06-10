@@ -42,5 +42,5 @@ export async function quickChatLookup(output: ScriptOutput, source: CacheFileSou
 	}
 	iter(cats[85], "");
 
-	output.writeFile("quickchat.json", prettyJson(hotkeys), "json");
+	output.writeFile("quickchat.json", prettyJson(hotkeys));
 }

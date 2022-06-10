@@ -1,6 +1,9 @@
+import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import fetch from "node-fetch";
-import { avatarStringToBytes, lowname } from "../3d/avatar";
+import { avatarStringToBytes, avatarToModel, lowname } from "../3d/avatar";
 import { ScriptOutput } from "../viewer/scriptsui";
+import prettyJson from "json-stringify-pretty-compact";
+import { CacheFileSource } from "../cache";
 
 
 async function getPlayerNames(cat: number, subcat: number, page: number) {
@@ -21,7 +24,24 @@ async function getPlayerAvatar(name: string) {
 	return avatarStringToBytes(await res.text());
 }
 
-export async function scrapePlayerAvatars(output: ScriptOutput, skip: number, max: number) {
+export async function scrapePlayerAvatars(output: ScriptOutput, source: CacheFileSource | null, skip: number, max: number, parsed: boolean) {
+	let scene: ThreejsSceneCache | null = null;
+	if (parsed) {
+		if (!source) { throw new Error("need file source when extracting avatar data"); }
+		let engine = await EngineCache.create(source);
+		scene = new ThreejsSceneCache(engine);
+	}
+	for await (let file of fetchPlayerAvatars(skip, max)) {
+		if (parsed) {
+			let data = await avatarToModel(null, scene!, file.buf);
+			await output.writeFile(`playerdata_${file.name}.json`, prettyJson(data.info.avatar));
+		} else {
+			output.writeFile(`playerdata_${file.name}.bin`, file.buf);
+		}
+	}
+}
+
+async function* fetchPlayerAvatars(skip: number, max: number) {
 	let count = 0;
 	const pagesize = 25;
 	let startpage = Math.floor(skip / pagesize);
@@ -30,9 +50,18 @@ export async function scrapePlayerAvatars(output: ScriptOutput, skip: number, ma
 		for (let player of players) {
 			let data = await getPlayerAvatar(player);
 			if (data) {
-				output.writeFile(`playerdata_${lowname(player)}.bin`, data);
 				count++;
+				yield { name: lowname(player), buf: data };
 			}
 		}
+	}
+}
+
+export async function extractAvatars(output: ScriptOutput, source: CacheFileSource, files: AsyncGenerator<{ name: string, buf: Buffer }>) {
+	let engine = await EngineCache.create(source);
+	let scene = new ThreejsSceneCache(engine);
+	for await (let file of files) {
+		let data = await avatarToModel(output, scene, file.buf, file.name);
+		// await output.writeFile(file.name, prettyJson(data.info.avatar));
 	}
 }

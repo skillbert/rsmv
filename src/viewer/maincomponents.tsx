@@ -419,7 +419,7 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 	let el: React.ReactNode = null;
 	let filedata = p.file.data;
 	if (typeof filedata == "string") {
-		if (p.file.type == "filedecodeerror") {
+		if (p.file.name.endsWith(".hexerr.json")) {
 			el = <FileDecodeErrorViewer file={filedata} />;
 		} else {
 			el = <SimpleTextViewer file={filedata} />;
@@ -430,7 +430,7 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 
 	return (
 		<div style={{ overflow: "auto" }}>
-			<div>{p.file.name} - {p.file.type ?? "no type"} <span onClick={e => p.onSelectFile(null)}>x</span></div>
+			<div>{p.file.name} <span onClick={e => p.onSelectFile(null)}>x</span></div>
 			{el}
 		</div>
 	);

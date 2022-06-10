@@ -13,7 +13,7 @@ export interface ScriptOutput {
 	log(...args: any[]): void;
 	setUI(ui: HTMLElement | null): void;
 	mkDir(name: string): Promise<any>;
-	writeFile(name: string, data: Buffer | string, type?: string): Promise<void>;
+	writeFile(name: string, data: Buffer | string): Promise<void>;
 	setState(state: ScriptState): void;
 	run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null>;
 }
@@ -24,6 +24,7 @@ export class CLIScriptOutput implements ScriptOutput {
 
 	constructor(dir: string) {
 		this.dir = dir;
+		fs.mkdirSync(dir, { recursive: true });
 	}
 
 	log(...args: any[]) {
@@ -35,7 +36,7 @@ export class CLIScriptOutput implements ScriptOutput {
 	mkDir(name: string) {
 		return fs.promises.mkdir(path.resolve(this.dir, name), { recursive: true });
 	}
-	writeFile(name: string, data: Buffer | string, type?: string) {
+	writeFile(name: string, data: Buffer | string) {
 		return fs.promises.writeFile(path.resolve(this.dir, name), data);
 	}
 
@@ -61,7 +62,7 @@ export class CLIScriptOutput implements ScriptOutput {
 	}
 }
 
-export type UIScriptFile = { name: string, data: Buffer | string, type: string };
+export type UIScriptFile = { name: string, data: Buffer | string };
 export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undefined, statechange: undefined }> implements ScriptOutput {
 	state: ScriptState = "running";
 	logs: string[] = [];
@@ -80,8 +81,8 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		this.outdirhandles.set(name, null);
 		this.emit("writefile", undefined);
 	}
-	async writeFile(name: string, data: Buffer | string, type?: string) {
-		this.files.push({ name, data, type: type ?? "" });
+	async writeFile(name: string, data: Buffer | string) {
+		this.files.push({ name, data });
 		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
 	}

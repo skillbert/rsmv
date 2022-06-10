@@ -2,6 +2,7 @@ import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { DecodeMode, cacheFileDecodeModes } from "./extractfiles";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
+import { FileParser } from "opdecoder";
 
 
 export type DecodeErrorJson = {
@@ -13,13 +14,15 @@ export type DecodeErrorJson = {
 
 export type DecodeEntry = { major: number, minor: number, subfile: number, file: Buffer, name?: string };
 
+type Outputmode = "json" | "hextext" | "original" | "none";
+
 export function defaultTestDecodeOpts() {
 	return {
 		skipMinorAfterError: false,
 		skipFilesizeAfterError: false,
 		memlimit: 200e6,
 		orderBySize: false,
-		outmode: "json" as "json" | "hextext" | "original" | "none"
+		outmode: "json" as Outputmode
 	};
 }
 
@@ -84,93 +87,28 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 		if (Date.now() - lastProgress > 10000) {
 			output.log("progress, file ", file.major, file.minor, file.subfile);
 			lastProgress = Date.now();
-		}
 
-		getDebug(true);
-		let state: DecodeState = {
-			buffer: file.file,
-			stack: [],
-			hiddenstack: [],
-			scan: 0,
-			startoffset: 0,
-			endoffset: file.file.byteLength,
-			args: {}
-		};
-		try {
-			decoder.readInternal(state);
-			nsuccess++;
-			return true;
-		} catch (e) {
-			errminors.push(file.minor);
-			errfilesizes.push(file.file.byteLength);
-			let debugdata = getDebug(false)!;
-			output.log("decode", file.minor, file.subfile, (e as Error).message);
+			let res = testDecodeFile(decoder, opts.outmode, file.file, {});
 
 			if (output.state == "running") {
-				let outname = (file.name ? `err-${file.name}` : `err-${file.major}_${file.minor}_${file.subfile}.bin`);
-				if (opts.outmode == "original") {
-					output.writeFile(outname, file.file, "bin");
-				}
-				if (opts.outmode == "json" || opts.outmode == "hextext") {
-					let err: DecodeErrorJson = {
-						chunks: [],
-						remainder: "",
-						state: null,
-						error: (e as Error).message
-					};
-					let index = 0;
-					let outindex = 0;
-					for (let i = 0; i < debugdata.opcodes.length; i++) {
-						let op = debugdata.opcodes[i];
-						let endindex = (i + 1 < debugdata.opcodes.length ? debugdata.opcodes[i + 1].index : state.scan);
-						let bytes = file.file.slice(index, endindex).toString("hex");
-						outindex += endindex - index;
-						let opstr = " ".repeat(op.stacksize - 1) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
-						err.chunks.push({ offset: index, bytes, text: opstr });
-						index = endindex;
-					}
-					err.remainder = file.file.slice(index).toString("hex");
-					// err.state = state.stack[state.stack.length - 1] ?? null;
-					err.state = debugdata.structstack[debugdata.structstack.length - 1] ?? null;
-
+				if (res.success) {
+					nsuccess++;
+				} else {
+					errminors.push(file.minor);
+					errfilesizes.push(file.file.byteLength);
+					maxerrs--;
+					let filename = (file.name ? `err-${file.name}` : `err-${file.major}_${file.minor}_${file.subfile}`);
 					if (opts.outmode == "json") {
-						output.writeFile(outname, JSON.stringify(err), "filedecodeerror");
+						output.writeFile(filename + ".hexerr.json", res.errorfile);
 					}
-					if (opts.outmode == "hextext") {
-						let chunks: Buffer[] = [];
-						let outindex = 0;
-						for (let chunk of err.chunks) {
-							chunks.push(Buffer.from(chunk.bytes, "hex"));
-							outindex += chunk.bytes.length;
-							let opstr = chunk.text.slice(0, 6).padStart(6, "\0");
-							let minfill = opstr.length + 1;
-							let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + minfill) / 16) * 16 - outindex);
-							if (fillsize > 0) {
-								chunks.push(Buffer.alloc(1, 0xDD));
-								chunks.push(Buffer.alloc(fillsize - 1 - opstr.length, 0xff));
-								chunks.push(Buffer.from(opstr, "ascii"));
-							}
-							outindex += fillsize;
-						}
-						let remainder = Buffer.from(err.remainder, "hex");
-						chunks.push(remainder);
-						outindex += remainder.byteLength
-						chunks.push(Buffer.alloc(2, 0xcc));
-						outindex += 2;
-						let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + 33) / 16) * 16 - outindex);
-						chunks.push(Buffer.alloc(fillsize, 0xff));
-						chunks.push(Buffer.from(err.error, "ascii"));
-						chunks.push(Buffer.alloc(5));
-						chunks.push(Buffer.from(err.state, "ascii"));
-
-						output.writeFile(outname, Buffer.concat(chunks), "bin");
+					if (opts.outmode == "original" || opts.outmode == "hextext") {
+						output.writeFile(filename + ".bin", res.errorfile);
 					}
 				}
 			}
-
-			maxerrs--;
 			return maxerrs > 0;
 		}
+
 	}
 
 	for await (let file of fileiter()) {
@@ -183,4 +121,85 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 	}
 
 	output.log("completed files:", nsuccess);
+}
+
+
+export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, buffer: Buffer, args?: Record<string, any>) {
+	getDebug(true);
+	let state: DecodeState = {
+		buffer: buffer,
+		stack: [],
+		hiddenstack: [],
+		scan: 0,
+		startoffset: 0,
+		endoffset: buffer.byteLength,
+		args: args ?? {}
+	};
+	try {
+		let res = decoder.readInternal(state);
+		getDebug(false);
+		return { success: true as true, result: res };
+	} catch (e) {
+		let debugdata = getDebug(false)!;
+
+		let errorfile: string | Buffer = "";
+
+		if (outmode == "original") {
+			errorfile = buffer;
+		}
+		if (outmode == "json" || outmode == "hextext") {
+			let err: DecodeErrorJson = {
+				chunks: [],
+				remainder: "",
+				state: null,
+				error: (e as Error).message
+			};
+			let index = 0;
+			for (let i = 0; i < debugdata.opcodes.length; i++) {
+				let op = debugdata.opcodes[i];
+				let endindex = (i + 1 < debugdata.opcodes.length ? debugdata.opcodes[i + 1].index : state.scan);
+				let bytes = buffer.slice(index, endindex).toString("hex");
+				let opstr = " ".repeat(op.stacksize - 1) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
+				err.chunks.push({ offset: index, bytes, text: opstr });
+				index = endindex;
+			}
+			err.remainder = buffer.slice(index).toString("hex");
+			// err.state = state.stack[state.stack.length - 1] ?? null;
+			err.state = debugdata.structstack[debugdata.structstack.length - 1] ?? null;
+
+			if (outmode == "json") {
+				errorfile = JSON.stringify(err);
+			}
+			if (outmode == "hextext") {
+				let chunks: Buffer[] = [];
+				let outindex = 0;
+				for (let chunk of err.chunks) {
+					chunks.push(Buffer.from(chunk.bytes, "hex"));
+					outindex += chunk.bytes.length;
+					let opstr = chunk.text.slice(0, 6).padStart(6, "\0");
+					let minfill = opstr.length + 1;
+					let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + minfill) / 16) * 16 - outindex);
+					if (fillsize > 0) {
+						chunks.push(Buffer.alloc(1, 0xDD));
+						chunks.push(Buffer.alloc(fillsize - 1 - opstr.length, 0xff));
+						chunks.push(Buffer.from(opstr, "ascii"));
+					}
+					outindex += fillsize;
+				}
+				let remainder = Buffer.from(err.remainder, "hex");
+				chunks.push(remainder);
+				outindex += remainder.byteLength
+				chunks.push(Buffer.alloc(2, 0xcc));
+				outindex += 2;
+				let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + 33) / 16) * 16 - outindex);
+				chunks.push(Buffer.alloc(fillsize, 0xff));
+				chunks.push(Buffer.from(err.error, "ascii"));
+				chunks.push(Buffer.alloc(5));
+				chunks.push(Buffer.from(err.state, "ascii"));
+
+				errorfile = Buffer.concat(chunks);
+			}
+		}
+		return { success: false as false, error: (e as Error), errorfile };
+	}
 }

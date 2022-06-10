@@ -56,8 +56,6 @@ export type ComposedChunk = string
 
 type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
 
-type ChunkParserParent = ChunkParser | null;
-
 const BufferTypes = {
 	hex: { constr: Uint8Array },//used to debug into json file
 	byte: { constr: Int8Array },
@@ -160,21 +158,21 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						if (chunkdef.length < 3) throw new Error(`3 arguments exptected for proprety with type opt`);
 						let cond: string;
 						let arg1 = chunkdef[1];
-						let valuearg: ChunkParser;
+						let condvalue: number;
 						let cmpmode: CompareMode = "eq";
 						if (Array.isArray(arg1)) {
 							cond = arg1[0];
 							cmpmode = arg1[2] ?? "eq";
 							if (typeof arg1[1] == "number") {
-								valuearg = literalValueParser({ primitive: "value", value: arg1[1] });
+								condvalue = arg1[1];
 							} else {
-								valuearg = buildParser(arg1[1], typedef);
+								throw new Error("only literal ints as condition value are supported");
 							}
 						} else {
 							cond = "$opcode";
-							valuearg = literalValueParser({ primitive: "value", value: chunkdef[1] });
+							condvalue = arg1;
 						}
-						return optParser(buildParser(chunkdef[2], typedef), cond, valuearg, cmpmode);
+						return optParser(buildParser(chunkdef[2], typedef), cond, condvalue, cmpmode);
 					}
 					case "chunkedarray": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
@@ -334,7 +332,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 			let r = "{\n";
 			let newindent = indent + "\t";
 			for (let val of map.values()) {
-				r += newindent + (val.key as string) + "?: " + val.parser.getTypescriptType(newindent) + "\n";
+				r += newindent + (val.key as string) + "?: " + val.parser.getTypescriptType(newindent) + " | null\n";
 			}
 			r += indent + "}";
 			return r;
@@ -345,7 +343,7 @@ function opcodesParser<T extends Record<string, any>>(opcodetype: ChunkParser<nu
 				properties: Object.fromEntries([...map.values()]
 					.filter(prop => !(prop.key as string).startsWith("$"))
 					.map((prop) => {
-						return [prop.key, prop.parser.getJsonSchema()];
+						return [prop.key, { oneOf: [prop.parser.getJsonSchema(), { type: "null" }] }];
 					})
 				)
 			}
@@ -366,10 +364,10 @@ function tuppleParser(props: ChunkParser[]) {
 			}
 			return r;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			for (let [i, prop] of props.entries()) {
-				prop.write(buffer, value[i]);
+				prop.write(state, value[i]);
 			}
 		},
 		setReferenceParent(parent) {
@@ -410,10 +408,6 @@ function tuppleParser(props: ChunkParser[]) {
 function buildReference(name: string, container: ChunkParserContainer | null, startingpoint: ResolvedReference) {
 	if (!container) { throw new Error("reference " + name + " could not be resolved"); }
 	return container.resolveReference(name, startingpoint);
-}
-
-function externalArgParser() {
-
 }
 
 function refgetter(owner: ChunkParser, refparent: ChunkParserContainer | null, propname: string, resolve: (v: unknown, old: number) => number) {
@@ -457,7 +451,7 @@ function structParser<T extends Record<string, any>>(props: { [key in keyof T]: 
 			state.hiddenstack.pop();
 			return r;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (typeof value != "object" || !value) { throw new Error("object expected"); }
 			for (let key of keys) {
 				let propvalue = value[key as string];
@@ -465,11 +459,11 @@ function structParser<T extends Record<string, any>>(props: { [key in keyof T]: 
 				if (refarray) {
 					propvalue = propvalue ?? 0;
 					for (let ref of refarray) {
-						//TODO
+						propvalue = ref.resolve(value, propvalue);
 					}
 				}
 				let prop = props[key];
-				prop.write(buffer, propvalue);
+				prop.write(state, propvalue);
 			}
 		},
 		setReferenceParent(parent) {
@@ -520,21 +514,20 @@ function structParser<T extends Record<string, any>>(props: { [key in keyof T]: 
 	return r;
 }
 
-function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: ChunkParser, compare: CompareMode): ChunkParser<T | null> {
+function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: number, compare: CompareMode): ChunkParser<T | null> {
 	let refparent: ChunkParserContainer | null = null;
 	let ref: ReturnType<typeof refgetter>;
 	let r: ChunkParserContainer<T | null> = {
 		read(state) {
 			let value = ref.read(state);
-			let cmpvalue = condvalue.read(state);
-			if (!checkCondition(compare, cmpvalue, value)) {
+			if (!checkCondition(compare, condvalue, value)) {
 				return null;
 			}
 			return type.read(state);
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (value != null) {
-				return type.write(buffer, value);
+				return type.write(state, value);
 			}
 		},
 		setReferenceParent(parent) {
@@ -542,9 +535,7 @@ function optParser<T>(type: ChunkParser<T>, condvar: string, condvalue: ChunkPar
 			type.setReferenceParent?.(r);
 
 			ref = refgetter(r, parent, condvar, (v: unknown, oldvalue: number) => {
-				// return forceCondition(compare,, oldvalue, v != null);
-				//need a ref to condvalue here and resolve that
-				throw new Error("not implemented");
+				return forceCondition(compare, condvalue, oldvalue, v != null);
 			});
 		},
 		resolveReference(name, child) {
@@ -634,7 +625,7 @@ function chunkedArrayParser<T extends object>(lengthtype: ChunkParser<number>, c
 						obj = r[i];
 						hidden = hiddenprops[i];
 					}
-					//TODO check if we can save speed by manually overwriting state[length-1] instead of pop->push
+					//TODO check if we can save speed by manually overwriting stack[length-1] instead of pop->push
 					state.stack.push(obj);
 					state.hiddenstack.push(hidden);
 					for (let key in proptype) {
@@ -774,11 +765,11 @@ function arrayParser<T>(lengthtype: ChunkParser<number>, subtype: ChunkParser<T>
 			}
 			return r;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
-			lengthtype.write(buffer, value.length);
+			lengthtype.write(state, value.length);
 			for (let i = 0; i < value.length; i++) {
-				subtype.write(buffer, value[i]);
+				subtype.write(state, value[i]);
 			}
 		},
 		setReferenceParent(parent) {
@@ -832,14 +823,14 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			state.stack.pop();
 			return r;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			//TODO probably very wrong
 			for (let prop of value) {
-				lengthtype.write(buffer, 1);
-				proptype.write(buffer, prop);
+				lengthtype.write(state, 1);
+				proptype.write(state, prop);
 			}
-			lengthtype.write(buffer, 0);
+			lengthtype.write(state, 0);
 		},
 		setReferenceParent(parent) {
 			refparent = parent;
@@ -957,7 +948,7 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 			}
 			return output;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			if (typeof value != "number" || value % 1 != 0) throw new Error(`integer expected`);
 			let unsigned = primitive.unsigned;
 			let bytes = primitive.bytes;
@@ -979,13 +970,13 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 				let mask = ~(~0 << (bytes * 8 - 1));
 				let int = (value & mask) | ((fitshalf ? 0 : 1) << (bytes * 8 - 1));
 				//write 32bit ints as unsigned since js bitwise operations cast to int32
-				buffer[`write${unsigned && bytes != 4 ? "U" : ""}IntBE`](int, buffer.scan, bytes);
-				buffer.scan += bytes;
+				state.buffer[`write${unsigned && bytes != 4 ? "U" : ""}IntBE`](int, state.scan, bytes);
+				state.scan += bytes;
 			} else if (readmode == "sumtail") {
 				throw new Error("not implemented");
 			} else {
-				output = buffer[`write${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](value, buffer.scan, bytes);
-				buffer.scan += bytes;
+				output = state.buffer[`write${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](value, state.scan, bytes);
+				state.scan += bytes;
 			}
 		},
 		getTypescriptType() {
@@ -1032,7 +1023,7 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 			}
 			return value + offset;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			//noop, the referenced value does the writing and will get its value from this prop through refgetter
 		},
 		setReferenceParent(parent) {
@@ -1059,7 +1050,7 @@ function bytesRemainingParser(): ChunkParser<number> {
 		read(state) {
 			return state.endoffset - state.scan;
 		},
-		write(buffer, value) {
+		write(state, value) {
 			//nop, value exists only in context of output
 		},
 		getTypescriptType() {
@@ -1100,7 +1091,7 @@ function intAccumlatorParser(refname: string, value: ChunkParser<number | undefi
 		resolveReference(name, child) {
 			return buildReference(name, refparent, { owner: r, stackdepth: child.stackdepth, resolve: child.resolve });
 		},
-		write(buffer, value) {
+		write(state, value) {
 			//need to make the struct writer grab its value from here for invisible props
 			throw new Error("write for accumolator not implemented");
 		},
@@ -1186,7 +1177,16 @@ let hardcodes: Record<string, (args: unknown[]) => ChunkParser> = {
 				if (byte1 == 0xff && byte0 == 0xff) { return -1; }
 				return (byte0 << 8) | byte1;
 			},
-			write(state, value) { throw new Error("not implemented"); },
+			write(state, value) {
+				if (typeof value != "number") { throw new Error("number expected"); }
+				if (value == 0) {
+					state.buffer.writeUInt8(0, state.scan++);
+				} else {
+					//replicate explicit 16bit overflow bug since that's what the game does
+					state.buffer.writeUint16BE((value == -1 ? 0xffff : value & 0xffff), state.scan);
+					state.scan += 2;
+				}
+			},
 			getTypescriptType() { return "number"; },
 			getJsonSchema() { return { type: "integer", minimum: -1, maximum: 0xffff - 0x4000 - 1 }; }
 		}
@@ -1195,17 +1195,20 @@ let hardcodes: Record<string, (args: unknown[]) => ChunkParser> = {
 		let type = args[0];
 		if (typeof type != "string" || !["ref", "matcount", "colorcount", "modelcount"].includes(type)) { throw new Error(); }
 
+		//yes this is hacky af...
 		return {
 			read(state) {
 				if (type == "ref") { state.args.activeitem = (state.args.activeitem ?? -1) + 1; }
-				let ref = state.args.items[state.args.activeitem];
+				let ref = state.args.slots[state.args.activeitem];
 				if (type == "ref") { return ref; }
-				else if (type == "matcount") { return ref.materials.length; }
-				else if (type == "modelcount") { return ref.models.length; }
-				else if (type == "colorcount") { return ref.colors.length; }
+				else if (type == "matcount") { return ref?.replaceMaterials?.length ?? 0; }
+				else if (type == "colorcount") { return ref?.replaceColors?.length ?? 0; }
+				else if (type == "modelcount") { return ref?.models.length; }
 				else { throw new Error(); }
 			},
-			write() { throw new Error("not implemented"); },
+			write() {
+				//noop
+			},
 			getTypescriptType() { return (type == "ref" ? "any" : "number"); },
 			getJsonSchema() { return { type: (type == "ref" ? "any" : "integer") } }
 		}

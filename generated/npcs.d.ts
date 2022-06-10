@@ -55,12 +55,7 @@ export type npcs = {
 		unk4: number,
 	} | null
 	movementCapabilities?: number | null
-	translations?: [
-		number,
-		number,
-		number,
-		number,
-	][] | null
+	translations?: Uint8Array[] | null
 	iconHeight?: number | null
 	respawnDirection?: number | null
 	animation_group?: number | null
