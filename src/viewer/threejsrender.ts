@@ -8,7 +8,6 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
 import { AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, PerspectiveCamera } from "three";
 import { VR360Render } from "./vr360camera";
-import sharp from "sharp";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -542,37 +541,107 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	}
 
 	saveImage() {
-		if (this.canvas) {
-			this.canvas.toBlob((blob) => {
-				if (blob === null ) {
-					return;
-				}
-				blob.arrayBuffer().then((ab) => {
-					sharp(Buffer.from(ab)).trim().toBuffer((e,d,i) => {
-						let url = URL.createObjectURL(
-							new Blob([d], { type: 'image/png' })
-						);
-						//URL.revokeObjectURL(url);
+		const glcnv = this.renderer.getContext().canvas;
+		const cnv = document.createElement("canvas");
+		cnv.width = glcnv.width;
+		cnv.height = glcnv.height;
+		const ctx2d = cnv.getContext("2d");
+		ctx2d!.drawImage(glcnv, 0, 0);
+		this.trimCanvas(ctx2d);
 
-						const link = document.createElement('a');
-						link.href = url;
-						link.setAttribute(
-							'download',
-							localStorage.rsmv_lastsearch + '.png',
-						);
+		cnv.toBlob((blob) => {
+			if (blob === null ) {
+				return;
+			}
+			blob.arrayBuffer().then((ab) => {
+				let url = URL.createObjectURL(
+					new Blob([blob], { type: 'image/png' })
+				);
+				//URL.revokeObjectURL(url);
 
-						// Append to html link element page
-						document.body.appendChild(link);
+				const link = document.createElement('a');
+				link.href = url;
+				link.setAttribute(
+					'download',
+					localStorage.rsmv_lastsearch + '.png',
+				);
 
-						// Start download
-						link.click();
+				// Append to html link element page
+				document.body.appendChild(link);
 
-						// Clean up and remove the link
-						link.parentNode!.removeChild(link);
-					});
-				});
+				// Start download
+				link.click();
+
+				// Clean up and remove the link
+				link.parentNode!.removeChild(link);
 			});
+		});
+	}
+
+	// https://stackoverflow.com/a/45873660/14406196
+	trimCanvas(ctx) { // removes transparent edges
+		let x, y, w, h, top, left, right, bottom, data, idx1, idx2, found, imgData;
+		w = ctx.canvas.width;
+		h = ctx.canvas.height;
+		if (!w && !h) { return false } 
+		imgData = ctx.getImageData(0, 0, w, h);
+		data = new Uint32Array(imgData.data.buffer);
+		idx1 = 0;
+		idx2 = w * h - 1;
+		found = false; 
+		// search from top and bottom to find first rows containing a non transparent pixel.
+		for (y = 0; y < h && !found; y += 1) {
+			for (x = 0; x < w; x += 1) {
+				if (data[idx1++] && !top) {  
+					top = y + 1;
+					if (bottom) { // top and bottom found then stop the search
+						found = true; 
+						break; 
+					}
+				}
+				if (data[idx2--] && !bottom) { 
+					bottom = h - y - 1; 
+					if (top) { // top and bottom found then stop the search
+						found = true; 
+						break;
+					}
+				}
+			}
+			if (y > h - y && !top && !bottom) { return false } // image is completely blank so do nothing
 		}
+		top -= 1; // correct top 
+		found = false;
+		// search from left and right to find first column containing a non transparent pixel.
+		for (x = 0; x < w && !found; x += 1) {
+			idx1 = top * w + x;
+			idx2 = top * w + (w - x - 1);
+			for (y = top; y <= bottom; y += 1) {
+				if (data[idx1] && !left) {  
+					left = x + 1;
+					if (right) { // if left and right found then stop the search
+						found = true; 
+						break;
+					}
+				}
+				if (data[idx2] && !right) { 
+					right = w - x - 1; 
+					if (left) { // if left and right found then stop the search
+						found = true; 
+						break;
+					}
+				}
+				idx1 += w;
+				idx2 += w;
+			}
+		}
+		left -= 1; // correct left
+		if(w === right - left + 1 && h === bottom - top + 1) { return true } // no need to crop if no change in size
+		w = right - left + 1;
+		h = bottom - top + 1;
+		ctx.canvas.width = w;
+		ctx.canvas.height = h;
+		ctx.putImageData(imgData, -left, -top);
+		return true;            
 	}
 }
 
