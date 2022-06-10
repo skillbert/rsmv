@@ -252,6 +252,7 @@
 }
 .sidebar-browser-search-bar {
 	display: flex;
+	padding-bottom: 5px;
 }
 .sidebar-browser-search-bar-input {
 	flex-grow: 1;

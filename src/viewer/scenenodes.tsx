@@ -29,15 +29,12 @@ import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
 import { diffCaches } from "../scripts/cachediff";
-import sharp from "sharp";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
 
 
 export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: string, mode: LookupMode, fileName: string, fileDownloadUrl: string }> {
-	doFileDownload: HTMLAnchorElement | null;
-
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -55,25 +52,7 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 
 	@boundMethod
 	saveImage() {
-		if (this.props.ctx.renderer.canvas) {
-			this.props.ctx.renderer.canvas.toBlob((blob) => {
-				if (blob === null ) {
-					return;
-				}
-				blob.arrayBuffer().then((ab) => {
-					sharp(Buffer.from(ab)).trim().toBuffer((e,d,i) => {
-						let url = URL.createObjectURL(new Blob([d], { type: 'image/png' }));
-						this.setState({
-							fileName: localStorage.rsmv_lastsearch + '.png',
-							fileDownloadUrl: url
-						});
-						this.doFileDownload!.click();
-						URL.revokeObjectURL(url);
-						this.setState({ fileName: '', fileDownloadUrl: '' });
-					})
-				});
-			});
-		}
+		this.props.ctx.renderer.saveImage();
 	}
 
 	setMode(mode: LookupMode) {
@@ -102,13 +81,7 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 				{showFunctionButtons &&
 					<div className="sidebar-browser-tab-strip-function">
 						<input type="button" className="function-btn" onClick={this.toggleFloor} value={`Toggle floor`} />
-						<a
-							style={{ display: "none" }}
-							download={this.state.fileName}
-							href={this.state.fileDownloadUrl}
-							ref={e => this.doFileDownload = e}
-						></a>
-						<input type="button" className="function-btn" onClick={this.saveImage} value={`Export`} />
+						<input type="button" className="function-btn" onClick={this.saveImage} value={`Export image`} />
 					</div>
 				}			
 				{ModeComp && <ModeComp initialId={this.state.search} ctx={this.props.ctx} />}

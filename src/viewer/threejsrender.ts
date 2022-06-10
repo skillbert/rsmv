@@ -8,6 +8,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
 import { AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, PerspectiveCamera } from "three";
 import { VR360Render } from "./vr360camera";
+import sharp from "sharp";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -46,7 +47,7 @@ export type ThreeJsSceneElement = {
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private renderer: THREE.WebGLRenderer;
-	canvas: HTMLCanvasElement;
+	private canvas: HTMLCanvasElement;
 	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
 	private scene: THREE.Scene;
 	private camera: THREE.PerspectiveCamera;
@@ -538,6 +539,40 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			this.floormesh.visible = val;
 		}
 		this.forceFrame();
+	}
+
+	saveImage() {
+		if (this.canvas) {
+			this.canvas.toBlob((blob) => {
+				if (blob === null ) {
+					return;
+				}
+				blob.arrayBuffer().then((ab) => {
+					sharp(Buffer.from(ab)).trim().toBuffer((e,d,i) => {
+						let url = URL.createObjectURL(
+							new Blob([d], { type: 'image/png' })
+						);
+						//URL.revokeObjectURL(url);
+
+						const link = document.createElement('a');
+						link.href = url;
+						link.setAttribute(
+							'download',
+							localStorage.rsmv_lastsearch + '.png',
+						);
+
+						// Append to html link element page
+						document.body.appendChild(link);
+
+						// Start download
+						link.click();
+
+						// Clean up and remove the link
+						link.parentNode!.removeChild(link);
+					});
+				});
+			});
+		}
 	}
 }
 
