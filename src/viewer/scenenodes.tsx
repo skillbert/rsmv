@@ -34,14 +34,12 @@ type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "av
 
 
 
-export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: string, mode: LookupMode, fileName: string, fileDownloadUrl: string }> {
+export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: string, mode: LookupMode }> {
 	constructor(p) {
 		super(p);
 		this.state = {
 			mode: localStorage.rsmv_lastmode ?? "model",
 			search: localStorage.rsmv_lastsearch ?? "0",
-			fileName: '',
-			fileDownloadUrl: '',
 		};
 	}
 
