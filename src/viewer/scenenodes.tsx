@@ -1058,7 +1058,7 @@ type SimpleModelInfo<T = object> = {
 	info: T
 }
 
-function ImageData(p: { img: ImageData }) {
+function ImageDataView(p: { img: ImageData }) {
 	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
 		if (cnv) {
 			cnv.width = p.img.width;
@@ -1116,11 +1116,12 @@ function SceneMaterial(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "materials", setId)} />
 			<div style={{ overflowY: "auto" }}>
 				{data && Object.entries(data.info.texs).map(([name, img]) => (
 					<div key={name}>
 						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
-						<ImageData img={img.img0} />
+						<ImageDataView img={img.img0} />
 					</div>
 				))}
 				<JsonDisplay obj={data?.info.obj} />
@@ -1148,6 +1149,7 @@ function SceneLocation(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "objects", setId)} />
 			<ExportModelButton model={model?.loaded} />
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<JsonDisplay obj={data?.info} />
@@ -1160,6 +1162,7 @@ function SceneItem(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "items", setId)} />
 			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
@@ -1172,6 +1175,7 @@ function SceneNpc(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
+			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "npcs", setId)} />
 			<ExportModelButton model={model?.loaded} />
 			{model && data && (
 				<LabeledInput label="Animation">

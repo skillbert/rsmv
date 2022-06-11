@@ -23,7 +23,7 @@ function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, onCl
 	)
 }
 
-export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileDecodeModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = [{ path: [], search: "" }]) {
+export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileDecodeModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = []) {
 	let rootel = document.createElement("div");
 	rootel.classList.add("mv-style");
 	document.body.appendChild(rootel);
@@ -76,9 +76,13 @@ export function JsonSearchPreview(p: { mode: keyof typeof cacheFileDecodeModes, 
 type JsonSearchFilter = { path: string[], search: string };
 
 export function JsonSearch(p: { mode: keyof typeof cacheFileDecodeModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
-	const [filters, setFilters] = React.useState<JsonSearchFilter[]>(p.initialFilters);
-	const [files, setFiles] = React.useState<any[]>([]);
 	const { schema, files: filesprom } = p.cache.getJsonData(p.mode);
+	let initfilters = p.initialFilters
+	if (p.initialFilters.length == 0 && typeof schema == "object") {
+		if (schema.properties?.name) { initfilters = [{ path: ["name"], search: "" }] }
+	}
+	const [filters, setFilters] = React.useState<JsonSearchFilter[]>(initfilters);
+	const [files, setFiles] = React.useState<any[]>([]);
 
 	const editFilters = (index: number, cb?: (f: JsonSearchFilter) => void) => {
 		let newfilters = filters.map(q => ({ path: q.path.slice(), search: q.search }));
@@ -185,7 +189,7 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileDecodeModes, cache: 
 				<input type="button" className="sub-btn" value="extra filter" onClick={e => editFilters(actualfilters.length, () => { })} />
 				<div>{filtered.length} Matches</div>
 				{filtered.slice(0, 100).map((q, i) => (
-					<div key={q.$fileid} onClick={e => p.onSelect(q.$fileid, q)}>{q.$fileid} - {getprop(q, displayprop, 0).next().value + ""}</div>
+					<div key={q.$fileid} onClick={e => p.onSelect(q.$fileid, q)}>{q.$fileid} - {filters.map(f => getprop(q, f.path, 0).next().value + "").join(", ")}</div>
 				))}
 			</div>
 		</React.Fragment>
