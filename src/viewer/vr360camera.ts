@@ -57,7 +57,7 @@ export class VR360Render {
 
 	render(renderer: WebGLRenderer) {
 		this.quad.material.uniforms.map.value = this.cubeCamera.renderTarget.texture;
-		renderer.setSize(this.size * 2, this.size);
+		// renderer.setSize(this.size * 2, this.size);
 		renderer.render(this.quad, this.projectCamera);
 	}
 }

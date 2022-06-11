@@ -1033,8 +1033,44 @@ function hex2hsl(hex: string) {
 	let n = parseInt(hex.replace(/^#/, ""), 16);
 	return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
 }
-globalThis.hsl2hex = hsl2hex;
-globalThis.hex2hsl = hex2hsl;
+
+export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
+	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
+	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
+
+	let [hideFog, sethidefog] = React.useState(false);
+	let [hideFloor, sethidefloor] = React.useState(false);
+	let [camMode, setcammode] = React.useState<"standard" | "vr360">("standard");
+	let [camControls, setcamcontrols] = React.useState<"free" | "world">("free");
+
+	const render = p.ctx?.renderer;
+
+	let newopts: ThreeJsSceneElement["options"] = { hideFog, hideFloor, camMode, camControls };
+	let oldopts = elconfig.current.options;
+	elconfig.current.options = newopts;
+	
+	//I wont tell anyone if you dont tell anyone
+	//TODO actually fix this tho
+	if (JSON.stringify(oldopts) != JSON.stringify(newopts)) {
+		render?.sceneElementsChanged();
+	}
+
+	React.useEffect(() => {
+		if (render) {
+			render.addSceneElement(sceneEl.current);
+			return () => { render.removeSceneElement(sceneEl.current); }
+		}
+	}, [render])
+
+	return (p.visible || null) && (
+		<React.Fragment>
+			<label><input type="checkbox" checked={hideFog} onChange={e => sethidefog(e.currentTarget.checked)} />Hide fog</label>
+			<label><input type="checkbox" checked={hideFloor} onChange={e => sethidefloor(e.currentTarget.checked)} />Hide floor</label>
+			<label><input type="checkbox" checked={camControls == "world"} onChange={e => setcamcontrols(e.currentTarget.checked ? "world" : "free")} />World space controls</label>
+			<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
+		</React.Fragment>
+	)
+}
 
 function ExportModelButton(p: { model: RSModel["loaded"] | null | undefined }) {
 	let exportmodel = () => {

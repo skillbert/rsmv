@@ -5,7 +5,7 @@ import * as ReactDOM from "react-dom";
 import { boundMethod } from "autobind-decorator";
 import * as datastore from "idb-keyval";
 import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
-import { ModelBrowser, StringInput } from "./scenenodes";
+import { ModelBrowser, RendererControls } from "./scenenodes";
 
 import { UIScriptFile } from "./scriptsui";
 import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache } from "./maincomponents";
@@ -102,6 +102,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 				<div id="sidebar">
 					{!this.props.ctx.source && (<CacheSelector onOpen={this.openCache} />)}
 					{this.props.ctx.source && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.props.ctx.source.getCacheName()}`} />}
+					<RendererControls visible={!!this.props.ctx.source} ctx={this.props.ctx} />
 					{this.props.ctx.source && <ModelBrowser ctx={this.props.ctx} />}
 				</div>
 			</div >

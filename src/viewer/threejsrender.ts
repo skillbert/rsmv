@@ -40,9 +40,15 @@ export type ThreeJsSceneElement = {
 	animationMixer?: AnimationMixer,
 	options?: {
 		opaqueBackground?: boolean,
-		hideFloor?: boolean
+		hideFloor?: boolean,
+		hideFog?: boolean,
+		camMode?: CameraMode
+		camControls?: CameraControlMode
 	}
 }
+
+type CameraControlMode = "free" | "world";
+type CameraMode = "standard" | "vr360";
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private renderer: THREE.WebGLRenderer;
@@ -50,7 +56,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
 	private scene: THREE.Scene;
 	private camera: THREE.PerspectiveCamera;
-	private controls: InstanceType<typeof OrbitControls>;
+	private controls: OrbitControls;
 	private modelnode: THREE.Group;
 	private floormesh: THREE.Mesh;
 	private queuedFrameId = 0;
@@ -62,6 +68,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private sceneElements = new Set<ThreeJsSceneElementSource>();
 	private animationMixers = new Set<AnimationMixer>();
 	private vr360cam: VR360Render | null = null;
+	private camMode: CameraMode = "standard";
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -153,6 +160,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let sky: ThreeJsSceneElement["sky"] = null;
 		let animated = false;
 		let opaqueBackground = false;
+		let cammode: CameraMode = "standard";
+		let controls: CameraControlMode = "free";
+		let hideFog = false;
 		let showfloor = true;
 		let nodeDeleteList = new Set(this.modelnode.children);
 		this.animationMixers.clear();
@@ -163,8 +173,11 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				animated = true;
 				this.animationMixers.add(el.animationMixer);
 			}
+			if (el.options?.hideFog) { hideFog = true; }
 			if (el.options?.opaqueBackground) { opaqueBackground = true; }
 			if (el.options?.hideFloor) { showfloor = false; }
+			if (el.options?.camMode) { cammode = el.options.camMode; }
+			if (el.options?.camControls) { controls = el.options.camControls; }
 			if (el.modelnode) {
 				nodeDeleteList.delete(el.modelnode);
 				if (el.modelnode.parent != this.modelnode) {
@@ -178,13 +191,15 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
 		this.automaticFrames = animated;
 		this.floormesh.visible = showfloor;
+		this.camMode = cammode;
+		this.controls.screenSpacePanning = controls == "free";
 
 		//fog/skybox
 		let fogcolobj = (sky?.fogColor ? new THREE.Color(sky.fogColor[0] / 255, sky.fogColor[1] / 255, sky.fogColor[2] / 255) : null);
-		this.scene.fog = (fogcolobj ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
+		this.scene.fog = (fogcolobj && !hideFog ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
 		if (sky?.skybox) {
 			let scene = this.skybox?.scene ?? new THREE.Scene();
-			let camera = this.skybox?.camera ?? this.camera.clone();
+			let camera = this.skybox?.camera ?? this.camera.clone(false);
 			let obj = new THREE.Object3D();
 			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
 			obj.add(sky.skybox);
@@ -250,72 +265,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 	}
 
-	// renderSVG() {
-	// 	let renderer = new SVGRenderer();
-	// 	this.scene.traverse(q => {
-	// 		if (q instanceof THREE.Mesh) {
-	// 			let geo = q.geometry as THREE.BufferGeometry;
-	// 			let mat = q.material as THREE.MeshBasicMaterial;
-	// 			//svgrender doesn't deal with mirrored faces properly (det(proj)<0)
-	// 			mat.side = THREE.DoubleSide;
-	// 			for (let attr in geo.attributes) {
-	// 				//de-interleave attributes since it doesn't understand
-	// 				if (geo.attributes[attr] instanceof THREE.InterleavedBufferAttribute) {
-	// 					geo.attributes[attr] = geo.attributes[attr].clone();
-	// 				}
-	// 				//it also doesn't understand normalized attrs (color)
-	// 				if (geo.attributes[attr].normalized) {
-	// 					let buf = geo.attributes[attr].array;
-	// 					if (geo.attributes[attr].count * geo.attributes[attr].itemSize != buf.length) {
-	// 						throw new Error("simple copy not possible");
-	// 					}
-	// 					let newbuf = new Float32Array(buf.length);
-	// 					let factor = 1;
-	// 					if (buf instanceof Uint8Array) {
-	// 						factor = 1 / ((1 << 8) - 1);
-	// 					} else if (buf instanceof Uint16Array) {
-	// 						factor = 1 / ((1 << 16) - 1);
-	// 					} else if (buf instanceof Int16Array) {
-	// 						factor = 1 / ((1 << 15) - 1);
-	// 					} else {
-	// 						throw new Error("buffer type not supported");
-	// 					}
-	// 					for (let i = 0; i < buf.length; i++) {
-	// 						newbuf[i] = buf[i] * factor;
-	// 					}
-
-	// 					geo.attributes[attr] = new THREE.BufferAttribute(newbuf, geo.attributes[attr].itemSize);
-	// 				}
-	// 			}
-	// 			//vertex alpha also messes it up...
-	// 			if (geo.getAttribute("color")?.itemSize == 4) {
-	// 				let oldvalue = geo.getAttribute("color").array;
-	// 				let arr = new Float32Array(oldvalue.length / 4 * 3);
-	// 				for (let i = 0; i < oldvalue.length / 4; i++) {
-	// 					arr[i * 3 + 0] = oldvalue[i * 4 + 0];
-	// 					arr[i * 3 + 1] = oldvalue[i * 4 + 1];
-	// 					arr[i * 3 + 2] = oldvalue[i * 4 + 2];
-	// 				}
-	// 				geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
-	// 			}
-	// 			//non indexed geometries are bugged...
-	// 			if (!geo.index) {
-	// 				let index = new Uint32Array(geo.getAttribute("position").count);
-	// 				for (let i = 0; i < index.length; i++) {
-	// 					index[i] = i;
-	// 				}
-	// 				geo.index = new THREE.BufferAttribute(index, 1);
-	// 			}
-	// 			mat.needsUpdate = true;
-	// 		}
-	// 	})
-	// 	renderer.setSize(this.canvas.width, this.canvas.height);
-	// 	renderer.setPrecision(3);
-	// 	renderer.setClearColor(new THREE.Color(0, 0, 0), 255);
-	// 	renderer.render(this.scene, this.camera);
-	// 	return renderer.domElement;
-	// }
-
 	@boundMethod
 	render(cam: THREE.Camera = this.camera) {
 		cancelAnimationFrame(this.queuedFrameId);
@@ -333,7 +282,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.renderer.clearColor();
 		this.renderer.clearDepth();
-		if (!globalThis.vr360) {
+		if (this.camMode != "vr360") {
 			if (cam == this.camera && this.skybox) {
 				this.skybox.camera.matrixAutoUpdate = false;
 				this.camera.updateWorldMatrix(true, true);
@@ -380,7 +329,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 	}
 
-	async takePicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
+	async takeMapPicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
 		let framesize = ntiles * pxpertile;
 		let scale = 2 / ntiles;
 		let cam = new THREE.Camera();
@@ -411,47 +360,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		// if (!img) { throw new Error("capture failed"); }
 		// return new Uint8Array(await img.arrayBuffer());
 	}
-
-	// async parseGltfFile(modelfile: Uint8Array) {
-
-	// 	//Threejs expects a raw memory slice (ArrayBuffer), however most nodejs api's use a view into
-	// 	//such slice (TypedArray). some node modules go as far as reusing these and combining the raw buffers
-	// 	//and returning only a correct view into a large slice if this is the case we have to copy it to a new
-	// 	//slice to guarantee no other junk is in the same slice
-	// 	let modelbuffer: ArrayBuffer;
-	// 	if (modelfile.byteOffset != 0 || modelfile.byteLength != modelfile.buffer.byteLength) {
-	// 		modelbuffer = Uint8Array.prototype.slice.call(modelfile).buffer;
-	// 	} else {
-	// 		modelbuffer = modelfile.buffer;
-	// 	}
-
-	// 	const loader = new GLTFLoader();
-
-	// 	let model = await new Promise<GLTF>((d, e) => loader.parse(modelbuffer, "", d, e));
-
-	// 	//use faster materials
-	// 	let rootnode = model.scene;
-	// 	rootnode.traverse(node => {
-	// 		node.matrixAutoUpdate = false;
-	// 		node.updateMatrix();
-	// 		if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
-	// 			let floortex = node.userData.gltfExtensions?.RA_FLOORTEX;
-	// 			let mat = new THREE.MeshPhongMaterial();
-	// 			if (floortex) {
-	// 				augmentThreeJsFloorMaterial(mat);
-	// 			}
-	// 			mat.map = node.material.map;
-	// 			mat.vertexColors = node.material.vertexColors;
-	// 			mat.transparent = node.material.transparent;
-	// 			mat.alphaTest = 0.1;
-	// 			mat.shininess = 0;
-	// 			mat.userData = node.material.userData;
-	// 			// mat.flatShading = true;//TODO remove
-	// 			node.material = mat;
-	// 		}
-	// 	});
-	// 	return { rootnode };
-	// }
 
 	setCameraLimits() {
 		// compute the box that contains all the stuff

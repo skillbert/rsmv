@@ -804,7 +804,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 							async run() {
 								let chunks = await renderer.setArea(x - 1, z - 1, squares + 1, squares + 1);
 								setfloors(chunks, thiscnf.level);
-								let img = await renderer!.renderer.takePicture(area.x + tiles * subx, area.z + tiles * subz, tiles, pxpersquare, thiscnf.dxdy, thiscnf.dzdy);
+								let img = await renderer!.renderer.takeMapPicture(area.x + tiles * subx, area.z + tiles * subz, tiles, pxpersquare, thiscnf.dxdy, thiscnf.dzdy);
 
 								flipImage(img);
 								// isImageEmpty(img, "black");
