@@ -3,9 +3,9 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import { parseMapsquareLocations } from "../opdecoder";
 import { ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
-import sharp from "sharp";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { EngineCache } from "../3d/ob3tothree";
+import { pixelsToImageFile } from "imgutils";
 
 let cmd = command({
 	name: "download",
@@ -55,7 +55,7 @@ let cmd = command({
 		if (args.mode == "height") {
 			let imgw = args.area.xsize * 64;
 			let imgh = args.area.zsize * 64;
-			let data = new Uint8ClampedArray(imgw * imgh * 4);
+			let data = new Uint8Array(imgw * imgh * 4);
 			for (let dz = 0; dz < args.area.zsize * 64; dz++) {
 				for (let dx = 0; dx < args.area.xsize * 64; dx++) {
 					let i = dx * 4 + dz * imgw * 4;
@@ -68,9 +68,7 @@ let cmd = command({
 					data[i + 3] = 255;
 				}
 			}
-			let imgfile = await sharp(data, { raw: { width: imgw, height: imgh, channels: 4 } })
-				.png()
-				.toBuffer();
+			let imgfile = await pixelsToImageFile({ data, width: imgw, height: imgh, channels: 4 }, "png", 1);
 			fs.writeFileSync(args.save + "/" + Date.now() + ".png", imgfile);
 		}
 	}

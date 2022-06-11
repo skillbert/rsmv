@@ -1,7 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
-import sharp from "sharp";
 import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect, stringToMapArea } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
@@ -9,7 +8,7 @@ import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parseEnums, parseMapZones } from "../opdecoder";
-import { FlatImageData } from "../utils";
+import { canvasToImageFile, FlatImageData, flipImage, isImageEqual, pixelsToImageFile } from "../imgutils";
 import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { RSMapChunk } from "../viewer/scenenodes";
@@ -442,94 +441,6 @@ function disposeThreeTree(node: THREE.Object3D | null) {
 	console.log("disposed scene objects", count);
 }
 
-// function subtractbackground(overlay: Uint8Array, background: Uint8Array) {
-// 	for (let i = 0; i < overlay.length; i += 4) {
-// 		let d = Math.abs(overlay[i + 0] - background[i + 0])
-// 			+ Math.abs(overlay[i + 1] - background[i + 1])
-// 			+ Math.abs(overlay[i + 2] - background[i + 2])
-// 			+ Math.abs(overlay[i + 3] - background[i + 3])
-// 		if (d < 5) {
-// 			overlay[i + 0] = 0;
-// 			overlay[i + 1] = 0;
-// 			overlay[i + 2] = 0;
-// 			overlay[i + 3] = 0;
-// 		}
-// 	}
-// }
-
-export function isImageEqual(overlay: FlatImageData, background: FlatImageData, x1 = 0, y1 = 0, width = overlay.width, height = overlay.height) {
-	if (overlay.width != background.width || overlay.height != background.height) {
-		throw new Error("only equal sized images supported");
-	}
-	let adata = overlay.data;
-	let bdata = background.data;
-
-	let x2 = x1 + width;
-	let y2 = y1 + height;
-
-	let stride = 4 * overlay.width;
-	for (let yy = y1; yy < y2; yy++) {
-		for (let xx = x1; xx < x2; xx++) {
-			let i = xx * 4 + yy * stride;
-			let d = Math.abs(adata[i + 0] - bdata[i + 0])
-				+ Math.abs(adata[i + 1] - bdata[i + 1])
-				+ Math.abs(adata[i + 2] - bdata[i + 2])
-				+ Math.abs(adata[i + 3] - bdata[i + 3])
-			if (d >= 5) { return false; }
-		}
-	}
-	return true;
-}
-
-export function isImageEmpty(img: FlatImageData, mode: "black" | "transparent", x1 = 0, y1 = 0, width = img.width, height = img.height) {
-	let intview = new Uint32Array(img.data.buffer, img.data.byteOffset, img.data.byteLength / 4);
-	let mask = (mode == "black" ? 0xffffffff : 0xff);
-	let target = 0;
-
-	let x2 = x1 + width;
-	let y2 = y1 + height;
-	let stride = img.width;
-	for (let yy = y1; yy < y2; yy++) {
-		for (let xx = x1; xx < x2; xx++) {
-			let i = xx + yy * stride;
-			if ((intview[i] & mask) != target) {
-				return false;
-			}
-		}
-	}
-	return true;
-}
-
-async function canvasToBuffer(cnv: HTMLCanvasElement, format: "png" | "webp", quality: number) {
-	let blob = await new Promise<Blob | null>(r => cnv.toBlob(r, `image/${format}`, quality));
-	if (!blob) { throw new Error("image compression failed"); }
-	let buf = await blob.arrayBuffer();
-	return Buffer.from(buf);
-}
-
-async function pixelsToImageFile(pixels: FlatImageData, format: "png" | "webp", quality: number) {
-	if (pixels.channels != 4) { throw new Error("4 image channels expected"); }
-	if (typeof document != "undefined") {
-		let cnv = document.createElement("canvas");
-		cnv.width = pixels.width;
-		cnv.height = pixels.height;
-		let ctx = cnv.getContext("2d")!;
-		let clamped = new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.length);
-		let imgdata = new ImageData(clamped, pixels.width, pixels.height);
-		ctx.putImageData(imgdata, 0, 0);
-		return canvasToBuffer(cnv, format, quality);
-	} else {
-		let img = sharp(pixels.data, { raw: { width: pixels.width, height: pixels.height, channels: pixels.channels } });
-		if (format == "png") {
-			return img.png().toBuffer();
-		} else if (format == "webp") {
-			return img.webp({ quality: quality * 100 }).toBuffer();
-		} else {
-			throw new Error("unknown format");
-		}
-	}
-}
-
 export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRenderer, engine: EngineCache, deps: DependencyGraph, rects: MapRect[], config: MapRender, progress: ProgressUI) {
 	let maprender = getRenderer();
 
@@ -591,18 +502,6 @@ export async function downloadMapsquareThree(engine: EngineCache, extraopts: Par
 	let file = await mapsquareToThree(scene, grid, modeldata);
 	console.log(`completed mapsquare ${x} ${z}`);
 	return { grid, chunks, model: file, modeldata };
-}
-
-function flipImage(img: FlatImageData) {
-	let stride = img.width * 4;
-	let tmp = new Uint8Array(stride);
-	for (let y = 0; y < img.height / 2; y++) {
-		let itop = y * stride;
-		let ibot = (img.height - 1 - y) * stride;
-		tmp.set(img.data.slice(itop, itop + stride), 0);
-		img.data.copyWithin(itop, ibot, ibot + stride);
-		img.data.set(tmp, ibot);
-	}
 }
 
 type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: ({ name: string, hash: number } | null)[] };
@@ -732,7 +631,7 @@ async function mipCanvas(render: MapRender, files: MipCommand["files"], format: 
 		ctx.drawImage(img, (i % 2) * subtilesize, Math.floor(i / 2) * subtilesize, subtilesize, subtilesize);
 		// URL.revokeObjectURL(blobsrc);
 	}));
-	return canvasToBuffer(cnv, format, quality);
+	return canvasToImageFile(cnv, format, quality);
 }
 
 export async function renderMapsquare(engine: EngineCache, config: MapRender, renderer: MapRenderer, deps: DependencyGraph, mipper: MipScheduler, progress: ProgressUI, x: number, z: number) {

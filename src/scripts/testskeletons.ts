@@ -1,19 +1,7 @@
-import { filesource, cliArguments } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
-import * as fs from "fs";
-import * as path from "path";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
-import { parseSprite } from "../3d/sprite";
-import sharp from "sharp";
-import { FlatImageData } from "../utils";
-import * as cache from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
-import { crc32_backward, forge } from "../libs/crc32util";
-import { getDebug } from "../opcode_reader";
-import prettyJson from "json-stringify-pretty-compact";
-import { framemaps } from "../../generated/framemaps";
 
 
 //currently unused, this script was used to find skeletal animations simple enough to decode

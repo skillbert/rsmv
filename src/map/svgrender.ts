@@ -1,10 +1,8 @@
 import { TileGridSource, ChunkData, squareLevels, squareSize, TileVertex, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
-import sharp from "sharp";
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
-import { CacheFileSource } from "../cache";
-import { FlatImageData } from "../utils";
 import { EngineCache } from "../3d/ob3tothree";
+import { pixelsToDataUrl } from "../imgutils";
 
 let similarangle = (a1: number, a2: number) => {
 	const PI2 = Math.PI * 2;
@@ -12,23 +10,6 @@ let similarangle = (a1: number, a2: number) => {
 	//different in angle, positive mod to range (-PI,PI)
 	let d = ((a1 - a2 + Math.PI) % PI2 + PI2) % PI2 - Math.PI;
 	return Math.abs(d) < EPS;
-}
-
-async function pixelsToDataUrl(pixels: FlatImageData,) {
-	if (pixels.channels != 4) { throw new Error("4 image channels expected"); }
-	if (typeof document != "undefined") {
-		let cnv = document.createElement("canvas");
-		cnv.width = pixels.width;
-		cnv.height = pixels.height;
-		let ctx = cnv.getContext("2d")!;
-		let clamped = new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.length);
-		let imgdata = new ImageData(clamped, pixels.width, pixels.height);
-		ctx.putImageData(imgdata, 0, 0);
-		return cnv.toDataURL("image/png");
-	} else {
-		let pngfile = await sharp(pixels.data, { raw: { width: pixels.width, height: pixels.height, channels: pixels.channels } }).png().toBuffer();
-		return "data:image/png;base64," + pngfile.toString("base64");
-	}
 }
 
 

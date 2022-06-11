@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
-import { ModelModifications, FlatImageData, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL } from '../utils';
+import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';

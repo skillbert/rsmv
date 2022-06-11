@@ -1,7 +1,8 @@
 import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { ModelModifications, FlatImageData, TypedEmitter } from '../utils';
+import { TypedEmitter } from '../utils';
+import { FlatImageData } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 
