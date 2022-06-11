@@ -29,7 +29,7 @@ import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
 import { diffCaches } from "../scripts/cachediff";
-import { JsonSearch, selectEntity } from "./jsonsearch";
+import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
 import { avataroverrides } from "../../generated/avataroverrides";
 
@@ -1039,6 +1039,68 @@ function hex2hsl(hex: string) {
 	return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
 }
 
+function ExportSceneMenu(p: { ctx: UIContextReady }) {
+	let [tab, settab] = React.useState<"img" | "gltf" | "none">("none");
+	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, ctx: CanvasRenderingContext2D } | null>(null);
+	let [cropimg, setcropimg] = React.useState(true);
+
+	let clickimg = async () => {
+		let newimg = await p.ctx.renderer.takeCanvasPicture();
+		settab("img");
+		setimg(newimg);
+	}
+
+	let saveimg = async () => {
+		if (!img) { return; }
+		let blob = await new Promise<Blob | null>(d => img!.cnv.toBlob(d));
+		if (!blob) { return; }
+		let url = URL.createObjectURL(blob)
+		let a = document.createElement("a");
+		a.href = url;
+		a.download = "runeapps_image_export.png";
+		a.click();
+
+	}
+
+	let clickgltf = () => {
+		settab("gltf");
+	}
+
+	return (
+		<div style={{ display: "grid", gridTemplateColumns: "2fr 3fr" }}>
+			<div>
+				<input type="button" className="sub-btn" onClick={clickimg} value="picture" />
+				<input type="button" className="sub-btn" onClick={clickgltf} value="gltf/glb" />
+			</div>
+			<div>
+				{tab == "img" && img && (
+					<React.Fragment>
+						<label><input type="checkbox" checked={cropimg} onChange={e => setcropimg(e.currentTarget.checked)} />Crop image</label>
+						<input type="button" className="sub-btn" value="Save" onClick={saveimg} />
+						<CanvasView canvas={img.cnv} />
+					</React.Fragment>
+				)}
+			</div>
+		</div>
+	)
+}
+
+function CanvasView(p: { canvas: HTMLCanvasElement }) {
+	let ref = React.useCallback((el: HTMLDivElement | null) => {
+		p.canvas.style.maxWidth = "100%";
+		if (el) { el.appendChild(p.canvas); }
+		else { p.canvas.remove(); }
+	}, [p.canvas]);
+
+	return (
+		<div ref={ref} />
+	)
+}
+
+function showExportSceneMeta(ctx: UIContextReady) {
+	showModal({ title: "Export" }, <ExportSceneMenu ctx={ctx} />)
+}
+
 export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
 	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
@@ -1073,6 +1135,7 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 			<label><input type="checkbox" checked={hideFloor} onChange={e => sethidefloor(e.currentTarget.checked)} />Hide floor</label>
 			<label><input type="checkbox" checked={camControls == "world"} onChange={e => setcamcontrols(e.currentTarget.checked ? "world" : "free")} />World space controls</label>
 			<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
+			<input type="button" className="sub-btn" onClick={e => p.ctx.canRender() && showExportSceneMeta(p.ctx)} value="Export" />
 		</React.Fragment>
 	)
 }

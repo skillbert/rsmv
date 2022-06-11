@@ -24,6 +24,17 @@ function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, onCl
 }
 
 export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileDecodeModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = []) {
+	let onselect = (id: number, obj: object) => {
+		modal.close();
+		callback(id);
+	}
+
+	let modal = showModal({ title: "Select item" }, (
+		<JsonSearchPreview cache={ctx.sceneCache.cache} mode={mode} onSelect={onselect} initialFilters={initialFilters} />
+	));
+}
+
+export function showModal(config: { title: string }, children: React.ReactNode) {
 	let rootel = document.createElement("div");
 	rootel.classList.add("mv-style");
 	document.body.appendChild(rootel);
@@ -37,18 +48,13 @@ export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileDe
 		}
 	}
 
-	let onselect = (id: number, obj: object) => {
-		close();
-		callback(id);
-	}
-
 	ReactDOM.render((
-		<ModalFrame onClose={close} title="Select item">
-			<JsonSearchPreview cache={ctx.sceneCache.cache} mode={mode} onSelect={onselect} initialFilters={initialFilters} />
+		<ModalFrame onClose={close} title={config.title}>
+			{children}
 		</ModalFrame>
 	), rootel);
 
-	return close;
+	return { close };
 }
 
 export function JsonSearchPreview(p: { mode: keyof typeof cacheFileDecodeModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {

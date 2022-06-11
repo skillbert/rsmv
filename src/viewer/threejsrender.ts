@@ -329,6 +329,16 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 	}
 
+	async takeCanvasPicture() {
+		await this.guaranteeRender();
+		let cnv = document.createElement("canvas");
+		cnv.width = this.canvas.width;
+		cnv.height = this.canvas.height;
+		let ctx = cnv.getContext("2d")!;
+		ctx.drawImage(this.canvas, 0, 0);
+		return { cnv, ctx };
+	}
+
 	async takeMapPicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
 		let framesize = ntiles * pxpertile;
 		let scale = 2 / ntiles;
