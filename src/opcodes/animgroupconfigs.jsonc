@@ -1,10 +1,10 @@
 {
-	"0x01": { "name":                           "baseAnims", "read": ["struct",["idle","varuint"],["walk","varuint"]] },
+	"0x01": { "name":                            "baseAnims", "read": ["struct",["idle","varuint"],["walk","varuint"]] },
 	"0x02": { "name":                           "unknown_02", "read": "varuint" },//also walk?
 	"0x03": { "name":                           "unknown_03", "read": "varuint" },
 	"0x05": { "name":                           "unknown_05", "read": "varuint" },
 	"0x04": { "name":                           "unknown_04", "read": "varuint" },
-	"0x06": { "name":                           "unknown_06", "read": "varuint" },//running
+	"0x06": { "name":                              "running", "read": "varuint" },
 	"0x07": { "name":                           "unknown_07", "read": "varuint" },
 	"0x08": { "name":                           "unknown_08", "read": "varuint" },
 	"0x09": { "name":                           "unknown_09", "read": "varuint" },

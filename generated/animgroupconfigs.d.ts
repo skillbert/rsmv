@@ -11,7 +11,7 @@ export type animgroupconfigs = {
 	unknown_03?: number | null
 	unknown_05?: number | null
 	unknown_04?: number | null
-	unknown_06?: number | null
+	running?: number | null
 	unknown_07?: number | null
 	unknown_08?: number | null
 	unknown_09?: number | null

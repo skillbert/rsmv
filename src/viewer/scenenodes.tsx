@@ -760,10 +760,13 @@ async function playerToModel(cache: ThreejsSceneCache, name: string) {
 
 export function serializeAnimset(group: animgroupconfigs) {
 	let anims: Record<string, number> = {};
-	anims.tpose = -1;
+	anims.none = -1;
 	if (group.baseAnims) {
 		anims.default = group.baseAnims.idle;
 		anims.walk = group.baseAnims.walk;
+	}
+	if (group.running) {
+		anims.running = group.running;
 	}
 	if (group.idleVariations) {
 		let totalchance = group.idleVariations.reduce((a, v) => a + v.probably_chance, 0);
@@ -1048,7 +1051,7 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 	let newopts: ThreeJsSceneElement["options"] = { hideFog, hideFloor, camMode, camControls };
 	let oldopts = elconfig.current.options;
 	elconfig.current.options = newopts;
-	
+
 	//I wont tell anyone if you dont tell anyone
 	//TODO actually fix this tho
 	if (JSON.stringify(oldopts) != JSON.stringify(newopts)) {

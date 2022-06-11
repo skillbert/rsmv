@@ -60,7 +60,7 @@ const defaultcols = {
 }
 
 const humanheadanims: Record<string, number> = {
-	tpose: -1,
+	none: -1,
 	default: 9804,
 	worried: 9743,
 	talkfast: 9745,
@@ -133,7 +133,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 
 	let slots: (EquipSlot | null)[] = [];
 	let avatar: avataroverrides | null = null;
-	let anims: Record<string, number> = { tpose: -1 };
+	let anims: Record<string, number> = { none: -1 };
 
 	if (avabase.player) {
 		slots = avabase.player.slots.map(() => null);

@@ -6,7 +6,7 @@
 	"scripts": {
 		"start": "electron --inspect ./dist/main.js",
 		"debug": "electron --inspect-brk ./dist/main.js",
-		"filetypes": "gulp filetypes",
+		"filetypes": "node dist/buildfiletypes.js",
 		"buildnative": "electron-rebuild -f & node node_modules/sharp/install/dll-copy",
 		"build": "webpack",
 		"watch": "webpack --watch",
