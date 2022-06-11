@@ -132,7 +132,7 @@ export class EngineCache {
 					let file = arch[fileid.subindex];
 					let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
 					let res = parser.read(file.buffer);
-					res.$fileid = logicalid;
+					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
 					files.push(res);
 				}
 

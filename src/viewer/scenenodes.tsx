@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree } from '../3d/ob3tothree';
+import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
 import { ModelModifications, FlatImageData, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
@@ -29,7 +29,7 @@ import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
 import { diffCaches } from "../scripts/cachediff";
-import { JsonSearch } from "./jsonsearch";
+import { JsonSearch, selectEntity } from "./jsonsearch";
 import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
 import { avataroverrides } from "../../generated/avataroverrides";
 
@@ -927,9 +927,9 @@ function ScenePlayer(p: LookupModeProps) {
 				</LabeledInput>
 			)}
 			<div style={{ userSelect: "text" }}>
-				{data?.info.avatar?.slots.map((q, i) => {
+				{p.ctx && data?.info.avatar?.slots.map((q, i) => {
 					return (
-						<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} custChanged={customizationChanged} equipChanged={equipChanged} />
+						<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} ctx={p.ctx!} custChanged={customizationChanged} equipChanged={equipChanged} />
 					);
 				})}
 			</div>
@@ -937,7 +937,7 @@ function ScenePlayer(p: LookupModeProps) {
 	)
 }
 
-function AvatarSlot({ index, slot, cust, custChanged, equipChanged }: { index: number, slot: EquipSlot | null, cust: EquipCustomization, equipChanged: (index, type: "kit" | "item" | "none", id: number) => void, custChanged: (index: number, v: EquipCustomization) => void }) {
+function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx }: { ctx: UIContextReady, index: number, slot: EquipSlot | null, cust: EquipCustomization, equipChanged: (index: number, type: "kit" | "item" | "none", id: number) => void, custChanged: (index: number, v: EquipCustomization) => void }) {
 
 	let editcust = (ch?: (cust: NonNullable<EquipCustomization>) => {}) => {
 		if (!ch) { custChanged(index, null); }
@@ -947,6 +947,13 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged }: { index: n
 			if (!newcust.color && !newcust.flag2 && !newcust.material && !newcust.model) { custChanged(index, null); }
 			else { custChanged(index, newcust); }
 		}
+	}
+
+	let searchItem = () => {
+		selectEntity(ctx, "items", i => equipChanged(index, "item", i), [{ path: ["equipSlotId"], search: index + "" }, { path: ["name"], search: "" }]);
+	}
+	let searchKit = () => {
+		selectEntity(ctx, "identitykit", i => equipChanged(index, "kit", i), []);
 	}
 
 	return (
@@ -972,8 +979,8 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged }: { index: n
 			{!slot && (
 				<div style={{ display: "grid", gridTemplateColumns: "auto repeat(10,min-content)" }}>
 					{slotNames[index]}
-					<input type="button" className="sub-btn" value="Item" />
-					<input type="button" className="sub-btn" value="Kit" />
+					<input type="button" className="sub-btn" value="Item" onClick={searchItem} />
+					<input type="button" className="sub-btn" value="Kit" onClick={searchKit} />
 				</div>
 			)}
 
@@ -1041,7 +1048,7 @@ function ExportModelButton(p: { model: RSModel["loaded"] | null | undefined }) {
 	)
 }
 
-function JsonDisplay(p: { obj: any }) {
+export function JsonDisplay(p: { obj: any }) {
 	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
 }
 
@@ -1153,7 +1160,6 @@ function SceneItem(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			{/* {p.ctx && <JsonSearch cache={p.ctx.sceneCache.cache} onSelect={setId} mode="items" />} */}
 			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>

@@ -96,7 +96,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 
 	render() {
 		return (
-			<div id="content">
+			<div className="mv-root mv-style">
 				<canvas id="viewer" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
 				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
 				<div id="sidebar">

@@ -27,16 +27,16 @@ export const slotNames = [
 	"necklace",
 	"weapon",
 	"body",
-	"slot5",
+	"offhand",
 	"slot6",
 	"legs",
 	"face",
 	"gloves",
 	"boots",
 	"beard",
+	"ring",
+	"ammo",
 	"aura",
-	"slot13",
-	"slot14",
 	"slot15"
 ]
 
