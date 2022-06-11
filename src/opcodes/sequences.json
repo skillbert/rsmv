@@ -27,8 +27,8 @@
 	"0x70": { "name":                          "unknown_70", "read": ["chunkedarray","unsigned short",
 																[["intlow","unsigned short"]],
 																[["maybe_file","unsigned short"]]] },
-	"0x77": { "name":                          "unknown_77", "read": ["unsigned short","unsigned byte"] },
-	"0x78": { "name":                          "unknown_78", "read": ["unsigned short","unsigned short","unsigned short"] },
+	"0x77": { "name":                          "unknown_77", "read": ["tuple","unsigned short","unsigned byte"] },
+	"0x78": { "name":                          "unknown_78", "read": ["tuple","unsigned short","unsigned short","unsigned short"] },
 
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

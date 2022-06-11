@@ -171,22 +171,3 @@ export async function diffCaches(output: ScriptOutput, sourcea: CacheFileSource,
 	return changes;
 }
 
-let cmd2 = command({
-	name: "run",
-	args: {
-		a: option({ long: "cache-a", short: "a", type: ReadCacheSource }),
-		b: option({ long: "cache-b", short: "b", type: ReadCacheSource }),
-	},
-	handler: async (args) => {
-		let sourcea = await args.a();
-		let sourceb = await args.b();
-
-		let output = new CLIScriptOutput("cache5/changes2");
-		let changes = await diffCaches(output, sourcea, sourceb);
-
-		sourcea.close();
-		sourceb.close();
-	}
-});
-
-// run(cmd2, cliArguments());

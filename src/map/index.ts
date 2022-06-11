@@ -14,15 +14,24 @@ import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { RSMapChunk } from "../viewer/scenenodes";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
-import { ipcRenderer } from "electron/renderer";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 
-if (typeof ipcRenderer != "undefined") {
+const electron = (() => {
+	try {
+		if (typeof __non_webpack_require__ != "undefined") {
+			return __non_webpack_require__("electron/renderer") as typeof import("electron/renderer");
+		}
+	} catch (e) { }
+	return null;
+})();
+
+
+if (electron?.ipcRenderer) {
 	window.addEventListener("keydown", e => {
 		if (e.key == "F5") { document.location.reload(); }
-		if (e.key == "F12") { ipcRenderer.send("toggledevtools"); }
+		if (e.key == "F12") { electron.ipcRenderer.send("toggledevtools"); }
 	});
-	ipcRenderer.invoke("getargv").then(async obj => {
+	electron.ipcRenderer.invoke("getargv").then(async obj => {
 		console.log(obj);
 		process.chdir(obj.cwd);
 		let res = await cmdts.runSafely(cmd, cliArguments(obj.argv));

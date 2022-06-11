@@ -1,10 +1,14 @@
 import { CacheFileSource } from "cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
-import { parseAnimgroupConfigs, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
+import { parseAnimgroupConfigs, parseAvatarOverrides, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
 import { ob3ModelToThreejsNode, ThreejsSceneCache } from "./ob3tothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL, Stream } from "../utils";
 import { SimpleModelDef, serializeAnimset } from "../viewer/scenenodes";
 import { items } from "../../generated/items";
+import { avataroverrides } from "../../generated/avataroverrides";
+import { ScriptOutput } from "../viewer/scriptsui";
+import { testDecodeFile } from "../scripts/testdecode";
+import { avatars } from "../../generated/avatars";
 
 export function avatarStringToBytes(text: string) {
 	let base64 = text.replace(/\*/g, "+").replace(/-/g, "/");
@@ -17,7 +21,26 @@ export function lowname(name: string) {
 	return res;
 }
 
-let defaultcols = {
+export const slotNames = [
+	"helm",
+	"cape",
+	"necklace",
+	"weapon",
+	"body",
+	"offhand",
+	"slot6",
+	"legs",
+	"face",
+	"gloves",
+	"boots",
+	"beard",
+	"ring",
+	"ammo",
+	"aura",
+	"slot15"
+]
+
+const defaultcols = {
 	hair0: 6798,
 	hair1: 55232,
 
@@ -36,10 +59,24 @@ let defaultcols = {
 	boots1: 4626
 }
 
+const humanheadanims: Record<string, number> = {
+	tpose: -1,
+	default: 9804,
+	worried: 9743,
+	talkfast: 9745,
+	scared: 9748,
+	wtf: 9752,
+	drunk: 9851,
+	happy: 9843,
+	evil: 9842,
+	laughing: 9841,
+	crying: 9765
+}
+
 let kitcolors: Record<"feet" | "skin" | "hair" | "clothes", Record<number, number>> | null = null;
 
 async function loadKitData(source: CacheFileSource) {
-	let mapcololenum = async (enumid: number, mappingid: number, reverse: boolean) => {
+	let mapcolorenum = async (enumid: number, mappingid: number, reverse: boolean) => {
 		let colorfile = await source.getFileById(cacheMajors.enums, enumid);
 		let colordata = parseEnums.read(colorfile);
 		let orderfile = await source.getFileById(cacheMajors.enums, mappingid);
@@ -55,10 +92,10 @@ async function loadKitData(source: CacheFileSource) {
 	}
 
 	kitcolors = {
-		feet: await mapcololenum(753, 3297, false),
-		skin: await mapcololenum(746, 748, false),
-		hair: await mapcololenum(2343, 2345, false),
-		clothes: await mapcololenum(2347, 3282, false)
+		feet: await mapcolorenum(753, 3297, false),
+		skin: await mapcolorenum(746, 748, false),
+		hair: await mapcolorenum(2343, 2345, false),
+		clothes: await mapcolorenum(2347, 3282, false)
 	}
 
 	// for (let [id, colhsl] of Object.entries(kitcolors.hair)) {
@@ -70,7 +107,23 @@ async function loadKitData(source: CacheFileSource) {
 	return kitcolors;
 }
 
-export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
+export type EquipCustomization = avataroverrides["slots"][number]["cust"];
+
+export type EquipSlot = {
+	name: string,
+	type: "kit" | "item",
+	id: number,
+	models: number[],
+	indexMale: [number, number],
+	indexFemale: [number, number],
+	indexMaleHead: [number, number],
+	indexFemaleHead: [number, number],
+	replaceMaterials: [number, number][],
+	replaceColors: [number, number][]
+}
+
+//TODO remove output and name args
+export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
 	let kitdata = kitcolors ?? await loadKitData(scene.source);
 	let avabase = parseAvatars.read(avadata);
 	let models: SimpleModelDef = [];
@@ -78,29 +131,34 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 	let playerkitarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
 	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parseIdentitykit.read(q.buffer)]));
 
-	let animgroup = 2699;
-	let items: items[] = [];
+	let slots: (EquipSlot | null)[] = [];
+	let avatar: avataroverrides | null = null;
+	let anims: Record<string, number> = { tpose: -1 };
 
 	if (avabase.player) {
+		slots = avabase.player.slots.map(() => null);
 		let isfemale = (avabase.gender & 1) != 0;
 		let animstruct = -1;
-		let kitmods: { mods: ModelModifications, slotid: number }[] = [];
-		let modstream = new Stream(Buffer.from(avabase.player.rest));
 		for (let [index, slot] of avabase.player.slots.entries()) {
 			if (slot == 0 || slot == 0x3fff) { continue; }
 			if (slot < 0x4000) {
 				let kitid = slot - 0x100;
 				let kit = playerkit[kitid];
 				if (kit?.models) {
-					for (let modelid of kit.models) {
-						let model = {
-							modelid: modelid,
-							mods: { replaceColors: kit.recolor ?? [] }
-						}
-						models.push(model);
-						kitmods.push({ mods: model.mods, slotid: kit.bodypart ?? -1 });
+					let models = [...kit.models];
+					if (kit.headmodel) { models.push(kit.headmodel); }
+					slots[index] = {
+						name: "playerkit_" + kitid,
+						type: "kit",
+						id: kitid,
+						models: models,
+						indexMale: [0, kit.models.length],
+						indexFemale: [0, kit.models.length],
+						indexMaleHead: [kit.models.length, kit.models.length + (kit.headmodel ? 1 : 0)],
+						indexFemaleHead: [kit.models.length, kit.models.length + (kit.headmodel ? 1 : 0)],
+						replaceColors: kit.recolor ?? [],
+						replaceMaterials: []
 					}
-					// console.log("kit", kit);
 					continue;
 				}
 			}
@@ -108,136 +166,150 @@ export async function avatarToModel(scene: ThreejsSceneCache, avadata: Buffer) {
 			let itemid = (slot - 0x4000) & 0xffff;
 			let file = await scene.source.getFileById(cacheMajors.items, itemid);
 			let item = parseItem.read(file);
-			let mods: ModelModifications = {};
-			if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
-			if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
 
 			let animprop = item.extra?.find(q => q.prop == 686);
 			if (animprop) { animstruct = animprop.intvalue!; }
 
-			//TODO item model overrides/recolors/retextures
-			let itemmodels: SimpleModelDef = [];
+			let itemmodels: number[] = [];
 			let maleindex = itemmodels.length;
-			if (item.maleModels_0) { itemmodels.push({ modelid: item.maleModels_0, mods }); }
-			if (item.maleModels_1) { itemmodels.push({ modelid: item.maleModels_1, mods }); }
-			if (item.maleModels_2) { itemmodels.push({ modelid: item.maleModels_2, mods }); }
+			if (item.maleModels_0) { itemmodels.push(item.maleModels_0); }
+			if (item.maleModels_1) { itemmodels.push(item.maleModels_1); }
+			if (item.maleModels_2) { itemmodels.push(item.maleModels_2); }
 			let femaleindex = itemmodels.length;
-			if (item.femaleModels_0) { itemmodels.push({ modelid: item.femaleModels_0, mods }); }
-			if (item.femaleModels_1) { itemmodels.push({ modelid: item.femaleModels_1, mods }); }
-			if (item.femaleModels_2) { itemmodels.push({ modelid: item.femaleModels_2, mods }); }
+			if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0); }
+			if (item.femaleModels_1) { itemmodels.push(item.femaleModels_1); }
+			if (item.femaleModels_2) { itemmodels.push(item.femaleModels_2); }
 			let maleheadindex = itemmodels.length;
-			if (item.maleHeads_0) { itemmodels.push({ modelid: item.maleHeads_0, mods }); }
-			if (item.maleHeads_1) { itemmodels.push({ modelid: item.maleHeads_1, mods }); }
+			if (item.maleHeads_0) { itemmodels.push(item.maleHeads_0); }
+			if (item.maleHeads_1) { itemmodels.push(item.maleHeads_1); }
 			let femaleheadindex = itemmodels.length;
-			if (item.femaleHeads_0) { itemmodels.push({ modelid: item.femaleHeads_0, mods }); }
-			if (item.femaleHeads_1) { itemmodels.push({ modelid: item.femaleHeads_1, mods }); }
+			if (item.femaleHeads_0) { itemmodels.push(item.femaleHeads_0); }
+			if (item.femaleHeads_1) { itemmodels.push(item.femaleHeads_1); }
 			let endindex = itemmodels.length;
 
-			if (avabase.player.flags & (1 << index)) {
-				let type = modstream.readByte();
-				if (type & 1) {//override model itself
-					for (let i = 0; i < itemmodels.length; i++) {
-						itemmodels[i].modelid = modstream.readUIntSmart();
-					}
-				}
-				if (type & 2) {//unknown
-					console.log("avatar customization flag 2 on item " + item.name);
-				}
-				if (type & 4) {//color
-					//not really understood yet
-					let coltype = modstream.readUShort(true);
-					mods.replaceColors ??= [];
-					if (coltype == 0x3210) {
-						for (let recol of mods.replaceColors) {
-							recol[1] = modstream.readUShort(true);
-						}
-					} else if (coltype == 0x220f) {
-						mods.replaceColors.push([modstream.readUShort(true), modstream.readUShort(true)]);
-						mods.replaceColors.push([modstream.readUShort(true), modstream.readUShort(true)]);
-						mods.replaceColors.push([modstream.readUShort(true), modstream.readUShort(true)]);
-						mods.replaceColors.push([modstream.readUShort(true), modstream.readUShort(true)]);
-					} else {
-						throw new Error("unknown avatar item recolor header 0x" + coltype.toString(16));
-					}
-				}
-				if (type & 8) {
-					let header = modstream.readUByte();
-					console.log("retexture header 0x" + header.toString(16));
-					mods.replaceMaterials ??= [];
-					if (header == 0x10) {
-						for (let remat of mods.replaceMaterials) {
-							remat[1] = modstream.readUShort(true);
-						}
-						// } else if (header == 0xf0) {
-						// 	// mods.replaceMaterials.push([modstream.readUShort(), modstream.readUShort()]);
-						// 	modstream.readUShort(true);
-					} else {
-						throw new Error("unknown avatar item material header 0x" + header.toString(16))
-					}
-				}
-			}
-			models.push(...itemmodels.slice(isfemale ? femaleindex : maleindex, isfemale ? maleheadindex : femaleindex));
-			items.push(item);
+
+			slots[index] = {
+				name: item.name ?? "no name",
+				type: "item",
+				id: itemid,
+				models: itemmodels,
+				indexMale: [maleindex, femaleindex],
+				indexFemale: [femaleindex, maleheadindex],
+				indexMaleHead: [maleheadindex, femaleheadindex],
+				indexFemaleHead: [femaleheadindex, endindex],
+				replaceColors: item.color_replacements ?? [],
+				replaceMaterials: item.material_replacements ?? []
+			};
 		}
 
-		let haircol0 = modstream.readUByte();
-		let bodycol = modstream.readUByte();
-		let legscol = modstream.readUByte();
-		let bootscol = modstream.readUByte();
-		let skincol0 = modstream.readUByte();
-		let skincol1 = modstream.readUByte();
-		let haircol1 = modstream.readUByte();
-		console.log("hair", haircol0, haircol1);
+		let res = testDecodeFile(parseAvatarOverrides, "json", Buffer.from(avabase.player.rest), { slots });
+		if (!res.success) {
+			if (!output) { throw new Error(); }
+			output.writeFile(name + ".hexerr.json", res.errorfile)
+		}
+		avatar = parseAvatarOverrides.read(Buffer.from(avabase.player.rest), { slots });
 
-		let extramods: [number, number][] = [
-			[defaultcols.hair0, kitdata.hair[haircol0]],
-			[defaultcols.hair1, kitdata.hair[haircol1]],
+		let globalrecolors: [number, number][] = [
+			[defaultcols.hair0, kitdata.hair[avatar.haircol0]],
+			[defaultcols.hair1, kitdata.hair[avatar.haircol1]],
 
-			[defaultcols.skin0, kitdata.skin[skincol0]],
-			[defaultcols.skin1, kitdata.skin[skincol0]],
-			[defaultcols.skin2, kitdata.skin[skincol0]],
-			[defaultcols.skin3, kitdata.skin[skincol0]],
+			[defaultcols.skin0, kitdata.skin[avatar.skincol0]],
+			[defaultcols.skin1, kitdata.skin[avatar.skincol0]],
+			[defaultcols.skin2, kitdata.skin[avatar.skincol0]],
+			[defaultcols.skin3, kitdata.skin[avatar.skincol0]],
 
-			[defaultcols.body0, kitdata.clothes[bodycol]],
-			[defaultcols.body1, kitdata.clothes[bodycol]],
-			[defaultcols.legs0, kitdata.clothes[legscol]],
-			[defaultcols.legs1, kitdata.clothes[legscol]],
-			[defaultcols.boots0, kitdata.feet[bootscol]],
-			[defaultcols.boots1, kitdata.feet[bootscol]],
+			[defaultcols.body0, kitdata.clothes[avatar.bodycol]],
+			[defaultcols.body1, kitdata.clothes[avatar.bodycol]],
+			[defaultcols.legs0, kitdata.clothes[avatar.legscol]],
+			[defaultcols.legs1, kitdata.clothes[avatar.legscol]],
+			[defaultcols.boots0, kitdata.feet[avatar.bootscol]],
+			[defaultcols.boots1, kitdata.feet[avatar.bootscol]],
 		];
 
-		models.forEach(q => {
-			q.mods.replaceColors ??= [];
-			q.mods.replaceColors.push(...extramods);
-		})
-
-		modstream.skip(13);
-		let unknownint = modstream.readUShort();
-
-		if (animstruct != -1) {
-			let file = await scene.source.getFileById(cacheMajors.structs, animstruct);
-			let anims = parseStructs.read(file);
-			//2954 for combat stance
-			let noncombatset = anims.extra?.find(q => q.prop == 2954);
-			if (noncombatset) {
-				animgroup = noncombatset.intvalue!;
+		avatar.slots.forEach(slot => {
+			const equip: EquipSlot = slot.slot;
+			if (slot.slot) {
+				let mods: ModelModifications = {
+					replaceColors: [...equip.replaceColors],
+					replaceMaterials: [...equip.replaceMaterials]
+				};
+				if (slot.cust?.color?.col2) {
+					for (let i in mods.replaceColors) { mods.replaceColors[i][1] = slot.cust.color.col2[i]; }
+				}
+				if (slot.cust?.color?.col4) {
+					mods.replaceColors!.push(...slot.cust.color.col4);
+				}
+				if (slot.cust?.material) {
+					for (let i in mods.replaceMaterials) { mods.replaceMaterials[i][1] = slot.cust.material.materials[i]; }
+				}
+				if (slot.cust?.model) {
+					for (let i in slot.cust.model) { equip.models[i] = slot.cust.model[i]; }
+				}
+				mods.replaceColors!.push(...globalrecolors);
+				let range = (isfemale ?
+					(head ? equip.indexFemaleHead : equip.indexFemale) :
+					(head ? equip.indexMaleHead : equip.indexMale));
+				equip.models.forEach((id, i) => i >= range[0] && i < range[1] && models.push({ modelid: id, mods }));
 			}
+		});
+
+		if (head) {
+			anims = humanheadanims;
+		} else {
+			let animgroup = 2699;
+			if (animstruct != -1) {
+				let file = await scene.source.getFileById(cacheMajors.structs, animstruct);
+				let animfile = parseStructs.read(file);
+				//2954 for combat stance
+				let noncombatset = animfile.extra?.find(q => q.prop == 2954);
+				if (noncombatset) { animgroup = noncombatset.intvalue!; }
+			}
+			anims = await animGroupToAnims(scene, animgroup);
 		}
 	} else if (avabase.npc) {
 		let file = await scene.source.getFileById(cacheMajors.npcs, avabase.npc.id);
 		let npc = parseNpc.read(file);
-		if (npc.models) { models.push(...npc.models.map(q => ({ modelid: q, mods: {} }))) };
-		if (npc.animation_group) {
-			animgroup = npc.animation_group;
+		let mods: ModelModifications = {
+			replaceColors: npc.color_replacements ?? [],
+			replaceMaterials: npc.color_replacements ?? []
+		};
+		if (!head) {
+			if (npc.models) { models.push(...npc.models.map(q => ({ modelid: q, mods: mods }))) }
+			if (npc.animation_group) { anims = await animGroupToAnims(scene, npc.animation_group); }
+		} else {
+			if (npc.headModels) { models.push(...npc.headModels.map(q => ({ modelid: q, mods: mods }))); }
 		}
 	}
 
+	return { models, anims, info: { avatar, gender: avabase.gender, npc: avabase.npc } };
+}
+
+export function writeAvatar(avatar: avataroverrides | null, gender: number, npc: avatars["npc"]) {
+	let base: avatars = {
+		gender: gender,
+		npc: npc,
+		player: null
+	}
+
+	if (avatar) {
+		let overrides = parseAvatarOverrides.write(avatar);
+		base.player = {
+			slots: avatar.slots.map(q => {
+				const slot = q.slot as EquipSlot | null;
+				return (!slot ? 0 : slot.type == "item" ? slot.id + 0x4000 : slot.id + 0x100);
+			}) as any,
+			rest: overrides
+		}
+	}
+	return parseAvatars.write(base);
+}
+
+async function animGroupToAnims(scene: ThreejsSceneCache, groupid: number) {
 	let animsetarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
-	let animsetfile = animsetarch[animgroup];
+	let animsetfile = animsetarch[groupid];
 	let animset = parseAnimgroupConfigs.read(animsetfile.buffer);
 
-	let anims = serializeAnimset(animset);
-	return { models, anims, info: { items, animset } };
+	return serializeAnimset(animset);
 }
 
 export function appearanceUrl(name: string) {

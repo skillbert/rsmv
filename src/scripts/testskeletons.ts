@@ -16,6 +16,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { framemaps } from "../../generated/framemaps";
 
 
+//currently unused, this script was used to find skeletal animations simple enough to decode
 
 
 async function start() {

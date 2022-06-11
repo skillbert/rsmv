@@ -491,7 +491,7 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 		newmesh.materialId = (newmat == (1 << 16) - 1 ? -1 : newmat);
 	}
 
-	if (mods.replaceColors && mesh.attributes.color) {
+	if (mods.replaceColors && mods.replaceColors.length != 0 && mesh.attributes.color) {
 		let colors = mesh.attributes.color;
 		let clonedcolors: BufferAttribute | undefined = undefined;
 

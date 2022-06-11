@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\npcs.json'
+// This source data is located at '..\src\opcodes\npcs.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type npcs = {
@@ -55,12 +55,7 @@ export type npcs = {
 		unk4: number,
 	} | null
 	movementCapabilities?: number | null
-	translations?: [
-		number,
-		number,
-		number,
-		number,
-	][] | null
+	translations?: Uint8Array[] | null
 	iconHeight?: number | null
 	respawnDirection?: number | null
 	animation_group?: number | null

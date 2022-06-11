@@ -5,9 +5,9 @@
 	"0x66": { "name":                         "value_type2", "read": "unsigned byte" },
 	"0x03": { "name":                         "stringValue", "read": "string" },
 	"0x04": { "name":                            "intValue", "read": "unsigned int" },
-	"0x05": { "name":                   "stringArrayValue1", "read": ["array","unsigned short",["unsigned int","string"]] },
-	"0x06": { "name":                      "intArrayValue1", "read": ["array","unsigned short",["unsigned int","int"]] },
-	"0x07": { "name":                   "stringArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["unsigned short","string"]]]] },
-	"0x08": { "name":                      "intArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["unsigned short","int"]]]] },
+	"0x05": { "name":                   "stringArrayValue1", "read": ["array","unsigned short",["tuple","unsigned int","string"]] },
+	"0x06": { "name":                      "intArrayValue1", "read": ["array","unsigned short",["tuple","unsigned int","int"]] },
+	"0x07": { "name":                   "stringArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["tuple","unsigned short","string"]]]] },
+	"0x08": { "name":                      "intArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["tuple","unsigned short","int"]]]] },
 	"0x83": { "name":                          "unknown_83", "read": "true" }
 }

@@ -1,6 +1,4 @@
-
 import { app, BrowserWindow, powerSaveBlocker, ipcMain } from "electron";
-import { runCliApplication, mapareasource } from "../cliparser";
 
 //don't use browser behavoir of blocking gpu access after an opengl crash
 app.disableDomainBlockingFor3DAPIs();
@@ -11,9 +9,9 @@ app.commandLine.appendSwitch("disable-gpu-process-crash-limit");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
+
 //actually want our embedded graphics since it has more video memory (all of our RAM)
 // app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
-
 //forces dedicated gpu on windows
 //https://stackoverflow.com/questions/54464276/how-to-force-discrete-gpu-in-electron-js/63668188#63668188
 // process.env.SHIM_MCCOMPAT = '0x800000001';
@@ -21,10 +19,6 @@ app.commandLine.appendSwitch("disable-background-timer-throttling");
 //prevents computer from sleeping
 const id = powerSaveBlocker.start("prevent-app-suspension");
 //powerSaveBlocker.stop(id)
-
-function btoa(str: string) {
-	return Buffer.from(str).toString("base64");
-}
 
 (async () => {
 	await app.whenReady();

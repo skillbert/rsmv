@@ -85,8 +85,8 @@
 		["flag18value",["opt",["flag18",1],"float"]],//not sure about location
 		["flag16value",["opt",["flag16",1],"float"]],
 		["flag12value",["opt",["flag12",1],"float"]],//not sure about location
-		["flag11value",["opt",["flag11",1],["float","float","float"]]],
-		["flag19value",["opt",["flag19",1],["float","float","float","float","float"]]],//location unknown
+		["flag11value",["opt",["flag11",1],["tuple","float","float","float"]]],
+		["flag19value",["opt",["flag19",1],["tuple","float","float","float","float","float"]]],//location unknown
 		["normalScale",["opt",["hasNormal",1],"float"]],
 		["flag17value",["opt",["ignore_vertexcol_17",1],"float"]],
 		["uvanim_u",["opt",["hasUVanimU",1],"short"]],

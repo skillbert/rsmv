@@ -1,47 +1,38 @@
-import { cliArguments, filesource, ReadCacheSource } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheMajors } from "../constants";
+import { CLIScriptOutput, ScriptOutput } from "viewer/scriptsui";
+import { CacheFileSource } from "cache";
+import prettyJson from "json-stringify-pretty-compact";
 
-let cmd2 = command({
-	name: "run",
-	args: {
-		...filesource
-		// save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-	},
-	handler: async (args) => {
-		let source = await args.source();
-		let rootindex = await source.getIndexFile(cacheMajors.index);
-		console.log("[");
-		for (let indexfile of rootindex) {
-			let index = await source.getIndexFile(indexfile.minor);
-			let minorcount = index.reduce((a, v) => a + 1, 0);
-			let subfilecount = index.reduce((a, v) => a + v.subindexcount, 0);
-			let maxsubfiles = index.reduce((a, v) => Math.max(a, v.subindexcount), 0);
-			let minsubfiles = index.reduce((a, v) => Math.min(a, v.subindexcount), Infinity);
-			let highestindex = index[index.length - 1].minor;
-			let missingminors = highestindex + 1 - minorcount;
-			let avgsubfiles = subfilecount / minorcount;
 
-			let name = Object.entries(cacheMajors).find(([name, id]) => id == indexfile.minor)?.[0] ?? `unknown`;
+export async function indexOverview(output: ScriptOutput, source: CacheFileSource) {
+	let rootindex = await source.getIndexFile(cacheMajors.index);
 
-			console.log(JSON.stringify({ major: indexfile.minor, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles }, null, "  "), ",");
-		}
-		let configindices = await source.getIndexFile(cacheMajors.config);
-		// console.log("/////////////////   CONFIG SUBFILES  ////////////////////////////");
-		for (let i in configindices) {//has gaps so cant use for of
-			let index = configindices[i];
-			console.log(JSON.stringify({
-				minor: index.minor,
-				subindices: index.subindexcount,
-				minindex: Math.min(...index.subindices),
-				maxindex: Math.max(...index.subindices),
-				missingindices: index.subindexcount + 1 - index.subindices[index.subindices.length - 1]
-			}, null, "  "));
-			console.log(",");
-		}
-		console.log("]");
+	let majors: any[] = [];
+	for (let indexfile of rootindex) {
+		let index = await source.getIndexFile(indexfile.minor);
+		let minorcount = index.reduce((a, v) => a + 1, 0);
+		let subfilecount = index.reduce((a, v) => a + v.subindexcount, 0);
+		let maxsubfiles = index.reduce((a, v) => Math.max(a, v.subindexcount), 0);
+		let minsubfiles = index.reduce((a, v) => Math.min(a, v.subindexcount), Infinity);
+		let highestindex = index[index.length - 1].minor;
+		let missingminors = highestindex + 1 - minorcount;
+		let avgsubfiles = subfilecount / minorcount;
+
+		let name = Object.entries(cacheMajors).find(([name, id]) => id == indexfile.minor)?.[0] ?? `unknown`;
+
+		majors.push({ major: indexfile.minor, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles });
 	}
-})
-
-
-run(cmd2, cliArguments());
+	let configs: any[] = [];
+	let configindices = await source.getIndexFile(cacheMajors.config);
+	for (let i in configindices) {//has gaps so cant use for of
+		let index = configindices[i];
+		configs.push({
+			minor: index.minor,
+			subindices: index.subindexcount,
+			minindex: Math.min(...index.subindices),
+			maxindex: Math.max(...index.subindices),
+			missingindices: index.subindexcount + 1 - index.subindices[index.subindices.length - 1]
+		});
+	}
+	output.writeFile("indexoverview.json", prettyJson({ majors, configs }));
+}

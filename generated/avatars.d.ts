@@ -4,7 +4,6 @@
 
 export type avatars = {
 	gender: number,
-	avatype: number,
 	player: {
 		slots: [
 			number,
@@ -24,7 +23,6 @@ export type avatars = {
 			number,
 			number,
 		],
-		flags: number,
 		rest: Uint8Array,
 	} | null,
 	npc: {

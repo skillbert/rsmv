@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\achievements.json'
+// This source data is located at '..\src\opcodes\achievements.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type achievements = {
@@ -63,6 +63,7 @@ export type achievements = {
 		achievement: number,
 	}[] | null
 	subcategory?: number | null
+	unk0x11?: true | null
 	hidden?: number | null
 	f2p?: true | null
 	quest_req_for_miniquests?: number[] | null

@@ -1,13 +1,8 @@
-import { filesource, cliArguments } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf, optional } from "cmd-ts";
-import * as fs from "fs";
-import * as path from "path";
+
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { FlatImageData, constrainedMap } from "../utils";
-import { GameCacheLoader } from "../cache/sqlite";
-import { crc32_backward, forge } from "../libs/crc32util";
 import prettyJson from "json-stringify-pretty-compact";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
@@ -263,28 +258,6 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	avatars: standardFile(parseAvatars, standardIndex(0)),
 });
 
-let cmd2 = command({
-	name: "run",
-	args: {
-		...filesource,
-		save: option({ long: "save", short: "s", type: string, defaultValue: () => "extract" }),
-		mode: option({ long: "mode", short: "m", type: string, defaultValue: () => "bin" }),
-		files: option({ long: "ids", short: "i", type: string, defaultValue: () => "" }),
-		edit: flag({ long: "edit", short: "e" }),
-		fixhash: flag({ long: "fixhash", short: "h" }),
-		batched: flag({ long: "batched", short: "b" }),
-		batchlimit: option({ long: "batchsize", type: number, defaultValue: () => -1 })
-	},
-	handler: async (args) => {
-		let outdir = path.resolve(args.save);
-		fs.mkdirSync(outdir, { recursive: true });
-		let output = new CLIScriptOutput(outdir);
-		let source = await args.source({ writable: args.edit });
-		await output.run(extractCacheFiles, source, args);
-		source.close();
-	}
-});
-
 export async function extractCacheFiles(output: ScriptOutput, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
@@ -396,4 +369,3 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 	output.log("done");
 }
 
-// run(cmd2, cliArguments());

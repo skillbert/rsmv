@@ -9,9 +9,8 @@ module.exports = {
 	devtool: false,
 	mode: "development",
 	entry: {
-		viewer: "./src/viewer/",
-		runeapps: {
-			import: "./src/viewer/runeapps.tsx",
+		viewer: {
+			import: "./src/viewer/",
 			library: {
 				type: "umd",
 				name: { root: "RSMV", amd: "rsmv", commonjs: "rsmv" }

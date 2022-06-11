@@ -7,12 +7,14 @@ import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
 import { parseSkeletalAnimation } from "./animationskeletal";
-import { archiveToFileId, CacheFileSource, SubFile } from "../cache";
+import { archiveToFileId, CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
+import { cacheFileDecodeModes } from "../scripts/extractfiles";
+import { JSONSchema6Definition } from "json-schema";
 
 globalThis.packedhsl = function (hsl: number) {
 	return HSL2RGB(packedHSL2HSL(hsl));
@@ -72,6 +74,7 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 export class EngineCache {
 	framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
 	materialCache = new Map<number, MaterialData>();
+	jsonDataCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 	ready: Promise<EngineCache>;
 	source: CacheFileSource;
 
@@ -106,11 +109,54 @@ export class EngineCache {
 		return this;
 	}
 
+	getJsonData(modename: string) {
+		let cached = this.jsonDataCache.get(modename);
+		if (!cached) {
+			let modefactory = cacheFileDecodeModes[modename as keyof typeof cacheFileDecodeModes];
+			if (!modename) { throw new Error("unknown decode mode " + modename); }
+			let mode = modefactory({});
+			const parser = mode.parser;
+			if (!parser) { throw new Error("decode mode without json parser"); }
+			let files = (async () => {
+				let allfiles = await mode.logicalRangeToFiles(this.source, [0, 0], [Infinity, Infinity]);
+				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
+				let files: any[] = [];
+				for (let fileid of allfiles) {
+					let arch: SubFile[];
+					if (lastarchive && lastarchive.index == fileid.index) {
+						arch = lastarchive.subfiles;
+					} else {
+						arch = await this.source.getFileArchive(fileid.index);
+						lastarchive = { index: fileid.index, subfiles: arch };
+					}
+					let file = arch[fileid.subindex];
+					let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
+					let res = parser.read(file.buffer);
+					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
+					files.push(res);
+				}
+
+				return files;
+			})();
+			cached = { files, schema: parser.parser.getJsonSchema() }
+			this.jsonDataCache.set(modename, cached);
+		}
+		return cached;
+	}
+
 	getMaterialData(id: number) {
-		if (id == -1) { return defaultMaterial(); }
-		let file = this.materialArchive.get(id);
-		if (!file) { throw new Error("material " + id + " not found"); }
-		return convertMaterial(file);
+		let cached = this.materialCache.get(id);
+		if (!cached) {
+			if (id == -1) {
+				cached = defaultMaterial();
+			} else {
+				let file = this.materialArchive.get(id);
+				if (!file) { throw new Error("material " + id + " not found"); }
+				cached = convertMaterial(file);
+			}
+			this.materialCache.set(id, cached);
+		}
+		return cached;
 	}
 }
 

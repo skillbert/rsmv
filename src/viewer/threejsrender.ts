@@ -159,7 +159,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		for (let source of this.sceneElements) {
 			let el = source.getSceneElements();
 			if (el.sky) { sky = el.sky; }
-			if (el.animationMixer) { this.animationMixers.add(el.animationMixer); }
+			if (el.animationMixer) {
+				animated = true;
+				this.animationMixers.add(el.animationMixer);
+			}
 			if (el.options?.opaqueBackground) { opaqueBackground = true; }
 			if (el.options?.hideFloor) { showfloor = false; }
 			if (el.modelnode) {
