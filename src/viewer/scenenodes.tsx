@@ -760,27 +760,29 @@ async function playerToModel(cache: ThreejsSceneCache, name: string) {
 
 export function serializeAnimset(group: animgroupconfigs) {
 	let anims: Record<string, number> = {};
+	let addanim = (name: string, id: number) => {
+		if (Object.values(anims).indexOf(id) == -1) {
+			anims[name] = id;
+		}
+	}
 	anims.none = -1;
 	if (group.baseAnims) {
-		anims.default = group.baseAnims.idle;
-		anims.walk = group.baseAnims.walk;
+		addanim("default", group.baseAnims.idle);
+		addanim("walk", group.baseAnims.walk);
 	}
-	if (group.running) {
-		anims.running = group.running;
+	if (group.run) {
+		addanim("run", group.run);
 	}
 	if (group.idleVariations) {
 		let totalchance = group.idleVariations.reduce((a, v) => a + v.probably_chance, 0);
-		for (let i in group.idleVariations) {
-			let variation = group.idleVariations[i];
-			anims[`idle${i}_${variation.probably_chance}/${totalchance}`] = variation.animid;
+		for (let [i, variation] of group.idleVariations.entries()) {
+			addanim(`idle${i}_${variation.probably_chance}/${totalchance}`, variation.animid);
 		}
 	}
-	//TODO yikes
-	for (let key of Object.keys(group)) {
-		if (typeof group[key] == "number") {
-			if (Object.values(anims).indexOf(group[key]) == -1) {
-				anims[key] = group[key];
-			}
+	//TODO yikes, this object is not a map
+	for (let [key, val] of Object.entries(group)) {
+		if (typeof val == "number") {
+			addanim(key, group[key]);
 		}
 	}
 
