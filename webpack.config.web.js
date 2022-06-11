@@ -34,6 +34,7 @@ module.exports = {
 	devServer: {
 		static: "./dist",
 		hot: true,
+		port: 8081
 	},
 	resolve: {
 		extensions: ['.tsx', '.ts', '.js'],
