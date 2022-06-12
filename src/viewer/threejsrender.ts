@@ -204,7 +204,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.scene.fog = (fogcolobj && !hideFog ? new THREE.Fog("#" + fogcolobj.getHexString(), 80, 250) : null);
 		if (sky?.skybox) {
 			let scene = this.skybox?.scene ?? new THREE.Scene();
-			let camera = this.skybox?.camera ?? this.camera.clone(false);
+			let camera = this.skybox?.camera ?? new PerspectiveCamera().copy(this.camera, false);
 			let obj = new THREE.Object3D();
 			obj.scale.set(1 / 512, 1 / 512, -1 / 512);
 			obj.add(sky.skybox);

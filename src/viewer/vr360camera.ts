@@ -47,7 +47,16 @@ export class VR360Render {
 			magFilter: LinearFilter,
 			format: RGBAFormat,
 			encoding: parent.outputEncoding
-		})
+		});
+		//threejs always renders non-default render targets in linear, however they programmed in a 
+		//special case for webxr render targets to still render in srgb
+		//i'm guessing you would normally want your cubemaps to be linear for correct light calcs in reflection
+		//but in this case the cube is the output
+		//i could do this without hack by doing srgb in the fragment shader but that would result in big loss
+		//of quality since we're in 8bit colors already
+		(this.cubeRenderTarget as any).isXRRenderTarget = true;
+
+
 		this.cubeCamera = new CubeCamera(near, far, this.cubeRenderTarget);
 		this.skyCubeCamera = new CubeCamera(near, far, this.cubeRenderTarget);
 		this.quad = new Mesh(new PlaneBufferGeometry(2, 2), new EquirectangularMaterial());
