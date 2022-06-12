@@ -1,4 +1,3 @@
-import { Stream } from "../utils";
 
 export const TextEncoderPolyfill = (typeof TextEncoder != "undefined" ? TextEncoder : require("util").TextEncoder) as typeof TextEncoder;
 export type vartypeEnum = 0x1400 | 0x1401 | 0x1402 | 0x1403 | 0x1404 | 0x1405 | 0x1406 | 0x140a | 0x140b;
@@ -20,7 +19,7 @@ export type ModelAttribute = {
 	max: number[]
 };
 
-type ArrayBufferConstructor<T> = {
+export type ArrayBufferConstructor<T> = {
 	new(buffer: ArrayBufferLike, byteOffset?: number, length?: number): T;
 	readonly BYTES_PER_ELEMENT: number;
 }
@@ -54,12 +53,6 @@ export function alignedRefOrCopy<T>(constr: ArrayBufferConstructor<T>, source: U
 		offset = offset + source.byteOffset;
 	}
 	return new constr(srcbuffer, offset, length)
-}
-
-export function streamChunk<T>(constr: ArrayBufferConstructor<T>, stream: Stream, length: number) {
-	let buf = alignedRefOrCopy(constr, stream.getData(), stream.scanloc(), length);
-	stream.skip(length * constr.BYTES_PER_ELEMENT);
-	return buf;
 }
 
 export type AttributeSoure = {

@@ -1,6 +1,6 @@
 import { Stream, packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
-import { glTypeIds, ModelAttribute, streamChunk, vartypeEnum, AttributeSoure } from "./gltfutil";
 import * as THREE from "three";
+import { alignedRefOrCopy, ArrayBufferConstructor } from "./gltfutil";
 
 export type BoneCenter = {
 	xsum: number,
@@ -30,6 +30,11 @@ export type ModelMeshData = {
 	}
 }
 
+function streamChunk<T>(constr: ArrayBufferConstructor<T>, stream: Stream, length: number) {
+	let buf = alignedRefOrCopy(constr, stream.getData(), stream.scanloc(), length);
+	stream.skip(length * constr.BYTES_PER_ELEMENT);
+	return buf;
+}
 
 export function getBoneCenters(model: ModelData) {
 	let bonecenters: BoneCenter[] = [];

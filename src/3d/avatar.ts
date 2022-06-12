@@ -2,7 +2,7 @@ import { CacheFileSource } from "cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { parseAnimgroupConfigs, parseAvatarOverrides, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
 import { ob3ModelToThreejsNode, ThreejsSceneCache } from "./ob3tothree";
-import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL, Stream } from "../utils";
+import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../utils";
 import { SimpleModelDef, serializeAnimset } from "../viewer/scenenodes";
 import { items } from "../../generated/items";
 import { avataroverrides } from "../../generated/avataroverrides";
