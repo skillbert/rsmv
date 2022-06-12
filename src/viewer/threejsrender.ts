@@ -147,6 +147,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.sceneElementsChanged();
 	}
 
+	getModelNode() {
+		return this.modelnode;
+	}
+
 	addSceneElement(el: ThreeJsSceneElementSource) {
 		this.sceneElements.add(el);
 		this.sceneElementsChanged();

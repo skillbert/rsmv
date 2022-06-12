@@ -109,3 +109,27 @@ export function flipImage(img: FlatImageData) {
 		img.data.set(tmp, ibot);
 	}
 }
+
+
+export function findImageBounds(img: FlatImageData | ImageData) {
+	if ("channels" in img && img.channels != 4) { throw new Error("4 channels expected"); }
+	let intview = new Uint32Array(img.data.buffer, img.data.byteOffset, img.data.byteLength / 4);
+
+	let minx = img.width, maxx = 0;
+	let miny = img.height, maxy = 0;
+
+	for (let y = 0; y < img.height; y++) {
+		let scany = y * img.width;
+		for (let x = 0; x < img.width; x++) {
+			let i = scany + x;
+			if (intview[i] != 0) {
+				minx = Math.min(x, minx);
+				maxx = Math.max(x, maxx);
+				miny = Math.min(y, miny);
+				maxy = Math.max(y, maxy);
+			}
+		}
+	}
+
+	return { x: minx, y: miny, width: maxx - minx + 1, height: maxy - miny + 1 };
+}

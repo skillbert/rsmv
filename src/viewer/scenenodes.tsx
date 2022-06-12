@@ -14,7 +14,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, writeAvatar } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf } from "./threejsrender";
 import { ModelData, parseOb3Model } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
@@ -24,14 +24,14 @@ import { stringToMapArea } from "../cliparser";
 import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
-import { CacheSelector, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
+import { CacheSelector, downloadStream, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
 import { diffCaches } from "../scripts/cachediff";
 import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
-import { avataroverrides } from "../../generated/avataroverrides";
+import { findImageBounds } from "../imgutils";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -923,7 +923,6 @@ function ScenePlayer(p: LookupModeProps) {
 		<React.Fragment>
 			<StringInput onChange={nameChange} initialid={""} />
 			<label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>
-			<ExportModelButton model={model?.loaded} />
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
@@ -1044,9 +1043,17 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, ctx: CanvasRenderingContext2D } | null>(null);
 	let [cropimg, setcropimg] = React.useState(true);
 
-	let clickimg = async () => {
+	let changeImg = async (crop: boolean) => {
 		let newimg = await p.ctx.renderer.takeCanvasPicture();
+		if (crop) {
+			let imgdata = newimg.ctx.getImageData(0, 0, newimg.cnv.width, newimg.cnv.height);
+			let bounds = findImageBounds(imgdata);
+			newimg.cnv.width = bounds.width;
+			newimg.cnv.height = bounds.height;
+			newimg.ctx.putImageData(imgdata, -bounds.x, -bounds.y);
+		}
 		settab("img");
+		setcropimg(crop);
 		setimg(newimg);
 	}
 
@@ -1059,25 +1066,38 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		a.href = url;
 		a.download = "runeapps_image_export.png";
 		a.click();
-
+		//TODO revoke object url to prevent mem leak after download is complete (when?)
 	}
 
-	let clickgltf = () => {
-		settab("gltf");
+	let saveModel = async () => {
+		let a = 0;
+		let str = new ReadableStream({
+			async pull(c) {
+				let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
+				c.enqueue(new Uint8Array(file));
+				c.close();
+			}
+		});
+		downloadStream("model.glb", str);
 	}
 
 	return (
 		<div style={{ display: "grid", gridTemplateColumns: "2fr 3fr" }}>
 			<div>
-				<input type="button" className="sub-btn" onClick={clickimg} value="picture" />
-				<input type="button" className="sub-btn" onClick={clickgltf} value="gltf/glb" />
+				<input type="button" className="sub-btn" onClick={e => changeImg(cropimg)} value="picture" />
+				<input type="button" className="sub-btn" onClick={e => settab("gltf")} value="gltf/glb" />
 			</div>
 			<div>
 				{tab == "img" && img && (
 					<React.Fragment>
-						<label><input type="checkbox" checked={cropimg} onChange={e => setcropimg(e.currentTarget.checked)} />Crop image</label>
+						<label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>
 						<input type="button" className="sub-btn" value="Save" onClick={saveimg} />
 						<CanvasView canvas={img.cnv} />
+					</React.Fragment>
+				)}
+				{tab == "gltf" && (
+					<React.Fragment>
+						<input type="button" className="sub-btn" value="Save" onClick={saveModel} />
 					</React.Fragment>
 				)}
 			</div>
@@ -1087,13 +1107,13 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 
 function CanvasView(p: { canvas: HTMLCanvasElement }) {
 	let ref = React.useCallback((el: HTMLDivElement | null) => {
-		p.canvas.style.maxWidth = "100%";
+		p.canvas.classList.add("mv-image-preview-canvas");
 		if (el) { el.appendChild(p.canvas); }
 		else { p.canvas.remove(); }
 	}, [p.canvas]);
 
 	return (
-		<div ref={ref} />
+		<div ref={ref} className="mv-image-preview" />
 	)
 }
 
@@ -1137,18 +1157,6 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 			<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
 			<input type="button" className="sub-btn" onClick={e => p.ctx.canRender() && showExportSceneMeta(p.ctx)} value="Export" />
 		</React.Fragment>
-	)
-}
-
-function ExportModelButton(p: { model: RSModel["loaded"] | null | undefined }) {
-	let exportmodel = () => {
-		if (p.model) {
-			saveGltf(p.model.mesh);
-		}
-	}
-
-	return (
-		<input type="button" className="sub-btn" disabled={!p.model} value="Export model" onClick={exportmodel} />
 	)
 }
 
@@ -1239,7 +1247,6 @@ function SceneRawModel(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
 			<JsonDisplay obj={data?.info.info} />
 		</React.Fragment>
@@ -1254,7 +1261,6 @@ function SceneLocation(p: LookupModeProps) {
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "objects", setId)} />
-			<ExportModelButton model={model?.loaded} />
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
@@ -1267,7 +1273,6 @@ function SceneItem(p: LookupModeProps) {
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "items", setId)} />
-			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)
@@ -1280,7 +1285,6 @@ function SceneNpc(p: LookupModeProps) {
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "npcs", setId)} />
-			<ExportModelButton model={model?.loaded} />
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
@@ -1298,7 +1302,6 @@ function SceneSpotAnim(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={+p.initialId} />
-			<ExportModelButton model={model?.loaded} />
 			<JsonDisplay obj={data?.info} />
 		</React.Fragment>
 	)

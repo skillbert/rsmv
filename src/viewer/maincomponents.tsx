@@ -15,7 +15,7 @@ import type { OpenDialogReturnValue } from "electron/renderer";
 import { UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
-import { TypedEmitter } from "../utils";
+import { delay, TypedEmitter } from "../utils";
 
 const electron = (() => {
 	try {
@@ -42,6 +42,25 @@ export type SavedCacheSource = {
 	location: string
 });
 
+export async function downloadStream(name: string, stream: ReadableStream) {
+	if (!electron) {
+		let a = document.createElement("a");
+		a.href = `download_${Math.random() * 10000 | 0}_${name}`;
+		let url = a.href;//a.href is aways normalized to abs url
+		let sw = await navigator.serviceWorker.ready;
+		if (!sw.active) { throw new Error("no service worker"); }
+		sw.active.postMessage({ type: "servedata", url, stream }, [stream as any]);
+		await delay(100);
+		let fr = document.createElement("iframe");
+		fr.src = url;
+		fr.hidden = true;
+		document.body.appendChild(fr);
+	} else {
+		//TODO
+		console.log("TODO");
+	}
+}
+globalThis.downloadStream = downloadStream;
 
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
 	let [caches, setCaches] = React.useState<Openrs2CacheMeta[] | null>(null);
