@@ -11,7 +11,6 @@ module.exports = {
 		main: "./src/main.ts",
 		electronviewer: "./src/viewer/",
 		cli: "./src/cli.ts",
-		// opcode_reader: "./src/opcode_reader.ts",
 		// searchmap: "./src/scripts/searchmap.ts",
 		buildfiletypes: "./src/buildfiletypes.ts",
 		maprender: "./src/map/",
@@ -55,8 +54,7 @@ module.exports = {
 	plugins: [
 		new CopyWebpackPlugin({
 			patterns: [
-				{ from: 'src/assets', to: "assets" },
-				{ from: 'src/opcodes', to: "opcodes" }
+				{ from: 'src/assets', to: "assets" }
 			]
 		})
 	]

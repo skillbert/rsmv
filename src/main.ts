@@ -10,35 +10,6 @@ app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
 //https://stackoverflow.com/questions/54464276/how-to-force-discrete-gpu-in-electron-js/63668188#63668188
 process.env.SHIM_MCCOMPAT = '0x800000001';
 
-//TODO just get rid of the whole download everything before use thing
-//show a nice loading window while updating our local cache
-// let loadingwnd: BrowserWindow | null = null;
-// argparser.setLoadingIndicator({
-// 	interval: 20,
-// 	start: async () => {
-// 		let wnd = new BrowserWindow({
-// 			width: 377, height: 144, frame: false, resizable: false,
-// 			webPreferences: {
-// 				nodeIntegration: true,
-// 				//TODO also make this depend on if we are rendering the map or not
-// 				backgroundThrottling: false
-// 			},
-// 		});
-// 		await wnd.loadFile("assets/splash.html");
-// 		loadingwnd = wnd;
-// 		//TODO add a way to stop the updating process by closing the window
-// 		//can currently only be stopped by canceling from the command line
-// 	},
-// 	progress: args => {
-// 		loadingwnd!.webContents.send("update-progress", args);
-// 	},
-// 	done: async () => {
-// 		loadingwnd!.close();
-// 		loadingwnd = null;
-// 	}
-// });
-
-
 
 app.whenReady().then(async () => {
 	var index = new BrowserWindow({

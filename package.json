@@ -3,6 +3,10 @@
 	"version": "0.1.0",
 	"description": "A viewer for NXT client models and materials",
 	"main": "dist/main.js",
+	"exports": {
+		".": "./dist/main.js",
+		"./*": "./dist/*"
+	},
 	"scripts": {
 		"start": "electron --inspect ./dist/main.js",
 		"debug": "electron --inspect-brk ./dist/main.js",
