@@ -30,7 +30,7 @@
 		"@types/sharp": "^0.29.2",
 		"@types/sql.js": "^1.4.3",
 		"@types/sqlite3": "^3.1.8",
-		"@types/three": "^0.133.1",
+		"@types/three": "^0.141.0",
 		"@types/webpack-env": "^1.16.3",
 		"@types/wicg-file-system-access": "^2020.9.5",
 		"assert": "^2.0.0",

@@ -477,11 +477,10 @@ export async function saveGltf(node: THREE.Object3D) {
 }
 
 export function exportThreeJsGltf(node: THREE.Object3D) {
-	return new Promise<Buffer>(resolve => {
+	return new Promise<Buffer>((resolve, reject) => {
 		let exporter = new GLTFExporter();
-		exporter.parse(node, gltf => resolve(gltf as any), {
+		exporter.parse(node, gltf => resolve(gltf as any), reject, {
 			binary: true,
-			embedImages: true,
 			animations: node.animations
 		});
 	});

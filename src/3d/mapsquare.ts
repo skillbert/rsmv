@@ -2087,7 +2087,6 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 			mat.map.minFilter = THREE.NearestMipMapLinearFilter;
 			mat.map.generateMipmaps = true;
 			mat.map.encoding = THREE.sRGBEncoding;
-			//bug in threejs? needs manual update after first update
 			mat.map.needsUpdate = true;
 		}
 	} else {
