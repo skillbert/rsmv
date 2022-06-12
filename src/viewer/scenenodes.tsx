@@ -1069,6 +1069,14 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		//TODO revoke object url to prevent mem leak after download is complete (when?)
 	}
 
+	let copyimg = async () => {
+		//@ts-ignore
+		navigator.clipboard.write([
+			//@ts-ignore
+			new ClipboardItem({ 'image/png': await new Promise<Blob | null>(d => img!.cnv.toBlob(d)) })
+		]);
+	}
+
 	let saveModel = async () => {
 		let a = 0;
 		let str = new ReadableStream({
@@ -1092,6 +1100,7 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 					<React.Fragment>
 						<label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>
 						<input type="button" className="sub-btn" value="Save" onClick={saveimg} />
+						<input type="button" className="sub-btn" value="Clipboard" onClick={copyimg} />
 						<CanvasView canvas={img.cnv} />
 					</React.Fragment>
 				)}
