@@ -1250,6 +1250,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 			mat.map = new THREE.DataTexture(sprite[0].data, sprite[0].width, sprite[0].height, THREE.RGBAFormat);
 			mat.depthTest = false;
 			mat.transparent = true;
+			mat.needsUpdate = true;
 			group = {
 				groupid: "mapscenes" + loc.effectiveLevel,
 				material: mat,

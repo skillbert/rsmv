@@ -51,6 +51,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 
 			try {
 				let engine = await EngineCache.create(cache);
+				globalThis.engine = engine;
 				console.log("engine loaded");
 				this.props.ctx.setSceneCache(new ThreejsSceneCache(engine));
 			} catch (e) {

@@ -106,7 +106,7 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileDecodeModes, cache: 
 
 	React.useEffect(() => { filesprom.then(setFiles) }, [filesprom]);
 
-	const hasprop = (o: object, p: string) => Object.prototype.hasOwnProperty.call(o, p);
+	const hasprop = (o: object, p: string) => o && Object.prototype.hasOwnProperty.call(o, p);
 	const getprop = function* (prop: any, path: string[], depth: number) {
 		if (Array.isArray(prop)) {
 			for (let sub of prop) {
