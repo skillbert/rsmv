@@ -1,3 +1,4 @@
+import type { Texture } from "three";
 
 export type ModelModifications = {
 	replaceColors?: [from: number, to: number][];
@@ -21,6 +22,28 @@ export type Stream = {
 	eof(): boolean;
 	bytesLeft(): number;
 }
+
+export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+	let cnv = document.createElement("canvas");
+	let ctx = cnv.getContext("2d")!;
+	if ("data" in img) {
+		cnv.width = img.width;
+		cnv.height = img.height;
+		ctx.putImageData(img, 0, 0);
+	} else if ("source" in img) {
+		cnv.width = img.source.data.width;
+		cnv.height = img.source.data.height;
+		ctx.drawImage(img.source.data, 0, 0);
+	} else {
+		cnv.width = img.width;
+		cnv.height = img.height
+		ctx.drawImage(img, 0, 0);
+	}
+	cnv.style.cssText = "position:absolute;top:0px;left:0px;border:1px solid red;background:purple;";
+	document.body.appendChild(cnv);
+	cnv.onclick = e => cnv.remove();
+}
+globalThis.dumptex = dumpTexture;
 
 export function delay(ms: number) {
 	return new Promise(d => setTimeout(d, ms))

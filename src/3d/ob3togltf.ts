@@ -100,8 +100,8 @@ export function parseOb3Model(modelfile: Buffer) {
 		let isHidden = (groupFlags & 0x10) != 0;
 		let hasSkin = (groupFlags & 0x20) != 0;
 		// console.log(n, "mat", materialId, "faceCount", faceCount, "hasFaceBones:", hasFaceBones, "ishidden:", isHidden, "hasflag20:", hasFlag20, "unk6:", unk6);
-		if (groupFlags & ~0x2f) {
-			console.log("unknown model flags", groupFlags & ~0x2f);
+		if (groupFlags & ~0x3f) {
+			console.log("unknown model flags", groupFlags & ~0x3f);
 		}
 
 		let colourBuffer: Uint8Array | null = null;
@@ -192,7 +192,7 @@ export function parseOb3Model(modelfile: Buffer) {
 		}
 
 		if (isHidden) {
-			console.log("skipped mesh with 0x10 flag");
+			// console.log("skipped mesh with 0x10 flag");
 			continue;
 		}
 

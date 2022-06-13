@@ -15,11 +15,7 @@ import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
 import { cacheFileDecodeModes } from "../scripts/extractfiles";
 import { JSONSchema6Definition } from "json-schema";
-
-globalThis.packedhsl = function (hsl: number) {
-	return HSL2RGB(packedHSL2HSL(hsl));
-}
-
+import { models } from "../../generated/models";
 
 export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 	mat.customProgramCacheKey = () => "floortex";
@@ -72,16 +68,15 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 
 //basically stores all the config of the game engine
 export class EngineCache {
-	framemapCache = new Map<number, ReturnType<typeof parseFramemaps["read"]>>();
-	materialCache = new Map<number, MaterialData>();
-	jsonDataCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 	ready: Promise<EngineCache>;
 	source: CacheFileSource;
 
 	materialArchive = new Map<number, Buffer>();
+	materialCache = new Map<number, MaterialData>();
 	mapUnderlays: mapsquare_underlays[];
 	mapOverlays: mapsquare_overlays[];
 	mapMapscenes: mapscenes[];
+	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 
 	static async create(source: CacheFileSource) {
 		let ret = new EngineCache(source);
@@ -109,8 +104,26 @@ export class EngineCache {
 		return this;
 	}
 
-	getJsonData(modename: string) {
-		let cached = this.jsonDataCache.get(modename);
+	getMaterialData(id: number) {
+		let cached = this.materialCache.get(id);
+		if (!cached) {
+			if (id == -1) {
+				cached = defaultMaterial();
+			} else {
+				let file = this.materialArchive.get(id);
+				if (!file) { throw new Error("material " + id + " not found"); }
+				cached = convertMaterial(file);
+			}
+			this.materialCache.set(id, cached);
+		}
+		return cached;
+	}
+
+	/**
+	 * very aggressive caching, do not use for objects which take a lot of memory
+	 */
+	getJsonSearchData(modename: string) {
+		let cached = this.jsonSearchCache.get(modename);
 		if (!cached) {
 			let modefactory = cacheFileDecodeModes[modename as keyof typeof cacheFileDecodeModes];
 			if (!modename) { throw new Error("unknown decode mode " + modename); }
@@ -139,30 +152,16 @@ export class EngineCache {
 				return files;
 			})();
 			cached = { files, schema: parser.parser.getJsonSchema() }
-			this.jsonDataCache.set(modename, cached);
-		}
-		return cached;
-	}
-
-	getMaterialData(id: number) {
-		let cached = this.materialCache.get(id);
-		if (!cached) {
-			if (id == -1) {
-				cached = defaultMaterial();
-			} else {
-				let file = this.materialArchive.get(id);
-				if (!file) { throw new Error("material " + id + " not found"); }
-				cached = convertMaterial(file);
-			}
-			this.materialCache.set(id, cached);
+			this.jsonSearchCache.set(modename, cached);
 		}
 		return cached;
 	}
 }
 
 export class ThreejsSceneCache {
-	textureCache = new Map<number, Promise<THREE.Texture>>();
-	gltfMaterialCache = new Map<number, Promise<THREE.Material>>();
+	modelCache = new Map<number, Promise<ModelData>>();
+	threejsTextureCache = new Map<number, Promise<{ tex: THREE.Texture, src: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap, filesize: number }>>();
+	threejsMaterialCache = new Map<number, Promise<THREE.Material>>();
 	source: CacheFileSource;
 	cache: EngineCache;
 	textureType: "png" | "dds" | "bmp" = "dds";//only dds is currently fully implemented
@@ -186,25 +185,34 @@ export class ThreejsSceneCache {
 	}
 
 	getTextureFile(texid: number, allowAlpha: boolean) {
-		let texprom = this.textureCache.get(texid);
+		let texprom = this.threejsTextureCache.get(texid);
 		if (!texprom) {
 			texprom = (async () => {
 				let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
 				let parsed = new ParsedTexture(file, allowAlpha);
-				let texture = new THREE.CanvasTexture(await parsed.toWebgl());
-				return texture;
+				let src = await parsed.toWebgl();
+				let tex = new THREE.CanvasTexture(src);
+				return { tex, src, filesize: file.byteLength };
 			})();
 
-			this.textureCache.set(texid, texprom);
+			this.threejsTextureCache.set(texid, texprom);
 		}
 		return texprom;
 	}
 
+	getModelData(id: number) {
+		let model = this.modelCache.get(id);
+		if (!model) {
+			model = this.source.getFileById(cacheMajors.models, id).then(f => parseOb3Model(f));
+			this.modelCache.set(id, model);
+		}
+		return model;
+	}
 
-	async getMaterial(matid: number, hasVertexAlpha: boolean) {
+	getMaterial(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
 		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
-		let cached = this.gltfMaterialCache.get(matcacheid);
+		let cached = this.threejsMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
 				let material = this.cache.getMaterialData(matid);
@@ -213,13 +221,13 @@ export class ThreejsSceneCache {
 				mat.transparent = hasVertexAlpha || material.alphamode != "opaque";
 				mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
 				if (material.textures.diffuse) {
-					mat.map = await this.getTextureFile(material.textures.diffuse, material.alphamode != "opaque");
+					mat.map = (await this.getTextureFile(material.textures.diffuse, material.alphamode != "opaque")).tex;
 					mat.map.wrapS = THREE.RepeatWrapping;
 					mat.map.wrapT = THREE.RepeatWrapping;
 					mat.map.encoding = THREE.sRGBEncoding;
 				}
 				if (material.textures.normal) {
-					mat.normalMap = await this.getTextureFile(material.textures.normal, false);
+					mat.normalMap = (await this.getTextureFile(material.textures.normal, false)).tex
 					mat.normalMap.wrapS = THREE.RepeatWrapping;
 					mat.normalMap.wrapT = THREE.RepeatWrapping;
 				}
@@ -237,24 +245,11 @@ export class ThreejsSceneCache {
 				mat.userData = material;
 				return mat;
 			})();
-			this.gltfMaterialCache.set(matcacheid, cached);
+			this.threejsMaterialCache.set(matcacheid, cached);
 		}
 		return cached;
 	}
 }
-
-
-export async function ob3ModelToThreejsNode(scene: ThreejsSceneCache, modelfiles: Buffer[]) {
-	let meshdatas = modelfiles.map(file => {
-		let meshdata = parseOb3Model(file);
-		// meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q));
-		return meshdata;
-	});
-
-	let mesh = await ob3ModelToThree(scene, mergeModelDatas(meshdatas));
-	return mesh;
-}
-
 
 export function mergeModelDatas(models: ModelData[]) {
 	let r: ModelData = {

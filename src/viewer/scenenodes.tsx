@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { augmentThreeJsFloorMaterial, ob3ModelToThreejsNode, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
 import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
@@ -15,7 +15,7 @@ import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, writeAvatar } from "../3d/avatar";
 import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf } from "./threejsrender";
-import { ModelData, parseOb3Model } from "../3d/ob3togltf";
+import { ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
@@ -147,8 +147,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		this.cache = cache;
 		this.model = (async () => {
 			let meshdatas = await Promise.all(models.map(async modelinit => {
-				let file = await this.cache.getFileById(cacheMajors.models, modelinit.modelid);
-				let meshdata = parseOb3Model(file);
+				let meshdata = await cache.getModelData(modelinit.modelid);
 				meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, modelinit.mods));
 				return meshdata;
 			}));
@@ -308,7 +307,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.model = (async () => {
 			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: true, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
-			let modeldata = await mapsquareModels(cache.cache, grid, chunks, opts);
+			let modeldata = await mapsquareModels(cache, grid, chunks, opts);
 			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
@@ -739,8 +738,9 @@ const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number
 });
 
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
+	let modeldata = cache.getModelData(id);
+	//getting the same file a 2nd time to get the full json
 	let modelfile = await cache.source.getFileById(cacheMajors.models, id);
-	let modeldata = parseOb3Model(modelfile);
 	let info = parseModels.read(modelfile);
 	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info } };
 }

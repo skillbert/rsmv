@@ -4,7 +4,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { boundMethod } from "autobind-decorator";
 import * as datastore from "idb-keyval";
-import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
 
 import { UIScriptFile } from "./scriptsui";

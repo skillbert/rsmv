@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { ModelBrowser, StringInput, InputCommitted, JsonDisplay } from "./scenenodes";
 
 import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-schema";
@@ -82,7 +82,7 @@ export function JsonSearchPreview(p: { mode: keyof typeof cacheFileDecodeModes, 
 type JsonSearchFilter = { path: string[], search: string };
 
 export function JsonSearch(p: { mode: keyof typeof cacheFileDecodeModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
-	const { schema, files: filesprom } = p.cache.getJsonData(p.mode);
+	const { schema, files: filesprom } = p.cache.getJsonSearchData(p.mode);
 	let initfilters = p.initialFilters
 	if (p.initialFilters.length == 0 && typeof schema == "object") {
 		if (schema.properties?.name) { initfilters = [{ path: ["name"], search: "" }] }

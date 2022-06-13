@@ -1,6 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { mapsquareModels, mapsquareToThree, parseMapsquare, ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
+import { ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
 import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect, stringToMapArea } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
@@ -491,17 +491,6 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	}
 	await mipper.run(true);
 	output.log(errs);
-}
-
-export async function downloadMapsquareThree(engine: EngineCache, extraopts: ParsemapOpts, x: number, z: number) {
-	console.log(`generating mapsquare ${x} ${z}`);
-	let opts: ParsemapOpts = { padfloor: true, invisibleLayers: false, ...extraopts };
-	let { chunks, grid } = await parseMapsquare(engine, { x, z, xsize: 1, zsize: 1 }, opts);
-	let modeldata = await mapsquareModels(engine, grid, chunks, opts);
-	let scene = new ThreejsSceneCache(engine);
-	let file = await mapsquareToThree(scene, grid, modeldata);
-	console.log(`completed mapsquare ${x} ${z}`);
-	return { grid, chunks, model: file, modeldata };
 }
 
 type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: ({ name: string, hash: number } | null)[] };

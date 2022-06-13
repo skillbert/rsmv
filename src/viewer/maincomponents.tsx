@@ -6,7 +6,7 @@ import { boundMethod } from "autobind-decorator";
 import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 import * as datastore from "idb-keyval";
-import { EngineCache, ob3ModelToThreejsNode, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { ModelBrowser, StringInput } from "./scenenodes";
 import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";

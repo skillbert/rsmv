@@ -1,17 +1,15 @@
 import { packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { ParsedTexture } from "./textures";
 import { parseEnvironments, parseMapscenes, parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseMapsquareWaterTiles, parseObject } from "../opdecoder";
-import { ScanBuffer } from "opcode_reader";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
-import { parseOb3Model, ModelMeshData, ModelData } from "./ob3togltf";
+import { ModelMeshData, ModelData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ob3ModelToThreejsNode } from "./ob3tothree";
-import { BufferAttribute, DataTexture, MeshBasicMaterial, Object3D, Quaternion, Vector3 } from "three";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache } from "./ob3tothree";
+import { BufferAttribute, DataTexture, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
@@ -967,49 +965,45 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 	return { grid, chunks };
 }
 
-export async function mapsquareSkybox(cache: ThreejsSceneCache, mainchunk: ChunkData) {
+export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: ChunkData) {
 	let skybox = new Object3D();
 	let fogColor = [0, 0, 0, 0];
 	if (mainchunk?.extra.unk00?.unk20) {
 		fogColor = mainchunk.extra.unk00.unk20.slice(1);
 	}
 	if (mainchunk?.extra.unk80) {
-		let envarch = await cache.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
+		let envarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
 		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
 		let env = parseEnvironments.read(envfile.buffer);
 		if (typeof env.model == "number") {
-			skybox = await ob3ModelToThreejsNode(cache, [await cache.getFileById(cacheMajors.models, env.model)]);
+			skybox = await ob3ModelToThree(scene, await scene.getModelData(env.model));
 		}
 	}
 	return { skybox, fogColor };
 }
 
-export async function mapsquareModels(engine: EngineCache, grid: TileGrid, chunks: ChunkData[], opts?: ParsemapOpts) {
+export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunks: ChunkData[], opts?: ParsemapOpts) {
 	let squareDatas: ChunkModelData[] = [];
 
 	for (let chunk of chunks) {
 		let floors: FloorMeshData[] = [];
 		let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareSize + 1, squareSize + 1);
-		let textures = new Map<number, ImageData>();
+		let textures = new Map<number, CanvasImage>();
 		let textureproms: Promise<void>[] = [];
 		for (let matid of matids) {
-			let mat = engine.getMaterialData(matid);
+			let mat = scene.cache.getMaterialData(matid);
 			if (mat.textures.diffuse) {
-				textureproms.push(
-					engine.source.getFileById(cacheMajors.texturesDds, mat.textures.diffuse)
-						.then(file => new ParsedTexture(file, false).toImageData())
-						.then(tex => { textures.set(mat.textures.diffuse!, tex); })
+				textureproms.push(scene.getTextureFile(mat.textures.diffuse, false)
+					.then(tex => { textures.set(mat.textures.diffuse!, tex.src); })
 				);
 			}
 		}
 		await Promise.all(textureproms);
 		let atlas!: SimpleTexturePacker;
-		retrysize: for (let size = 1024; size <= 4096; size *= 2) {
+		retrysize: for (let size = 256; size <= 4096; size *= 2) {
 			atlas = new SimpleTexturePacker(size);
 			for (let [id, tex] of textures.entries()) {
-				try {
-					atlas.addTexture(tex, id);
-				} catch (e) {
+				if (!atlas.addTexture(tex, id)) {
 					continue retrysize;
 				}
 			}
@@ -1026,7 +1020,7 @@ export async function mapsquareModels(engine: EngineCache, grid: TileGrid, chunk
 			}
 		}
 		let models = mapsquareObjectModels(chunk.locs);
-		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(engine, grid, chunk.locs));
+		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.cache, grid, chunk.locs));
 		squareDatas.push({
 			chunk,
 			floors,
@@ -1093,7 +1087,12 @@ function copyImageData(dest: ImageData, src: ImageData, destx: number, desty: nu
 	}
 }
 
-type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, img: ImageData }
+function copyCanvasImage(ctx: CanvasRenderingContext2D, src: CanvasImage, destx: number, desty: number, srcx = 0, srcy = 0, width = src.width, height = src.height) {
+	ctx.drawImage(src, srcx, srcy, width, height, destx, desty, width, height);
+}
+
+type CanvasImage = Exclude<CanvasImageSource, SVGImageElement>;
+type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, img: CanvasImage }
 
 class SimpleTexturePacker {
 	padsize = 32;//was still bleeding at 16
@@ -1103,11 +1102,16 @@ class SimpleTexturePacker {
 	allocx = 0;
 	allocy = 0;
 	allocLineHeight = 0;
+	result: HTMLCanvasElement | null = null;
 	constructor(size: number) {
 		this.size = size;
 	}
 
-	addTexture(img: ImageData, id: number) {
+	addTexture(img: CanvasImage, id: number) {
+		if (this.result != null) {
+			this.result = null;
+			console.log("adding textures to atlas after creation of texture");
+		}
 		let sizex = img.width + 2 * this.padsize;
 		let sizey = img.height + 2 * this.padsize;
 		if (this.allocx + sizex > this.size) {
@@ -1117,7 +1121,7 @@ class SimpleTexturePacker {
 		}
 		this.allocLineHeight = Math.max(this.allocLineHeight, sizey);
 		if (this.allocy + this.allocLineHeight > this.size) {
-			throw new Error("atlas is full");
+			return false;
 		}
 		let alloc: SimpleTexturePackerAlloc = {
 			u: (this.allocx + this.padsize) / this.size, v: (this.allocy + this.padsize) / this.size,
@@ -1130,10 +1134,13 @@ class SimpleTexturePacker {
 		if (typeof id != "undefined") {
 			this.map.set(id, alloc);
 		}
-		return alloc;
+		return true;
 	}
 	convert() {
-		let atlas = new ImageData(this.size, this.size);
+		if (this.result) { return this.result; }
+		let cnv = document.createElement("canvas");
+		cnv.width = this.size; cnv.height = this.size;
+		let ctx = cnv.getContext("2d")!;
 		console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
 		for (let alloc of this.allocs) {
 			const x0 = alloc.x - this.padsize;
@@ -1143,19 +1150,20 @@ class SimpleTexturePacker {
 			const y1 = alloc.y;
 			const y2 = alloc.y + alloc.img.height;
 			//YIKES
-			copyImageData(atlas, alloc.img, x0, y0, alloc.img.width - this.padsize, alloc.img.height - this.padsize, this.padsize, this.padsize);
-			copyImageData(atlas, alloc.img, x1, y0, 0, alloc.img.height - this.padsize, alloc.img.width, this.padsize);
-			copyImageData(atlas, alloc.img, x2, y0, 0, alloc.img.height - this.padsize, this.padsize, this.padsize);
+			copyCanvasImage(ctx, alloc.img, x0, y0, alloc.img.width - this.padsize, alloc.img.height - this.padsize, this.padsize, this.padsize);
+			copyCanvasImage(ctx, alloc.img, x1, y0, 0, alloc.img.height - this.padsize, alloc.img.width, this.padsize);
+			copyCanvasImage(ctx, alloc.img, x2, y0, 0, alloc.img.height - this.padsize, this.padsize, this.padsize);
 
-			copyImageData(atlas, alloc.img, x0, y1, alloc.img.width - this.padsize, 0, this.padsize, alloc.img.height);
-			copyImageData(atlas, alloc.img, x1, y1, 0, 0, alloc.img.width, alloc.img.height);
-			copyImageData(atlas, alloc.img, x2, y1, 0, 0, this.padsize, alloc.img.height);
+			copyCanvasImage(ctx, alloc.img, x0, y1, alloc.img.width - this.padsize, 0, this.padsize, alloc.img.height);
+			copyCanvasImage(ctx, alloc.img, x1, y1, 0, 0, alloc.img.width, alloc.img.height);
+			copyCanvasImage(ctx, alloc.img, x2, y1, 0, 0, this.padsize, alloc.img.height);
 
-			copyImageData(atlas, alloc.img, x0, y2, alloc.img.width - this.padsize, 0, this.padsize, this.padsize);
-			copyImageData(atlas, alloc.img, x1, y2, 0, 0, alloc.img.width, this.padsize);
-			copyImageData(atlas, alloc.img, x2, y2, 0, 0, this.padsize, this.padsize);
+			copyCanvasImage(ctx, alloc.img, x0, y2, alloc.img.width - this.padsize, 0, this.padsize, this.padsize);
+			copyCanvasImage(ctx, alloc.img, x1, y2, 0, 0, alloc.img.width, this.padsize);
+			copyCanvasImage(ctx, alloc.img, x2, y2, 0, 0, this.padsize, this.padsize);
 		}
-		return atlas;
+		this.result = cnv;
+		return cnv;
 	}
 }
 
@@ -1481,7 +1489,7 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 			addmodel(inst.type, morph);
 		}
 		if (modelcount == 0) {
-			console.log("model not found for render type", inst.type, objectmeta);
+			// console.log("model not found for render type", inst.type, objectmeta);
 		}
 	}
 	return models;
@@ -1719,23 +1727,16 @@ function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number) {
 	return model;
 }
 
-async function generateLocationMeshgroups(scene: ThreejsSceneCache, models: MapsquareLocation[]) {
-	let modelcache = new Map<number, ModelData>();
+async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: MapsquareLocation[]) {
+	let loadedmodels = new Map<number, ModelData>();
 
 	let matmeshes: Map<string, Map<number, PlacedModel>> = new Map();
 
-	for (let obj of models) {
+	await Promise.all(locs.map(loc => scene.getModelData(loc.modelid).then(m => loadedmodels.set(loc.modelid, m))));
+
+	for (let obj of locs) {
 		let model: ModelData | undefined;
-		if (typeof obj.modelid == "object") {
-			model = obj.modelid;
-		} else {
-			model = modelcache.get(obj.modelid);
-			if (!model) {
-				let file = await scene.getFileById(cacheMajors.models, obj.modelid);
-				model = parseOb3Model(file);
-				modelcache.set(obj.modelid, model);
-			}
-		}
+		model = loadedmodels.get(obj.modelid)!;
 		for (let rawmesh of model.meshes) {
 			let modified = modifyMesh(rawmesh, obj.mods);
 			let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
@@ -2084,7 +2085,14 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 		if (!floor.worldmap) {
 			augmentThreeJsFloorMaterial(mat);
 			let img = floor.atlas.convert();
-			mat.map = new THREE.DataTexture(img.data, img.width, img.height, THREE.RGBAFormat);
+
+			//no clue why this doesn't work
+			// mat.map = new THREE.Texture(img);
+			// globalThis.bug = mat.map;
+			let data = img.getContext("2d")!.getImageData(0, 0, img.width, img.height);
+			global.qwe = data;
+			mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
+
 			mat.map.minFilter = THREE.NearestMipMapLinearFilter;
 			mat.map.generateMipmaps = true;
 			mat.map.encoding = THREE.sRGBEncoding;
