@@ -224,10 +224,6 @@ export class ThreejsSceneCache {
 					mat.normalMap.wrapT = THREE.RepeatWrapping;
 				}
 				mat.vertexColors = material.vertexColors || hasVertexAlpha;
-				mat.color.setRGB(material.materialColor[0] / 255, material.materialColor[1] / 255, material.materialColor[2] / 255);
-				//TODO re-enable
-				// mat.vertexColors = true;
-				// mat.map = null;
 
 				if (!material.vertexColors && hasVertexAlpha) {
 					mat.customProgramCacheKey = () => "vertexalphaonly";

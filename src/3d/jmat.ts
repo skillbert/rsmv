@@ -12,9 +12,10 @@ export type MaterialData = {
 	},
 	uvAnim: { u: number, v: number } | undefined,
 	vertexColors: boolean,
-	materialColor: [number, number, number],
+	reflectionColor: [number, number, number],//TODO currently unused
 	alphamode: "opaque" | "cutoff" | "blend",
 	alphacutoff: number,
+	stripDiffuseAlpha: boolean,
 	raw: ReturnType<typeof parseMaterials["read"]> | null
 }
 
@@ -23,9 +24,10 @@ export function defaultMaterial(): MaterialData {
 		textures: {},
 		uvAnim: undefined,
 		vertexColors: true,
-		materialColor: [255, 255, 255],
+		reflectionColor: [255, 255, 255],
 		alphamode: "opaque",
 		alphacutoff: 0.1,
+		stripDiffuseAlpha: false,
 		raw: null
 	}
 }
@@ -54,13 +56,10 @@ export function convertMaterial(data: Buffer) {
 		}
 		// mat.vertexColors = (raw.alphamode != 2);
 		// mat.vertexColors = !raw.extra || raw.extra.colorint != 0;
-		mat.vertexColors = !raw.extra || raw.extra.unknownbool;
+		mat.vertexColors = !raw.extra || raw.extra.unk0a_bool;
 		if (raw.extra) {
-			if (raw.extra.colorint != 0) {
-				mat.materialColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));
-			} else {
-				// mat.vertexColors = true;
-			}
+			mat.stripDiffuseAlpha = (raw.extra.unk00_flags & 1) != 0;
+			mat.reflectionColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));
 		}
 	} else if (rawparsed.v1) {
 		let raw = rawparsed.v1;

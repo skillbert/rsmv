@@ -31,8 +31,14 @@
 
 		["flagextra","bool"],
 		["extra",["opt",["flagextra",1],["struct",
-			["unknown",["buffer",10,"hex"]],
-			["unknownbool","bool"],
+			["unk00_flags","ubyte"],//flags 1=alpha channel reuse,2=water/lava/bloom?,4=water/dg water,8=water, all skyboxes have 6
+			["unk01_flagsornumber","ubyte"],//0123 OR a high number (only 20 uses)
+			["unk02","ubyte"],//0 if unk01=0123 or number (only 4 uses)
+			["unknown",["buffer",4,"hex"]],//mostly 0 except for some ~15 water materials
+			["unk07_bool","bool"],
+			["unk08_flags","ubyte"],//0=5k,1=1,2=5k
+			["unk09_bool","bool"],//true=7
+			["unk0a_bool","bool"],
 			["specular","ubyte"],
 			["metalness","ubyte"],
 			["colorint","ushort"]
