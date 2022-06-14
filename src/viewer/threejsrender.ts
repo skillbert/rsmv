@@ -43,8 +43,9 @@ export type ThreeJsSceneElement = {
 		opaqueBackground?: boolean,
 		hideFloor?: boolean,
 		hideFog?: boolean,
-		camMode?: CameraMode
-		camControls?: CameraControlMode
+		camMode?: CameraMode,
+		camControls?: CameraControlMode,
+		autoFrames?: boolean | undefined
 	}
 }
 
@@ -169,6 +170,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let controls: CameraControlMode = "free";
 		let hideFog = false;
 		let showfloor = true;
+		let autoframes: boolean | undefined = undefined;
 		let nodeDeleteList = new Set(this.modelnode.children);
 		this.animationMixers.clear();
 		for (let source of this.sceneElements) {
@@ -183,6 +185,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			if (el.options?.hideFloor) { showfloor = false; }
 			if (el.options?.camMode) { cammode = el.options.camMode; }
 			if (el.options?.camControls) { controls = el.options.camControls; }
+			if (typeof el.options?.autoFrames == "boolean") { autoframes = el.options.autoFrames; }
 			if (el.modelnode) {
 				nodeDeleteList.delete(el.modelnode);
 				if (el.modelnode.parent != this.modelnode) {
@@ -194,7 +197,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
 		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
-		this.automaticFrames = animated;
+		this.automaticFrames = autoframes ?? animated;
 		this.floormesh.visible = showfloor;
 		this.camMode = cammode;
 		this.controls.screenSpacePanning = controls == "free";
