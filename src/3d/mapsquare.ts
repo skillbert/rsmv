@@ -513,7 +513,10 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 			}
 		}
 		if (clonedcolors) {
-			newmesh.attributes.color = clonedcolors;
+			newmesh.attributes = {
+				...mesh.attributes,
+				color: clonedcolors
+			}
 		}
 	}
 	return newmesh;
@@ -1168,7 +1171,13 @@ class SimpleTexturePacker {
 }
 
 type PlacedModel = {
-	models: { model: ModelMeshData, maxy: number, miny: number, morph: FloorMorph, extras: ModelExtrasLocation | ModelExtrasOverlay }[],
+	models: {
+		model: ModelMeshData,
+		morph: FloorMorph,
+		miny: number,
+		maxy: number,
+		extras: ModelExtrasLocation | ModelExtrasOverlay
+	}[],
 	material: THREE.Material,
 	overlayIndex: number,
 	groupid: string
@@ -1230,19 +1239,19 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 
 		floors[loc.effectiveLevel].wallgroup.models.push({
 			model: model.meshes[0],
-			extras: {
-				modeltype: "overlay",
-				isclickable: false,
-				modelgroup: "walls" + loc.visualLevel,
-				level: loc.effectiveLevel
-			},
-			maxy: model.maxy,
-			miny: model.miny,
 			morph: {
 				level: loc.plane,
 				placementMode: "followfloor",
 				translate, rotation, scale,
 				scaleModelHeightOffset: 0
+			},
+			miny: model.miny,
+			maxy: model.maxy,
+			extras: {
+				modeltype: "overlay",
+				isclickable: false,
+				modelgroup: "walls" + loc.visualLevel,
+				level: loc.effectiveLevel
 			}
 		});
 	}
@@ -1273,14 +1282,6 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 		let mesh = squareMesh(tex.image.width * spritescale, tex.image.height * spritescale, [255, 255, 255]);
 		let translate = new THREE.Vector3().set((loc.x + loc.sizex / 2) * tiledimensions, 0, (loc.z + loc.sizez / 2) * tiledimensions);
 		group.models.push({
-			extras: {
-				modeltype: "overlay",
-				isclickable: false,
-				level: loc.visualLevel,
-				modelgroup: "mapscenes"
-			},
-			maxy: 0,
-			miny: 0,
 			model: mesh,
 			morph: {
 				level: loc.plane,
@@ -1289,6 +1290,14 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 				scale: new THREE.Vector3(1, 1, 1),
 				translate: translate,
 				scaleModelHeightOffset: 0
+			},
+			miny: 0,
+			maxy: 0,
+			extras: {
+				modeltype: "overlay",
+				isclickable: false,
+				level: loc.visualLevel,
+				modelgroup: "mapscenes"
 			}
 		});
 	}
@@ -1755,7 +1764,13 @@ async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: Mapsqu
 				};
 				group.set(matkey, matgroup);
 			}
-			matgroup.models.push({ morph: obj.morph, model: modified, maxy: model!.maxy, miny: model!.miny, extras: obj.extras });
+			matgroup.models.push({
+				model: rawmesh,
+				morph: obj.morph,
+				miny: model!.miny,
+				maxy: model!.maxy,
+				extras: obj.extras
+			});
 		};
 	}
 	let r: PlacedModel[] = [];

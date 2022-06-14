@@ -148,8 +148,11 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		this.model = (async () => {
 			let meshdatas = await Promise.all(models.map(async modelinit => {
 				let meshdata = await cache.getModelData(modelinit.modelid);
-				meshdata.meshes = meshdata.meshes.map(q => modifyMesh(q, modelinit.mods));
-				return meshdata;
+				let modified = {
+					...meshdata,
+					meshes: meshdata.meshes.map(q => modifyMesh(q, modelinit.mods))
+				};
+				return modified;
 			}));
 			let modeldata = mergeModelDatas(meshdatas);
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
@@ -964,7 +967,7 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx }: { ctx
 		<div>
 			{slot && (
 				<div style={{ display: "grid", gridTemplateColumns: "auto repeat(10,min-content)" }}>
-					{slot.name}
+					<span>{slot.name}</span>
 					{!cust?.color?.col2 && !cust?.color?.col4 && slot.replaceColors.length != 0 && (
 						<input type="button" className="sub-btn" value="C" onClick={e => editcust(c => c.color = { col4: null, col2: slot.replaceColors.map(q => q[1]) })} />
 					)}
