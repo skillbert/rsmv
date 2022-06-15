@@ -25,6 +25,8 @@ import { BoneCenter, getBoneCenters, ModelData } from "./ob3togltf";
 //43      fishing spot
 //3680    flag
 
+//npc 3324  broken pest drone
+
 //weird animation set 3051 (human skeleton)
 //22564,22565,22566,22567,22568 human checking out clothes
 
