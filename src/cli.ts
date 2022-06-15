@@ -2,7 +2,7 @@ import { filesource, cliArguments, ReadCacheSource } from "./cliparser";
 import { run, command, option, flag } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
-import { DecodeMode, cacheFileDecodeModes, extractCacheFiles } from "./scripts/extractfiles";
+import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes } from "./scripts/extractfiles";
 import { CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
 import { defaultTestDecodeOpts, testDecode } from "./scripts/testdecode";
 import * as cmdts from "cmd-ts";
@@ -14,7 +14,8 @@ import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
 const testdecode = command({
 	name: "testdecode",
 	args: {
-		...filesource
+		...filesource,
+		mode: option({ long: "mode", short: "m" })
 	},
 	handler: async (args) => {
 		const errdir = "./cache5/errs";
@@ -27,7 +28,8 @@ const testdecode = command({
 
 		let output = new CLIScriptOutput(errdir);
 		let source = await args.source();
-		let mode = cacheFileDecodeModes.objects({});
+		let mode = cacheFileJsonModes[args.mode];
+		if (!mode) { throw new Error(`mode ${args.mode} not found, possible modes: ${Object.keys(cacheFileJsonModes).join(", ")}`) }
 		await output.run(testDecode, source, mode, defaultTestDecodeOpts());
 	}
 });

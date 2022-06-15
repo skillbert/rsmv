@@ -4,7 +4,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { ModelBrowser, StringInput, InputCommitted, JsonDisplay } from "./scenenodes";
 
 import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-schema";
-import { cacheFileDecodeModes } from "../scripts/extractfiles";
+import { cacheFileJsonModes } from "../scripts/extractfiles";
 import { UIContext, UIContextReady } from "./maincomponents";
 
 function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, onClose: () => void }) {
@@ -23,7 +23,7 @@ function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, onCl
 	)
 }
 
-export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileDecodeModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = []) {
+export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileJsonModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = []) {
 	let onselect = (id: number, obj: object) => {
 		modal.close();
 		callback(id);
@@ -57,7 +57,7 @@ export function showModal(config: { title: string }, children: React.ReactNode) 
 	return { close };
 }
 
-export function JsonSearchPreview(p: { mode: keyof typeof cacheFileDecodeModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
+export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
 	let [selid, setSelid] = React.useState(-1);
 	let [selobj, setSelobj] = React.useState<object | null>(null);
 
@@ -81,7 +81,7 @@ export function JsonSearchPreview(p: { mode: keyof typeof cacheFileDecodeModes, 
 
 type JsonSearchFilter = { path: string[], search: string };
 
-export function JsonSearch(p: { mode: keyof typeof cacheFileDecodeModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
+export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
 	const { schema, files: filesprom } = p.cache.getJsonSearchData(p.mode);
 	let initfilters = p.initialFilters
 	if (p.initialFilters.length == 0 && typeof schema == "object") {

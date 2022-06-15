@@ -21,7 +21,7 @@ import { TypedEmitter } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
-import { cacheFileDecodeModes, extractCacheFiles } from "../scripts/extractfiles";
+import { cacheFileJsonModes, extractCacheFiles } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
 import { CacheSelector, downloadStream, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
@@ -1097,7 +1097,6 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 	}
 
 	let saveModel = async () => {
-		let a = 0;
 		let str = new ReadableStream({
 			async pull(c) {
 				let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
@@ -1576,7 +1575,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
 	let [files, setFiles] = React.useState("");
-	let [mode, setMode] = React.useState(Object.keys(cacheFileDecodeModes)[0]);
+	let [mode, setMode] = React.useState(Object.keys(cacheFileJsonModes)[0]);
 
 	let run = () => {
 		let output = new UIScriptOutput();
@@ -1588,7 +1587,7 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 		<React.Fragment>
 			<LabeledInput label="Mode">
 				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+					{Object.keys(cacheFileJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
 				</select>
 			</LabeledInput>
 			<LabeledInput label="File ranges">
@@ -1674,11 +1673,11 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 	let [mode, setMode] = React.useState("");
 
 	let run = () => {
-		let modefactory = cacheFileDecodeModes[mode];
-		if (!modefactory) { return; }
+		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
+		if (!modeobj) { return; }
 		let output = new UIScriptOutput();
 		let opts = defaultTestDecodeOpts();
-		output.run(testDecode, p.source, modefactory({}), opts);
+		output.run(testDecode, p.source, modeobj, opts);
 		p.onRun(output);
 	}
 
@@ -1686,7 +1685,7 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 		<React.Fragment>
 			<LabeledInput label="Mode">
 				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+					{Object.keys(cacheFileJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
 				</select>
 			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />

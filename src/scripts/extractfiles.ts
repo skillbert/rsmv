@@ -38,6 +38,13 @@ function worldmapIndex(subfile: number): DecodeLookup {
 	const worldStride = 128;
 	return {
 		major,
+		logicalDimensions: 2,
+		fileToLogical(major, minor, subfile) {
+			return [minor % worldStride, Math.floor(minor / worldStride)];
+		},
+		logicalToFile(id: LogicalIndex) {
+			return { major, minor: id[0] + id[1] * worldStride, subid: subfile };
+		},
 		async logicalRangeToFiles(source, start, end) {
 			let indexfile = await source.getIndexFile(major);
 			let files: CacheFileId[] = [];
@@ -55,12 +62,6 @@ function worldmapIndex(subfile: number): DecodeLookup {
 				}
 			}
 			return files;
-		},
-		fileToLogical(major, minor, subfile) {
-			return [minor % worldStride, Math.floor(minor / worldStride)];
-		},
-		logicalToFile(id: LogicalIndex) {
-			return { major, minor: id[0] + id[1] * worldStride, subid: subfile };
 		}
 	}
 }
@@ -68,14 +69,15 @@ function worldmapIndex(subfile: number): DecodeLookup {
 function singleMinorIndex(major: number, minor: number): DecodeLookup {
 	return {
 		major,
-		async logicalRangeToFiles(source, start, end) {
-			return filerange(source, { major, minor, subid: start[0] }, { major, minor, subid: end[0] });
-		},
+		logicalDimensions: 1,
 		fileToLogical(major, minor, subfile) {
 			return [subfile];
 		},
 		logicalToFile(id: LogicalIndex) {
 			return { major, minor, subid: id[0] };
+		},
+		async logicalRangeToFiles(source, start, end) {
+			return filerange(source, { major, minor, subid: start[0] }, { major, minor, subid: end[0] });
 		}
 	}
 }
@@ -83,16 +85,17 @@ function singleMinorIndex(major: number, minor: number): DecodeLookup {
 function chunkedIndex(major: number): DecodeLookup {
 	return {
 		major,
-		async logicalRangeToFiles(source, start, end) {
-			let startindex = fileIdToArchiveminor(major, start[0]);
-			let endindex = fileIdToArchiveminor(major, end[0]);
-			return filerange(source, startindex, endindex);
-		},
+		logicalDimensions: 1,
 		fileToLogical(major, minor, subfile) {
 			return [archiveToFileId(major, minor, subfile)];
 		},
 		logicalToFile(id: LogicalIndex) {
 			return fileIdToArchiveminor(major, id[0]);
+		},
+		async logicalRangeToFiles(source, start, end) {
+			let startindex = fileIdToArchiveminor(major, start[0]);
+			let endindex = fileIdToArchiveminor(major, end[0]);
+			return filerange(source, startindex, endindex);
 		}
 	};
 }
@@ -100,6 +103,7 @@ function chunkedIndex(major: number): DecodeLookup {
 function standardIndex(major: number): DecodeLookup {
 	return {
 		major,
+		logicalDimensions: 2,
 		fileToLogical(major, minor, subfile) { return [minor, subfile]; },
 		logicalToFile(id) { return { major, minor: id[0], subid: id[1] }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -110,6 +114,7 @@ function standardIndex(major: number): DecodeLookup {
 function indexfileIndex(): DecodeLookup {
 	return {
 		major: cacheMajors.index,
+		logicalDimensions: 1,
 		fileToLogical(major, minor, subfile) { return [minor]; },
 		logicalToFile(id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -124,6 +129,7 @@ function indexfileIndex(): DecodeLookup {
 function rootindexfileIndex(): DecodeLookup {
 	return {
 		major: cacheMajors.index,
+		logicalDimensions: 0,
 		fileToLogical(major, minor, subfile) { return []; },
 		logicalToFile(id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -189,6 +195,7 @@ type FileId = { major: number, minor: number, subid: number };
 
 type DecodeLookup = {
 	major: number | undefined,
+	logicalDimensions: number,
 	logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
 	fileToLogical(major: number, minor: number, subfile: number): LogicalIndex,
 	logicalToFile(id: LogicalIndex): FileId,
@@ -207,6 +214,7 @@ const decodeBinary: DecodeModeFactory = () => {
 	return {
 		ext: "bin",
 		major: undefined,
+		logicalDimensions: 3,
 		fileToLogical(major, minor, subfile) { return [major, minor, subfile]; },
 		logicalToFile(id) { return { major: id[0], minor: id[1], subid: id[2] }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -221,42 +229,50 @@ const decodeBinary: DecodeModeFactory = () => {
 	}
 }
 
-export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
+
+export type JsonBasedFile = {
+	parser: FileParser<any>,
+	lookup: DecodeLookup
+}
+
+export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
+	framemaps: { parser: parseFramemaps, lookup: chunkedIndex(cacheMajors.framemaps) },
+	items: { parser: parseItem, lookup: chunkedIndex(cacheMajors.items) },
+	enums: { parser: parseEnums, lookup: chunkedIndex(cacheMajors.enums) },
+	npcs: { parser: parseNpc, lookup: chunkedIndex(cacheMajors.npcs) },
+	objects: { parser: parseObject, lookup: chunkedIndex(cacheMajors.objects) },
+	achievements: { parser: parseAchievement, lookup: chunkedIndex(cacheMajors.achievements) },
+	structs: { parser: parseStructs, lookup: chunkedIndex(cacheMajors.structs) },
+	sequences: { parser: parseSequences, lookup: chunkedIndex(cacheMajors.sequences) },
+	spotanims: { parser: parseSpotAnims, lookup: chunkedIndex(cacheMajors.spotanims) },
+	materials: { parser: parseMaterials, lookup: chunkedIndex(cacheMajors.materials) },
+	quickchatcats: { parser: parseQuickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
+	quickchatlines: { parser: parseQuickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
+
+	overlays: { parser: parseMapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
+	identitykit: { parser: parseIdentitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },
+	params: { parser: parseParams, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.params) },
+	underlays: { parser: parseMapsquareUnderlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays) },
+	mapscenes: { parser: parseMapscenes, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes) },
+	environments: { parser: parseEnvironments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
+	animgroupconfigs: { parser: parseAnimgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
+
+	maptiles: { parser: parseMapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
+	maplocations: { parser: parseMapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
+
+	frames: { parser: parseFrames, lookup: standardIndex(cacheMajors.frames) },
+	models: { parser: parseModels, lookup: standardIndex(cacheMajors.models) },
+	skeletons: { parser: parseSkeletalAnim, lookup: standardIndex(cacheMajors.skeletalAnims) },
+
+	indices: { parser: parseCacheIndex, lookup: indexfileIndex() },
+	rootindex: { parser: parseRootCacheIndex, lookup: rootindexfileIndex() }
+})
+
+export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin", DecodeModeFactory> = {
 	bin: decodeBinary,
 
-	framemaps: standardFile(parseFramemaps, chunkedIndex(cacheMajors.framemaps)),
-	items: standardFile(parseItem, chunkedIndex(cacheMajors.items)),
-	enums: standardFile(parseEnums, chunkedIndex(cacheMajors.enums)),
-	npcs: standardFile(parseNpc, chunkedIndex(cacheMajors.npcs)),
-	objects: standardFile(parseObject, chunkedIndex(cacheMajors.objects)),
-	achievements: standardFile(parseAchievement, chunkedIndex(cacheMajors.achievements)),
-	structs: standardFile(parseStructs, chunkedIndex(cacheMajors.structs)),
-	sequences: standardFile(parseSequences, chunkedIndex(cacheMajors.sequences)),
-	spotanims: standardFile(parseSpotAnims, chunkedIndex(cacheMajors.spotanims)),
-	materials: standardFile(parseMaterials, chunkedIndex(cacheMajors.materials)),
-	quickchatcats: standardFile(parseQuickchatCategories, singleMinorIndex(cacheMajors.quickchat, 0)),
-	quickchatlines: standardFile(parseQuickchatLines, singleMinorIndex(cacheMajors.quickchat, 1)),
-
-	overlays: standardFile(parseMapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
-	identitykit: standardFile(parseIdentitykit, singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit)),
-	params: standardFile(parseParams, singleMinorIndex(cacheMajors.config, cacheConfigPages.params)),
-	underlays: standardFile(parseMapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
-	mapscenes: standardFile(parseMapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
-	environments: standardFile(parseEnvironments, singleMinorIndex(cacheMajors.config, cacheConfigPages.environments)),
-	animgroupconfigs: standardFile(parseAnimgroupConfigs, singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups)),
-
-	maptiles: standardFile(parseMapsquareTiles, worldmapIndex(cacheMapFiles.squares)),
-	maplocations: standardFile(parseMapsquareLocations, worldmapIndex(cacheMapFiles.locations)),
-
-	frames: standardFile(parseFrames, standardIndex(cacheMajors.frames)),
-	models: standardFile(parseModels, standardIndex(cacheMajors.models)),
-	skeletons: standardFile(parseSkeletalAnim, standardIndex(cacheMajors.skeletalAnims)),
-
-	indices: standardFile(parseCacheIndex, indexfileIndex()),
-	rootindex: standardFile(parseRootCacheIndex, rootindexfileIndex()),
-
-	avatars: standardFile(parseAvatars, standardIndex(0)),
-});
+	...Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)]))
+} as any;
 
 export async function extractCacheFiles(output: ScriptOutput, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];

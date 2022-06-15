@@ -13,7 +13,7 @@ import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareU
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
-import { cacheFileDecodeModes } from "../scripts/extractfiles";
+import { cacheFileJsonModes } from "../scripts/extractfiles";
 import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 
@@ -125,13 +125,10 @@ export class EngineCache {
 	getJsonSearchData(modename: string) {
 		let cached = this.jsonSearchCache.get(modename);
 		if (!cached) {
-			let modefactory = cacheFileDecodeModes[modename as keyof typeof cacheFileDecodeModes];
-			if (!modename) { throw new Error("unknown decode mode " + modename); }
-			let mode = modefactory({});
-			const parser = mode.parser;
-			if (!parser) { throw new Error("decode mode without json parser"); }
+			let mode = cacheFileJsonModes[modename as keyof typeof cacheFileJsonModes];
+			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
-				let allfiles = await mode.logicalRangeToFiles(this.source, [0, 0], [Infinity, Infinity]);
+				let allfiles = await mode.lookup.logicalRangeToFiles(this.source, [0, 0], [Infinity, Infinity]);
 				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 				let files: any[] = [];
 				for (let fileid of allfiles) {
@@ -143,15 +140,15 @@ export class EngineCache {
 						lastarchive = { index: fileid.index, subfiles: arch };
 					}
 					let file = arch[fileid.subindex];
-					let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
-					let res = parser.read(file.buffer);
+					let logicalid = mode.lookup.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
+					let res = mode.parser.read(file.buffer);
 					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
 					files.push(res);
 				}
 
 				return files;
 			})();
-			cached = { files, schema: parser.parser.getJsonSchema() }
+			cached = { files, schema: mode.parser.parser.getJsonSchema() }
 			this.jsonSearchCache.set(modename, cached);
 		}
 		return cached;

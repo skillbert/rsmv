@@ -26,6 +26,7 @@ type FileEdit = {
 	action: FileAction
 }
 
+//TODO merge all this with defs in extract
 function chunkedIndexName(major: number, minor: number, subfile: number) {
 	let name = majormap[major]?.name ?? `${major}`;
 	return `${name}-${archiveToFileId(major, minor, subfile)}`;

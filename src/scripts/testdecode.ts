@@ -1,6 +1,6 @@
 import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
-import { DecodeMode, cacheFileDecodeModes } from "./extractfiles";
+import { JsonBasedFile } from "./extractfiles";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser } from "opdecoder";
 
@@ -26,10 +26,8 @@ export function defaultTestDecodeOpts() {
 	};
 }
 
-export async function testDecode(output: ScriptOutput, source: CacheFileSource, mode: DecodeMode, opts: ReturnType<typeof defaultTestDecodeOpts>) {
+export async function testDecode(output: ScriptOutput, source: CacheFileSource, mode: JsonBasedFile, opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
-	if (!mode.parser) { throw new Error("decode mode doesn't have a standard parser"); }
-	const decoder = mode.parser;
 	let memuse = 0;
 	let errminors: number[] = [];
 	let errfilesizes: number[] = [];
@@ -39,7 +37,7 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 
 	let fileiter: () => AsyncGenerator<DecodeEntry>;
 
-	let files = await mode.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
+	let files = await mode.lookup.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
 
 	//pre-sort to get more small file under mem limit
 	// files.sort((a, b) => (a.index.size ?? 0) - (b.index.size ?? 0));
@@ -88,7 +86,7 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 			output.log("progress, file ", file.major, file.minor, file.subfile);
 			lastProgress = Date.now();
 
-			let res = testDecodeFile(decoder, opts.outmode, file.file, {});
+			let res = testDecodeFile(mode.parser, opts.outmode, file.file, {});
 
 			if (output.state == "running") {
 				if (res.success) {
