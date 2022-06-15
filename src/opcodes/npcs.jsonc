@@ -12,7 +12,7 @@
 	"0x2A": { "name":                     "recolourPalette", "read": [ "array", "byte" ] },
 	"0x2C": { "name":                     "recolor_indices", "read": "unsigned short" },
 	"0x2D": { "name":                   "retexture_indices", "read": "unsigned short" },
-	"0x3C": { "name":                          "headModels", "read": [ "array", "variable int" ] },
+	"0x3C": { "name":                          "headModels", "read": [ "array", "varuint" ] },
 	"0x5D": { "name":                          "drawMapDot", "read": "false" },
 	"0x5F": { "name":                              "combat", "read": "unsigned short" },
 	"0x61": { "name":                             "scaleXZ", "read": "unsigned short" },

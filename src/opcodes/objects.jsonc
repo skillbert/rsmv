@@ -57,7 +57,7 @@
 	"0x67": { "name":                          "occludes_2", "read": "false" },
 	"0x68": { "name":             "interactable_related_68", "read": "unsigned byte" },
 	"0x69": { "name":                      "invertMapScene", "read": "true" },
-	"0x6A": { "name":                          "headModels", "read": [ "array", ["struct", ["model", "variable int"], ["unknown_2", "unsigned byte"]] ] },
+	"0x6A": { "name":                          "headModels", "read": [ "array", ["struct", ["model", "varuint"], ["unknown_2", "unsigned byte"]] ] },
 	"0x6B": { "name":                         "mapFunction", "read": "unsigned short" },
 	"0x96": { "name":                    "members_action_1", "read": "string" },
 	"0x97": { "name":                    "members_action_2", "read": "string" },
