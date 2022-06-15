@@ -327,6 +327,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 					files[handle.name] = await handle.getFile();
 				}
 			}
+			navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
 		} else {
 			files = source.blobs;
 		}
@@ -342,7 +343,6 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	}
 	if (remember) {
 		datastore.set("openedcache", source);
-		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
 	}
 	return cache;
 }
