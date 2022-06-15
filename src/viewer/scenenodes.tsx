@@ -1320,7 +1320,7 @@ function SceneNpc(p: LookupModeProps) {
 		<React.Fragment>
 			<IdInput onChange={v => setId({ id: v, head: id?.head ?? false })} initialid={initid} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "npcs", v => setId({ id: v, head: id?.head ?? false }))} />
-			<label><input type="checkbox" checked={id?.head ?? false} onClick={e => setId({ id: id?.id ?? 0, head: e.currentTarget.checked })} />Head</label>
+			<label><input type="checkbox" checked={id?.head ?? false} onChange={e => setId({ id: id?.id ?? 0, head: e.currentTarget.checked })} />Head</label>
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
