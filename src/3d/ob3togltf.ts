@@ -260,6 +260,10 @@ export function parseOb3Model(modelfile: Buffer) {
 				let z = normalBuffer[i + 2];
 				//recalc instead of taking 255 because apparently its not normalized properly
 				let len = Math.hypot(x, y, z);
+				if (len == 0) {
+					//TODO what does the rs engine do with missing normals?
+					len = 1;
+				}
 				normalsrepacked[i + 0] = x / len;
 				normalsrepacked[i + 1] = y / len;
 				normalsrepacked[i + 2] = z / len;

@@ -128,7 +128,7 @@ export type ModelExtras = ModelExtrasLocation | ModelExtrasOverlay | {
 	modelgroup: string
 } & ClickableMesh<ModelExtrasLocation | ModelExtrasOverlay>
 
-export type MeshTileInfo = { tile: TileProps, x: number, z: number, level: number };
+export type MeshTileInfo = { tile: mapsquare_tiles["tiles"][number], x: number, z: number, level: number };
 
 export type TileProps = {
 	raw: mapsquare_tiles["tiles"][number],
@@ -1765,7 +1765,7 @@ async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: Mapsqu
 				group.set(matkey, matgroup);
 			}
 			matgroup.models.push({
-				model: rawmesh,
+				model: modified,
 				morph: obj.morph,
 				miny: model!.miny,
 				maxy: model!.maxy,
@@ -1891,6 +1891,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		colorbuffer[colpointer + 0] = polyprops[currentmat].color[0];
 		colorbuffer[colpointer + 1] = polyprops[currentmat].color[1];
 		colorbuffer[colpointer + 2] = polyprops[currentmat].color[2];
+		colorbuffer[colpointer + 3] = 255;//4 alpha channel because of gltf
 
 		for (let i = 0; i < polyprops.length; i++) {
 			const subprop = polyprops[i];
@@ -1950,7 +1951,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				}
 
 				if (keeptileinfo) {
-					tileinfos.push({ tile, x, z, level: tilelevel });
+					tileinfos.push({ tile: tile.raw, x, z, level: tilelevel });
 					tileindices.push(indexpointer);
 				}
 				if (hasneighbours && shape.overlay.length != 0) {
@@ -2062,7 +2063,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 
 		pos: { src: posbuffer.subarray(0, vertexindex * posstride) as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
 		normal: { src: normalbuffer.subarray(0, vertexindex * normalstride), offset: normaloffset, vecsize: 3, normalized: false },
-		color: { src: colorbuffer.subarray(0, vertexindex * colorstride), offset: coloroffset, vecsize: 3, normalized: true },
+		color: { src: colorbuffer.subarray(0, vertexindex * colorstride), offset: coloroffset, vecsize: 4, normalized: true },
 		_RA_FLOORTEX_UV01: { src: texuvbuffer.subarray(0, vertexindex * textuvstride), offset: texuvoffset + 0, vecsize: 4, normalized: true },
 		_RA_FLOORTEX_UV23: { src: texuvbuffer.subarray(0, vertexindex * textuvstride), offset: texuvoffset + 4, vecsize: 4, normalized: true },
 		_RA_FLOORTEX_WEIGHTS: { src: texweightbuffer.subarray(0, vertexindex * texweightstride), offset: texweightoffset, vecsize: 4, normalized: true },
@@ -2105,7 +2106,6 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 			// mat.map = new THREE.Texture(img);
 			// globalThis.bug = mat.map;
 			let data = img.getContext("2d")!.getImageData(0, 0, img.width, img.height);
-			global.qwe = data;
 			mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
 
 			mat.map.minFilter = THREE.NearestMipMapLinearFilter;
