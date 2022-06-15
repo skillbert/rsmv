@@ -114,15 +114,15 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		const planeSize = 11;
 
+		//floor mesh
 		const loader = new THREE.TextureLoader();
-		const texture = loader.load('../assets/checker.png');
+		const texture = loader.load('../assets/checker.png', () => this.forceFrame());
 		texture.wrapS = THREE.RepeatWrapping;
 		texture.wrapT = THREE.RepeatWrapping;
 		texture.magFilter = THREE.NearestFilter;
 		const repeats = planeSize / 2;
 		texture.repeat.set(repeats, repeats);
 
-		//floor mesh
 		const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
 		const planeMat = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide, });
 		const floormesh = new THREE.Mesh(planeGeo, planeMat);
