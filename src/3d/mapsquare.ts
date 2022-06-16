@@ -1184,8 +1184,7 @@ type PlacedModel = {
 }
 
 type MapsquareLocation = {
-	modelid: number,
-	morph: FloorMorph,
+	models: { model: number, morph: FloorMorph }[],
 	mods: ModelModifications,
 	extras: ModelExtrasLocation
 }
@@ -1280,7 +1279,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 
 		const spritescale = 128;
 		let mesh = squareMesh(tex.image.width * spritescale, tex.image.height * spritescale, [255, 255, 255]);
-		let translate = new THREE.Vector3().set((loc.x + loc.sizex / 2) * tiledimensions, 0, (loc.z + loc.sizez / 2) * tiledimensions);
+		let translate = new THREE.Vector3((loc.x + loc.sizex / 2) * tiledimensions, 0, (loc.z + loc.sizez / 2) * tiledimensions);
 		group.models.push({
 			model: mesh,
 			morph: {
@@ -1336,6 +1335,7 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 
 	for (let inst of locs) {
 		let model = modelcache.get(inst.locid);
+		let locmodels: MapsquareLocation["models"] = [];
 		let objectmeta = inst.location;
 		if (!model) {
 			let modelmods: ModelModifications = {
@@ -1343,20 +1343,17 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 				replaceMaterials: objectmeta.material_replacements ?? undefined
 			};
 			const translatefactor = 4;//no clue why but seems right
-			let translate = new Vector3().set(
+			let translate = new Vector3(
 				(objectmeta.translateX ?? 0) * translatefactor,
 				-(objectmeta.translateY ?? 0) * translatefactor,//minus y!!!
 				(objectmeta.translateZ ?? 0) * translatefactor
 			);
 			const scalefactor = 1 / 128;//estimated fit was 127.5 ...
-			let scale = new Vector3().set(
+			let scale = new Vector3(
 				(objectmeta.scaleX ?? 128) * scalefactor,
 				(objectmeta.scaleY ?? 128) * scalefactor,
-				(objectmeta.scaleZ ?? 128) * scalefactor
+				(objectmeta.scaleZ ?? 128) * scalefactor * (objectmeta.mirror ? -1 : 1)
 			);
-			if (objectmeta.mirror) {
-				scale.multiply(new Vector3().set(1, 1, -1));
-			}
 			let rotate = new THREE.Quaternion();
 			model = {
 				rotate,
@@ -1368,7 +1365,7 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 		}
 		let modelmods = model.modelmods;
 
-		let translate = new THREE.Vector3().set(
+		let translate = new THREE.Vector3(
 			(inst.x + inst.sizex / 2) * tiledimensions,//- rootx,
 			0,//modely,
 			(inst.z + inst.sizez / 2) * tiledimensions// - rootz
@@ -1434,7 +1431,7 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 				if (ch.type != type) { continue; }
 				modelcount++;
 				for (let modelid of ch.values) {
-					models.push({ extras, modelid, morph: finalmorph, mods: modelmods });
+					locmodels.push({ model: modelid, morph: finalmorph });
 				}
 			}
 		}
@@ -1461,45 +1458,58 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 		//21 corner roof overhang (with angle)
 		//22 floor decoration
 		if (inst.type == 11) {
-			addmodel(10, { ...morph, rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 4).premultiply(morph.rotation) });
+			addmodel(10, {
+				...morph,
+				rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 4).premultiply(morph.rotation)
+			});
 		} else if (inst.type == 8 || inst.type == 7 || inst.type == 6) {
 			if (inst.type == 6 || inst.type == 8) {
 				let dx = tiledimensions * 0.6;
 				let angle = Math.PI / 4;
-				let rotation = morph.rotation.clone().multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle));
+				let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, angle).premultiply(morph.rotation)
 				addmodel(4, {
 					...morph,
 					rotation,
-					translate: morph.translate.clone().add(new THREE.Vector3().set(dx, 0, 0).applyQuaternion(rotation))
+					translate: new THREE.Vector3(dx, 0, 0).add(morph.translate).applyQuaternion(rotation)
 				});
 			}
 			if (inst.type == 7 || inst.type == 8) {
 				let dx = tiledimensions * 0.5;
 				let angle = Math.PI / 4 * 5;
-				let rotation = morph.rotation.clone().multiply(new THREE.Quaternion().setFromAxisAngle(upvector, angle))
+				let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, angle).premultiply(morph.rotation)
 				addmodel(4, {
 					...morph,
 					rotation,
-					translate: morph.translate.clone().add(new THREE.Vector3().set(dx, 0, 0).applyQuaternion(rotation))
+					translate: new THREE.Vector3(dx, 0, 0).add(morph.translate).applyQuaternion(rotation)
 				});
 			}
 		} else if (inst.type == 2) {
 			//corner wall made out of 2 pieces
-			addmodel(2, { ...morph, scale: new Vector3().set(1, 1, -1).multiply(morph.scale) });
-			addmodel(2, { ...morph, rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 2).premultiply(morph.rotation) });
+			addmodel(2, {
+				...morph,
+				scale: new Vector3(1, 1, -1).multiply(morph.scale)
+			});
+			addmodel(2, {
+				...morph,
+				rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 2).premultiply(morph.rotation)
+			});
 		} else if (inst.type == 5) {
 			//moves the model some amount in x direction
 			//this might actually for real try to move depending on the size of objects it shares a tile with
 			//this doesn't take every other transform into account! but should be good enough for old 
 			//models that actually use this prop
 			let dx = tiledimensions / 6;
-			addmodel(4, { ...morph, translate: new THREE.Vector3().set(dx, 0, 0).applyQuaternion(morph.rotation).add(morph.translate) });
+			addmodel(4, {
+				...morph,
+				translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(morph.rotation).add(morph.translate)
+			});
 		} else {
 			addmodel(inst.type, morph);
 		}
 		if (modelcount == 0) {
 			// console.log("model not found for render type", inst.type, objectmeta);
 		}
+		models.push({ models: locmodels, mods: modelmods, extras: extras });
 	}
 	return models;
 }
@@ -1741,37 +1751,51 @@ async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: Mapsqu
 
 	let matmeshes: Map<string, Map<number, PlacedModel>> = new Map();
 
-	await Promise.all(locs.map(loc => scene.getModelData(loc.modelid).then(m => loadedmodels.set(loc.modelid, m))));
+	let loadproms: Promise<any>[] = [];
+	for (let loc of locs) {
+		for (let model of loc.models) {
+			loadproms.push(scene.getModelData(model.model).then(m => loadedmodels.set(model.model, m)));
+		}
+	}
+	await Promise.all(loadproms);
 
 	for (let obj of locs) {
-		let model: ModelData | undefined;
-		model = loadedmodels.get(obj.modelid)!;
-		for (let rawmesh of model.meshes) {
-			let modified = modifyMesh(rawmesh, obj.mods);
-			let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
-			let group = matmeshes.get(obj.extras.modelgroup);
-			if (!group) {
-				group = new Map();
-				matmeshes.set(obj.extras.modelgroup, group);
+		let miny = 0;
+		let maxy = 0;
+		for (let modelinst of obj.models) {
+			let model = loadedmodels.get(modelinst.model)!;
+			miny = Math.min(model.miny, miny);
+			maxy = Math.max(model.maxy, maxy);
+		}
+		for (let modelinst of obj.models) {
+			let model = loadedmodels.get(modelinst.model)!;
+			for (let rawmesh of model.meshes) {
+				let modified = modifyMesh(rawmesh, obj.mods);
+				let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
+				let group = matmeshes.get(obj.extras.modelgroup);
+				if (!group) {
+					group = new Map();
+					matmeshes.set(obj.extras.modelgroup, group);
+				}
+				let matgroup = group.get(matkey);
+				if (!matgroup) {
+					matgroup = {
+						material: await scene.getMaterial(modified.materialId, modified.hasVertexAlpha),
+						models: [],
+						groupid: obj.extras.modelgroup,
+						overlayIndex: 0
+					};
+					group.set(matkey, matgroup);
+				}
+				matgroup.models.push({
+					model: modified,
+					morph: modelinst.morph,
+					miny: miny,
+					maxy: maxy,
+					extras: obj.extras
+				});
 			}
-			let matgroup = group.get(matkey);
-			if (!matgroup) {
-				matgroup = {
-					material: await scene.getMaterial(modified.materialId, modified.hasVertexAlpha),
-					models: [],
-					groupid: obj.extras.modelgroup,
-					overlayIndex: 0
-				};
-				group.set(matkey, matgroup);
-			}
-			matgroup.models.push({
-				model: modified,
-				morph: obj.morph,
-				miny: model!.miny,
-				maxy: model!.maxy,
-				extras: obj.extras
-			});
-		};
+		}
 	}
 	let r: PlacedModel[] = [];
 	for (let group of matmeshes.values()) {

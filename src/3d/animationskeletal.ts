@@ -19,6 +19,7 @@ import { MountableAnimation } from "./animationframes";
 //27111   butterfly
 //28895   elder egg, currently bugged
 //28625   cerberus bones not moving at all
+//28485   broken zez achievement pet
 
 
 export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSceneCache, framebaseid: number) {

@@ -296,7 +296,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.setToggles(this.toggles);
 		this.emit("loaded", undefined);
 		this.renderscene?.sceneElementsChanged();
-		this.renderscene?.setCameraLimits();
 	}
 
 	setToggles(toggles: Record<string, boolean>) {
