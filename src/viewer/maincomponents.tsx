@@ -249,16 +249,6 @@ export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSou
 	render() {
 		return (
 			<React.Fragment>
-				<h2>NXT cache</h2>
-				<p>Drag a folder containing NXT cache files here in order to keep it.</p>
-				<p>Dragging a folder here is the preferred and most supported way to open a cache.</p>
-				{this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
-				<h2>Folder picker</h2>
-				<p>Due to browser limitations this will not let you open a cache at its default location (drag and drop still works)</p>
-				<input type="button" className="sub-btn" onClick={this.clickOpen} value="Select folder" />
-				<h2>Historical caches</h2>
-				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
-				<OpenRs2IdSelector initialid={949} onSelect={this.openOpenrs2Cache} />
 				{electron && (
 					<React.Fragment>
 						<h2>Native NXT cache</h2>
@@ -266,9 +256,36 @@ export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSou
 						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cace" />
 					</React.Fragment>
 				)}
+				<h2>NXT cache</h2>
+				<CacheDragNDropHelp />
+				{this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
+				<h2>Historical caches</h2>
+				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
+				<OpenRs2IdSelector initialid={949} onSelect={this.openOpenrs2Cache} />
 			</React.Fragment>
 		);
 	}
+}
+
+
+function CacheDragNDropHelp() {
+	let [open, setOpen] = React.useState(false);
+
+	return (
+		<React.Fragment>
+			<p>
+				Drag a folder containing NXT cache files here in order to view it.
+				<a style={{ float: "right" }} onClick={e => setOpen(!open)}>{!open ? "More info" : "Close"}</a>
+			</p>
+			{open && (
+				<div style={{ display: "flex", flexDirection: "column" }}>
+					<div>Drop the RuneScape folder into this window</div>
+					<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
+					<video src="dragndrop.mp4" autoPlay loop />
+				</div>
+			)}
+		</React.Fragment>
+	);
 }
 
 export type UIContextReady = UIContext & { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
