@@ -286,7 +286,6 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 	let nullskeleton: Skeleton = null!;
 	if (model.bonecount != 0) {
 		let skinnedroot = new SkinnedMesh();
-		rootnode = skinnedroot;
 		let nullbones: Object3D[] = [];
 		for (let i = 0; i < model.bonecount; i++) { nullbones.push(skinnedroot); }
 		nullskeleton = new Skeleton(nullbones as any);
@@ -297,8 +296,13 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		//sorry future self 
 		//@ts-ignore
 		skinnedroot.isSkinnedMesh = false;
+		//@ts-ignore
+		skinnedroot.isMesh = false;
+		rootnode = skinnedroot;
 	} else {
 		rootnode = new Mesh();
+		//@ts-ignore
+		rootnode.isMesh = false;
 	}
 
 	for (let meshdata of model.meshes) {

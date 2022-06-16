@@ -5,6 +5,7 @@ import { TypedEmitter } from '../utils';
 import { FlatImageData } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
 import { AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, PerspectiveCamera } from "three";
@@ -501,6 +502,12 @@ export function exportThreeJsGltf(node: THREE.Object3D) {
 			animations: node.animations
 		});
 	});
+}
+
+export function exportThreeJsStl(node: THREE.Object3D) {
+	let exporter = new STLExporter();
+	let res = exporter.parse(node, { binary: true }) as any as DataView;
+	return Promise.resolve(new Uint8Array(res.buffer, res.byteOffset, res.byteLength));
 }
 
 export function highlightModelGroup(vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[]) {

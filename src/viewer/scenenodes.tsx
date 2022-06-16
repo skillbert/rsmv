@@ -14,7 +14,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, writeAvatar } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl } from "./threejsrender";
 import { ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
@@ -1055,7 +1055,7 @@ function hex2hsl(hex: string) {
 }
 
 function ExportSceneMenu(p: { ctx: UIContextReady }) {
-	let [tab, settab] = React.useState<"img" | "gltf" | "none">("none");
+	let [tab, settab] = React.useState<"img" | "gltf" | "stl" | "none">("none");
 	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, ctx: CanvasRenderingContext2D } | null>(null);
 	let [cropimg, setcropimg] = React.useState(true);
 
@@ -1093,7 +1093,7 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		]);
 	}
 
-	let saveModel = async () => {
+	let saveGltf = async () => {
 		let str = new ReadableStream({
 			async pull(c) {
 				let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
@@ -1104,11 +1104,23 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		downloadStream("model.glb", str);
 	}
 
+	let saveStl = async () => {
+		let str = new ReadableStream({
+			async pull(c) {
+				let file = await exportThreeJsStl(p.ctx.renderer.getModelNode());
+				c.enqueue(new Uint8Array(file));
+				c.close();
+			}
+		});
+		downloadStream("model.stl", str);
+	}
+
 	return (
 		<div style={{ display: "grid", gridTemplateColumns: "2fr 3fr" }}>
 			<div>
 				<input type="button" className="sub-btn" onClick={e => changeImg(cropimg)} value="picture" />
 				<input type="button" className="sub-btn" onClick={e => settab("gltf")} value="gltf/glb" />
+				<input type="button" className="sub-btn" onClick={e => settab("stl")} value="stl" />
 			</div>
 			<div>
 				{tab == "img" && img && (
@@ -1121,7 +1133,12 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 				)}
 				{tab == "gltf" && (
 					<React.Fragment>
-						<input type="button" className="sub-btn" value="Save" onClick={saveModel} />
+						<input type="button" className="sub-btn" value="Save" onClick={saveGltf} />
+					</React.Fragment>
+				)}
+				{tab == "stl" && (
+					<React.Fragment>
+						<input type="button" className="sub-btn" value="Save" onClick={saveStl} />
 					</React.Fragment>
 				)}
 			</div>
