@@ -161,7 +161,7 @@ export class ThreejsSceneCache {
 	threejsMaterialCache = new Map<number, Promise<THREE.Material>>();
 	source: CacheFileSource;
 	cache: EngineCache;
-	textureType: "png" | "dds" | "bmp" = "dds";//only dds is currently fully implemented
+	textureType: "png" | "dds" | "bmp" = "dds";//png support currently incomplete (and seemingly unused by jagex)
 
 	static textureIndices = {
 		png: cacheMajors.texturesPng,
@@ -181,12 +181,12 @@ export class ThreejsSceneCache {
 		return this.source.getArchiveById(major, minor);
 	}
 
-	getTextureFile(texid: number, allowAlpha: boolean) {
+	getTextureFile(texid: number, stripAlpha: boolean) {
 		let texprom = this.threejsTextureCache.get(texid);
 		if (!texprom) {
 			texprom = (async () => {
 				let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
-				let parsed = new ParsedTexture(file, allowAlpha);
+				let parsed = new ParsedTexture(file, stripAlpha, true);
 				let src = await parsed.toWebgl();
 				let tex = new THREE.CanvasTexture(src);
 				return { tex, src, filesize: file.byteLength };
@@ -218,7 +218,7 @@ export class ThreejsSceneCache {
 				mat.transparent = hasVertexAlpha || material.alphamode != "opaque";
 				mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
 				if (material.textures.diffuse) {
-					mat.map = (await this.getTextureFile(material.textures.diffuse, material.alphamode != "opaque")).tex;
+					mat.map = (await this.getTextureFile(material.textures.diffuse, material.stripDiffuseAlpha)).tex;
 					mat.map.wrapS = THREE.RepeatWrapping;
 					mat.map.wrapT = THREE.RepeatWrapping;
 					mat.map.encoding = THREE.sRGBEncoding;

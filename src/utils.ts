@@ -23,9 +23,8 @@ export type Stream = {
 	bytesLeft(): number;
 }
 
-export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
-	let cnv = document.createElement("canvas");
-	let ctx = cnv.getContext("2d")!;
+export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+	const cnv = ctx.canvas;
 	if ("data" in img) {
 		cnv.width = img.width;
 		cnv.height = img.height;
@@ -39,6 +38,12 @@ export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource
 		cnv.height = img.height
 		ctx.drawImage(img, 0, 0);
 	}
+}
+
+export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+	let cnv = document.createElement("canvas");
+	let ctx = cnv.getContext("2d")!;
+	drawTexture(ctx, img);
 	cnv.style.cssText = "position:absolute;top:0px;left:0px;border:1px solid red;background:purple;";
 	document.body.appendChild(cnv);
 	cnv.onclick = e => cnv.remove();

@@ -996,7 +996,7 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 		for (let matid of matids) {
 			let mat = scene.cache.getMaterialData(matid);
 			if (mat.textures.diffuse) {
-				textureproms.push(scene.getTextureFile(mat.textures.diffuse, false)
+				textureproms.push(scene.getTextureFile(mat.textures.diffuse, mat.stripDiffuseAlpha)
 					.then(tex => { textures.set(mat.textures.diffuse!, tex.src); })
 				);
 			}

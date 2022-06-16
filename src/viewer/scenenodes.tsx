@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
-import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL } from '../utils';
+import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 
 import { CacheFileSource } from '../cache';
@@ -296,6 +296,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.setToggles(this.toggles);
 		this.emit("loaded", undefined);
 		this.renderscene?.sceneElementsChanged();
+		// this.renderscene?.setCameraLimits();//TODO fix this, current bounding box calc is too large
 	}
 
 	setToggles(toggles: Record<string, boolean>) {
@@ -873,13 +874,10 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 	// 	[8868, +searchid]
 	// ];
 	let mat = sceneCache.cache.getMaterialData(modelid);
-	let texs: Record<string, { texid: number, filesize: number, img0: ImageData }> = {};
+	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let addtex = async (name: string, texid: number) => {
-		let file = await sceneCache.source.getFile(cacheMajors.texturesDds, texid);
-		let parsed = new ParsedTexture(file, true);
-		//bit of a waste to get decode the whole thing just to get meta data, but w/e
-		let img0 = await parsed.toImageData(0);
-		texs[name] = { texid, filesize: file.length, img0 };
+		let tex = await sceneCache.getTextureFile(texid, mat.stripDiffuseAlpha && name == "diffuse");
+		texs[name] = { texid, filesize: tex.filesize, img0: tex.src };
 	}
 	for (let tex in mat.textures) {
 		if (mat.textures[tex] != 0) {
@@ -1197,13 +1195,11 @@ type SimpleModelInfo<T = object, ID = string> = {
 	id: ID
 }
 
-function ImageDataView(p: { img: ImageData }) {
+function ImageDataView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap | ImageData }) {
 	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
 		if (cnv) {
-			cnv.width = p.img.width;
-			cnv.height = p.img.height;
 			let ctx = cnv.getContext("2d")!;
-			ctx.putImageData(p.img, 0, 0);
+			drawTexture(ctx, p.img);
 		}
 	}, [p.img]);
 

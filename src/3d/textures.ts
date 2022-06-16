@@ -4,15 +4,17 @@ import { loadDds } from "./ddsimage";
 export class ParsedTexture {
 	fullfile: Buffer;
 	imagefiles: Buffer[];
-	allowAlpha: boolean
+	stripAlpha: boolean;
+	isMaterialTexture: boolean | undefined;
 	type: "png" | "dds" | "bmpmips";
 	mipmaps: number;
 	cachedDrawables: (Promise<HTMLImageElement | ImageBitmap> | null)[];
 	bmpWidth = -1;
 	bmpHeight = -1;
 
-	constructor(texture: Buffer, allowAlpha: boolean) {
-		this.allowAlpha = allowAlpha;
+	constructor(texture: Buffer, stripAlpha: boolean, isMaterialTexture?: boolean) {
+		this.isMaterialTexture = isMaterialTexture;
+		this.stripAlpha = stripAlpha;
 		this.mipmaps = texture.readUInt8(0x0);
 		this.fullfile = texture;
 		this.imagefiles = [];
@@ -80,7 +82,7 @@ export class ParsedTexture {
 			})
 		}
 		else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg], undefined, !this.allowAlpha);
+			let imgdata = loadDds(this.imagefiles[subimg], undefined, this.stripAlpha);
 			img = sharp(imgdata.data, {
 				raw: {
 					width: imgdata.width,
@@ -100,20 +102,20 @@ export class ParsedTexture {
 
 	async toImageData(subimg = 0) {
 		//TODO polyfill imagedata in nodejs, just need {width,height,data}
+		const padsize = (this.isMaterialTexture ? 32 : undefined);
 		if (this.type == "bmpmips") {
 			let width = this.bmpWidth >> subimg;
 			let height = this.bmpHeight >> subimg;
-			let pixels = new Uint8ClampedArray(this.imagefiles[subimg].buffer, this.imagefiles[subimg].byteOffset, width * height * 4);
-			//TODO slice off 32px of anti-bleeding border around the image
-			//TODO remove alpha if forceOpaque is enabled
-			return new ImageData(pixels, width, height);
+			let imgdata = loadBmp(this.imagefiles[subimg], width, height, padsize, this.stripAlpha);
+			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
+			return new ImageData(pixbuf, imgdata.width, imgdata.height);
 		} else if (this.type == "png") {
 			let img = sharp(this.imagefiles[subimg]);
 			let decoded = await img.raw().toBuffer({ resolveWithObject: true });
 			let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
 			return new ImageData(pixbuf, decoded.info.width, decoded.info.height);
 		} else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg], undefined, !this.allowAlpha);
+			let imgdata = loadDds(this.imagefiles[subimg], padsize, this.stripAlpha);
 			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
 			return new ImageData(pixbuf, imgdata.width, imgdata.height);
 		} else {
@@ -143,4 +145,26 @@ export class ParsedTexture {
 		}
 		return this.cachedDrawables[subimg]!;
 	}
+}
+
+function loadBmp(bmpdata: Buffer, inwidth: number, inheight: number, padsize = -1, forceOpaque = true) {
+	if (padsize == -1) {
+		throw new Error("cannot infer padding size on bmp textures");
+	}
+	const instride = inwidth * 4;
+	const inoffset = padsize * instride + padsize * 4;
+	const outheight = inheight - 2 * padsize;
+	const outwidth = inwidth - 2 * padsize;
+	const outstride = outwidth * 4;
+	const out = new Uint8Array(outstride * outheight);
+	for (let y = 0; y < outheight; y++) {
+		const target = y * outstride;
+		out.set(bmpdata.subarray(inoffset + instride * y, inoffset + instride * y + outstride), target);
+		if (forceOpaque) {
+			for (let d = target; d < target + outstride; d += 4) {
+				out[d + 3] = 255;
+			}
+		}
+	}
+	return { data: out, width: outwidth, height: outheight };
 }
