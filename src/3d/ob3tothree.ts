@@ -155,6 +155,28 @@ export class EngineCache {
 	}
 }
 
+export async function detectTextureMode(source: CacheFileSource) {
+	let lastdds = -1;
+	try {
+		let ddsindex = await source.getIndexFile(cacheMajors.texturesDds);
+		let last = ddsindex[ddsindex.length - 1];
+		await source.getFile(last.major, last.minor, last.crc);
+		lastdds = last.minor;
+	} catch (e) { }
+
+	let lastbmp = -1;
+	try {
+		let bmpindex = await source.getIndexFile(cacheMajors.texturesBmp);
+		let last = bmpindex[bmpindex.length - 1];
+		await source.getFile(last.major, last.minor, last.crc);
+		lastbmp = last.minor;
+	} catch (e) { }
+
+	let textureMode: "bmp" | "dds" = (lastbmp > lastdds ? "bmp" : "dds");
+	console.log(`detectedtexture mode. dds:${lastdds}, bmp:${lastbmp}`, textureMode);
+	return textureMode;
+}
+
 export class ThreejsSceneCache {
 	modelCache = new Map<number, Promise<ModelData>>();
 	threejsTextureCache = new Map<number, Promise<{ tex: THREE.Texture, src: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap, filesize: number }>>();

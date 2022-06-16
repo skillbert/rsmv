@@ -4,7 +4,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { boundMethod } from "autobind-decorator";
 import * as datastore from "idb-keyval";
-import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { detectTextureMode, EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
 
 import { UIScriptFile } from "./scriptsui";
@@ -47,13 +47,18 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 	async openCache(source: SavedCacheSource) {
 		let cache = await openSavedCache(source, true);
 		if (cache) {
+			globalThis.source = cache;
 			this.props.ctx.setCacheSource(cache);
 
 			try {
 				let engine = await EngineCache.create(cache);
 				globalThis.engine = engine;
 				console.log("engine loaded");
-				this.props.ctx.setSceneCache(new ThreejsSceneCache(engine));
+				let scene = new ThreejsSceneCache(engine);
+				if (source.type == "sqliteblobs" || source.type == "sqlitehandle" || source.type == "sqlitenodejs") {
+					scene.textureType = await detectTextureMode(cache);
+				}
+				this.props.ctx.setSceneCache(scene);
 			} catch (e) {
 				console.log("failed to create scenecache");
 				console.error(e);
