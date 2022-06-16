@@ -27,18 +27,24 @@ export const slotNames = [
 	"necklace",
 	"weapon",
 	"body",
-	"offhand",
-	"slot6",
+	"offhand",//5
+	"arms",
 	"legs",
 	"face",
 	"gloves",
-	"boots",
+	"boots",//10
 	"beard",
 	"ring",
 	"ammo",
 	"aura",
 	"slot15"
-]
+];
+
+//male 0head,1jaw/beard,2body,3arms,4hands,5legs,6feet,
+export const slotToKitMale = { 4: 2, 6: 3, 7: 5, 8: 0, 9: 4, 10: 6, 11: 1 };
+
+//female 7head,9body,10arms,11hands,12legs,13feet,
+export const slotToKitFemale = { 4: 9, 6: 10, 7: 12, 8: 7, 9: 11, 10: 13 };
 
 const defaultcols = {
 	hair0: 6798,
@@ -76,26 +82,27 @@ const humanheadanims: Record<string, number> = {
 let kitcolors: Record<"feet" | "skin" | "hair" | "clothes", Record<number, number>> | null = null;
 
 async function loadKitData(source: CacheFileSource) {
-	let mapcolorenum = async (enumid: number, mappingid: number, reverse: boolean) => {
-		let colorfile = await source.getFileById(cacheMajors.enums, enumid);
-		let colordata = parseEnums.read(colorfile);
-		let orderfile = await source.getFileById(cacheMajors.enums, mappingid);
-		let orderdata = parseEnums.read(orderfile);
-		return Object.fromEntries(orderdata.intArrayValue2!.values.map(q => {
-			if (reverse) { q.reverse(); }
-			let col = colordata.intArrayValue2!.values.find(w => w[0] == q[0])![1];
-			return [
-				q[1],
-				HSL2packHSL(...RGB2HSL((col >> 16) & 0xff, (col >> 8) & 0xff, (col >> 0) & 0xff))
-			]
-		}));
-	}
+	if (!kitcolors) {
+		let mapcolorenum = async (enumid: number, mappingid: number) => {
+			let colorfile = await source.getFileById(cacheMajors.enums, enumid);
+			let colordata = parseEnums.read(colorfile);
+			let orderfile = await source.getFileById(cacheMajors.enums, mappingid);
+			let orderdata = parseEnums.read(orderfile);
+			return Object.fromEntries(orderdata.intArrayValue2!.values.map(q => {
+				let col = colordata.intArrayValue2!.values.find(w => w[0] == q[0])![1];
+				return [
+					q[1],
+					HSL2packHSL(...RGB2HSL((col >> 16) & 0xff, (col >> 8) & 0xff, (col >> 0) & 0xff))
+				]
+			}));
+		}
 
-	kitcolors = {
-		feet: await mapcolorenum(753, 3297, false),
-		skin: await mapcolorenum(746, 748, false),
-		hair: await mapcolorenum(2343, 2345, false),
-		clothes: await mapcolorenum(2347, 3282, false)
+		kitcolors = {
+			feet: await mapcolorenum(753, 3297),
+			skin: await mapcolorenum(746, 748),
+			hair: await mapcolorenum(2343, 2345),
+			clothes: await mapcolorenum(2347, 3282)
+		}
 	}
 
 	// for (let [id, colhsl] of Object.entries(kitcolors.hair)) {
@@ -124,7 +131,7 @@ export type EquipSlot = {
 
 //TODO remove output and name args
 export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
-	let kitdata = kitcolors ?? await loadKitData(scene.source);
+	let kitdata = await loadKitData(scene.source);
 	let avabase = parseAvatars.read(avadata);
 	let models: SimpleModelDef = [];
 
@@ -148,7 +155,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 					let models = [...kit.models];
 					if (kit.headmodel) { models.push(kit.headmodel); }
 					slots[index] = {
-						name: "playerkit_" + kitid,
+						name: slotNames[index] + "_" + kitid,
 						type: "kit",
 						id: kitid,
 						models: models,
@@ -281,7 +288,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 		}
 	}
 
-	return { models, anims, info: { avatar, gender: avabase.gender, npc: avabase.npc } };
+	return { models, anims, info: { avatar, gender: avabase.gender, npc: avabase.npc, kitcolors: kitdata } };
 }
 
 export function writeAvatar(avatar: avataroverrides | null, gender: number, npc: avatars["npc"]) {

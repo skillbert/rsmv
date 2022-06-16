@@ -13,7 +13,7 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
 import { ParsedTexture } from "../3d/textures";
-import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, writeAvatar } from "../3d/avatar";
+import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl } from "./threejsrender";
 import { ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
@@ -32,6 +32,7 @@ import { diffCaches } from "../scripts/cachediff";
 import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
 import { findImageBounds } from "../imgutils";
+import { avataroverrides } from "../../generated/avataroverrides";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -924,7 +925,7 @@ function ScenePlayer(p: LookupModeProps) {
 	}
 
 	const customizationChanged = (index: number, cust: EquipCustomization) => {
-		let oldava = data?.info.avatar
+		let oldava = data?.info.avatar;
 		if (!oldava) { console.trace("unexpected"); return; }
 		let newava = { ...oldava };
 		newava.slots = oldava.slots.slice() as any;
@@ -933,12 +934,38 @@ function ScenePlayer(p: LookupModeProps) {
 		setId({ player: "", data: modelBuf.current, head });
 	}
 
+	const setGender = (gender: number) => {
+		if (!data?.info.avatar) { console.trace("unexpected"); return; }
+		modelBuf.current = writeAvatar(data.info.avatar, gender, null);
+		setId({ player: "", data: modelBuf.current, head });
+	}
+
+	const changeColor = (id: keyof avataroverrides, index: number) => {
+		let oldava = data?.info.avatar;
+		if (!oldava) { console.trace("unexpected"); return; }
+		let newava = { ...oldava };
+		newava[id] = index as any;
+		modelBuf.current = writeAvatar(newava, data?.info.gender ?? 0, null);
+		setId({ player: "", data: modelBuf.current, head });
+	}
+
+	const colorDropdown = (id: keyof avataroverrides, v: number, opts: Record<number, number>) => {
+		data?.info.kitcolors.clothes
+		return (
+			<div>
+				{id}
+				<select value={v} onChange={e => changeColor(id, +e.currentTarget.value)} style={{ backgroundColor: hsl2hex(opts[v]) }}>
+					{Object.entries(opts).map(([i, v]) => <option key={i} value={i} style={{ backgroundColor: hsl2hex(v) }}>{i}</option>)}
+				</select>
+			</div>
+		)
+	}
+
 	let initname = (p.initialId && typeof p.initialId == "object" && (typeof p.initialId as any).player == "string" ? (p.initialId as any).player : "");
 
 	return (
 		<React.Fragment>
 			<StringInput onChange={nameChange} initialid={initname} />
-			<label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
@@ -946,18 +973,29 @@ function ScenePlayer(p: LookupModeProps) {
 					</select>
 				</LabeledInput>
 			)}
+			<label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>
+			{model && data && (
+				<label><input type="checkbox" checked={data.info.gender == 1} onChange={e => setGender(e.currentTarget.checked ? 1 : 0)} />Female</label>
+			)}
 			<div style={{ userSelect: "text" }}>
 				{p.ctx && data?.info.avatar?.slots.map((q, i) => {
 					return (
-						<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} ctx={p.ctx!} custChanged={customizationChanged} equipChanged={equipChanged} />
+						<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} ctx={p.ctx!} custChanged={customizationChanged} female={data.info.gender == 1} equipChanged={equipChanged} />
 					);
 				})}
 			</div>
+			{data?.info.avatar && colorDropdown("haircol0", data.info.avatar.haircol0, data.info.kitcolors.hair)}
+			{data?.info.avatar && colorDropdown("haircol1", data.info.avatar.haircol1, data.info.kitcolors.hair)}
+			{data?.info.avatar && colorDropdown("bodycol", data.info.avatar.bodycol, data.info.kitcolors.clothes)}
+			{data?.info.avatar && colorDropdown("legscol", data.info.avatar.legscol, data.info.kitcolors.clothes)}
+			{data?.info.avatar && colorDropdown("bootscol", data.info.avatar.bootscol, data.info.kitcolors.feet)}
+			{data?.info.avatar && colorDropdown("skincol0", data.info.avatar.skincol0, data.info.kitcolors.skin)}
+			{data?.info.avatar && colorDropdown("skincol1", data.info.avatar.skincol1, data.info.kitcolors.skin)}
 		</React.Fragment>
-	)
+	);
 }
 
-function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx }: { ctx: UIContextReady, index: number, slot: EquipSlot | null, cust: EquipCustomization, equipChanged: (index: number, type: "kit" | "item" | "none", id: number) => void, custChanged: (index: number, v: EquipCustomization) => void }) {
+function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female }: { ctx: UIContextReady, index: number, slot: EquipSlot | null, female: boolean, cust: EquipCustomization, equipChanged: (index: number, type: "kit" | "item" | "none", id: number) => void, custChanged: (index: number, v: EquipCustomization) => void }) {
 
 	let editcust = (ch?: (cust: NonNullable<EquipCustomization>) => {}) => {
 		if (!ch) { custChanged(index, null); }
@@ -973,7 +1011,8 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx }: { ctx
 		selectEntity(ctx, "items", i => equipChanged(index, "item", i), [{ path: ["equipSlotId"], search: index + "" }, { path: ["name"], search: "" }]);
 	}
 	let searchKit = () => {
-		selectEntity(ctx, "identitykit", i => equipChanged(index, "kit", i), []);
+		let kitid = (female ? slotToKitFemale : slotToKitMale)[index] ?? -1;
+		selectEntity(ctx, "identitykit", i => equipChanged(index, "kit", i), [{ path: ["bodypart"], search: kitid + "" }]);
 	}
 
 	return (
