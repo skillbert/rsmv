@@ -87,7 +87,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.renderer.autoClear = false;
 		const renderer = this.renderer;
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
-		canvas.onclick = this.click;
+		canvas.onmousedown = this.mousedown;
 
 		const fov = 45;
 		const aspect = 2;
@@ -396,12 +396,26 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	}
 
 	@boundMethod
-	async click(e: React.MouseEvent | MouseEvent) {
+	async mousedown(e: React.MouseEvent | MouseEvent) {
+		let x1 = e.screenX;
+		let y1 = e.screenY;
+		let cnvx = e.clientX;
+		let cnvy = e.clientY;
+		let onup = (e: MouseEvent) => {
+			let d = Math.abs(e.screenX - x1) + Math.abs(e.screenY - y1);
+			if (d < 10) { this.click(cnvx, cnvy); }
+			//*should* prevent rightclick menu's if dragging outside of canvas
+			e.preventDefault();
+		}
+		window.addEventListener("mouseup", onup, { once: true });
+	}
+
+	async click(cnvx: number, cnvy: number) {
 		let raycaster = new THREE.Raycaster();
 		let cnvrect = this.canvas.getBoundingClientRect();
 		let mousepos = new THREE.Vector2(
-			(e.clientX - cnvrect.x) / cnvrect.width * 2 - 1,
-			-(e.clientY - cnvrect.y) / cnvrect.height * 2 + 1,
+			(cnvx - cnvrect.x) / cnvrect.width * 2 - 1,
+			-(cnvy - cnvrect.y) / cnvrect.height * 2 + 1,
 		);
 
 		raycaster.setFromCamera(mousepos, this.camera);

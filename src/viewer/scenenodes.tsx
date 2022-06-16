@@ -1404,13 +1404,13 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 	componentDidMount() {
 		//TODO this is a leak if ctx changes while mounted
-		this.props.ctx?.renderer.on("select", this.meshSelected);
+		this.props.partial.renderer?.on("select", this.meshSelected);
 	}
 
 	componentWillUnmount() {
 		this.clear();
 		//TODO this is a leak if ctx changes while mounted
-		this.props.ctx?.renderer.off("select", this.meshSelected);
+		this.props.partial.renderer?.off("select", this.meshSelected);
 	}
 
 	async addArea(rect: MapRect) {
