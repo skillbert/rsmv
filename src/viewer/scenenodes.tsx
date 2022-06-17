@@ -59,16 +59,16 @@ export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: 
 		return (
 			<React.Fragment>
 				<div className="sidebar-browser-tab-strip">
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Locs</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setMode("avatar")}>Avatar</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setMode("map")}>Map</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Materials</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
-					<div className={classNames("rsmv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Locs</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setMode("avatar")}>Avatar</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setMode("map")}>Map</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Materials</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
+					<div className={classNames("mv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
 				</div>
 				{ModeComp && <ModeComp initialId={this.state.search} ctx={this.props.ctx.canRender() ? this.props.ctx : null} partial={this.props.ctx} />}
 			</React.Fragment>
@@ -1241,7 +1241,7 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 }
 
 export function JsonDisplay(p: { obj: any }) {
-	return (<pre className="json-block">{prettyJson(p.obj)}</pre>);
+	return (<pre className="mv-json-block">{prettyJson(p.obj)}</pre>);
 }
 
 type SimpleModelInfo<T = object, ID = string> = {
@@ -1776,7 +1776,7 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: keyof typeof 
 				<h2>Script runner</h2>
 				<div className="sidebar-browser-tab-strip">
 					{Object.keys(uiScripts).map((q, i) => (
-						<div key={q} className={classNames("rsmv-icon-button", { active: this.state.script == q })} onClick={() => this.setState({ script: q as any })}>{q}</div>
+						<div key={q} className={classNames("mv-icon-button", { active: this.state.script == q })} onClick={() => this.setState({ script: q as any })}>{q}</div>
 					))}
 				</div>
 				{SelectedScript && <SelectedScript source={source} onRun={this.onRun} />}

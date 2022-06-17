@@ -186,9 +186,9 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 			{p.output && !p.output.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.output?.files.length} onClick={async e => p.output?.setSaveDirHandle(await showDirectoryPicker({}))} />}
 			{p.output?.rootdirhandle && <div>Saved files to disk: {p.output.files.length}</div>}
 			<div className="sidebar-browser-tab-strip">
-				<div className={classNames("rsmv-icon-button", { active: tab == "ui" })} onClick={e => setTab("ui")}>UI</div>
-				<div className={classNames("rsmv-icon-button", { active: tab == "console" })} onClick={e => setTab("console")}>Console</div>
-				<div className={classNames("rsmv-icon-button", { active: tab == "files" })} onClick={e => setTab("files")}>Files</div>
+				<div className={classNames("mv-icon-button", { active: tab == "ui" })} onClick={e => setTab("ui")}>UI</div>
+				<div className={classNames("mv-icon-button", { active: tab == "console" })} onClick={e => setTab("console")}>Console</div>
+				<div className={classNames("mv-icon-button", { active: tab == "files" })} onClick={e => setTab("files")}>Files</div>
 			</div>
 			{tab == "ui" && <DomWrap el={p.output?.outputui} />}
 			{tab == "console" && <UIScriptConsole output={p.output} />}

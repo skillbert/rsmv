@@ -103,9 +103,9 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 	render() {
 		return (
 			<div className="mv-root mv-style">
-				<canvas id="viewer" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
+				<canvas className="mv-canvas" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
 				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
-				<div id="sidebar">
+				<div className="mv-sidebar">
 					{!this.props.ctx.source && (<CacheSelector onOpen={this.openCache} />)}
 					{this.props.ctx.source && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.props.ctx.source.getCacheName()}`} />}
 					<RendererControls visible={!!this.props.ctx.source} ctx={this.props.ctx} />
