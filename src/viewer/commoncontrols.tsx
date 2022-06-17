@@ -8,9 +8,10 @@ import { cacheFileJsonModes } from "scripts/extractfiles";
 import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
 
-export function TabStrip<T extends string>(p: { value: T, tabs: Record<T, string>, onChange: (v: T) => void }) {
+export function TabStrip<T extends string>(p: { value: T, tabs: Partial<Record<T, string>>, onChange: (v: T) => void }) {
+	const templatecols = `repeat(${Math.min(4, Object.keys(p.tabs).length)},minmax(0,1fr))`;
 	return (
-		<div className="sidebar-browser-tab-strip">
+		<div className="sidebar-browser-tab-strip mv-inset" style={{ gridTemplateColumns: templatecols }}>
 			{Object.entries(p.tabs).map(([k, v]) => (
 				<div key={k} className={classNames("mv-icon-button", { active: p.value == k as any })} onClick={() => p.onChange(k as any)}>{v as string}</div>
 			))}

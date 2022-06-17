@@ -902,9 +902,6 @@ function ScenePlayer(p: LookupModeProps) {
 			)}
 			<label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>
 			<div className="mv-sidebar-scroll">
-				{model && data && (
-					<label><input type="checkbox" checked={data.info.gender == 1} onChange={e => setGender(e.currentTarget.checked ? 1 : 0)} />Female</label>
-				)}
 				<div style={{ userSelect: "text" }}>
 					{p.ctx && data?.info.avatar?.slots.map((q, i) => {
 						return (
@@ -912,6 +909,7 @@ function ScenePlayer(p: LookupModeProps) {
 						);
 					})}
 				</div>
+				{data && <label><input type="checkbox" checked={data.info.gender == 1} onChange={e => setGender(e.currentTarget.checked ? 1 : 0)} />Female</label>}
 				{data?.info.avatar && colorDropdown("haircol0", data.info.avatar.haircol0, data.info.kitcolors.hair)}
 				{data?.info.avatar && colorDropdown("haircol1", data.info.avatar.haircol1, data.info.kitcolors.hair)}
 				{data?.info.avatar && colorDropdown("bodycol", data.info.avatar.bodycol, data.info.kitcolors.clothes)}
@@ -1083,33 +1081,39 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		downloadStream("model.stl", str);
 	}
 
+	let clicktab = (v: typeof tab) => {
+		settab(v);
+		if (v == "img") { changeImg(cropimg); }
+	}
+
 	return (
-		<div style={{ display: "grid", gridTemplateColumns: "2fr 3fr" }}>
-			<div>
-				<input type="button" className="sub-btn" onClick={e => changeImg(cropimg)} value="picture" />
-				<input type="button" className="sub-btn" onClick={e => settab("gltf")} value="gltf/glb" />
-				<input type="button" className="sub-btn" onClick={e => settab("stl")} value="stl" />
-			</div>
-			<div>
-				{tab == "img" && img && (
-					<React.Fragment>
-						<label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>
+		<div className="mv-inset">
+			<TabStrip value={tab} tabs={{ gltf: "GLTF", stl: "STL", img: "image" }} onChange={clicktab as any} />
+			{tab == "img" && (
+				<React.Fragment>
+					<label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>
+					{img && <CanvasView canvas={img.cnv} />}
+					<div style={{ display: "grid", grid: "'a b' / 1fr 1fr" }}>
 						<input type="button" className="sub-btn" value="Save" onClick={saveimg} />
 						<input type="button" className="sub-btn" value="Clipboard" onClick={copyimg} />
-						<CanvasView canvas={img.cnv} />
-					</React.Fragment>
-				)}
-				{tab == "gltf" && (
-					<React.Fragment>
-						<input type="button" className="sub-btn" value="Save" onClick={saveGltf} />
-					</React.Fragment>
-				)}
-				{tab == "stl" && (
-					<React.Fragment>
-						<input type="button" className="sub-btn" value="Save" onClick={saveStl} />
-					</React.Fragment>
-				)}
-			</div>
+					</div>
+				</React.Fragment>
+			)}
+			{tab == "gltf" && (
+				<React.Fragment>
+					<p>GLTF is a lightweight 3d format designed for modern but simple model exports. Colors, textures and animations will be included, but advanced lighting effects are lost.</p>
+					<input style={{ width: "100%" }} type="button" className="sub-btn" value="Save" onClick={saveGltf} />
+				</React.Fragment>
+			)}
+			{tab == "stl" && (
+				<React.Fragment>
+					<p>STL is used mostly for 3d printing, this file format only export the shape of the model. Colors, textures animations will be lost.</p>
+					<input style={{ width: "100%" }} type="button" className="sub-btn" value="Save" onClick={saveStl} />
+				</React.Fragment>
+			)}
+			{tab == "none" && (
+				<p>Select an export type</p>
+			)}
 		</div>
 	)
 }
@@ -1126,15 +1130,12 @@ function CanvasView(p: { canvas: HTMLCanvasElement }) {
 	)
 }
 
-function showExportSceneMeta(ctx: UIContextReady) {
-	showModal({ title: "Export" }, <ExportSceneMenu ctx={ctx} />)
-}
-
 export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
 	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
 
 	let [showsettings, setshowsettings] = React.useState(localStorage.rsmv_showsettings == "true");
+	let [showexport, setshowexport] = React.useState(false);
 	let [hideFog, sethidefog] = React.useState(false);
 	let [hideFloor, sethidefloor] = React.useState(false);
 	let [camMode, setcammode] = React.useState<"standard" | "vr360">("standard");
@@ -1167,17 +1168,18 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 	return (p.visible || null) && (
 		<React.Fragment>
 			<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-				<input type="button" className="sub-btn" onClick={e => p.ctx.canRender() && showExportSceneMeta(p.ctx)} value="Export" />
-				<input type="button" className="sub-btn" onClick={toggleSettings} value="Settings" />
+				<input type="button" className={classNames("sub-btn", { "active": showexport })} onClick={e => setshowexport(!showexport)} value="Export" />
+				<input type="button" className={classNames("sub-btn", { "active": showsettings })} onClick={toggleSettings} value="Settings" />
 			</div>
 			{showsettings && (
-				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+				<div className="mv-inset" style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
 					<label><input type="checkbox" checked={hideFog} onChange={e => sethidefog(e.currentTarget.checked)} />Hide fog</label>
 					<label><input type="checkbox" checked={hideFloor} onChange={e => sethidefloor(e.currentTarget.checked)} />Hide floor</label>
 					<label><input type="checkbox" checked={camControls == "world"} onChange={e => setcamcontrols(e.currentTarget.checked ? "world" : "free")} />Flat panning</label>
 					<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
 				</div>
 			)}
+			{ showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} />}
 		</React.Fragment>
 	)
 }
