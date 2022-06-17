@@ -267,7 +267,6 @@ export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSou
 	}
 }
 
-
 function CacheDragNDropHelp() {
 	let [open, setOpen] = React.useState(false);
 
@@ -281,7 +280,7 @@ function CacheDragNDropHelp() {
 				<div style={{ display: "flex", flexDirection: "column" }}>
 					<div>Drop the RuneScape folder into this window</div>
 					<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
-					<video src="dragndrop.mp4" autoPlay loop />
+					<video src={new URL("../assets/dragndrop.mp4", import.meta.url).href} autoPlay loop />
 				</div>
 			)}
 		</React.Fragment>

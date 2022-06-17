@@ -117,7 +117,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		//floor mesh
 		const loader = new THREE.TextureLoader();
-		const texture = loader.load('../assets/checker.png', () => this.forceFrame());
+		const texture = loader.load(new URL('../assets/checker.png', import.meta.url).href, () => this.forceFrame());
 		texture.wrapS = THREE.RepeatWrapping;
 		texture.wrapT = THREE.RepeatWrapping;
 		texture.magFilter = THREE.NearestFilter;

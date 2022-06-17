@@ -31,7 +31,7 @@ export function start(rootelement: HTMLElement) {
 
 	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
 	//across tab reloads
-	navigator.serviceWorker.register('./contextholder.js', { scope: './', });
+	navigator.serviceWorker.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
 }
 
 class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile | null }> {
