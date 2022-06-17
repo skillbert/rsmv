@@ -148,16 +148,18 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 	)
 }
 
-export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSource, onOpen: (c: SavedCacheSource) => void }, { lastFolderOpen: FileSystemDirectoryHandle | null }>{
+export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSource) => void, noReopen?: boolean }, { lastFolderOpen: FileSystemDirectoryHandle | null }>{
 	constructor(p) {
 		super(p);
 		this.state = {
 			lastFolderOpen: null
 		};
 
-		datastore.get<FileSystemDirectoryHandle>("lastfolderopen").then(f => {
-			if (f) { this.setState({ lastFolderOpen: f }); }
-		});
+		if (!this.props.noReopen) {
+			datastore.get<FileSystemDirectoryHandle>("lastfolderopen").then(f => {
+				if (f) { this.setState({ lastFolderOpen: f }); }
+			});
+		}
 	}
 
 	componentDidMount() {
@@ -257,7 +259,7 @@ export class CacheSelector extends React.Component<{ savedSource?: SavedCacheSou
 				)}
 				<h2>NXT cache</h2>
 				<CacheDragNDropHelp />
-				{this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
+				{!this.props.noReopen && this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
 				<h2>Historical caches</h2>
 				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
 				<OpenRs2IdSelector initialid={949} onSelect={this.openOpenrs2Cache} />
@@ -400,8 +402,8 @@ function TrivialHexViewer(p: { data: Buffer }) {
 		<table>
 			<tbody>
 				<tr>
-					<td style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resulthex}</td>
-					<td style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>{resultchrs}</td>
+					<td style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>{resulthex}</td>
+					<td style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>{resultchrs}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -413,7 +415,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
 	let remainder = Buffer.from(err.remainder, "hex");
 	let remainderhex = bufToHexView(remainder);
 	return (
-		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>
+		<div style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>
 			{err.error}
 			<div>Chunks</div>
 			<table>
@@ -443,7 +445,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
 
 function SimpleTextViewer(p: { file: string }) {
 	return (
-		<div style={{ whiteSpace: "pre", userSelect: "initial", fontFamily: "monospace" }}>
+		<div style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>
 			{p.file}
 		</div>
 	);
@@ -463,9 +465,14 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 	}
 
 	return (
-		<div style={{ overflow: "auto" }}>
-			<div>{p.file.name} <span onClick={e => p.onSelectFile(null)}>x</span></div>
-			{el}
+		<div style={{ display: "grid", gridTemplate: "'a' auto\n'b' 1fr" }}>
+			<div className="mv-modal-head">
+				<span>{p.file.name}</span>
+				<span style={{ float: "right" }} onClick={e => p.onSelectFile(null)}>x</span>
+			</div>
+			<div style={{ overflow: "auto", flex: "1" }}>
+				{el}
+			</div>
 		</div>
 	);
 }

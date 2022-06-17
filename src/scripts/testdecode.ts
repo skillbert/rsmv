@@ -32,6 +32,7 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 	let errminors: number[] = [];
 	let errfilesizes: number[] = [];
 	let maxerrs = 20;
+	let errorcount = 0;
 	let nsuccess = 0;
 	let lastProgress = Date.now();
 
@@ -85,28 +86,26 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 		if (Date.now() - lastProgress > 10000) {
 			output.log("progress, file ", file.major, file.minor, file.subfile);
 			lastProgress = Date.now();
+		}
+		let res = testDecodeFile(mode.parser, opts.outmode, file.file, {});
 
-			let res = testDecodeFile(mode.parser, opts.outmode, file.file, {});
-
-			if (output.state == "running") {
-				if (res.success) {
-					nsuccess++;
-				} else {
-					errminors.push(file.minor);
-					errfilesizes.push(file.file.byteLength);
-					maxerrs--;
-					let filename = (file.name ? `err-${file.name}` : `err-${file.major}_${file.minor}_${file.subfile}`);
-					if (opts.outmode == "json") {
-						output.writeFile(filename + ".hexerr.json", res.errorfile);
-					}
-					if (opts.outmode == "original" || opts.outmode == "hextext") {
-						output.writeFile(filename + ".bin", res.errorfile);
-					}
+		if (output.state == "running") {
+			if (res.success) {
+				nsuccess++;
+			} else {
+				errminors.push(file.minor);
+				errfilesizes.push(file.file.byteLength);
+				errorcount++;
+				let filename = (file.name ? `err-${file.name}` : `err-${file.major}_${file.minor}_${file.subfile}`);
+				if (opts.outmode == "json") {
+					output.writeFile(filename + ".hexerr.json", res.errorfile);
+				}
+				if (opts.outmode == "original" || opts.outmode == "hextext") {
+					output.writeFile(filename + ".bin", res.errorfile);
 				}
 			}
-			return maxerrs > 0;
 		}
-
+		return errorcount < maxerrs;
 	}
 
 	for await (let file of fileiter()) {
@@ -119,6 +118,7 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 	}
 
 	output.log("completed files:", nsuccess);
+	output.log(errorcount, "errors");
 }
 
 

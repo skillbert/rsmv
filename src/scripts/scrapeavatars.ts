@@ -56,12 +56,3 @@ async function* fetchPlayerAvatars(skip: number, max: number) {
 		}
 	}
 }
-
-export async function extractAvatars(output: ScriptOutput, source: CacheFileSource, files: AsyncGenerator<{ name: string, buf: Buffer }>) {
-	let engine = await EngineCache.create(source);
-	let scene = new ThreejsSceneCache(engine);
-	for await (let file of files) {
-		let data = await avatarToModel(output, scene, file.buf, file.name);
-		// await output.writeFile(file.name, prettyJson(data.info.avatar));
-	}
-}

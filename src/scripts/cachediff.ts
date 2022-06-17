@@ -51,7 +51,7 @@ let majormap: Record<number, FileAction> = {
 	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parseMaterials, getFileName: chunkedIndexName }
 }
 function getMajorAction(major: number) {
-	let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `${major}`;
+	let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `unk_${major}`;
 	let action = majormap[major] ?? { name: majorname, parser: null, comparesubfiles: false, getFileName: standardName };
 	return action;
 }
@@ -169,6 +169,7 @@ export async function diffCaches(output: ScriptOutput, sourcea: CacheFileSource,
 			}
 		}
 	}
+	output.log("done", changes.length, "total changes");
 	return changes;
 }
 

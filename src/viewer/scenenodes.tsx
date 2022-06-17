@@ -17,7 +17,7 @@ import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationsk
 import { TypedEmitter } from "../utils";
 import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
-import { cacheFileJsonModes, extractCacheFiles } from "../scripts/extractfiles";
+import { cacheFileJsonModes, extractCacheFiles, cacheFileDecodeModes } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
 import { CacheSelector, downloadStream, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
@@ -26,7 +26,6 @@ import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
 import { diffCaches } from "../scripts/cachediff";
 import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
-import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
 import { findImageBounds } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch } from "./commoncontrols";
@@ -1542,7 +1541,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 							</div>
 						</div>
 						<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
-						<div style={{ display: "grid", columnCount: 5, marginRight: "auto" }}>
+						<div style={{ display: "grid", gridTemplateColumns: "repeat(5,max-content)" }}>
 							{Object.entries(toggles).map(([base, subs]) => {
 								let all = true;
 								let none = true;
@@ -1578,53 +1577,32 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
 	let [files, setFiles] = React.useState("");
-	let [mode, setMode] = React.useState(Object.keys(cacheFileJsonModes)[0]);
+	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>("items");
+	let [batched, setbatched] = React.useState(true);
 
 	let run = () => {
 		let output = new UIScriptOutput();
-		output.run(extractCacheFiles, p.source, { files, mode, batched: true, batchlimit: 512 });
+		output.run(extractCacheFiles, p.source, { files, mode, batched: batched, batchlimit: -1 });
 		p.onRun(output);
 	}
 
 	return (
 		<React.Fragment>
+			<p>Extract files from the cache.<br />The ranges field uses logical file id's for JSON based files, {"<major>.<minor>"} notation for bin mode, or {"<x>.<z>"} for map based files.</p>
 			<LabeledInput label="Mode">
-				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-					{Object.keys(cacheFileJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
+				<select value={mode} onChange={e => setMode(e.currentTarget.value as any)}>
+					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
 				</select>
 			</LabeledInput>
 			<LabeledInput label="File ranges">
 				<InputCommitted type="text" onChange={e => setFiles(e.currentTarget.value)} value={files} />
 			</LabeledInput>
+			<div><label><input type="checkbox" checked={batched} onChange={e => setbatched(e.currentTarget.checked)} />Concatenate group files</label></div>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }
-function ExtractAvatarsScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
-	let [files, setFiles] = React.useState<FileList | null>(null);
 
-	let run = () => {
-		if (!files) { return; }
-		let output = new UIScriptOutput();
-		let iter = (async function* () {
-			for (let i = 0; i < files!.length; i++) {
-				yield {
-					name: files![i].name,
-					buf: Buffer.from(await files![i].arrayBuffer())
-				}
-			}
-		})();
-		output.run(extractAvatars, p.source, iter);
-		p.onRun(output);
-	}
-
-	return (
-		<React.Fragment>
-			<input type="file" multiple={true} onChange={e => setFiles(e.currentTarget.files)} />
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
-		</React.Fragment>
-	)
-}
 function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
 	let [endpoint, setEndpoint] = React.useState("");
 	let [auth, setAuth] = React.useState("");
@@ -1637,6 +1615,7 @@ function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 
 	return (
 		<React.Fragment>
+			<p>Update a map database, requires compatible server endpoint.</p>
 			<LabeledInput label="Endpoint">
 				<InputCommitted type="text" onChange={e => setEndpoint(e.currentTarget.value)} value={endpoint} />
 			</LabeledInput>
@@ -1649,7 +1628,9 @@ function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 }
 function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
 	let [cache2, setCache2] = React.useState<CacheFileSource | null>(null);
+	let [selectopen, setSelectopen] = React.useState(false);
 	let openCache = async (s: SavedCacheSource) => {
+		setSelectopen(false);
 		setCache2(await openSavedCache(s, false));
 	}
 
@@ -1663,9 +1644,22 @@ function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 		p.onRun(output);
 	}
 
+	let clickOpen = () => {
+		let frame = showModal({ title: "Select a cache" }, (
+			<CacheSelector onOpen={v => { openCache(v); frame.close(); }} noReopen={true} />
+		));
+	}
+
 	return (
 		<React.Fragment>
-			{!cache2 && <CacheSelector onOpen={openCache} />}
+			<p>Shows all changes between the current cache and a second cache.</p>
+			{!cache2 && !selectopen && <input type="button" className="sub-btn" value="Select second cache" onClick={e => clickOpen()} />}
+			{!cache2 && selectopen && (
+				<div style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
+					<input type="button" className="sub-btn" value="Cancel select cache" onClick={e => setSelectopen(false)} />
+					<CacheSelector onOpen={openCache} />
+				</div>
+			)}
 			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheName()}`} onClick={e => setCache2(null)} />}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
@@ -1686,6 +1680,7 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 
 	return (
 		<React.Fragment>
+			<p>Run this script to test if the current cache parser is compatible with the loaded cache. Generates readable errors if not.</p>
 			<LabeledInput label="Mode">
 				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
 					{Object.keys(cacheFileJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
