@@ -56,7 +56,6 @@ module.exports = {
 			stream: require.resolve('stream-browserify'),
 		}
 	},
-	externalsType: "commonjs",
 	output: {
 		filename: '[name].js',
 		path: path.resolve(__dirname, 'dist')
