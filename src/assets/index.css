@@ -78,6 +78,9 @@
 	box-sizing: border-box;
 }
 
+.mv-style input[type="color"] {
+	width: auto;
+}
 .mv-style input[type="text"]:focus,
 .mv-style select:focus {
 	outline-color: #1e96e0;
@@ -213,6 +216,14 @@
 .sidebar-browser-tab-strip {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mv-errortext {
+	background: #a22;
+	padding: 3px;
+	margin: 3px 0px;
+	color: white;
+	border-radius: 2px;
 }
 
 .mv-icon-button {

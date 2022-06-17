@@ -103,7 +103,7 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 }
 
 export function LabeledInput(p: { label: string, children: React.ReactNode }) {
-	return <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr" }}>
+	return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
 		<div>{p.label}</div>
 		{p.children}
 	</div>

@@ -196,7 +196,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 
 
 			slots[index] = {
-				name: item.name ?? "no name",
+				name: (item.name ? item.name : "item_" + itemid),
 				type: "item",
 				id: itemid,
 				models: itemmodels,

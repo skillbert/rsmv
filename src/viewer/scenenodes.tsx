@@ -823,6 +823,7 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 
 function ScenePlayer(p: LookupModeProps) {
 	const [data, model, id, setId] = useAsyncModelData(p.ctx, playerDataToModel);
+	const [errtext, seterrtext] = React.useState("");
 	const forceUpdate = useForceUpdate();
 
 	const player = id?.player ?? (p.initialId && typeof p.initialId == "object" && typeof (p.initialId as any).player == "string" ? (p.initialId as any).player : "");
@@ -834,9 +835,13 @@ function ScenePlayer(p: LookupModeProps) {
 	const nameChange = async (v: string) => {
 		let url = appearanceUrl(v);
 		let data = await fetch(url).then(q => q.text());
-		if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
+		if (data.indexOf("404 - Page not found") != -1) {
+			seterrtext(`Player avatar not found for '${v}'.`)
+			return;
+		}
 		let buf = avatarStringToBytes(data);
 		setId({ player: v, data: buf, head });
+		seterrtext("");
 	}
 
 	const equipChanged = (index: number, type: "item" | "kit" | "none", equipid: number) => {
@@ -881,27 +886,34 @@ function ScenePlayer(p: LookupModeProps) {
 	const colorDropdown = (id: keyof avataroverrides, v: number, opts: Record<number, number>) => {
 		data?.info.kitcolors.clothes
 		return (
-			<div>
-				{id}
+			<LabeledInput label={id}>
 				<select value={v} onChange={e => changeColor(id, +e.currentTarget.value)} style={{ backgroundColor: hsl2hex(opts[v]) }}>
 					{Object.entries(opts).map(([i, v]) => <option key={i} value={i} style={{ backgroundColor: hsl2hex(v) }}>{i}</option>)}
 				</select>
-			</div>
+			</LabeledInput>
 		)
 	}
 
 	return (
 		<React.Fragment>
 			<StringInput onChange={nameChange} initialid={player} />
-			{model && data && (
+			{errtext && (<div className="mv-errortext" onClick={e => seterrtext("")}>{errtext}</div>)}
+			{id == null && (
+				<React.Fragment>
+					<p>Type a player name to view their 3d avatar. You can then customize the avatar appearance.</p>
+					<p>You can update your avatar by going to the photo booth southwest of falador in-game</p>
+				</React.Fragment>
+			)}
+			{ data && (
 				<LabeledInput label="Animation">
-					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
+					<select onChange={e => { model?.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model?.targetAnimId ?? -1}>
 						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
 					</select>
 				</LabeledInput>
 			)}
-			<label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>
+			{ data && <label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>}
 			<div className="mv-sidebar-scroll">
+				{data && <h2>Slots</h2>}
 				<div style={{ userSelect: "text" }}>
 					{p.ctx && data?.info.avatar?.slots.map((q, i) => {
 						return (
@@ -909,7 +921,13 @@ function ScenePlayer(p: LookupModeProps) {
 						);
 					})}
 				</div>
-				{data && <label><input type="checkbox" checked={data.info.gender == 1} onChange={e => setGender(e.currentTarget.checked ? 1 : 0)} />Female</label>}
+				{data && <h2>Settings</h2>}
+				{data && (
+					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+						<input type="button" className={classNames("sub-btn", { active: data.info.gender == 0 })} onClick={e => setGender(0)} value="Male" />
+						<input type="button" className={classNames("sub-btn", { active: data.info.gender == 1 })} onClick={e => setGender(1)} value="Female" />
+					</div>
+				)}
 				{data?.info.avatar && colorDropdown("haircol0", data.info.avatar.haircol0, data.info.kitcolors.hair)}
 				{data?.info.avatar && colorDropdown("haircol1", data.info.avatar.haircol1, data.info.kitcolors.hair)}
 				{data?.info.avatar && colorDropdown("bodycol", data.info.avatar.bodycol, data.info.kitcolors.clothes)}
@@ -948,16 +966,16 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female 
 				<div style={{ display: "grid", gridTemplateColumns: "auto repeat(10,min-content)" }}>
 					<span>{slot.name}</span>
 					{!cust?.color?.col2 && !cust?.color?.col4 && slot.replaceColors.length != 0 && (
-						<input type="button" className="sub-btn" value="C" onClick={e => editcust(c => c.color = { col4: null, col2: slot.replaceColors.map(q => q[1]) })} />
+						<input type="button" className="sub-btn" value="C" title="Recolor using predefined recolor slots" onClick={e => editcust(c => c.color = { col4: null, col2: slot.replaceColors.map(q => q[1]) })} />
 					)}
 					{!cust?.color?.col2 && !cust?.color?.col4 && (
-						<input type="button" className="sub-btn" value="C4" onClick={e => editcust(c => c.color = { col4: [[0, 0], [0, 0], [0, 0], [0, 0]], col2: null })} />
+						<input type="button" className="sub-btn" value="C4" title="Force recolor 4 colors" onClick={e => editcust(c => c.color = { col4: [[0, 0], [0, 0], [0, 0], [0, 0]], col2: null })} />
 					)}
 					{!cust?.material && slot.replaceMaterials.length != 0 && (
-						<input type="button" className="sub-btn" value="T" onClick={e => editcust(c => c.material = { header: 0, materials: slot.replaceMaterials.map(q => q[1]) })} />
+						<input type="button" className="sub-btn" value="T" title="Replace material in predefined material slots" onClick={e => editcust(c => c.material = { header: 0, materials: slot.replaceMaterials.map(q => q[1]) })} />
 					)}
 					{!cust?.model && (
-						<input type="button" className="sub-btn" value="M" onClick={e => editcust(c => c.model = slot.models.slice())} />
+						<input type="button" className="sub-btn" value="M" title="Replace models" onClick={e => editcust(c => c.model = slot.models.slice())} />
 					)}
 					<input type="button" className="sub-btn" value="x" onClick={e => equipChanged(index, "none", 0)} />
 				</div>
@@ -972,7 +990,7 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female 
 
 
 			{slot && cust?.color?.col2 && (
-				<div>
+				<div style={{ display: "grid", gridTemplateColumns: `repeat(${slot.replaceColors.length},1fr) min-content` }}>
 					{slot.replaceColors.map((q, i) => (
 						<InputCommitted key={i} type="color" value={hsl2hex(cust.color!.col2![i])} onChange={e => editcust(c => c.color!.col2![i] = hex2hsl(e.currentTarget.value))} />
 					))}
@@ -980,18 +998,18 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female 
 				</div>
 			)}
 			{slot && cust?.color?.col4 && (
-				<div>
+				<div style={{ display: "grid", gridTemplateColumns: `repeat(4,minmax(0,1fr)) min-content`, gridTemplateRows: "auto auto", gridAutoFlow: "column" }}>
 					{cust.color.col4.map(([from, to], i) => (
-						<span key={i}>
+						<React.Fragment key={i}>
 							<InputCommitted type="number" value={from} onChange={e => editcust(c => c.color!.col4![i][0] = +e.currentTarget.value)} />
 							<InputCommitted type="color" value={hsl2hex(to)} onChange={e => editcust(c => c.color!.col4![i][1] = hex2hsl(e.currentTarget.value))} />
-						</span>
+						</React.Fragment>
 					))}
-					<input type="button" className="sub-btn" value="x" onClick={e => editcust(c => c.color = null!)} />
+					<input type="button" style={{ gridRow: "1/span 2" }} className="sub-btn" value="x" onClick={e => editcust(c => c.color = null!)} />
 				</div>
 			)}
 			{slot && cust?.material && (
-				<div>
+				<div style={{ display: "grid", gridTemplateColumns: `repeat(${slot.replaceMaterials.length},1fr) min-content` }}>
 					{slot.replaceMaterials.map((q, i) => (
 						<InputCommitted key={i} type="number" value={cust.material!.materials![i]} onChange={e => editcust(c => c.material!.materials[i] = +e.currentTarget.value)} />
 					))}
@@ -999,7 +1017,7 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female 
 				</div>
 			)}
 			{slot && cust?.model && (
-				<div>
+				<div style={{ display: "grid", gridTemplateColumns: `repeat(${slot.models.length},1fr) min-content` }}>
 					{slot.models.map((modelid, i) => (
 						<InputCommitted key={i} type="number" value={modelid} onChange={e => editcust(c => c.model![i] = +e.currentTarget.value)} />
 					))}
@@ -1107,7 +1125,7 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 			)}
 			{tab == "stl" && (
 				<React.Fragment>
-					<p>STL is used mostly for 3d printing, this file format only export the shape of the model. Colors, textures animations will be lost.</p>
+					<p>STL is used mostly for 3d printing, this file format only exports the shape of the model. Colors, textures animations will be lost.</p>
 					<input style={{ width: "100%" }} type="button" className="sub-btn" value="Save" onClick={saveStl} />
 				</React.Fragment>
 			)}
@@ -1248,6 +1266,12 @@ function SceneMaterial(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
+			{id == null && (
+				<React.Fragment>
+					<p>Enter a material id.</p>
+					<p>Materials define how a piece of geometry looks, besides the color texture they also define how the model interacts with light to create highlights and reflections.</p>
+				</React.Fragment>
+			)}
 			<div className="mv-sidebar-scroll">
 				{data && Object.entries(data.info.texs).map(([name, img]) => (
 					<div key={name}>
@@ -1267,10 +1291,18 @@ function SceneRawModel(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
-			<div className="mv-sidebar-scroll">
-				<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
-				<JsonDisplay obj={data?.info.info} />
-			</div>
+			{id == null && (
+				<React.Fragment>
+					<p>Enter a model id.</p>
+					<p>This lookup shows raw models on their own.</p>
+				</React.Fragment>
+			)}
+			{data && (
+				<div className="mv-sidebar-scroll">
+					<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
+					<JsonDisplay obj={data?.info.info} />
+				</div>
+			)}
 		</React.Fragment>
 	)
 }
@@ -1283,6 +1315,12 @@ function SceneLocation(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="objects" onChange={setId} initialid={initid} />}
+			{id == null && (
+				<React.Fragment>
+					<p>Enter a location id or search by name.</p>
+					<p>Locations make up just about everything in the world that isn't a player or NPC.</p>
+				</React.Fragment>
+			)}
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<div className="mv-sidebar-scroll">
 				<JsonDisplay obj={data?.info} />
@@ -1297,6 +1335,9 @@ function SceneItem(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="items" onChange={setId} initialid={initid} />}
+			{id == null && (
+				<p>Enter an item id or search by name.</p>
+			)}
 			<div className="mv-sidebar-scroll">
 				<JsonDisplay obj={data?.info} />
 			</div>
@@ -1313,7 +1354,10 @@ function SceneNpc(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="npcs" onChange={v => setId({ id: v, head })} initialid={initid} />}
-			<label><input type="checkbox" checked={head} onChange={e => setId({ id: initid, head: e.currentTarget.checked })} />Head</label>
+			{id == null && (
+				<p>Enter an NPC id or search by name.</p>
+			)}
+			{model && data && (<label><input type="checkbox" checked={head} onChange={e => setId({ id: initid, head: e.currentTarget.checked })} />Head</label>)}
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
@@ -1334,6 +1378,12 @@ function SceneSpotAnim(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
+			{id == null && (
+				<React.Fragment>
+					<p>Enter a spotanim id.</p>
+					<p>Spotanims are visual effects that are usually temporary and require an extra model that is not part of any loc, npc or player.</p>
+				</React.Fragment>
+			)}
 			<div className="mv-sidebar-scroll">
 				<JsonDisplay obj={data?.info} />
 			</div>
@@ -1513,8 +1563,15 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 		return (
 			<React.Fragment>
-				{this.state.chunkgroups.length == 0 && (<StringInput onChange={this.onSubmit} initialid={initid} />)}
-				{this.state.chunkgroups.length == 0 && (<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>)}
+				{this.state.chunkgroups.length == 0 && (
+					<React.Fragment>
+						<StringInput onChange={this.onSubmit} initialid={initid} />
+						<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>
+						<p>Coordinates are in so-called mapsquare coordinates, each mapsquare is 64x64 tiles in size. The entire RuneScape map is laid out in one plane and is 100x200 mapsquares in size.</p>
+
+
+					</React.Fragment>
+				)}
 				{this.state.chunkgroups.length != 0 && (
 					<div className="mv-sidebar-scroll">
 						<div className="map-grid-container">
@@ -1725,6 +1782,7 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: keyof typeof 
 				<div className="mv-sidebar-scroll">
 					<h2>Script runner</h2>
 					<TabStrip value={this.state.script} tabs={Object.fromEntries(Object.keys(uiScripts).map(k => [k, k])) as any} onChange={v => this.setState({ script: v })} />
+					{!SelectedScript && <p>Select a script</p>}
 					{SelectedScript && <SelectedScript source={source} onRun={this.onRun} />}
 					<h2>Script output</h2>
 					<OutputUI output={this.state.running} ctx={this.props.partial} />
