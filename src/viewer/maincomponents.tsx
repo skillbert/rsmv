@@ -7,7 +7,7 @@ import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
-import { ModelBrowser, StringInput } from "./scenenodes";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 
@@ -107,18 +107,18 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 							<thead>
 								<tr>
 									<td></td>
-									<td>
+									{/* <td>
 										<select value={gameFilter} onChange={e => setGameFilter(e.currentTarget.value)}>
 											<option value="">Game</option>
 											{games.map(game => <option key={game} value={game}>{game}</option>)}
 										</select>
-									</td>
-									<td>
+									</td> */}
+									{/* <td>
 										<select value={langFilter} onChange={e => setLangfilter(e.currentTarget.value)}>
 											<option value="">--</option>
 											{langs.map(lang => <option key={lang} value={lang}>{lang}</option>)}
 										</select>
-									</td>
+									</td> */}
 									<td>
 										<select value={yearFilter} onChange={e => setYearfilter(e.currentTarget.value)}>
 											<option value="">Date</option>
@@ -134,8 +134,8 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 								{showncaches.map(cache => (
 									<tr key={cache.language + cache.id}>
 										<td><input type="button" value="-" className="sub-btn" onClick={p.onSelect.bind(null, cache.id)} /></td>
-										<td>{cache.game}</td>
-										<td>{cache.language}</td>
+										{/* <td>{cache.game}</td> */}
+										{/* <td>{cache.language}</td> */}
 										<td>{cache.timestamp ? new Date(cache.timestamp).toDateString() : ""}</td>
 										<td>{cache.builds.map(q => q.major + (q.minor ? "." + q.minor : "")).join(",")}</td>
 									</tr>

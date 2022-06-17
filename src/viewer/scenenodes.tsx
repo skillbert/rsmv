@@ -1,9 +1,7 @@
 import * as THREE from "three";
-
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
 import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
@@ -12,13 +10,11 @@ import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseModels, parse
 import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
-import { ParsedTexture } from "../3d/textures";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl } from "./threejsrender";
 import { ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
-import prettyJson from "json-stringify-pretty-compact";
 import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
 import { cacheFileJsonModes, extractCacheFiles } from "../scripts/extractfiles";
@@ -33,80 +29,55 @@ import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
 import { findImageBounds } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip } from "./commoncontrols";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
+export function ModelBrowser(p: { ctx: UIContext }) {
 
+	type state = { search: unknown, mode: LookupMode }
 
-export class ModelBrowser extends React.Component<{ ctx: UIContext }, { search: any, mode: LookupMode }> {
-	constructor(p) {
-		super(p);
+	let [state, setMode] = React.useReducer((prev: any, v: LookupMode) => {
+		localStorage.rsmv_lastmode = v;
+		return { search: null, mode: v } as state;
+	}, null, () => {
 		let search: unknown = null;
 		try { search = JSON.parse(localStorage.rsmv_lastsearch ?? ""); } catch (e) { }
-		this.state = {
-			mode: localStorage.rsmv_lastmode ?? "model",
-			search
-		};
+		return { search, mode: localStorage.rsmv_lastmode } as state;
+	})
+
+	const tabs: Record<LookupMode, string> = {
+		item: "Item",
+		npc: "Npc",
+		object: "Loc",
+		avatar: "Player",
+		model: "Model",
+		map: "Map",
+		material: "Material",
+		spotanim: "Spotanim",
+		scenario: "Scenario",
+		scripts: "Scripts"
 	}
+	// const tabs: Record<LookupMode, string> = {
+	// 	object: "Loc",
+	// 	npc: "Npc",
+	// 	map: "Map",
+	// 	avatar: "Player",
+	// 	// item: "Item",
+	// 	// model: "Model",
+	// 	// material: "Material",
+	// 	// spotanim: "Spotanim",
+	// 	// scenario: "Scenario",
+	// 	// scripts: "Scripts"
+	// } as any;
 
-	setMode(mode: LookupMode) {
-		localStorage.rsmv_lastmode = mode;
-		this.setState({ mode, search: null });
-	}
-
-	render() {
-		let ModeComp = LookupModeComponentMap[this.state.mode];
-		return (
-			<React.Fragment>
-				<div className="sidebar-browser-tab-strip">
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "item" })} onClick={() => this.setMode("item")}>Items</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "npc" })} onClick={() => this.setMode("npc")}>NPCs</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "object" })} onClick={() => this.setMode("object")}>Locs</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "avatar" })} onClick={() => this.setMode("avatar")}>Avatar</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "model" })} onClick={() => this.setMode("model")}>Model</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "map" })} onClick={() => this.setMode("map")}>Map</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "material" })} onClick={() => this.setMode("material")}>Materials</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "spotanim" })} onClick={() => this.setMode("spotanim")}>Spotanims</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "scenario" })} onClick={() => this.setMode("scenario")}>Scenario</div>
-					<div className={classNames("mv-icon-button", { active: this.state.mode == "scripts" })} onClick={() => this.setMode("scripts")}>Scripts</div>
-				</div>
-				{ModeComp && <ModeComp initialId={this.state.search} ctx={this.props.ctx.canRender() ? this.props.ctx : null} partial={this.props.ctx} />}
-			</React.Fragment>
-		);
-	}
-}
-
-export function IdInput({ initialid, onChange }: { initialid?: number, onChange: (id: number) => void }) {
-	let [idstate, setId] = React.useState(initialid ?? 0);
-	let stale = React.useRef(false);
-
-	let id = (stale.current || typeof initialid == "undefined" ? idstate : initialid);
-
-	let incr = () => { setId(id + 1); onChange(id + 1); stale.current = false; };
-	let decr = () => { setId(id - 1); onChange(id - 1); stale.current = false; };
-	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); stale.current = false; };
+	let ModeComp = LookupModeComponentMap[state.mode];
 	return (
-		<form className="sidebar-browser-search-bar" onSubmit={submit}>
-			<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
-			<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
-			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => { setId(+e.currentTarget.value); stale.current = true; }} />
-			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
-		</form>
-	)
-}
-export function StringInput({ initialid, onChange }: { initialid?: string, onChange: (id: string) => void }) {
-	let [idstate, setId] = React.useState(initialid ?? "");
-	let stale = React.useRef(false);
-
-	let id = (stale.current || typeof initialid == "undefined" ? idstate : initialid);
-
-	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); stale.current = false; };
-	return (
-		<form className="sidebar-browser-search-bar" onSubmit={submit}>
-			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => { setId(e.currentTarget.value); stale.current = true; }} />
-			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
-		</form>
-	)
+		<React.Fragment>
+			<TabStrip value={state.mode} tabs={tabs} onChange={setMode} />
+			{ModeComp && <ModeComp initialId={state.search} ctx={p.ctx.canRender() ? p.ctx : null} partial={p.ctx} />}
+		</React.Fragment>
+	);
 }
 
 export type SimpleModelDef = { modelid: number, mods: ModelModifications }[];
@@ -317,7 +288,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.rect = rect;
 		this.cache = cache;
 		this.model = (async () => {
-			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: true, padfloor: true, skybox: false, ...extraopts };
+			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
 			let modeldata = await mapsquareModels(cache, grid, chunks, opts);
 			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
@@ -352,50 +323,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 			this.onModelLoaded();
 			return this.loaded;
 		})();
-	}
-}
-
-function LabeledInput(p: { label: string, children: React.ReactNode }) {
-	return <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr" }}>
-		<div>{p.label}</div>
-		{p.children}
-	</div>
-}
-
-export class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
-	el: HTMLInputElement | null = null;
-	stale = false;
-
-	@boundMethod
-	onInput() {
-		this.stale = true;
-	}
-
-	@boundMethod
-	onChange(e: Event) {
-		this.props.onChange?.(e as any);
-		this.stale = false;
-	}
-
-	@boundMethod
-	ref(el: HTMLInputElement | null) {
-		if (this.el) {
-			this.el.removeEventListener("change", this.onChange);
-			this.el.removeEventListener("input", this.onInput);
-		}
-		if (el) {
-			el.addEventListener("change", this.onChange);
-			el.addEventListener("input", this.onInput);
-			this.el = el;
-		}
-	}
-
-	render() {
-		if (!this.stale && this.el && this.props.value) {
-			this.el.value = this.props.value as string;
-		}
-		let newp = { ...this.props, onChange: undefined, value: undefined, defaultValue: this.props.value };
-		return <input ref={this.ref} {...newp} />;
 	}
 }
 
@@ -701,40 +628,42 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	render() {
 		return (
 			<React.Fragment>
-				<h2>Models</h2>
-				{Object.entries(this.state.components).map(([id, comp]) => {
-					return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
-				})}
-				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-					<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
-						<option value="model">model</option>
-						<option value="npc">npc</option>
-						<option value="spotanim">spotanim</option>
-						<option value="loc">location</option>
-						<option value="player">player</option>
-						<option value="item">item</option>
-						<option value="map">map</option>
-					</select>
-					<StringInput onChange={this.addComp} />
+				<div className="mv-sidebar-scroll">
+					<h2>Models</h2>
+					{Object.entries(this.state.components).map(([id, comp]) => {
+						return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
+					})}
+					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+						<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
+							<option value="model">model</option>
+							<option value="npc">npc</option>
+							<option value="spotanim">spotanim</option>
+							<option value="loc">location</option>
+							<option value="player">player</option>
+							<option value="item">item</option>
+							<option value="map">map</option>
+						</select>
+						<StringInput onChange={this.addComp} />
+					</div>
+					<h2>Action sequence</h2>
+					{this.state.actions.map((a, i) => {
+						let comp = this.state.components[a.target]
+						return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
+					})}
+					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
+						<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
+							<option value="location">Location</option>
+							<option value="anim">Anim</option>
+							<option value="delay">Delay</option>
+							<option value="visibility">Visibility</option>
+						</select>
+						<select value={this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
+							{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key} - {c.modelkey}</option>)}
+						</select>
+						<input type="button" className="sub-btn" value={`add ${this.state.addActionType}`} onClick={this.addAction} />
+					</div>
+					<div onClick={this.restartAnims}>restart</div>
 				</div>
-				<h2>Action sequence</h2>
-				{this.state.actions.map((a, i) => {
-					let comp = this.state.components[a.target]
-					return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
-				})}
-				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
-					<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
-						<option value="location">Location</option>
-						<option value="anim">Anim</option>
-						<option value="delay">Delay</option>
-						<option value="visibility">Visibility</option>
-					</select>
-					<select value={this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
-						{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key} - {c.modelkey}</option>)}
-					</select>
-					<input type="button" className="sub-btn" value={`add ${this.state.addActionType}`} onClick={this.addAction} />
-				</div>
-				<div onClick={this.restartAnims}>restart</div>
 			</React.Fragment>
 		)
 	}
@@ -750,7 +679,7 @@ const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number
 });
 
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
-	let modeldata = cache.getModelData(id);
+	let modeldata = await cache.getModelData(id);
 	//getting the same file a 2nd time to get the full json
 	let modelfile = await cache.source.getFileById(cacheMajors.models, id);
 	let info = parseModels.read(modelfile);
@@ -974,23 +903,25 @@ function ScenePlayer(p: LookupModeProps) {
 				</LabeledInput>
 			)}
 			<label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>
-			{model && data && (
-				<label><input type="checkbox" checked={data.info.gender == 1} onChange={e => setGender(e.currentTarget.checked ? 1 : 0)} />Female</label>
-			)}
-			<div style={{ userSelect: "text" }}>
-				{p.ctx && data?.info.avatar?.slots.map((q, i) => {
-					return (
-						<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} ctx={p.ctx!} custChanged={customizationChanged} female={data.info.gender == 1} equipChanged={equipChanged} />
-					);
-				})}
+			<div className="mv-sidebar-scroll">
+				{model && data && (
+					<label><input type="checkbox" checked={data.info.gender == 1} onChange={e => setGender(e.currentTarget.checked ? 1 : 0)} />Female</label>
+				)}
+				<div style={{ userSelect: "text" }}>
+					{p.ctx && data?.info.avatar?.slots.map((q, i) => {
+						return (
+							<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} ctx={p.ctx!} custChanged={customizationChanged} female={data.info.gender == 1} equipChanged={equipChanged} />
+						);
+					})}
+				</div>
+				{data?.info.avatar && colorDropdown("haircol0", data.info.avatar.haircol0, data.info.kitcolors.hair)}
+				{data?.info.avatar && colorDropdown("haircol1", data.info.avatar.haircol1, data.info.kitcolors.hair)}
+				{data?.info.avatar && colorDropdown("bodycol", data.info.avatar.bodycol, data.info.kitcolors.clothes)}
+				{data?.info.avatar && colorDropdown("legscol", data.info.avatar.legscol, data.info.kitcolors.clothes)}
+				{data?.info.avatar && colorDropdown("bootscol", data.info.avatar.bootscol, data.info.kitcolors.feet)}
+				{data?.info.avatar && colorDropdown("skincol0", data.info.avatar.skincol0, data.info.kitcolors.skin)}
+				{data?.info.avatar && colorDropdown("skincol1", data.info.avatar.skincol1, data.info.kitcolors.skin)}
 			</div>
-			{data?.info.avatar && colorDropdown("haircol0", data.info.avatar.haircol0, data.info.kitcolors.hair)}
-			{data?.info.avatar && colorDropdown("haircol1", data.info.avatar.haircol1, data.info.kitcolors.hair)}
-			{data?.info.avatar && colorDropdown("bodycol", data.info.avatar.bodycol, data.info.kitcolors.clothes)}
-			{data?.info.avatar && colorDropdown("legscol", data.info.avatar.legscol, data.info.kitcolors.clothes)}
-			{data?.info.avatar && colorDropdown("bootscol", data.info.avatar.bootscol, data.info.kitcolors.feet)}
-			{data?.info.avatar && colorDropdown("skincol0", data.info.avatar.skincol0, data.info.kitcolors.skin)}
-			{data?.info.avatar && colorDropdown("skincol1", data.info.avatar.skincol1, data.info.kitcolors.skin)}
 		</React.Fragment>
 	);
 }
@@ -1205,6 +1136,7 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
 	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
 
+	let [showsettings, setshowsettings] = React.useState(localStorage.rsmv_showsettings == "true");
 	let [hideFog, sethidefog] = React.useState(false);
 	let [hideFloor, sethidefloor] = React.useState(false);
 	let [camMode, setcammode] = React.useState<"standard" | "vr360">("standard");
@@ -1227,21 +1159,29 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 			render.addSceneElement(sceneEl.current);
 			return () => { render.removeSceneElement(sceneEl.current); }
 		}
-	}, [render])
+	}, [render]);
+
+	const toggleSettings = React.useCallback(() => {
+		localStorage.rsmv_showsettings = "" + !showsettings;
+		setshowsettings(!showsettings);
+	}, [showsettings]);
 
 	return (p.visible || null) && (
 		<React.Fragment>
-			<label><input type="checkbox" checked={hideFog} onChange={e => sethidefog(e.currentTarget.checked)} />Hide fog</label>
-			<label><input type="checkbox" checked={hideFloor} onChange={e => sethidefloor(e.currentTarget.checked)} />Hide floor</label>
-			<label><input type="checkbox" checked={camControls == "world"} onChange={e => setcamcontrols(e.currentTarget.checked ? "world" : "free")} />World space controls</label>
-			<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
-			<input type="button" className="sub-btn" onClick={e => p.ctx.canRender() && showExportSceneMeta(p.ctx)} value="Export" />
+			<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+				<input type="button" className="sub-btn" onClick={e => p.ctx.canRender() && showExportSceneMeta(p.ctx)} value="Export" />
+				<input type="button" className="sub-btn" onClick={toggleSettings} value="Settings" />
+			</div>
+			{showsettings && (
+				<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+					<label><input type="checkbox" checked={hideFog} onChange={e => sethidefog(e.currentTarget.checked)} />Hide fog</label>
+					<label><input type="checkbox" checked={hideFloor} onChange={e => sethidefloor(e.currentTarget.checked)} />Hide floor</label>
+					<label><input type="checkbox" checked={camControls == "world"} onChange={e => setcamcontrols(e.currentTarget.checked ? "world" : "free")} />Flat panning</label>
+					<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
+				</div>
+			)}
 		</React.Fragment>
 	)
-}
-
-export function JsonDisplay(p: { obj: any }) {
-	return (<pre className="mv-json-block">{prettyJson(p.obj)}</pre>);
 }
 
 type SimpleModelInfo<T = object, ID = string> = {
@@ -1309,7 +1249,7 @@ function SceneMaterial(p: LookupModeProps) {
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "materials", setId)} />
-			<div style={{ overflowY: "auto" }}>
+			<div className="mv-sidebar-scroll">
 				{data && Object.entries(data.info.texs).map(([name, img]) => (
 					<div key={name}>
 						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
@@ -1328,8 +1268,10 @@ function SceneRawModel(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
-			<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
-			<JsonDisplay obj={data?.info.info} />
+			<div className="mv-sidebar-scroll">
+				<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
+				<JsonDisplay obj={data?.info.info} />
+			</div>
 		</React.Fragment>
 	)
 }
@@ -1344,7 +1286,9 @@ function SceneLocation(p: LookupModeProps) {
 			<IdInput onChange={setId} initialid={initid} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "objects", setId)} />
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
-			<JsonDisplay obj={data?.info} />
+			<div className="mv-sidebar-scroll">
+				<JsonDisplay obj={data?.info} />
+			</div>
 		</React.Fragment>
 	)
 }
@@ -1356,7 +1300,9 @@ function SceneItem(p: LookupModeProps) {
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
 			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "items", setId)} />
-			<JsonDisplay obj={data?.info} />
+			<div className="mv-sidebar-scroll">
+				<JsonDisplay obj={data?.info} />
+			</div>
 		</React.Fragment>
 	)
 }
@@ -1378,7 +1324,9 @@ function SceneNpc(p: LookupModeProps) {
 					</select>
 				</LabeledInput>
 			)}
-			<JsonDisplay obj={data?.info} />
+			<div className="mv-sidebar-scroll">
+				<JsonDisplay obj={data?.info} />
+			</div>
 		</React.Fragment>
 	)
 }
@@ -1389,7 +1337,9 @@ function SceneSpotAnim(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
-			<JsonDisplay obj={data?.info} />
+			<div className="mv-sidebar-scroll">
+				<JsonDisplay obj={data?.info} />
+			</div>
 		</React.Fragment>
 	)
 }
@@ -1566,59 +1516,65 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 		return (
 			<React.Fragment>
-				<StringInput onChange={this.onSubmit} initialid={initid} />
-				<div className="map-grid-container">
-					<div className="map-grid-root" style={{ gridTemplateColumns: `repeat(${xsize},40px)`, gridTemplateRows: `repeat(${zsize},40px)` }}>
-						{this.state.chunkgroups.flatMap((chunk, i) => {
-							let style: React.CSSProperties = {
-								gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
-								gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
-							}
-							if (chunk.background) {
-								style.backgroundImage = chunk.background;
-							}
-							for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
-								for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
-									addgrid[(x - xmin) * zsize + (z - zmin)] = null;
-								}
-							}
-							return (
-								<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !chunk.chunk.loaded })} style={style}>
-									{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : <React.Fragment>{chunk.rect.xsize}x{chunk.rect.zsize}<br /></React.Fragment>}
-									{chunk.rect.x},{chunk.rect.z}
-								</div>
-							);
-						})}
-						{addgrid}
-					</div>
-				</div>
+				{this.state.chunkgroups.length == 0 && (<StringInput onChange={this.onSubmit} initialid={initid} />)}
 				{this.state.chunkgroups.length == 0 && (<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>)}
-				{Object.entries(toggles).map(([base, subs]) => {
-					let all = true;
-					let none = true;
-					subs.forEach(s => {
-						let v = this.state.toggles[base + s];
-						all &&= v;
-						none &&= !v;
-					})
-					return (
-						<div key={base}>
-							<label><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.setToggle(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
-							{subs.map(sub => {
-								let name = base + sub;
-								let value = this.state.toggles[name];
+				{this.state.chunkgroups.length != 0 && (
+					<div className="mv-sidebar-scroll">
+						<div className="map-grid-container">
+							<div className="map-grid-root" style={{ gridTemplateColumns: `20px repeat(${xsize - 2},40px) 20px`, gridTemplateRows: `20px repeat(${zsize - 2},40px) 20px` }}>
+								{this.state.chunkgroups.flatMap((chunk, i) => {
+									let style: React.CSSProperties = {
+										gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
+										gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
+									}
+									if (chunk.background) {
+										style.backgroundImage = chunk.background;
+									}
+									for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
+										for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
+											addgrid[(x - xmin) * zsize + (z - zmin)] = null;
+										}
+									}
+									return (
+										<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !chunk.chunk.loaded })} style={style}>
+											{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : <React.Fragment>{chunk.rect.xsize}x{chunk.rect.zsize}<br /></React.Fragment>}
+											{chunk.rect.x},{chunk.rect.z}
+										</div>
+									);
+								})}
+								{addgrid}
+							</div>
+						</div>
+						<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
+						<div style={{ display: "grid", columnCount: 5, marginRight: "auto" }}>
+							{Object.entries(toggles).map(([base, subs]) => {
+								let all = true;
+								let none = true;
+								subs.forEach(s => {
+									let v = this.state.toggles[base + s];
+									all &&= v;
+									none &&= !v;
+								})
 								return (
-									<label key={sub}>
-										<input type="checkbox" checked={value} onChange={e => this.setToggle(name, e.currentTarget.checked)} />
-										{sub}
-									</label>
-								);
+									<React.Fragment>
+										<label key={base} style={{ gridColumn: 1 }}><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.setToggle(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
+										{subs.map((sub, i) => {
+											let name = base + sub;
+											let value = this.state.toggles[name];
+											return (
+												<label key={sub} style={{ gridColumn: 2 + i }}>
+													<input type="checkbox" checked={value} onChange={e => this.setToggle(name, e.currentTarget.checked)} />
+													{sub}
+												</label>
+											);
+										})}
+									</React.Fragment>
+								)
 							})}
 						</div>
-					)
-				})}
-				<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
-				<JsonDisplay obj={this.state.selectionData} />
+						<JsonDisplay obj={this.state.selectionData} />
+					</div>
+				)}
 			</React.Fragment>
 		)
 	}
@@ -1773,15 +1729,13 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: keyof typeof 
 		const SelectedScript = uiScripts[this.state.script];
 		return (
 			<React.Fragment>
-				<h2>Script runner</h2>
-				<div className="sidebar-browser-tab-strip">
-					{Object.keys(uiScripts).map((q, i) => (
-						<div key={q} className={classNames("mv-icon-button", { active: this.state.script == q })} onClick={() => this.setState({ script: q as any })}>{q}</div>
-					))}
+				<div className="mv-sidebar-scroll">
+					<h2>Script runner</h2>
+					<TabStrip value={this.state.script} tabs={Object.fromEntries(Object.keys(uiScripts).map(k => [k, k])) as any} onChange={v => this.setState({ script: v })} />
+					{SelectedScript && <SelectedScript source={source} onRun={this.onRun} />}
+					<h2>Script output</h2>
+					<OutputUI output={this.state.running} ctx={this.props.partial} />
 				</div>
-				{SelectedScript && <SelectedScript source={source} onRun={this.onRun} />}
-				<h2>Script output</h2>
-				<OutputUI output={this.state.running} ctx={this.props.partial} />
 			</React.Fragment>
 		);
 	}
