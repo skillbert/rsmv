@@ -3,6 +3,9 @@ import { UIContext, UIContextReady } from "./maincomponents";
 import { boundMethod } from "autobind-decorator";
 import prettyJson from "json-stringify-pretty-compact";
 import classNames from "classnames";
+import { EngineCache } from "3d/ob3tothree";
+import { cacheFileJsonModes } from "scripts/extractfiles";
+import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
 
 export function TabStrip<T extends string>(p: { value: T, tabs: Record<T, string>, onChange: (v: T) => void }) {
@@ -35,6 +38,52 @@ export function IdInput({ initialid, onChange }: { initialid?: number, onChange:
 			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => { setId(+e.currentTarget.value); stale.current = true; }} />
 			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
+	)
+}
+export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheFileJsonModes, initialid?: number, onChange: (id: number) => void }) {
+	let [search, setSearch] = React.useState("" + (p.initialid ?? ""));
+	let [id, setidstate] = React.useState(p.initialid ?? 0);
+	let [searchopen, setSearchopen] = React.useState(false);
+	const filters: JsonSearchFilter[] = [{ path: ["name"], search: search }];
+	let { loaded, filtered, getprop } = useJsonCacheSearch(p.cache, p.mode, filters, !searchopen);
+
+	const submitid = (v: number) => {
+		setidstate(v);
+		p.onChange(v);
+	}
+
+	let incr = () => { submitid(id + 1); setSearchText(id + 1 + "") }
+	let decr = () => { submitid(id - 1); setSearchText(id - 1 + ""); }
+	let submit = (e: React.FormEvent) => { e.preventDefault(); submitid(id) };
+
+	const setSearchText = (v: string) => {
+		let n = +v;
+		let isNumber = !isNaN(n);
+		setSearch(v);
+		setSearchopen(!isNumber);
+		if (isNumber) { setidstate(n); }
+	}
+
+	return (
+		<React.Fragment>
+			<form className="sidebar-browser-search-bar" onSubmit={submit}>
+				<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
+				<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
+				<input type="text" className="sidebar-browser-search-bar-input" value={search} onChange={e => setSearchText(e.currentTarget.value)} />
+				<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
+			</form>
+			{searchopen && !loaded && (
+				<div>Loading...</div>
+			)}
+			{searchopen && loaded && (
+				<div className="mv-sidebar-scroll">
+					{ filtered.slice(0, 100).map((q, i) => (
+						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {getprop(q, ["name"], 0).next().value}</div>
+					))}
+				</div>
+			)}
+			{searchopen && <input type="button" className="sub-btn" value="Close" onClick={e => setSearchText(id + "")} />}
+		</React.Fragment>
 	)
 }
 export function StringInput({ initialid, onChange }: { initialid?: string, onChange: (id: string) => void }) {

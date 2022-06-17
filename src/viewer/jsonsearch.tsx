@@ -78,16 +78,16 @@ export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, ca
 	)
 }
 
-type JsonSearchFilter = { path: string[], search: string };
+export type JsonSearchFilter = { path: string[], search: string };
 
 export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
-	const { schema, files: filesprom } = p.cache.getJsonSearchData(p.mode);
+
 	let initfilters = p.initialFilters
-	if (p.initialFilters.length == 0 && typeof schema == "object") {
-		if (schema.properties?.name) { initfilters = [{ path: ["name"], search: "" }] }
-	}
+	// if (p.initialFilters.length == 0 && typeof schema == "object") {
+	// 	if (schema.properties?.name) { initfilters = [{ path: ["name"], search: "" }] }
+	// }
 	const [filters, setFilters] = React.useState<JsonSearchFilter[]>(initfilters);
-	const [files, setFiles] = React.useState<any[]>([]);
+	const { filtered, getprop, actualfilters, loaded } = useJsonCacheSearch(p.cache, p.mode, filters);
 
 	const editFilters = (index: number, cb?: (f: JsonSearchFilter) => void) => {
 		let newfilters = filters.map(q => ({ path: q.path.slice(), search: q.search }));
@@ -103,7 +103,25 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: En
 		setFilters(newfilters);
 	}
 
-	React.useEffect(() => { filesprom.then(setFiles) }, [filesprom]);
+
+	return (
+		<React.Fragment>
+			<div style={{ flex: "1" }}>
+				{actualfilters.map((q, i) => <JsonFilterUI key={i} index={i} filter={q.filter} editFilters={editFilters} optsthree={q.optsthree} searchtype={q.searchtype} />)}
+				<input type="button" className="sub-btn" value="extra filter" onClick={e => editFilters(actualfilters.length, () => { })} />
+				<div>{loaded ? `${filtered.length} Matches` : "Loading..."}</div>
+				{filtered.slice(0, 100).map((q, i) => (
+					<div key={q.$fileid} onClick={e => p.onSelect(q.$fileid, q)}>{q.$fileid} - {filters.map(f => getprop(q, f.path, 0).next().value + "").join(", ")}</div>
+				))}
+			</div>
+		</React.Fragment>
+	)
+}
+
+export function useJsonCacheSearch(cache: EngineCache, mode: keyof typeof cacheFileJsonModes, filters: JsonSearchFilter[], dryrun = false) {
+	const searchmeta = (dryrun ? null : cache.getJsonSearchData(mode));
+	const [files, setFiles] = React.useState<any[] | null>(null);
+	React.useEffect(() => { !files && searchmeta?.files.then(setFiles) }, [searchmeta?.files]);
 
 	const hasprop = (o: object, p: string) => o && Object.prototype.hasOwnProperty.call(o, p);
 	const getprop = function* (prop: any, path: string[], depth: number) {
@@ -121,84 +139,73 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: En
 		}
 	}
 
-	let filtered = files;
+	let filtered = files ?? [];
 	let actualfilters: { filter: JsonSearchFilter, searchtype: JSONSchema6TypeName, optsthree: string[][] }[] = [];
-	for (let filter of filters) {
-		let optsthree: string[][] = [];
-		let def = schema;
-		let searchtype: JSONSchema6TypeName = "any";
-		let partindex = 0;
-		let lastdef: typeof def | null = null;
-		while (lastdef != def) {
-			let part = filter.path[partindex] as string | undefined;
-			lastdef = def;
-			if (typeof def != "object") { break; }
-			if (def.oneOf) {
-				if (def.oneOf.length == 2 && typeof def.oneOf[1] == "object" && def.oneOf[1].type == "null") {
-					def = def.oneOf[part == "null" ? 1 : 0];
-				}
-			} else if (def.type == "object") {
-				if (def.properties) {
-					optsthree.push(Object.keys(def.properties));
-					if (part) {
-						def = def.properties![part];
-						partindex++;
+	if (!dryrun) {
+		for (let filter of filters) {
+			let optsthree: string[][] = [];
+			let def = searchmeta!.schema;
+			let searchtype: JSONSchema6TypeName = "any";
+			let partindex = 0;
+			let lastdef: typeof def | null = null;
+			while (lastdef != def) {
+				let part = filter.path[partindex] as string | undefined;
+				lastdef = def;
+				if (typeof def != "object") { break; }
+				if (def.oneOf) {
+					if (def.oneOf.length == 2 && typeof def.oneOf[1] == "object" && def.oneOf[1].type == "null") {
+						def = def.oneOf[part == "null" ? 1 : 0];
 					}
-				}
-			} else if (def.type == "array") {
-				if (def.items) {
-					if (typeof def.items != "object") { throw new Error("only standard array props supported") }
-					if (Array.isArray(def.items)) {
-						optsthree.push(Object.keys(def.items));
+				} else if (def.type == "object") {
+					if (def.properties) {
+						optsthree.push(Object.keys(def.properties));
 						if (part) {
-							def = def.items[part];
+							def = def.properties![part];
 							partindex++;
 						}
-					} else {
-						def = def.items;
+					}
+				} else if (def.type == "array") {
+					if (def.items) {
+						if (typeof def.items != "object") { throw new Error("only standard array props supported") }
+						if (Array.isArray(def.items)) {
+							optsthree.push(Object.keys(def.items));
+							if (part) {
+								def = def.items[part];
+								partindex++;
+							}
+						} else {
+							def = def.items;
+						}
+					}
+				} else if (typeof def.type == "string") {
+					searchtype = def.type;
+				} else {
+					console.log("unknown jsonschema type");
+				}
+			}
+			actualfilters.push({ filter, optsthree, searchtype })
+
+			const searchstring = filter.search.toLowerCase();
+			const searchnum = +filter.search;
+			const searchbool = filter.search == "true";
+
+			filtered = filtered.filter(file => {
+				for (let prop of getprop(file, filter.path, 0)) {
+					let match = false;
+
+					if (searchtype == "string" && typeof prop == "string" && prop.toLowerCase().indexOf(searchstring) != -1) { match = true; }
+					if ((searchtype == "integer" || searchtype == "number") && typeof prop == "number" && prop == searchnum) { match = true; }
+					if (searchtype == "boolean" && typeof prop == "boolean" && prop == searchbool) { match = true; }
+					if (match) {
+						return true;
 					}
 				}
-			} else if (typeof def.type == "string") {
-				searchtype = def.type;
-			} else {
-				console.log("unknown jsonschema type");
-			}
+				return false;
+			});
 		}
-		actualfilters.push({ filter, optsthree, searchtype })
-
-		const searchstring = filter.search.toLowerCase();
-		const searchnum = +filter.search;
-		const searchbool = filter.search == "true";
-
-		filtered = filtered.filter(file => {
-			for (let prop of getprop(file, filter.path, 0)) {
-				let match = false;
-
-				if (searchtype == "string" && typeof prop == "string" && prop.toLowerCase().indexOf(searchstring) != -1) { match = true; }
-				if ((searchtype == "integer" || searchtype == "number") && typeof prop == "number" && prop == searchnum) { match = true; }
-				if (searchtype == "boolean" && typeof prop == "boolean" && prop == searchbool) { match = true; }
-				if (match) {
-					return true;
-				}
-			}
-			return false;
-		});
 	}
 
-
-	const displayprop = filters[filters.length - 1]?.path ?? [];
-	return (
-		<React.Fragment>
-			<div style={{ flex: "1" }}>
-				{actualfilters.map((q, i) => <JsonFilterUI key={i} index={i} filter={q.filter} editFilters={editFilters} optsthree={q.optsthree} searchtype={q.searchtype} />)}
-				<input type="button" className="sub-btn" value="extra filter" onClick={e => editFilters(actualfilters.length, () => { })} />
-				<div>{filtered.length} Matches</div>
-				{filtered.slice(0, 100).map((q, i) => (
-					<div key={q.$fileid} onClick={e => p.onSelect(q.$fileid, q)}>{q.$fileid} - {filters.map(f => getprop(q, f.path, 0).next().value + "").join(", ")}</div>
-				))}
-			</div>
-		</React.Fragment>
-	)
+	return { filtered, getprop, actualfilters, loaded: !!files };
 }
 
 function JsonFilterUI(p: { index: number, filter: JsonSearchFilter, optsthree: string[][], searchtype: JSONSchema6TypeName, editFilters: (index: number, cb?: (f: JsonSearchFilter) => void) => void }) {

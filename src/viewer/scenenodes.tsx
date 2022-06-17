@@ -29,7 +29,7 @@ import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { extractAvatars, scrapePlayerAvatars } from "../scripts/scrapeavatars";
 import { findImageBounds } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch } from "./commoncontrols";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -824,22 +824,23 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 
 function ScenePlayer(p: LookupModeProps) {
 	const [data, model, id, setId] = useAsyncModelData(p.ctx, playerDataToModel);
-	const [head, setHead] = React.useState(false);
-	const modelBuf = React.useRef<Buffer | null>(null);
 	const forceUpdate = useForceUpdate();
+
+	const player = id?.player ?? (p.initialId && typeof p.initialId == "object" && typeof (p.initialId as any).player == "string" ? (p.initialId as any).player : "");
+	const head = id?.head ?? (p.initialId && typeof p.initialId == "object" && typeof (p.initialId as any).head == "boolean" ? (p.initialId as any).head : false);
+
 	const oncheck = (e: React.ChangeEvent<HTMLInputElement>) => {
-		if (modelBuf.current) { setId({ player: id?.player ?? "", data: modelBuf.current, head: e.currentTarget.checked }); }
-		setHead(e.currentTarget.checked);
+		if (id) { setId({ player: id.player, data: id.data, head: e.currentTarget.checked }); }
 	}
 	const nameChange = async (v: string) => {
 		let url = appearanceUrl(v);
 		let data = await fetch(url).then(q => q.text());
 		if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
-		modelBuf.current = avatarStringToBytes(data);
-		setId({ player: v, data: modelBuf.current, head });
+		let buf = avatarStringToBytes(data);
+		setId({ player: v, data: buf, head });
 	}
 
-	const equipChanged = (index: number, type: "item" | "kit" | "none", id: number) => {
+	const equipChanged = (index: number, type: "item" | "kit" | "none", equipid: number) => {
 		let oldava = data?.info.avatar;
 		if (!oldava) { console.trace("unexpected"); return; }
 		let newava = { ...oldava };
@@ -847,10 +848,10 @@ function ScenePlayer(p: LookupModeProps) {
 		if (type == "none") {
 			newava.slots[index] = { slot: null, cust: null };
 		} else {
-			newava.slots[index] = { slot: { type, id } as EquipSlot, cust: null };
+			newava.slots[index] = { slot: { type, id: equipid } as EquipSlot, cust: null };
 		}
-		modelBuf.current = writeAvatar(newava, data?.info.gender ?? 0, null);
-		setId({ player: "", data: modelBuf.current, head });
+		let avabuf = writeAvatar(newava, data?.info.gender ?? 0, null);
+		setId({ player, data: avabuf, head });
 	}
 
 	const customizationChanged = (index: number, cust: EquipCustomization) => {
@@ -859,23 +860,23 @@ function ScenePlayer(p: LookupModeProps) {
 		let newava = { ...oldava };
 		newava.slots = oldava.slots.slice() as any;
 		newava.slots[index] = { ...oldava.slots[index], cust };
-		modelBuf.current = writeAvatar(newava, data?.info.gender ?? 0, null);
-		setId({ player: "", data: modelBuf.current, head });
+		let avabuf = writeAvatar(newava, data?.info.gender ?? 0, null);
+		setId({ player, data: avabuf, head });
 	}
 
 	const setGender = (gender: number) => {
 		if (!data?.info.avatar) { console.trace("unexpected"); return; }
-		modelBuf.current = writeAvatar(data.info.avatar, gender, null);
-		setId({ player: "", data: modelBuf.current, head });
+		let avabuf = writeAvatar(data.info.avatar, gender, null);
+		setId({ player, data: avabuf, head });
 	}
 
-	const changeColor = (id: keyof avataroverrides, index: number) => {
+	const changeColor = (colid: keyof avataroverrides, index: number) => {
 		let oldava = data?.info.avatar;
 		if (!oldava) { console.trace("unexpected"); return; }
 		let newava = { ...oldava };
-		newava[id] = index as any;
-		modelBuf.current = writeAvatar(newava, data?.info.gender ?? 0, null);
-		setId({ player: "", data: modelBuf.current, head });
+		newava[colid] = index as any;
+		let avabuf = writeAvatar(newava, data?.info.gender ?? 0, null);
+		setId({ player, data: avabuf, head });
 	}
 
 	const colorDropdown = (id: keyof avataroverrides, v: number, opts: Record<number, number>) => {
@@ -890,11 +891,9 @@ function ScenePlayer(p: LookupModeProps) {
 		)
 	}
 
-	let initname = (p.initialId && typeof p.initialId == "object" && (typeof p.initialId as any).player == "string" ? (p.initialId as any).player : "");
-
 	return (
 		<React.Fragment>
-			<StringInput onChange={nameChange} initialid={initname} />
+			<StringInput onChange={nameChange} initialid={player} />
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
@@ -1248,7 +1247,6 @@ function SceneMaterial(p: LookupModeProps) {
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={initid} />
-			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "materials", setId)} />
 			<div className="mv-sidebar-scroll">
 				{data && Object.entries(data.info.texs).map(([name, img]) => (
 					<div key={name}>
@@ -1283,8 +1281,7 @@ function SceneLocation(p: LookupModeProps) {
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
-			<IdInput onChange={setId} initialid={initid} />
-			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "objects", setId)} />
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="objects" onChange={setId} initialid={initid} />}
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<div className="mv-sidebar-scroll">
 				<JsonDisplay obj={data?.info} />
@@ -1298,8 +1295,7 @@ function SceneItem(p: LookupModeProps) {
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
-			<IdInput onChange={setId} initialid={initid} />
-			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "items", setId)} />
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="items" onChange={setId} initialid={initid} />}
 			<div className="mv-sidebar-scroll">
 				<JsonDisplay obj={data?.info} />
 			</div>
@@ -1310,13 +1306,13 @@ function SceneItem(p: LookupModeProps) {
 function SceneNpc(p: LookupModeProps) {
 	const [data, model, id, setId] = useAsyncModelData(p.ctx, npcToModel);
 	const forceUpdate = useForceUpdate();
-	let initid = id?.id ?? (p.initialId && typeof p.initialId == "object" && (typeof p.initialId as any).id == "number" ? (p.initialId as any).id : 0);
+	const initid = id?.id ?? (p.initialId && typeof p.initialId == "object" && (typeof p.initialId as any).id == "number" ? (p.initialId as any).id : 0);
+	const head = id?.head ?? false;
 
 	return (
 		<React.Fragment>
-			<IdInput onChange={v => setId({ id: v, head: id?.head ?? false })} initialid={initid} />
-			<input type="button" className="sub-btn" value="advanced" onClick={e => selectEntity(p.ctx!, "npcs", v => setId({ id: v, head: id?.head ?? false }))} />
-			<label><input type="checkbox" checked={id?.head ?? false} onChange={e => setId({ id: id?.id ?? 0, head: e.currentTarget.checked })} />Head</label>
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="npcs" onChange={v => setId({ id: v, head })} initialid={initid} />}
+			<label><input type="checkbox" checked={head} onChange={e => setId({ id: initid, head: e.currentTarget.checked })} />Head</label>
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
