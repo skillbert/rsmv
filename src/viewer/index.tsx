@@ -1,7 +1,7 @@
 
 import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
-import * as ReactDOM from "react-dom";
+import * as ReactDOM from "react-dom/client";
 import { boundMethod } from "autobind-decorator";
 import * as datastore from "idb-keyval";
 import { detectTextureMode, EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
@@ -14,9 +14,8 @@ if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
 }
 
-
-export function unload(rootelement: HTMLElement) {
-	ReactDOM.unmountComponentAtNode(rootelement);
+export function unload(root: ReactDOM.Root) {
+	root.unmount();
 }
 
 export function start(rootelement: HTMLElement) {
@@ -26,12 +25,14 @@ export function start(rootelement: HTMLElement) {
 	});
 
 	let ctx = new UIContext();
-
-	ReactDOM.render(<App ctx={ctx} />, rootelement);
+	let root = ReactDOM.createRoot(rootelement);
+	root.render(<App ctx={ctx} />);
 
 	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
 	//across tab reloads
 	navigator.serviceWorker.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
+
+	return root;
 }
 
 class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile | null }> {

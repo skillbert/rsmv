@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as ReactDOM from "react-dom";
+import * as ReactDOM from "react-dom/client";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput } from "./commoncontrols";
 import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-schema";
@@ -37,21 +37,21 @@ export function showModal(config: { title: string }, children: React.ReactNode) 
 	let rootel = document.createElement("div");
 	rootel.classList.add("mv-style");
 	document.body.appendChild(rootel);
-	let removed = false;
+	let root: ReactDOM.Root | null = ReactDOM.createRoot(rootel);
 
 	let close = () => {
-		if (!removed) {
-			removed = true;
-			ReactDOM.unmountComponentAtNode(rootel);
+		if (root) {
+			root.unmount();
 			rootel.remove();
+			root = null;
 		}
 	}
 
-	ReactDOM.render((
+	root.render((
 		<ModalFrame onClose={close} title={config.title}>
 			{children}
 		</ModalFrame>
-	), rootel);
+	));
 
 	return { close };
 }

@@ -1,7 +1,6 @@
 
 import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
-import * as ReactDOM from "react-dom";
 import { boundMethod } from "autobind-decorator";
 import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
