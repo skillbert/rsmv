@@ -41,11 +41,24 @@ export type SavedCacheSource = {
 	location: string
 });
 
-export async function downloadStream(name: string, stream: ReadableStream) {
+export async function downloadBlob(name: string, blob: Blob) {
 	if (!electron) {
 		let a = document.createElement("a");
-		a.href = `download_${Math.random() * 10000 | 0}_${name}`;
-		let url = a.href;//a.href is aways normalized to abs url
+		let url = URL.createObjectURL(blob);
+		a.download = name;
+		a.href = url;
+		a.click();
+		setTimeout(() => URL.revokeObjectURL(url), 1);
+	} else {
+		//TODO
+		console.log("TODO");
+	}
+}
+
+/**@deprecated requires a service worker and is pretty sketchy, also no actual streaming output file sources atm */
+export async function downloadStream(name: string, stream: ReadableStream) {
+	if (!electron) {
+		let url = new URL(`download_${Math.random() * 10000 | 0}_${name}`, document.location.href).href;
 		let sw = await navigator.serviceWorker.ready;
 		if (!sw.active) { throw new Error("no service worker"); }
 		sw.active.postMessage({ type: "servedata", url, stream }, [stream as any]);
@@ -59,7 +72,6 @@ export async function downloadStream(name: string, stream: ReadableStream) {
 		console.log("TODO");
 	}
 }
-globalThis.downloadStream = downloadStream;
 
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
 	let [caches, setCaches] = React.useState<Openrs2CacheMeta[] | null>(null);

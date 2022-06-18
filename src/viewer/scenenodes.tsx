@@ -20,7 +20,7 @@ import { stringToMapArea } from "../cliparser";
 import { cacheFileJsonModes, extractCacheFiles, cacheFileDecodeModes } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
 import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
-import { CacheSelector, downloadStream, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
+import { CacheSelector, downloadBlob, downloadStream, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
@@ -1081,12 +1081,7 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		if (!img) { return; }
 		let blob = await new Promise<Blob | null>(d => img!.cnv.toBlob(d));
 		if (!blob) { return; }
-		let url = URL.createObjectURL(blob)
-		let a = document.createElement("a");
-		a.href = url;
-		a.download = "runeapps_image_export.png";
-		a.click();
-		//TODO revoke object url to prevent mem leak after download is complete (when?)
+		downloadBlob("runeapps_image_export.png", blob);
 	}
 
 	let copyimg = async () => {
@@ -1098,25 +1093,13 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 	}
 
 	let saveGltf = async () => {
-		let str = new ReadableStream({
-			async pull(c) {
-				let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
-				c.enqueue(new Uint8Array(file));
-				c.close();
-			}
-		});
-		downloadStream("model.glb", str);
+		let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
+		downloadBlob("model.glb", new Blob([file]));
 	}
 
 	let saveStl = async () => {
-		let str = new ReadableStream({
-			async pull(c) {
-				let file = await exportThreeJsStl(p.ctx.renderer.getModelNode());
-				c.enqueue(new Uint8Array(file));
-				c.close();
-			}
-		});
-		downloadStream("model.stl", str);
+		let file = await exportThreeJsStl(p.ctx.renderer.getModelNode());
+		downloadBlob("model.stl", new Blob([file]));
 	}
 
 	let clicktab = (v: typeof tab) => {
