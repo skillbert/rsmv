@@ -57,18 +57,6 @@ export function ModelBrowser(p: { ctx: UIContext }) {
 		scenario: "Scenario",
 		scripts: "Scripts"
 	}
-	// const tabs: Record<LookupMode, string> = {
-	// 	object: "Loc",
-	// 	npc: "Npc",
-	// 	map: "Map",
-	// 	avatar: "Player",
-	// 	// item: "Item",
-	// 	// model: "Model",
-	// 	// material: "Material",
-	// 	// spotanim: "Spotanim",
-	// 	// scenario: "Scenario",
-	// 	// scripts: "Scripts"
-	// } as any;
 
 	let ModeComp = LookupModeComponentMap[state.mode];
 	return (
@@ -328,21 +316,26 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioComponent | null, onChange: (v: ScenarioAction | null) => void }) {
 	const action = p.action;
 	let targetname = p.comp?.modelkey ?? "??";
-	let remove = <span onClick={() => p.onChange(null)}>delete</span>;
-	let inputstyle: React.CSSProperties = { width: "50px" };
+	let remove = <input type="button" className="sub-btn" value="x" onClick={() => p.onChange(null)} />;
+	let gridstyle = (nparts: number) => ({
+		display: "grid",
+		gridTemplateColumns: (nparts <= 0 ? "1fr min-content" : `${nparts}fr repeat(${nparts},1fr) min-content`),
+		alignItems: "baseline"
+	} as React.CSSProperties);
+
 	switch (action.type) {
 		case "anim": {
 			return (
-				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+				<div style={gridstyle(1)}>
 					<span>{p.action.type} {targetname}</span>
-					<InputCommitted type="number" style={inputstyle} value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
 					{remove}
 				</div>
 			);
 		}
 		case "animset": {
 			return (
-				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+				<div style={gridstyle(1)}>
 					<span>{p.action.type} {targetname}</span>
 					<select value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })}>
 						{Object.entries(action.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
@@ -353,30 +346,36 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 		}
 		case "delay": {
 			return (
-				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
-					<span >{p.action.type}</span>
-					<InputCommitted type="number" style={inputstyle} value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
+				<div style={gridstyle(1)}>
+					<span >{p.action.type} (ms)</span>
+					<InputCommitted type="number" value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
 					{remove}
 				</div>
 			);
 		}
 		case "location": {
 			return (
-				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr 1fr 1fr min-content" }}>
-					<span>{p.action.type} {targetname}</span>
-					<InputCommitted type="number" style={inputstyle} value={action.level} step={1} onChange={e => p.onChange({ ...action, level: +e.currentTarget.value })} />
-					<InputCommitted type="number" style={inputstyle} value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
-					<InputCommitted type="number" style={inputstyle} value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
-					<InputCommitted type="number" style={inputstyle} value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
-					{remove}
-				</div>
+				<React.Fragment>
+					<div style={gridstyle(0)}>
+						<span>{p.action.type} {targetname}</span>
+						{remove}
+					</div>
+					<div style={{ ...gridstyle(0), gridTemplateColumns: "1fr 2fr repeat(3,minmax(0,1fr))" }}>
+						<span style={{ gridColumn: "2" }}>Floor</span>
+						<InputCommitted type="number" value={action.level} step={1} style={{ gridColumn: "span 3" }} onChange={e => p.onChange({ ...action, level: +e.currentTarget.value })} />
+						<span style={{ gridColumn: "2" }}>Position x,y,z</span>
+						<InputCommitted type="number" value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
+						<InputCommitted type="number" value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
+						<InputCommitted type="number" value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
+					</div>
+				</React.Fragment>
 			);
 		}
 		case "visibility": {
 			return (
-				<div style={{ display: "grid", gridTemplateColumns: "30% 1fr min-content" }}>
+				<div style={gridstyle(1)}>
 					<span>{p.action.type} {targetname}</span>
-					<label><input type="checkbox" checked={action.visible} onClick={e => p.onChange({ ...action, visible: e.currentTarget.checked })} /></label>
+					<label><input type="checkbox" checked={action.visible} onChange={e => p.onChange({ ...action, visible: e.currentTarget.checked })} /></label>
 					{remove}
 				</div>
 			);
@@ -386,9 +385,9 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 
 function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
 	return (
-		<div>
+		<div style={{ display: "grid", gridTemplateColumns: "1fr min-content", alignItems: "baseline" }}>
 			<div>{p.comp.modelkey}</div>
-			<div onClick={e => p.onChange(null)}>delete</div>
+			<input type="button" className="sub-btn" value="x" onClick={e => p.onChange(null)} />
 		</div>
 	)
 }
@@ -538,9 +537,17 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 		if (model && newcomp) {
 			this.models.set(newcomp, model);
 		}
-		if (newcomp) { components[compid] = newcomp; }
-		else { delete components[compid]; }
+		if (newcomp) {
+			components[compid] = newcomp;
+		} else {
+			delete components[compid];
+			this.setState({ actions: this.state.actions.filter(q => q.target != compid) });
+		}
 		this.setState({ components });
+		if (!components[this.state.addActionTarget]) {
+			let ids = Object.keys(components)
+			this.setState({ addActionTarget: (ids.length == 0 ? 0 : +ids[ids.length - 1]) });
+		}
 		this.restartAnims();
 	}
 
@@ -625,14 +632,12 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 	}
 
 	render() {
+		const hasmodels = Object.keys(this.state.components).length != 0;
 		return (
 			<React.Fragment>
 				<div className="mv-sidebar-scroll">
 					<h2>Models</h2>
-					{Object.entries(this.state.components).map(([id, comp]) => {
-						return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
-					})}
-					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+					<div style={{ display: "flex", flexDirection: "column" }}>
 						<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
 							<option value="model">model</option>
 							<option value="npc">npc</option>
@@ -644,24 +649,39 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 						</select>
 						<StringInput onChange={this.addComp} />
 					</div>
+					{!hasmodels && <p>Select a model type and id to add to the scene.</p>}
+					{hasmodels && <br />}
+					{hasmodels && (
+						<div className="mv-inset">
+							{Object.entries(this.state.components).map(([id, comp]) => {
+								return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
+							})}
+						</div>
+					)}
 					<h2>Action sequence</h2>
-					{this.state.actions.map((a, i) => {
-						let comp = this.state.components[a.target]
-						return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
-					})}
-					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
+					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr min-content" }}>
 						<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
 							<option value="location">Location</option>
 							<option value="anim">Anim</option>
 							<option value="delay">Delay</option>
 							<option value="visibility">Visibility</option>
 						</select>
-						<select value={this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
-							{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{key} - {c.modelkey}</option>)}
+						<select disabled={this.state.addActionType == "delay"} value={this.state.addActionType == "delay" ? -1 : this.state.addActionTarget} onChange={e => this.setState({ addActionTarget: +e.currentTarget.value })}>
+							{Object.entries(this.state.components).map(([key, c]) => <option key={key} value={key}>{c.modelkey}</option>)}
+							{this.state.addActionType == "delay" && <option value="-1"></option>}
 						</select>
-						<input type="button" className="sub-btn" value={`add ${this.state.addActionType}`} onClick={this.addAction} />
+						<input type="button" className="sub-btn" value="add" onClick={this.addAction} />
 					</div>
 					<div onClick={this.restartAnims}>restart</div>
+					{this.state.actions.length != 0 && <br />}
+					{this.state.actions.length != 0 && (
+						<div className="mv-inset">
+							{this.state.actions.map((a, i) => {
+								let comp = this.state.components[a.target]
+								return <ScenarioActionControl key={i} comp={comp} action={a} onChange={e => this.editAction(i, e)} />
+							})}
+						</div>
+					)}
 				</div>
 			</React.Fragment>
 		)
