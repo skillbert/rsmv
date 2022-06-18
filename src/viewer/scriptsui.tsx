@@ -6,6 +6,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { UIContext } from "./maincomponents";
 import { TabStrip } from "./commoncontrols";
+import { showModal } from "./jsonsearch";
 
 type ScriptState = "running" | "canceled" | "error" | "done";
 
@@ -25,14 +26,18 @@ export class CLIScriptOutput implements ScriptOutput {
 
 	constructor(dir: string) {
 		this.dir = dir;
-		fs.mkdirSync(dir, { recursive: true });
+		if (dir) { fs.mkdirSync(dir, { recursive: true }); }
 	}
 
 	log(...args: any[]) {
 		console.log(...args);
 	}
 
-	setUI() { }
+	setUI(ui: HTMLElement | null) {
+		if (ui && typeof document != "undefined") {
+			document.body.appendChild(ui)
+		}
+	}
 
 	mkDir(name: string) {
 		return fs.promises.mkdir(path.resolve(this.dir, name), { recursive: true });
@@ -166,7 +171,7 @@ export function DomWrap(p: { el: HTMLElement | null | undefined }) {
 }
 
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
-	let [tab, setTab] = React.useState<"console" | "files" | "ui">("ui");
+	let [tab, setTab] = React.useState<"console" | "files">("console");
 
 	let forceUpdate = useForceUpdate();
 	React.useLayoutEffect(() => {
@@ -186,8 +191,8 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 			</div>
 			{p.output && !p.output.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.output?.files.length} onClick={async e => p.output?.setSaveDirHandle(await showDirectoryPicker({}))} />}
 			{p.output?.rootdirhandle && <div>Saved files to disk: {p.output.files.length}</div>}
-			<TabStrip value={tab} onChange={setTab as any} tabs={{ console: "Console", files: "Files", ui: "UI" }} />
-			{tab == "ui" && <DomWrap el={p.output?.outputui} />}
+			{p.output?.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
+			<TabStrip value={tab} onChange={setTab as any} tabs={{ console: "Console", files: "Files" }} />
 			{tab == "console" && <UIScriptConsole output={p.output} />}
 			{tab == "files" && <UIScriptFiles output={p.output} onSelect={p.ctx.openFile} />}
 		</div>

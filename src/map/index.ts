@@ -196,7 +196,6 @@ class ProgressUI {
 		grid.style.height = `${(maxz - minz + 1) * scale}px`;
 		grid.style.gridTemplateColumns = `repeat(${maxx - minx + 1},1fr)`;
 		grid.style.gridTemplateRows = `repeat(${maxz - minz + 1},1fr)`;
-		grid.style.position = "absolute";
 
 		for (let tile of this.tiles.values()) {
 			tile.el.style.gridColumn = (tile.x - minx + 1) + "";
@@ -206,13 +205,12 @@ class ProgressUI {
 		}
 
 		let proproot = document.createElement("div");
-		proproot.style.position = "absolute";
 		proproot.style.left = `${(maxx - minx + 1) * scale}px`;
-		proproot.style.width = "500px";
 		this.proproot = proproot;
 
 		let root = document.createElement("div");
-		root.style.position = "absolute";
+		root.style.display = "grid";
+		root.style.grid = "'a b'/auto 1fr";
 		root.appendChild(grid);
 		root.appendChild(proproot);
 		this.root = root;
