@@ -316,7 +316,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	progress.updateProp("deps", "starting dependency graph");
 	let deps = await getDependencies(engine.source);
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
-	progress.updateProp("version", "" + deps.maxVersion);
+	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
 
 	let config = await initMapConfig(endpoint, auth, deps.maxVersion, overwrite);
 
