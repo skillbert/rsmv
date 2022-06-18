@@ -11,7 +11,7 @@ import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 export function TabStrip<T extends string>(p: { value: T, tabs: Partial<Record<T, string>>, onChange: (v: T) => void }) {
 	const templatecols = `repeat(${Math.min(4, Object.keys(p.tabs).length)},minmax(0,1fr))`;
 	return (
-		<div className="sidebar-browser-tab-strip mv-inset" style={{ gridTemplateColumns: templatecols }}>
+		<div className="mv-tab-strip mv-inset" style={{ gridTemplateColumns: templatecols }}>
 			{Object.entries(p.tabs).map(([k, v]) => (
 				<div key={k} className={classNames("mv-icon-button", { active: p.value == k as any })} onClick={() => p.onChange(k as any)}>{v as string}</div>
 			))}
@@ -33,10 +33,10 @@ export function IdInput({ initialid, onChange }: { initialid?: number, onChange:
 	let decr = () => { setId(id - 1); onChange(id - 1); stale.current = false; };
 	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); stale.current = false; };
 	return (
-		<form className="sidebar-browser-search-bar" onSubmit={submit}>
+		<form className="mv-searchbar" onSubmit={submit}>
 			<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
 			<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
-			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => { setId(+e.currentTarget.value); stale.current = true; }} />
+			<input type="text" className="mv-searchbar-input" value={id} onChange={e => { setId(+e.currentTarget.value); stale.current = true; }} />
 			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
 	)
@@ -67,10 +67,10 @@ export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheF
 
 	return (
 		<React.Fragment>
-			<form className="sidebar-browser-search-bar" onSubmit={submit}>
+			<form className="mv-searchbar" onSubmit={submit}>
 				<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
 				<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
-				<input type="text" className="sidebar-browser-search-bar-input" value={search} onChange={e => setSearchText(e.currentTarget.value)} />
+				<input type="text" className="mv-searchbar-input" value={search} onChange={e => setSearchText(e.currentTarget.value)} />
 				<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 			</form>
 			{searchopen && !loaded && (
@@ -95,8 +95,8 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 
 	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); stale.current = false; };
 	return (
-		<form className="sidebar-browser-search-bar" onSubmit={submit}>
-			<input type="text" className="sidebar-browser-search-bar-input" value={id} onChange={e => { setId(e.currentTarget.value); stale.current = true; }} />
+		<form className="mv-searchbar" onSubmit={submit}>
+			<input type="text" className="mv-searchbar-input" value={id} onChange={e => { setId(e.currentTarget.value); stale.current = true; }} />
 			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
 	)

@@ -252,7 +252,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 	getSceneElements() {
 		return {
 			modelnode: this.rootnode,
-			animationMixer: this.mixer,
+			// animationMixer: this.mixer,//having this property makes the renderer out-refresh 60fps even with no anims
 			sky: this.loaded?.sky,
 			options: { hideFloor: true }
 		};
@@ -1610,8 +1610,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 									none &&= !v;
 								})
 								return (
-									<React.Fragment>
-										<label key={base} style={{ gridColumn: 1 }}><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.setToggle(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
+									<React.Fragment key={base}>
+										<label style={{ gridColumn: 1 }}><input type="checkbox" checked={all} onChange={e => subs.forEach(s => this.setToggle(base + s, e.currentTarget.checked))} ref={v => v && (v.indeterminate = !all && !none)} />{base}</label>
 										{subs.map((sub, i) => {
 											let name = base + sub;
 											let value = this.state.toggles[name];
@@ -1663,11 +1663,12 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 }
 
 function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
-	let [endpoint, setEndpoint] = React.useState("");
+	let [endpoint, setEndpoint] = React.useState(localStorage.rsmv_script_map_endpoint ?? "");
 	let [auth, setAuth] = React.useState("");
 
 	let run = () => {
 		let output = new UIScriptOutput();
+		localStorage.rsmv_script_map_endpoint = endpoint;
 		output.run(runMapRender, p.source, "main", endpoint, auth);
 		p.onRun(output);
 	}

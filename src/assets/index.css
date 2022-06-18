@@ -182,6 +182,7 @@
 
 .mv-modal-body {
 	padding: 10px;
+	overflow-y: auto;
 }
 
 .mv-modal {
@@ -205,15 +206,14 @@
 	justify-content: center;
 }
 
-/* //TODO refactor these into different component layout altogether */
-.sidebar-browser-search-bar {
+.mv-searchbar {
 	display: flex;
 }
-.sidebar-browser-search-bar-input {
-	flex-grow: 1;
+.mv-searchbar-input {
+	flex: 1;
 }
 
-.sidebar-browser-tab-strip {
+.mv-tab-strip {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 }
