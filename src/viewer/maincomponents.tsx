@@ -465,7 +465,7 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 	}
 
 	return (
-		<div style={{ display: "grid", gridTemplate: "'a' auto\n'b' 1fr" }}>
+		<div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
 			<div className="mv-modal-head">
 				<span>{p.file.name}</span>
 				<span style={{ float: "right" }} onClick={e => p.onSelectFile(null)}>x</span>

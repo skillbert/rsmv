@@ -67,10 +67,10 @@ export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, ca
 
 	return (
 		<div style={{ display: "grid", gridTemplateColumns: "40% 60%", height: "100%" }}>
-			<div>
+			<div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
 				<JsonSearch cache={p.cache} mode={p.mode} onSelect={onchange} initialFilters={p.initialFilters} />
 			</div>
-			<div>
+			<div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
 				{selobj && <input type="button" className="sub-btn" value="Select" onClick={e => p.onSelect(selid, selobj!)} />}
 				<JsonDisplay obj={selobj} />
 			</div>
@@ -106,10 +106,10 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: En
 
 	return (
 		<React.Fragment>
-			<div style={{ flex: "1" }}>
-				{actualfilters.map((q, i) => <JsonFilterUI key={i} index={i} filter={q.filter} editFilters={editFilters} optsthree={q.optsthree} searchtype={q.searchtype} />)}
-				<input type="button" className="sub-btn" value="extra filter" onClick={e => editFilters(actualfilters.length, () => { })} />
-				<div>{loaded ? `${filtered.length} Matches` : "Loading..."}</div>
+			{actualfilters.map((q, i) => <JsonFilterUI key={i} index={i} filter={q.filter} editFilters={editFilters} optsthree={q.optsthree} searchtype={q.searchtype} />)}
+			<input type="button" className="sub-btn" value="extra filter" onClick={e => editFilters(actualfilters.length, () => { })} />
+			<div>{loaded ? `${filtered.length} Matches` : "Loading..."}</div>
+			<div style={{ flex: "1", overflowY: "auto" }}>
 				{filtered.slice(0, 100).map((q, i) => (
 					<div key={q.$fileid} onClick={e => p.onSelect(q.$fileid, q)}>{q.$fileid} - {filters.map(f => getprop(q, f.path, 0).next().value + "").join(", ")}</div>
 				))}

@@ -218,7 +218,8 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 
 		let globalrecolors: [number, number][] = [
 			[defaultcols.hair0, kitdata.hair[avatar.haircol0]],
-			[defaultcols.hair1, kitdata.hair[avatar.haircol1]],
+			[defaultcols.hair1, kitdata.hair[avatar.haircol0]],//TODO figure out when the second hair color is actually used
+			// [defaultcols.hair1, kitdata.hair[avatar.haircol1]],
 
 			[defaultcols.skin0, kitdata.skin[avatar.skincol0]],
 			[defaultcols.skin1, kitdata.skin[avatar.skincol0]],
