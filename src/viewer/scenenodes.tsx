@@ -1218,7 +1218,7 @@ function ImageDataView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVide
 	}, [p.img]);
 
 	return (
-		<canvas ref={ref} style={{ maxWidth: "100%" }} />
+		<canvas ref={ref} className="mv-image-preview-canvas" />
 	)
 }
 

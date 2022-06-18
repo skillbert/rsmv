@@ -58,9 +58,10 @@ export function convertMaterial(data: Buffer) {
 		// mat.vertexColors = !raw.extra || raw.extra.colorint != 0;
 		mat.vertexColors = !raw.extra || raw.extra.unk0a_bool;
 		if (raw.extra) {
-			mat.stripDiffuseAlpha = (raw.extra.unk00_flags & 1) != 0;
+			// mat.stripDiffuseAlpha = (raw.extra.unk00_flags & 1) != 0;//TODO this is wrong, makes floor of mapsquare 22,4 black
 			mat.reflectionColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));
 		}
+		mat.stripDiffuseAlpha = (mat.alphamode == "opaque");
 	} else if (rawparsed.v1) {
 		let raw = rawparsed.v1;
 		//this is very wrong
