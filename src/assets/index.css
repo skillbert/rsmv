@@ -77,6 +77,10 @@
 	box-sizing: border-box;
 }
 
+.mv-style a {
+	color: white;
+}
+
 .mv-style input[type="color"] {
 	width: auto;
 }

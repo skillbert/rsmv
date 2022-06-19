@@ -273,7 +273,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 				<CacheDragNDropHelp />
 				{!this.props.noReopen && this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
 				<h2>Historical caches</h2>
-				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a></p>
+				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a>.</p>
 				<OpenRs2IdSelector initialid={949} onSelect={this.openOpenrs2Cache} />
 			</React.Fragment>
 		);

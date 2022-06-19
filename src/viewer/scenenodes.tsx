@@ -1795,14 +1795,19 @@ class ScriptsUI extends React.Component<LookupModeProps, { script: keyof typeof 
 
 	render() {
 		const source = this.props.partial.source;
-		if (!source) { throw new Error("trying to render modelbrowser wouth source loaded"); }
+		if (!source) { throw new Error("trying to render modelbrowser without source loaded"); }
 		const SelectedScript = uiScripts[this.state.script];
 		return (
 			<React.Fragment>
 				<div className="mv-sidebar-scroll">
 					<h2>Script runner</h2>
 					<TabStrip value={this.state.script} tabs={Object.fromEntries(Object.keys(uiScripts).map(k => [k, k])) as any} onChange={v => this.setState({ script: v })} />
-					{!SelectedScript && <p>Select a script</p>}
+					{!SelectedScript && (
+						<React.Fragment>
+							<p>Select a script</p>
+							<p>The script runner allows you to run some of the CLI scripts directly from the browser.</p>
+						</React.Fragment>
+					)}
 					{SelectedScript && <SelectedScript source={source} onRun={this.onRun} />}
 					<h2>Script output</h2>
 					<OutputUI output={this.state.running} ctx={this.props.partial} />
