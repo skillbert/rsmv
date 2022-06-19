@@ -631,8 +631,21 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 		}
 	}
 
+	@boundMethod
+	advancedIdSelect() {
+		if (!this.props.ctx) { return; }
+		if (this.state.addModelType == "npc") {
+			selectEntity(this.props.ctx, "npcs", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+		} else if (this.state.addModelType == "item") {
+			selectEntity(this.props.ctx, "items", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+		} else if (this.state.addModelType == "loc") {
+			selectEntity(this.props.ctx, "objects", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+		}
+	}
+
 	render() {
 		const hasmodels = Object.keys(this.state.components).length != 0;
+		const hasAdvLookup = this.state.addModelType == "item" || this.state.addModelType == "loc" || this.state.addModelType == "npc";
 		return (
 			<React.Fragment>
 				<div className="mv-sidebar-scroll">
@@ -647,7 +660,10 @@ export class SceneScenario extends React.Component<LookupModeProps, { components
 							<option value="item">item</option>
 							<option value="map">map</option>
 						</select>
-						<StringInput onChange={this.addComp} />
+						<div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) min-content" }}>
+							<StringInput onChange={this.addComp} />
+							{hasAdvLookup && <input type="button" className="sub-btn" value="Lookup" onClick={this.advancedIdSelect} />}
+						</div>
 					</div>
 					{!hasmodels && <p>Select a model type and id to add to the scene.</p>}
 					{hasmodels && <br />}
