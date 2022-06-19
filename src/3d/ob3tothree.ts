@@ -211,6 +211,8 @@ export class ThreejsSceneCache {
 				let parsed = new ParsedTexture(file, stripAlpha, true);
 				let src = await parsed.toWebgl();
 				let tex = new THREE.CanvasTexture(src);
+				//required to prevent GLTFexporter from flipping the already flipped texture
+				if (src instanceof ImageBitmap) { tex.flipY = false; }
 				return { tex, src, filesize: file.byteLength };
 			})();
 
