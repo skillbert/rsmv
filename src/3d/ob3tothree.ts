@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
 import { parseSkeletalAnimation } from "./animationskeletal";
 import { archiveToFileId, CacheFileSource, CacheIndex, SubFile } from "../cache";
-import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh } from "three";
+import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh, Texture } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -179,7 +179,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 
 export class ThreejsSceneCache {
 	modelCache = new Map<number, Promise<ModelData>>();
-	threejsTextureCache = new Map<number, Promise<{ tex: THREE.Texture, src: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap, filesize: number }>>();
+	threejsTextureCache = new Map<number, Promise<ParsedTexture>>();
 	threejsMaterialCache = new Map<number, Promise<THREE.Material>>();
 	source: CacheFileSource;
 	cache: EngineCache;
@@ -209,11 +209,7 @@ export class ThreejsSceneCache {
 			texprom = (async () => {
 				let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
 				let parsed = new ParsedTexture(file, stripAlpha, true);
-				let src = await parsed.toWebgl();
-				let tex = new THREE.CanvasTexture(src);
-				//required to prevent GLTFexporter from flipping the already flipped texture
-				if (src instanceof ImageBitmap) { tex.flipY = false; }
-				return { tex, src, filesize: file.byteLength };
+				return parsed;
 			})();
 
 			this.threejsTextureCache.set(texid, texprom);
@@ -238,19 +234,67 @@ export class ThreejsSceneCache {
 			cached = (async () => {
 				let material = this.cache.getMaterialData(matid);
 
-				let mat = new THREE.MeshPhongMaterial();
-				mat.transparent = hasVertexAlpha || material.alphamode != "opaque";
+				// let mat = new THREE.MeshPhongMaterial();
+				// mat.shininess = 0;
+				let mat = new THREE.MeshStandardMaterial();
 				mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
+				mat.transparent = hasVertexAlpha || material.alphamode == "blend";
+				const wraptype = THREE.RepeatWrapping;//TODO find value of this in material
+
 				if (material.textures.diffuse) {
-					mat.map = (await this.getTextureFile(material.textures.diffuse, material.stripDiffuseAlpha)).tex;
-					mat.map.wrapS = THREE.RepeatWrapping;
-					mat.map.wrapT = THREE.RepeatWrapping;
-					mat.map.encoding = THREE.sRGBEncoding;
-				}
-				if (material.textures.normal) {
-					mat.normalMap = (await this.getTextureFile(material.textures.normal, false)).tex
-					mat.normalMap.wrapS = THREE.RepeatWrapping;
-					mat.normalMap.wrapT = THREE.RepeatWrapping;
+					let diffuse = await (await this.getTextureFile(material.textures.diffuse, material.stripDiffuseAlpha)).toImageData();
+					let difftex = new THREE.DataTexture(diffuse.data, diffuse.width, diffuse.height, THREE.RGBAFormat);
+					difftex.needsUpdate = true;
+					difftex.wrapS = wraptype;
+					difftex.wrapT = wraptype;
+					difftex.encoding = THREE.sRGBEncoding;
+					mat.map = difftex;
+
+					if (material.textures.normal) {
+						let parsed = await this.getTextureFile(material.textures.normal, false);
+						let raw = await parsed.toImageData();
+						let normals = new ImageData(raw.width, raw.height);
+						let emisive = new ImageData(raw.width, raw.height);
+						const data = raw.data;
+						for (let i = 0; i < data.length; i += 4) {
+							//normals
+							let dx = data[i + 1] / 127.5 - 1;
+							let dy = data[i + 3] / 127.5 - 1;
+							normals.data[i + 0] = data[i + 1];
+							normals.data[i + 1] = data[i + 3];
+							normals.data[i + 2] = (Math.sqrt(Math.max(1 - dx * dx - dy * dy, 0)) + 1) * 127.5;
+							normals.data[i + 3] = 255;
+							//emisive //TODO check if normals flag always implies emisive
+							emisive.data[i + 0] = data[i + 0];
+							emisive.data[i + 3] = 255;
+						}
+						mat.normalMap = new THREE.DataTexture(normals.data, normals.width, normals.height, THREE.RGBAFormat);
+						mat.normalMap.needsUpdate = true;
+						mat.normalMap.wrapS = wraptype;
+						mat.normalMap.wrapT = wraptype;
+						mat.emissiveMap = new THREE.DataTexture(emisive.data, emisive.width, emisive.height, THREE.RGBAFormat);
+						mat.emissiveMap.needsUpdate = true;
+						mat.emissiveMap.wrapS = wraptype;
+						mat.emissiveMap.wrapT = wraptype;
+						mat.emissive.setRGB(material.reflectionColor[0] / 255, material.reflectionColor[1] / 255, material.reflectionColor[2] / 255);
+					}
+					if (material.textures.compound) {
+						let compound = await (await this.getTextureFile(material.textures.compound, false)).toImageData();
+						let compoundmapped = new ImageData(compound.width, compound.height);
+						//threejs expects g=metal,b=roughness, rs has r=metal,g=roughness
+						for (let i = 0; i < compound.data.length; i += 4) {
+							compoundmapped.data[i + 1] = compound.data[i + 1];
+							compoundmapped.data[i + 2] = compound.data[i + 0];
+						}
+						let tex = new THREE.DataTexture(compoundmapped.data, compoundmapped.width, compoundmapped.height, THREE.RGBAFormat);
+						tex.needsUpdate = true;
+						tex.wrapS = wraptype;
+						tex.wrapT = wraptype;
+						tex.encoding = THREE.sRGBEncoding;
+						mat.metalnessMap = tex;
+						mat.roughnessMap = tex;
+						mat.metalness = 1;
+					}
 				}
 				mat.vertexColors = material.vertexColors || hasVertexAlpha;
 
@@ -262,7 +306,6 @@ export class ThreejsSceneCache {
 						shader.fragmentShader = shader.fragmentShader.replace("#include <color_fragment>", "diffuseColor.a *= vColor.a;");
 					}
 				}
-				mat.shininess = 0;
 				mat.userData = material;
 				return mat;
 			})();

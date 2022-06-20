@@ -14,6 +14,8 @@ import { MountableAnimation } from "./animationframes";
 //115416  obelisk
 //114652  pof totem
 //117253  dramatic doors
+//115602  stormguard citadel ring, should only have one bone
+
 
 //npc new anims
 //27111   butterfly

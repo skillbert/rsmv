@@ -9,8 +9,10 @@ export class ParsedTexture {
 	type: "png" | "dds" | "bmpmips";
 	mipmaps: number;
 	cachedDrawables: (Promise<HTMLImageElement | ImageBitmap> | null)[];
+	cachedImageDatas: (Promise<ImageData> | null)[];
 	bmpWidth = -1;
 	bmpHeight = -1;
+	filesize: number;
 
 	constructor(texture: Buffer, stripAlpha: boolean, isMaterialTexture?: boolean) {
 		this.isMaterialTexture = isMaterialTexture;
@@ -19,6 +21,8 @@ export class ParsedTexture {
 		this.fullfile = texture;
 		this.imagefiles = [];
 		this.cachedDrawables = [];
+		this.cachedImageDatas = [];
+		this.filesize = texture.byteLength;
 
 		//first bytes of first file
 		let byte0 = texture.readUInt8(0x5);
@@ -52,6 +56,7 @@ export class ParsedTexture {
 			this.imagefiles.push(texture.slice(offset, offset + compressedsize))
 			offset += compressedsize;
 			this.cachedDrawables.push(null);
+			this.cachedImageDatas.push(null)
 		}
 	}
 
@@ -100,27 +105,34 @@ export class ParsedTexture {
 		return img.toBuffer();
 	}
 
-	async toImageData(subimg = 0) {
-		//TODO polyfill imagedata in nodejs, just need {width,height,data}
-		const padsize = (this.isMaterialTexture ? 32 : undefined);
-		if (this.type == "bmpmips") {
-			let width = this.bmpWidth >> subimg;
-			let height = this.bmpHeight >> subimg;
-			let imgdata = loadBmp(this.imagefiles[subimg], width, height, padsize, this.stripAlpha);
-			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-			return new ImageData(pixbuf, imgdata.width, imgdata.height);
-		} else if (this.type == "png") {
-			let img = sharp(this.imagefiles[subimg]);
-			let decoded = await img.raw().toBuffer({ resolveWithObject: true });
-			let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
-			return new ImageData(pixbuf, decoded.info.width, decoded.info.height);
-		} else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg], padsize, this.stripAlpha);
-			let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-			return new ImageData(pixbuf, imgdata.width, imgdata.height);
-		} else {
-			throw new Error("unknown format");
+	toImageData(subimg = 0) {
+		if (this.cachedImageDatas[subimg]) {
+			return this.cachedImageDatas[subimg]!;
 		}
+		//TODO polyfill imagedata in nodejs, just need {width,height,data}
+		let res = (async () => {
+			const padsize = (this.isMaterialTexture ? 32 : undefined);
+			if (this.type == "bmpmips") {
+				let width = this.bmpWidth >> subimg;
+				let height = this.bmpHeight >> subimg;
+				let imgdata = loadBmp(this.imagefiles[subimg], width, height, padsize, this.stripAlpha);
+				let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
+				return new ImageData(pixbuf, imgdata.width, imgdata.height);
+			} else if (this.type == "png") {
+				let img = sharp(this.imagefiles[subimg]);
+				let decoded = await img.raw().toBuffer({ resolveWithObject: true });
+				let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
+				return new ImageData(pixbuf, decoded.info.width, decoded.info.height);
+			} else if (this.type == "dds") {
+				let imgdata = loadDds(this.imagefiles[subimg], padsize, this.stripAlpha);
+				let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
+				return new ImageData(pixbuf, imgdata.width, imgdata.height);
+			} else {
+				throw new Error("unknown format");
+			}
+		})()
+		this.cachedImageDatas[subimg] = res;
+		return res;
 	}
 
 	//create a texture for use in webgl (only use this in a browser context like electron)

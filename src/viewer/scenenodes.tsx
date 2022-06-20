@@ -842,7 +842,9 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let addtex = async (name: string, texid: number) => {
 		let tex = await sceneCache.getTextureFile(texid, mat.stripDiffuseAlpha && name == "diffuse");
-		texs[name] = { texid, filesize: tex.filesize, img0: tex.src };
+		let drawable = await tex.toWebgl();
+
+		texs[name] = { texid, filesize: tex.filesize, img0: drawable };
 	}
 	for (let tex in mat.textures) {
 		if (mat.textures[tex] != 0) {
