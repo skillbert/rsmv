@@ -7,6 +7,7 @@ import classNames from "classnames";
 import { UIContext } from "./maincomponents";
 import { TabStrip } from "./commoncontrols";
 import { showModal } from "./jsonsearch";
+import VR360Viewer from "../libs/vr360viewer";
 
 type ScriptState = "running" | "canceled" | "error" | "done";
 
@@ -163,11 +164,32 @@ export function useForceUpdate() {
 	return forceUpdate;
 }
 
-export function DomWrap(p: { el: HTMLElement | null | undefined }) {
+export function VR360View(p: { img: string | ImageData | TexImageSource }) {
+	let viewer = React.useRef<VR360Viewer | null>(null);
+	if (!viewer.current) {
+		viewer.current = new VR360Viewer(p.img);
+		viewer.current.cnv.style.width = "100%";
+		viewer.current.cnv.style.height = "100%";
+	}
+
+	let currentimg = React.useRef(p.img);
+	if (p.img != currentimg.current) {
+		viewer.current.setImage(p.img);
+		currentimg.current = p.img;
+	}
+
+	React.useEffect(() => () => viewer.current?.free(), []);
+
+	return (
+		<DomWrap el={viewer.current.cnv} style={{ position: "relative" }} />
+	)
+}
+
+export function DomWrap(p: { el: HTMLElement | null | undefined, style?: React.CSSProperties }) {
 	let ref = (el: HTMLElement | null) => {
 		p.el && el && el.appendChild(p.el);
 	}
-	return <div ref={ref}></div>
+	return <div ref={ref} style={p.style}></div >
 }
 
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {

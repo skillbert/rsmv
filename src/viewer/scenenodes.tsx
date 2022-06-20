@@ -19,7 +19,7 @@ import { svgfloor } from "../map/svgrender";
 import { stringToMapArea } from "../cliparser";
 import { cacheFileJsonModes, extractCacheFiles, cacheFileDecodeModes } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode, DecodeEntry } from "../scripts/testdecode";
-import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate } from "./scriptsui";
+import { UIScriptOutput, UIScriptConsole, OutputUI, ScriptOutput, UIScriptFile, useForceUpdate, DomWrap, VR360View } from "./scriptsui";
 import { CacheSelector, downloadBlob, downloadStream, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
@@ -1076,11 +1076,11 @@ function hex2hsl(hex: string) {
 	return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
 }
 
-function ExportSceneMenu(p: { ctx: UIContextReady }) {
+function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneElement["options"] }) {
 	let [tab, settab] = React.useState<"img" | "gltf" | "stl" | "none">("none");
 	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, ctx: CanvasRenderingContext2D } | null>(null);
 	let [cropimg, setcropimg] = React.useState(true);
-
+	
 	let changeImg = async (crop: boolean) => {
 		let newimg = await p.ctx.renderer.takeCanvasPicture();
 		if (crop) {
@@ -1094,6 +1094,10 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		setcropimg(crop);
 		setimg(newimg);
 	}
+	if (tab == "img" && p.renderopts!.camMode == "vr360" && cropimg) {
+		changeImg(false);
+	}
+
 
 	let saveimg = async () => {
 		if (!img) { return; }
@@ -1125,12 +1129,22 @@ function ExportSceneMenu(p: { ctx: UIContextReady }) {
 		if (v == "img") { changeImg(cropimg); }
 	}
 
+	let show360modal = () => {
+		const src = img!.cnv;
+		showModal({ title: "360 preview of render" }, (
+			<React.Fragment>
+				<VR360View img={src} />
+			</React.Fragment>
+		));
+	}
+
 	return (
 		<div className="mv-inset">
 			<TabStrip value={tab} tabs={{ gltf: "GLTF", stl: "STL", img: "image" }} onChange={clicktab as any} />
 			{tab == "img" && (
 				<React.Fragment>
-					<label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>
+					{p.renderopts!.camMode != "vr360" && <label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>}
+					{p.renderopts!.camMode == "vr360" && <input type="button" className="sub-btn" onClick={show360modal} value="Preview 360" />}
 					{img && <CanvasView canvas={img.cnv} />}
 					<div style={{ display: "grid", grid: "'a b' / 1fr 1fr" }}>
 						<input type="button" className="sub-btn" value="Save" onClick={saveimg} />
@@ -1218,7 +1232,7 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 					<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
 				</div>
 			)}
-			{ showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} />}
+			{ showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} renderopts={newopts} />}
 		</React.Fragment>
 	)
 }
