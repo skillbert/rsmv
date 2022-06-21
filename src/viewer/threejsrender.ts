@@ -1,8 +1,8 @@
 import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { TypedEmitter } from '../utils';
-import { FlatImageData } from '../imgutils';
+import { delay, TypedEmitter } from '../utils';
+import { FlatImageData, flipImage } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
@@ -44,14 +44,14 @@ export type ThreeJsSceneElement = {
 		opaqueBackground?: boolean,
 		hideFloor?: boolean,
 		hideFog?: boolean,
-		camMode?: CameraMode,
+		camMode?: RenderCameraMode,
 		camControls?: CameraControlMode,
 		autoFrames?: boolean | undefined
 	}
 }
 
 type CameraControlMode = "free" | "world";
-type CameraMode = "standard" | "vr360";
+export type RenderCameraMode = "standard" | "vr360";
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private renderer: THREE.WebGLRenderer;
@@ -71,7 +71,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private sceneElements = new Set<ThreeJsSceneElementSource>();
 	private animationMixers = new Set<AnimationMixer>();
 	private vr360cam: VR360Render | null = null;
-	private camMode: CameraMode = "standard";
+	private camMode: RenderCameraMode = "standard";
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -167,7 +167,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let sky: ThreeJsSceneElement["sky"] = null;
 		let animated = false;
 		let opaqueBackground = false;
-		let cammode: CameraMode = "standard";
+		let cammode: RenderCameraMode = "standard";
 		let controls: CameraControlMode = "free";
 		let hideFog = false;
 		let showfloor = true;
@@ -234,9 +234,8 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return needResize;
 	}
 
-
 	@boundMethod
-	async guaranteeRender(cam: THREE.Camera = this.camera) {
+	async guaranteeGlCalls(glfunction: () => void | Promise<void>) {
 		let waitContext = () => {
 			if (!this.renderer.getContext().isContextLost()) {
 				return;
@@ -251,14 +250,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			})
 		}
 
-		let success = false;
 		for (let retry = 0; retry < 5; retry++) {
 			await waitContext();
 			//it seems like the first render after a context loss is always failed, force 2 renders this way
 			let prerenderlosses = this.contextLossCountLastRender;
-			this.render(cam);
-			await new Promise(d => setTimeout(d, 1));
+			await glfunction();
 
+			//new stack frame to let all errors resolve
+			await delay(1);
 			if (this.renderer.getContext().isContextLost()) {
 				console.log("lost context during render");
 				continue;
@@ -266,12 +265,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				console.log("lost and regained context during render");
 				continue;
 			}
-			success = true;
-			break;
+			return;
 		}
-		if (!success) {
-			throw new Error("Failed to render frame after 5 retries");
-		}
+		throw new Error("Failed to render frame after 5 retries");
 	}
 
 	@boundMethod
@@ -283,26 +279,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
 		this.animationMixers.forEach(q => q.update(delta));
 
-		if (cam == this.camera && this.resizeRendererToDisplaySize()) {
-			const canvas = this.renderer.domElement;
-			this.camera.aspect = canvas.clientWidth / canvas.clientHeight;
-			this.camera.updateProjectionMatrix();
-		}
+		this.resizeRendererToDisplaySize();
 
-		this.renderer.clearColor();
-		this.renderer.clearDepth();
 		if (this.camMode != "vr360") {
-			if (cam == this.camera && this.skybox) {
-				this.skybox.camera.matrixAutoUpdate = false;
-				this.camera.updateWorldMatrix(true, true);
-				this.skybox.camera.matrix.copy(this.camera.matrixWorld);
-				this.skybox.camera.matrix.setPosition(0, 0, 0);
-				this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
-				this.renderer.render(this.skybox.scene, this.skybox.camera);
-				this.renderer.clearDepth();
-			}
-			this.renderer.render(this.scene, cam);
-			this.contextLossCountLastRender = this.contextLossCount;
+			this.renderScene(cam);
 		} else {
 			if (!this.vr360cam) {
 				this.vr360cam = new VR360Render(this.renderer, 512, 0.1, 1000);
@@ -310,11 +290,35 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				globalThis.cube = this.vr360cam.cubeCamera;
 			}
 			this.renderCube(this.vr360cam);
+			this.renderer.clearColor();
 			this.vr360cam.render(this.renderer);
 		}
 		if (this.automaticFrames) {
 			this.forceFrame();
 		}
+	}
+
+	renderScene(cam: THREE.Camera) {
+		let size = this.renderer.getRenderTarget() ?? this.renderer.getContext().canvas;
+		let aspect = size.width / size.height;
+		if (cam instanceof THREE.PerspectiveCamera && cam.aspect != aspect) {
+			this.camera.aspect = aspect;
+			this.camera.updateProjectionMatrix();
+		}
+
+		this.renderer.clearColor();
+		this.renderer.clearDepth();
+		if (cam == this.camera && this.skybox) {
+			this.skybox.camera.matrixAutoUpdate = false;
+			this.camera.updateWorldMatrix(true, true);
+			this.skybox.camera.matrix.copy(this.camera.matrixWorld);
+			this.skybox.camera.matrix.setPosition(0, 0, 0);
+			this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
+			this.renderer.render(this.skybox.scene, this.skybox.camera);
+			this.renderer.clearDepth();
+		}
+		this.renderer.render(this.scene, cam);
+		this.contextLossCountLastRender = this.contextLossCount;
 	}
 
 	renderCube(render: VR360Render) {
@@ -338,14 +342,43 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 	}
 
-	async takeCanvasPicture() {
-		await this.guaranteeRender();
-		let cnv = document.createElement("canvas");
-		cnv.width = this.canvas.width;
-		cnv.height = this.canvas.height;
-		let ctx = cnv.getContext("2d")!;
-		ctx.drawImage(this.canvas, 0, 0);
-		return { cnv, ctx };
+	async takeCanvasPicture(width = this.canvas.width, height = this.canvas.height) {
+		let rendertarget: THREE.WebGLRenderTarget | null = null;
+		if (width != this.canvas.width || height != this.canvas.height) {
+			rendertarget = new THREE.WebGLRenderTarget(width, height, {
+				minFilter: THREE.LinearFilter,
+				magFilter: THREE.LinearFilter,
+				format: THREE.RGBAFormat,
+				encoding: (this.camMode != "vr360" ? this.renderer.outputEncoding : THREE.LinearEncoding)
+			});
+			// (rendertarget as any).isXRRenderTarget = true;
+		}
+		await this.guaranteeGlCalls(() => {
+			let oldtarget = this.renderer.getRenderTarget();
+			this.renderer.setRenderTarget(rendertarget);
+			if (this.camMode != "vr360") {
+				this.renderScene(this.camera);
+			} else {
+				let vrcam = new VR360Render(this.renderer, (width > 2000 ? 2048 : 1024), 0.1, 1000);
+				this.camera.add(vrcam.cubeCamera);
+				this.renderCube(vrcam);
+				this.renderer.clearColor();
+				vrcam.render(this.renderer);
+				vrcam.cubeCamera.removeFromParent();
+			}
+			this.renderer.setRenderTarget(oldtarget);
+		});
+		let buf = new Uint8ClampedArray(width * height * 4);
+		if (rendertarget) {
+			this.renderer.readRenderTargetPixels(rendertarget as any, 0, 0, width, height, buf);
+			rendertarget.dispose();
+		} else {
+			let gl = this.renderer.getContext()
+			gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+		}
+		flipImage({ data: buf, width, height, channels: 4 });
+		let data = new ImageData(buf, width, height);
+		return data;
 	}
 
 	async takeMapPicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
@@ -361,23 +394,17 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.renderer.setSize(framesize, framesize);
 		cam.projectionMatrix.transpose();
 		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
-		for (let retry = 0; retry < 5; retry++) {
-			await this.guaranteeRender(cam);
+
+		let res: FlatImageData | null = null
+		await this.guaranteeGlCalls(() => {
+			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
-			let pixelbuffer = new Uint8Array(ctx.canvas.width * ctx.canvas.height * 4);
+			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
-			// img = await new Promise<Blob | null>(resolve => this.canvas.toBlob(resolve, "image/png"));
-			if (this.contextLossCountLastRender != this.contextLossCount) {
-				console.log("context loss during capture");
-				continue;
-			}
-			let r: FlatImageData = { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 };
-			return r;
-			// break;
-		}
-		throw new Error("capture failed");
-		// if (!img) { throw new Error("capture failed"); }
-		// return new Uint8Array(await img.arrayBuffer());
+			res = { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 };
+		});
+
+		return res! as FlatImageData;
 	}
 
 	setCameraLimits() {

@@ -11,7 +11,7 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
 import { ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
@@ -1076,26 +1076,47 @@ function hex2hsl(hex: string) {
 	return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
 }
 
+
+type ExportImgSize = { w: number, h: number, mode: RenderCameraMode, name: string };
+const exportimgsizes: ExportImgSize[] = [
+	{ w: 0, h: 0, mode: "standard", name: "View" },
+	{ w: 1920, h: 1080, mode: "standard", name: "1080p" },
+	{ w: 2560, h: 1440, mode: "standard", name: "1440p" },
+	{ w: 3840, h: 2160, mode: "standard", name: "4K" },
+	{ w: 0, h: 0, mode: "vr360", name: "View" },
+	{ w: 2048, h: 1024, mode: "vr360", name: "2:1K" },
+	{ w: 4096, h: 2048, mode: "vr360", name: "4:2K" },
+]
+
 function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneElement["options"] }) {
 	let [tab, settab] = React.useState<"img" | "gltf" | "stl" | "none">("none");
-	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, ctx: CanvasRenderingContext2D } | null>(null);
+	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, data: ImageData } | null>(null);
+	let [imgsize, setimgsize] = React.useState<ExportImgSize>(exportimgsizes.find(q => q.mode == p.renderopts!.camMode) ?? exportimgsizes[0]);
 	let [cropimg, setcropimg] = React.useState(true);
-	
-	let changeImg = async (crop: boolean) => {
-		let newimg = await p.ctx.renderer.takeCanvasPicture();
-		if (crop) {
-			let imgdata = newimg.ctx.getImageData(0, 0, newimg.cnv.width, newimg.cnv.height);
-			let bounds = findImageBounds(imgdata);
-			newimg.cnv.width = bounds.width;
-			newimg.cnv.height = bounds.height;
-			newimg.ctx.putImageData(imgdata, -bounds.x, -bounds.y);
+
+	let changeImg = async (instCrop = cropimg, instSize = imgsize) => {
+		if (p.renderopts!.camMode == "vr360") { instCrop = false; }
+
+		let newimg = await p.ctx.renderer.takeCanvasPicture(instSize.w || undefined, instSize.h || undefined);
+		let cnv = document.createElement("canvas");
+		let ctx = cnv.getContext("2d")!;
+		if (instCrop) {
+			let bounds = findImageBounds(newimg);
+			cnv.width = bounds.width;
+			cnv.height = bounds.height;
+			ctx.putImageData(newimg, -bounds.x, -bounds.y);
+		} else {
+			cnv.width = newimg.width;
+			cnv.height = newimg.height;
+			ctx.putImageData(newimg, 0, 0)
 		}
 		settab("img");
-		setcropimg(crop);
-		setimg(newimg);
+		setcropimg(instCrop);
+		setimgsize(instSize);
+		setimg({ cnv, data: newimg });
 	}
 	if (tab == "img" && p.renderopts!.camMode == "vr360" && cropimg) {
-		changeImg(false);
+		changeImg();
 	}
 
 
@@ -1143,6 +1164,14 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 			<TabStrip value={tab} tabs={{ gltf: "GLTF", stl: "STL", img: "image" }} onChange={clicktab as any} />
 			{tab == "img" && (
 				<React.Fragment>
+					<div style={{ display: "grid", gridTemplateColumns: "1fr minmax(0,1fr)" }}>
+						Export image size
+						<select value={exportimgsizes.indexOf(imgsize)} onChange={e => changeImg(undefined, exportimgsizes[e.currentTarget.value])}>
+							{exportimgsizes.map((q, i) => (
+								q.mode == p.renderopts!.camMode && <option key={i} value={i}>{q.name}{q.w != 0 ? ` ${q.w}x${q.h}` : ""}</option>
+							))}
+						</select>
+					</div>
 					{p.renderopts!.camMode != "vr360" && <label><input type="checkbox" checked={cropimg} onChange={e => changeImg(e.currentTarget.checked)} />Crop image</label>}
 					{p.renderopts!.camMode == "vr360" && <input type="button" className="sub-btn" onClick={show360modal} value="Preview 360" />}
 					{img && <CanvasView canvas={img.cnv} />}
