@@ -11,10 +11,10 @@ export default class VR360Viewer {
 		longv: 0,
 		latv: 0,
 		lastUpdate: 0,
-		zoom: 1,
+		zoom: 0.6,
 		dragging: false
 	};
-	dragspeed = 0.3 * Math.PI / 180;//0.2deg per pixel
+	dragspeed = 0.1 * Math.PI / 180;//deg per pixel
 
 	pendingFrame = 0;
 	plane: WebGLBuffer;
@@ -36,7 +36,7 @@ export default class VR360Viewer {
 	}
 
 	onScroll = (e: WheelEvent) => {
-		this.cam.zoom = Math.max(0.9, Math.min(3, this.cam.zoom - e.deltaY / 700));
+		this.cam.zoom = Math.max(0.45, Math.min(1.5, this.cam.zoom - e.deltaY / 350));
 		this.draw();
 	}
 
@@ -237,12 +237,11 @@ function makeProgram(gl: WebGL2RenderingContext) {
 		varying vec2 vUv;
 		#define M_PI 3.1415926535897932384626433832795
 		void main() {
-			vec3 norm=viewmatrix*vec3(vUv,0.5);
+			vec3 norm=viewmatrix*vec3(vUv,1.0);
 			norm=normalize(norm);
 			float lat=asin(norm.y);
-			float lon=atan(norm.z,norm.x);
+			float lon=atan(norm.x,norm.z);
 			vec2 sample=vec2(lon/2.0/M_PI+0.5,lat/M_PI+0.5);
-			// gl_FragColor = vec4(sample,1.0,1.0);
 			gl_FragColor = texture2D(map,sample);
 		}`
 	);
