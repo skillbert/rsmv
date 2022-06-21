@@ -474,24 +474,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.emit("select", null);
 	}
-
-
-}
-
-export async function saveGltf(node: THREE.Object3D) {
-	let savehandle = await showSaveFilePicker({
-		//@ts-ignore
-		id: "savegltf",
-		startIn: "downloads",
-		suggestedName: "model.glb",
-		types: [
-			{ description: 'GLTF model', accept: { 'application/gltf': ['.glb', '.gltf'] } },
-		]
-	});
-	let modelexprt = await exportThreeJsGltf(node);
-	let str = await savehandle.createWritable();
-	await str.write(modelexprt);
-	await str.close();
 }
 
 export function exportThreeJsGltf(node: THREE.Object3D) {

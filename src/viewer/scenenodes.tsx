@@ -11,7 +11,7 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
-import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, saveGltf, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl } from "./threejsrender";
+import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl } from "./threejsrender";
 import { ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
