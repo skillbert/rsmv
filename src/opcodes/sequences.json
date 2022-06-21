@@ -22,7 +22,8 @@
 	"0x12": { "name":                          "unknown_12", "read": "true" },
 	"0x16": { "name":                          "unknown_16", "read": "unsigned byte" },
 	"0x18": { "name":                          "unknown_18", "read": "unsigned short" },
-	"0x19": { "name":                  "skeletal_animation", "read": "unsigned short" },	
+	"0x19": { "name":                  "skeletal_animation", "read": "unsigned short" },
+	"0x1a": { "name":                      "skeletal_range", "read": ["tuple","ushort","ushort"] },	
 
 	"0x70": { "name":                          "unknown_70", "read": ["chunkedarray","unsigned short",
 																[["intlow","unsigned short"]],
