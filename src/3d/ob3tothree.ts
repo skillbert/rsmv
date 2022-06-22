@@ -248,6 +248,10 @@ export class ThreejsSceneCache {
 					difftex.wrapS = wraptype;
 					difftex.wrapT = wraptype;
 					difftex.encoding = THREE.sRGBEncoding;
+					difftex.magFilter = THREE.LinearFilter;
+					difftex.minFilter = THREE.NearestMipMapNearestFilter;
+					difftex.generateMipmaps = true;
+
 					mat.map = difftex;
 
 					if (material.textures.normal) {
@@ -272,10 +276,13 @@ export class ThreejsSceneCache {
 						mat.normalMap.needsUpdate = true;
 						mat.normalMap.wrapS = wraptype;
 						mat.normalMap.wrapT = wraptype;
+						mat.normalMap.magFilter = THREE.LinearFilter;
+
 						mat.emissiveMap = new THREE.DataTexture(emisive.data, emisive.width, emisive.height, THREE.RGBAFormat);
 						mat.emissiveMap.needsUpdate = true;
 						mat.emissiveMap.wrapS = wraptype;
 						mat.emissiveMap.wrapT = wraptype;
+						mat.emissiveMap.magFilter = THREE.LinearFilter;
 						mat.emissive.setRGB(material.reflectionColor[0] / 255, material.reflectionColor[1] / 255, material.reflectionColor[2] / 255);
 					}
 					if (material.textures.compound) {
@@ -291,6 +298,7 @@ export class ThreejsSceneCache {
 						tex.wrapS = wraptype;
 						tex.wrapT = wraptype;
 						tex.encoding = THREE.sRGBEncoding;
+						tex.magFilter = THREE.LinearFilter;
 						mat.metalnessMap = tex;
 						mat.roughnessMap = tex;
 						mat.metalness = 1;

@@ -2133,7 +2133,8 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 			let data = img.getContext("2d")!.getImageData(0, 0, img.width, img.height);
 			mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
 
-			mat.map.minFilter = THREE.NearestMipMapLinearFilter;
+			mat.map.magFilter = THREE.LinearFilter;
+			mat.map.minFilter = THREE.LinearMipMapNearestFilter;
 			mat.map.generateMipmaps = true;
 			mat.map.encoding = THREE.sRGBEncoding;
 			mat.map.needsUpdate = true;
