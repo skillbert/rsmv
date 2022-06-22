@@ -269,7 +269,10 @@ export class ThreejsSceneCache {
 							normals.data[i + 2] = (Math.sqrt(Math.max(1 - dx * dx - dy * dy, 0)) + 1) * 127.5;
 							normals.data[i + 3] = 255;
 							//emisive //TODO check if normals flag always implies emisive
-							emisive.data[i + 0] = data[i + 0];
+							const emissive = data[i + 0] / 255;
+							emisive.data[i + 0] = diffuse.data[i + 0] * emissive;
+							emisive.data[i + 1] = diffuse.data[i + 1] * emissive;
+							emisive.data[i + 2] = diffuse.data[i + 2] * emissive;
 							emisive.data[i + 3] = 255;
 						}
 						mat.normalMap = new THREE.DataTexture(normals.data, normals.width, normals.height, THREE.RGBAFormat);
