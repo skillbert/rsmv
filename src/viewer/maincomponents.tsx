@@ -6,7 +6,7 @@ import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 
@@ -264,12 +264,12 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 			<React.Fragment>
 				{electron && (
 					<React.Fragment>
-						<h2>Native NXT cache</h2>
+						<h2>Native local RS3 cache</h2>
 						<p>Only works when running in electron</p>
 						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cace" />
 					</React.Fragment>
 				)}
-				<h2>NXT cache</h2>
+				<h2>Local Cache</h2>
 				<CacheDragNDropHelp />
 				{!this.props.noReopen && this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
 				<h2>Historical caches</h2>
@@ -281,19 +281,35 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 }
 
 function CacheDragNDropHelp() {
+	const canfsapi = typeof FileSystemHandle != "undefined"
 	let [open, setOpen] = React.useState(false);
+	let [mode, setmode] = React.useState<"fsapi" | "blob">(canfsapi ? "fsapi" : "blob");
 
 	return (
 		<React.Fragment>
 			<p>
-				Drag a folder containing NXT cache files here in order to view it.
+				{canfsapi && "Drag a folder containing the RS3 cache files here in order to view it."}
+				{!canfsapi && "Drag the RS3 cache files you wish to view"}
 				<a style={{ float: "right" }} onClick={e => setOpen(!open)}>{!open ? "More info" : "Close"}</a>
 			</p>
 			{open && (
 				<div style={{ display: "flex", flexDirection: "column" }}>
-					<div>Drop the RuneScape folder into this window</div>
-					<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
-					<video src={new URL("../assets/dragndrop.mp4", import.meta.url).href} autoPlay loop />
+					<TabStrip value={mode} tabs={{ fsapi: "Full folder", blob: "Files" }} onChange={setmode as any} />
+					{mode == "fsapi" && (
+						<React.Fragment>
+							{!canfsapi && <p className="mv-errortext">You browser does not support full folder loading!</p>}
+							<p>Drop the RuneScape folder into this window.</p>
+							<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
+							<video src={new URL("../assets/dragndrop.mp4", import.meta.url).href} autoPlay loop style={{ aspectRatio: "352/292" }} />
+						</React.Fragment>
+					)}
+					{mode == "blob" && (
+						<React.Fragment>
+							<p>Drop and drop the cache files into this window.</p>
+							<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
+							<video src={new URL("../assets/dragndropblob.mp4", import.meta.url).href} autoPlay loop style={{ aspectRatio: "458/380" }} />
+						</React.Fragment>
+					)}
 				</div>
 			)}
 		</React.Fragment>
