@@ -4,7 +4,7 @@ import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Vector3 } from "three";
+import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2, Vector3, VectorKeyframeTrack } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseModels, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
@@ -71,7 +71,7 @@ export type SimpleModelDef = { modelid: number, mods: ModelModifications }[];
 
 export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: number }> implements ThreeJsSceneElementSource {
 	model: Promise<{ modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip }>;
-	loaded: { modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip } | null = null;
+	loaded: { modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip, matUvAnims: { tex: Texture, v: Vector2 }[] } | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
 	nullAnimLoaded: (clip: AnimationClip) => void;
@@ -91,10 +91,10 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		this.renderscene = null;
 	}
 
-	getSceneElements() {
+	getSceneElements(): ThreeJsSceneElement {
 		return {
 			modelnode: this.rootnode,
-			animationMixer: this.mixer
+			updateAnimation: this.updateAnimation
 		}
 	}
 
@@ -107,6 +107,12 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		this.emit("loaded", undefined);
 		this.renderscene?.forceFrame();
 		this.renderscene?.setCameraLimits();
+	}
+
+	@boundMethod
+	updateAnimation(delta: number, epochtime: number) {
+		this.mixer.update(delta);
+		this.loaded?.matUvAnims.forEach(q => q.tex.offset.copy(q.v).multiplyScalar(epochtime));
 	}
 
 	constructor(models: SimpleModelDef, cache: ThreejsSceneCache) {
@@ -126,10 +132,18 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 
 			let nullbones: Object3D[] = [];
 			for (let i = 0; i < modeldata.bonecount; i++) { nullbones.push(mesh); }
-			let nullskel = new Skeleton(nullbones as any)
+			let nullskel = new Skeleton(nullbones as any);
+			let matUvAnims: { tex: Texture, v: Vector2 }[] = [];
 			mesh.traverse(node => {
 				if (node instanceof SkinnedMesh) {
 					node.bind(nullskel);
+				}
+				if (node instanceof Mesh && node.material instanceof Material) {
+					let uvanim = node.material.userData.gltfExtensions?.RA_materials_uvanim;
+					if (uvanim) {
+						let tex = (node.material as MeshBasicMaterial).map!;
+						matUvAnims.push({ tex, v: new Vector2(uvanim[0], uvanim[1]) });
+					}
 				}
 			});
 			let nullAnim = new AnimationClip(undefined, undefined, []);
@@ -137,7 +151,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 			this.anims[-1].clip = nullAnim;
 
 			this.rootnode.add(mesh);
-			this.loaded = { mesh, modeldata, nullAnim };
+			this.loaded = { mesh, modeldata, nullAnim, matUvAnims };
 			if (this.targetAnimId == -1) { this.setAnimation(-1); }
 			this.onModelLoaded();
 			return this.loaded;
@@ -237,10 +251,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		return svgfloor(this.cache.cache, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
-	getSceneElements() {
+	getSceneElements(): ThreeJsSceneElement {
 		return {
 			modelnode: this.rootnode,
-			// animationMixer: this.mixer,//having this property makes the renderer out-refresh 60fps even with no anims
 			sky: this.loaded?.sky,
 			options: { hideFloor: true }
 		};

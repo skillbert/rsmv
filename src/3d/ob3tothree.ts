@@ -315,6 +315,9 @@ export class ThreejsSceneCache {
 					}
 				}
 				mat.userData = material;
+				if (material.uvAnim) {
+					(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = [material.uvAnim.u, material.uvAnim.v];
+				}
 				return mat;
 			})();
 			this.threejsMaterialCache.set(matcacheid, cached);
@@ -347,6 +350,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		//however, you cannot have a skinnedmesh without geometry when exporting to GLTF
 		//This hack seems to work, but will probably explode some time in the future
 		//sorry future self 
+		//TODO could this be solved with AnimationObjectGroup?
 		//@ts-ignore
 		skinnedroot.isSkinnedMesh = false;
 		//@ts-ignore

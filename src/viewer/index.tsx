@@ -53,13 +53,15 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 
 			try {
 				let engine = await EngineCache.create(cache);
-				globalThis.engine = engine;
 				console.log("engine loaded");
 				let scene = new ThreejsSceneCache(engine);
 				if (source.type == "sqliteblobs" || source.type == "sqlitehandle" || source.type == "sqlitenodejs") {
 					scene.textureType = await detectTextureMode(cache);
 				}
 				this.props.ctx.setSceneCache(scene);
+				
+				globalThis.sceneCache = scene;
+				globalThis.engine = engine;
 			} catch (e) {
 				console.log("failed to create scenecache");
 				console.error(e);

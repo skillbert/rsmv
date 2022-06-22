@@ -38,8 +38,8 @@ export interface ThreeJsSceneElementSource {
 
 export type ThreeJsSceneElement = {
 	modelnode?: Object3D,
-	sky?: { skybox: THREE.Object3D<THREE.Event> | null, fogColor: number[] } | null
-	animationMixer?: AnimationMixer,
+	sky?: { skybox: THREE.Object3D<THREE.Event> | null, fogColor: number[] } | null,
+	updateAnimation?: (delta: number, epochtime: number) => void,
 	options?: {
 		opaqueBackground?: boolean,
 		hideFloor?: boolean,
@@ -69,7 +69,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private clock = new Clock(true);
 
 	private sceneElements = new Set<ThreeJsSceneElementSource>();
-	private animationMixers = new Set<AnimationMixer>();
+	private animationCallbacks = new Set<NonNullable<ThreeJsSceneElement["updateAnimation"]>>();
 	private vr360cam: VR360Render | null = null;
 	private camMode: RenderCameraMode = "standard";
 
@@ -173,13 +173,13 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let showfloor = true;
 		let autoframes: boolean | undefined = undefined;
 		let nodeDeleteList = new Set(this.modelnode.children);
-		this.animationMixers.clear();
+		this.animationCallbacks.clear();
 		for (let source of this.sceneElements) {
 			let el = source.getSceneElements();
 			if (el.sky) { sky = el.sky; }
-			if (el.animationMixer) {
+			if (el.updateAnimation) {
 				animated = true;
-				this.animationMixers.add(el.animationMixer);
+				this.animationCallbacks.add(el.updateAnimation);
 			}
 			if (el.options?.hideFog) { hideFog = true; }
 			if (el.options?.opaqueBackground) { opaqueBackground = true; }
@@ -277,7 +277,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		let delta = this.clock.getDelta();
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
-		this.animationMixers.forEach(q => q.update(delta));
+		this.animationCallbacks.forEach(q => q(delta, this.clock.elapsedTime));
 
 		this.resizeRendererToDisplaySize();
 
