@@ -295,6 +295,7 @@ export class ThreejsSceneCache {
 						for (let i = 0; i < compound.data.length; i += 4) {
 							compoundmapped.data[i + 1] = compound.data[i + 1];
 							compoundmapped.data[i + 2] = compound.data[i + 0];
+							compoundmapped.data[i + 3] = 255;
 						}
 						let tex = new THREE.DataTexture(compoundmapped.data, compoundmapped.width, compoundmapped.height, THREE.RGBAFormat);
 						tex.needsUpdate = true;
