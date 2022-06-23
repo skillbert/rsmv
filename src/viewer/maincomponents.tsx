@@ -75,15 +75,33 @@ export async function downloadStream(name: string, stream: ReadableStream) {
 
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
 	let [caches, setCaches] = React.useState<Openrs2CacheMeta[] | null>(null);
+	let [relevantcaches, setrelevantcaches] = React.useState<Openrs2CacheMeta[] | null>(null);
 	let [loading, setLoading] = React.useState(false);
+	let [relevantonly, setrelevantonly] = React.useState(true);
 	let [gameFilter, setGameFilter] = React.useState("runescape");
 	let [yearFilter, setYearfilter] = React.useState("");
 	let [langFilter, setLangfilter] = React.useState("en");
+	let loadprom = React.useRef<Promise<{ caches: Openrs2CacheMeta[], relevant: Openrs2CacheMeta[] }> | null>(null);
 
 	let loadcaches = React.useCallback(() => {
-		setLoading(true);
-		Openrs2CacheSource.getCacheIds().then(setCaches);
+		if (!loadprom.current) {
+			loadprom.current = Openrs2CacheSource.getCacheIds().then(caches => {
+
+				let relevant = caches.filter(q => q.language == "en" && q.sources.includes("Jagex") && q.environment == "live" && q.game == "runescape")
+					.sort((a, b) => +new Date(b.timestamp ?? "") - +new Date(a.timestamp ?? ""));
+
+				return { caches, relevant };
+			});
+		}
+		return loadprom.current;
 	}, []);
+
+	let openselector = React.useCallback(async () => {
+		setLoading(true);
+		let { caches, relevant } = await loadcaches();
+		setCaches(caches);
+		setrelevantcaches(relevant);
+	}, [])
 
 
 	let games: string[] = [];
@@ -98,19 +116,30 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 		if (langs.indexOf(cache.language) == -1) { langs.push(cache.language); }
 	}
 
-	years.sort((a, b) => (+a) - (+b));
+	years.sort((a, b) => (+b) - (+a));
 
-	let showncaches = (caches ?? []).filter(cache => {
+	let showncaches = ((relevantonly ? relevantcaches : caches) ?? []).filter(cache => {
 		if (gameFilter && cache.game != gameFilter) { return false; }
 		if (langFilter && cache.language != langFilter) { return false; }
 		if (yearFilter && new Date(cache.timestamp ?? 0).getUTCFullYear() != +yearFilter) { return false; }
 		return true;
 	});
-	showncaches.sort((a, b) => +new Date(a.timestamp ?? 0) - +new Date(b.timestamp ?? 0));
+	showncaches.sort((a, b) => +new Date(b.timestamp ?? 0) - +new Date(a.timestamp ?? 0));
+
+	let enterCacheId = async (idstring: string) => {
+		let id = +idstring;
+		if (id > 0) {
+			p.onSelect(id);
+		} else {
+			let { relevant } = await loadcaches();
+			p.onSelect(relevant[-id].id);
+		}
+	}
+
 	return (
 		<React.Fragment>
-			<StringInput initialid={p.initialid + ""} onChange={v => p.onSelect(+v)} />
-			{!loading && !caches && <input type="button" className="sub-btn" onClick={loadcaches} value="More options..." />}
+			<StringInput initialid={p.initialid + ""} onChange={enterCacheId} />
+			{!loading && !caches && <input type="button" className="sub-btn" onClick={openselector} value="More options..." />}
 			{caches && (
 				<React.Fragment>
 					<div style={{ overflowY: "auto" }}>
@@ -274,7 +303,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 				{!this.props.noReopen && this.state.lastFolderOpen && <input type="button" className="sub-btn" onClick={this.clickReopen} value={`Reopen ${this.state.lastFolderOpen.name}`} />}
 				<h2>Historical caches</h2>
 				<p>Enter any valid cache id from <a target="_blank" href="https://archive.openrs2.org/">OpenRS2</a>.</p>
-				<OpenRs2IdSelector initialid={949} onSelect={this.openOpenrs2Cache} />
+				<OpenRs2IdSelector initialid={0} onSelect={this.openOpenrs2Cache} />
 			</React.Fragment>
 		);
 	}
