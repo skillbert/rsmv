@@ -38,8 +38,8 @@
 		
 		["skin",["opt",["hasSkin",1],["struct",
 			["skinVertexCount","uint le"],
-			["skinBoneBuffer",["buffer",["ref","skinVertexCount"],"hex",2]],
-			["skinWeightBuffer",["buffer",["ref","skinVertexCount"],"hex",1]]
+			["skinBoneBuffer",["buffer",["ref","skinVertexCount"],"ushort",1]],
+			["skinWeightBuffer",["buffer",["ref","skinVertexCount"],"ubyte",1]]
 		]]]
 	]]],
 
