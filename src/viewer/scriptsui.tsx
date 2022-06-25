@@ -237,7 +237,7 @@ export function UIScriptFiles(p: { output?: UIScriptOutput | null, onSelect: (fi
 		return <div />;
 	}
 	else {
-		const maxlist = 100;
+		const maxlist = 1000;
 		return (
 			<div>
 				{files.length > maxlist && <div>Only showing first {maxlist} files</div>}

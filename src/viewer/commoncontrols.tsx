@@ -8,6 +8,18 @@ import { cacheFileJsonModes } from "scripts/extractfiles";
 import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
 
+export function CanvasView(p: { canvas: HTMLCanvasElement }) {
+	let ref = React.useCallback((el: HTMLDivElement | null) => {
+		p.canvas.classList.add("mv-image-preview-canvas");
+		if (el) { el.appendChild(p.canvas); }
+		else { p.canvas.remove(); }
+	}, [p.canvas]);
+
+	return (
+		<div ref={ref} className="mv-image-preview" />
+	)
+}
+
 export function TabStrip<T extends string>(p: { value: T, tabs: Partial<Record<T, string>>, onChange: (v: T) => void }) {
 	const templatecols = `repeat(${Math.min(4, Object.keys(p.tabs).length)},minmax(0,1fr))`;
 	return (

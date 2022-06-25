@@ -24,11 +24,11 @@ import { CacheSelector, downloadBlob, downloadStream, openSavedCache, SavedCache
 import { tiledimensions } from "../3d/mapsquare";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import { runMapRender } from "../map";
-import { diffCaches } from "../scripts/cachediff";
+import { diffCaches, FileEdit } from "../scripts/cachediff";
 import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { findImageBounds } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView } from "./commoncontrols";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -1213,18 +1213,6 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 	)
 }
 
-function CanvasView(p: { canvas: HTMLCanvasElement }) {
-	let ref = React.useCallback((el: HTMLDivElement | null) => {
-		p.canvas.classList.add("mv-image-preview-canvas");
-		if (el) { el.appendChild(p.canvas); }
-		else { p.canvas.remove(); }
-	}, [p.canvas]);
-
-	return (
-		<div ref={ref} className="mv-image-preview" />
-	)
-}
-
 export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
 	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
@@ -1711,7 +1699,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	}
 }
 
-function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+function ExtractFilesScript(p: UiScriptProps) {
 	let [files, setFiles] = React.useState("");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>("items");
 	let [batched, setbatched] = React.useState(true);
@@ -1739,7 +1727,7 @@ function ExtractFilesScript(p: { onRun: (output: UIScriptOutput) => void, source
 	)
 }
 
-function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+function MaprenderScript(p: UiScriptProps) {
 	let [endpoint, setEndpoint] = React.useState(localStorage.rsmv_script_map_endpoint ?? "");
 	let [auth, setAuth] = React.useState("");
 
@@ -1763,9 +1751,12 @@ function MaprenderScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 		</React.Fragment>
 	)
 }
-function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+function CacheDiffScript(p: UiScriptProps) {
 	let [cache2, setCache2] = React.useState<CacheFileSource | null>(null);
 	let [selectopen, setSelectopen] = React.useState(false);
+	let [result, setResult] = React.useState<FileEdit[] | null>(null);
+	let [showmodels, setshowmodels] = React.useState(false);
+
 	let openCache = async (s: SavedCacheSource) => {
 		setSelectopen(false);
 		setCache2(await openSavedCache(s, false));
@@ -1775,10 +1766,10 @@ function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 
 	let run = async () => {
 		let output = new UIScriptOutput();
-		let source2 = await cache2;
-		if (!source2) { return; }
-		output.run(diffCaches, p.source, source2);
+		if (!cache2) { return; }
 		p.onRun(output);
+		let res = output.run(diffCaches, cache2, p.source);
+		res.then(setResult);
 	}
 
 	let clickOpen = () => {
@@ -1786,6 +1777,40 @@ function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 			<CacheSelector onOpen={v => { openCache(v); frame.close(); }} noReopen={true} />
 		));
 	}
+
+	React.useEffect(() => {
+		if (result && showmodels && cache2 && p.ctx.sceneCache) {
+			let prom = EngineCache.create(cache2).then(engine => {
+				let oldscene = new ThreejsSceneCache(engine);
+				let models: RSModel[] = [];
+				const xstep = 5 * 512;
+				const zstep = 5 * 512;
+				let modelcount = 0;
+				for (let diff of result!) {
+					if (diff.major == cacheMajors.models) {
+						if (diff.before) {
+							let model = new RSModel([{ modelid: diff.minor, mods: {} }], oldscene);
+							model.rootnode.position.set(modelcount * xstep, 0, zstep);
+							models.push(model);
+							model.addToScene(p.ctx.renderer!);
+						}
+						if (diff.after) {
+							let model = new RSModel([{ modelid: diff.minor, mods: {} }], p.ctx.sceneCache!);
+							model.rootnode.position.set(modelcount * xstep, 0, 0);
+							models.push(model);
+							model.addToScene(p.ctx.renderer!);
+						}
+						modelcount++;
+					}
+				}
+				return models;
+			})
+
+			return () => {
+				prom.then(models => models.forEach(q => q.cleanup()));
+			}
+		}
+	}, [result, showmodels]);
 
 	return (
 		<React.Fragment>
@@ -1799,11 +1824,12 @@ function CacheDiffScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 			)}
 			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheName()}`} onClick={e => setCache2(null)} />}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			{result && <label><input checked={showmodels} onChange={e => setshowmodels(e.currentTarget.checked)} type="checkbox" />View changed models</label>}
 		</React.Fragment>
 	)
 }
 
-function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: CacheFileSource }) {
+function TestFilesScript(p: UiScriptProps) {
 	let [mode, setMode] = React.useState("");
 
 	let run = () => {
@@ -1827,52 +1853,43 @@ function TestFilesScript(p: { onRun: (output: UIScriptOutput) => void, source: C
 		</React.Fragment>
 	)
 }
-
-
-const uiScripts = {
+type UiScriptProps = { onRun: (output: UIScriptOutput) => void, source: CacheFileSource, ctx: UIContext };
+const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	test: TestFilesScript,
 	extract: ExtractFilesScript,
 	maprender: MaprenderScript,
 	diff: CacheDiffScript
 }
 
-class ScriptsUI extends React.Component<LookupModeProps, { script: keyof typeof uiScripts, running: UIScriptOutput | null }>{
-	constructor(p) {
-		super(p);
-		this.state = {
-			script: this.props.initialId as any,
-			running: null
-		}
-	}
+function ScriptsUI(p: LookupModeProps) {
+	let [script, setScript] = React.useState<string>(p.initialId as any);
+	let [running, setRunning] = React.useState<UIScriptOutput | null>(null);
 
-	@boundMethod
-	async onRun(output: UIScriptOutput) {
-		localStorage.rsmv_lastsearch = JSON.stringify(this.state.script);
-		this.setState({ running: output });
-	}
+	let onRun = React.useCallback((output: UIScriptOutput) => {
+		localStorage.rsmv_lastsearch = JSON.stringify(script);
+		setRunning(output);
+	}, [script]);
 
-	render() {
-		const source = this.props.partial.source;
-		if (!source) { throw new Error("trying to render modelbrowser without source loaded"); }
-		const SelectedScript = uiScripts[this.state.script];
-		return (
-			<React.Fragment>
-				<div className="mv-sidebar-scroll">
-					<h2>Script runner</h2>
-					<TabStrip value={this.state.script} tabs={Object.fromEntries(Object.keys(uiScripts).map(k => [k, k])) as any} onChange={v => this.setState({ script: v })} />
-					{!SelectedScript && (
-						<React.Fragment>
-							<p>Select a script</p>
-							<p>The script runner allows you to run some of the CLI scripts directly from the browser.</p>
-						</React.Fragment>
-					)}
-					{SelectedScript && <SelectedScript source={source} onRun={this.onRun} />}
-					<h2>Script output</h2>
-					<OutputUI output={this.state.running} ctx={this.props.partial} />
-				</div>
-			</React.Fragment>
-		);
-	}
+	const source = p.partial.source;
+	if (!source) { throw new Error("trying to render modelbrowser without source loaded"); }
+	const SelectedScript = uiScripts[script as keyof typeof uiScripts];
+	return (
+		<React.Fragment>
+			<div className="mv-sidebar-scroll">
+				<h2>Script runner</h2>
+				<TabStrip value={script} tabs={Object.fromEntries(Object.keys(uiScripts).map(k => [k, k])) as any} onChange={v => setScript(v)} />
+				{!SelectedScript && (
+					<React.Fragment>
+						<p>Select a script</p>
+						<p>The script runner allows you to run some of the CLI scripts directly from the browser.</p>
+					</React.Fragment>
+				)}
+				{SelectedScript && <SelectedScript source={source} onRun={onRun} ctx={p.partial} />}
+				<h2>Script output</h2>
+				<OutputUI output={running} ctx={p.partial} />
+			</div>
+		</React.Fragment>
+	);
 }
 
 type LookupModeProps = { initialId: unknown, ctx: UIContextReady | null, partial: UIContext }

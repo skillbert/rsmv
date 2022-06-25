@@ -2,8 +2,9 @@ import * as cache from "./index";
 import { compressSqlite, decompress, decompressSqlite } from "./compression";
 import { cacheMajors } from "../constants";
 import { CacheIndex } from "./index";
-import { cacheindex } from "../../generated/cacheindex";
 import fetch from "node-fetch";
+
+const endpoint = `https://archive.openrs2.org`;
 
 type CacheTable = {
 	indices: Promise<cache.CacheIndexFile>
@@ -35,7 +36,7 @@ export class Openrs2CacheSource extends cache.CacheFileSource {
 	totalbytes = 0;
 
 	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
-		return fetch("https://archive.openrs2.org/caches.json").then(q => q.json());
+		return fetch(`${endpoint}/caches.json`).then(q => q.json());
 	}
 
 	constructor(cachename: string) {
@@ -47,28 +48,44 @@ export class Openrs2CacheSource extends cache.CacheFileSource {
 	}
 
 	async generateRootIndex() {
+		//yep, i used regex on html, sue me
 		console.log("using dummy cache index file meta containing dummy data for indices 1-61");
 
+		let rootindexhtml = await fetch(`${endpoint}/caches/runescape/${this.cachename}`).then(q => q.text());
+
+		let tabletextmatch = rootindexhtml.match(/Master index[\s\S]*?<table([\s\S]*)<\/table>/i);
+		if (!tabletextmatch) { throw new Error("failed to parse root index"); }
+
 		let majors: CacheIndex[] = [];
-		for (let i = 1; i <= 61; i++) {
-			majors[i] = {
-				major: cacheMajors.index,
-				minor: i,
-				crc: 0,
-				size: 0,
-				subindexcount: 1,
-				subindices: [0],
-				version: 0,
-				uncompressed_crc: 0,
-				uncompressed_size: 0
-			};
+		let rowmatches = tabletextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi);
+
+		for (let rowmatch of rowmatches) {
+			let fields = [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)];
+			if (fields.length == 6) {
+				let major = +fields[0][1];
+				let version = +fields[1][1].replace(/[,\.]/g, "");
+				if (isNaN(major) || isNaN(version)) { throw new Error("invalid major or version field"); }
+				//versoin 0 means it doesn't exist
+				if (version == 0) { continue; }
+				majors[major] = {
+					major: cacheMajors.index,
+					minor: major,
+					crc: 0,
+					size: 0,
+					subindexcount: 1,
+					subindices: [0],
+					version: version,
+					uncompressed_crc: 0,
+					uncompressed_size: 0
+				}
+			}
 		}
 
 		return majors;
 	}
 
 	async downloadFile(major: number, minor: number) {
-		const req = await fetch(`https://archive.openrs2.org/caches/runescape/${this.cachename}/archives/${major}/groups/${minor}.dat`);
+		const req = await fetch(`${endpoint}/caches/runescape/${this.cachename}/archives/${major}/groups/${minor}.dat`);
 		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
 		//at least make sure we are aware if we're ddossing someone....

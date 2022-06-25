@@ -6,7 +6,7 @@ import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, cachingFileSourceMixin } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 
@@ -14,7 +14,8 @@ import type { OpenDialogReturnValue } from "electron/renderer";
 import { UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
-import { delay, TypedEmitter } from "../utils";
+import { delay, drawTexture, TypedEmitter } from "../utils";
+import { ParsedTexture } from "../3d/textures";
 
 const electron = (() => {
 	try {
@@ -511,6 +512,7 @@ function SimpleTextViewer(p: { file: string }) {
 export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFile | null) => void }) {
 	let el: React.ReactNode = null;
 	let filedata = p.file.data;
+	let cnvref = React.useRef<HTMLCanvasElement | null>(null);
 	if (typeof filedata == "string") {
 		if (p.file.name.endsWith(".hexerr.json")) {
 			el = <FileDecodeErrorViewer file={filedata} />;
@@ -518,7 +520,15 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 			el = <SimpleTextViewer file={filedata} />;
 		}
 	} else {
-		el = <TrivialHexViewer data={filedata} />
+		if (p.file.name.match(/\.rstex$/)) {
+			let tex = new ParsedTexture(filedata, false, false);
+			cnvref.current ??= document.createElement("canvas");
+			const cnv = cnvref.current;
+			tex.toWebgl().then(img => drawTexture(cnv.getContext("2d")!, img));
+			el = <CanvasView canvas={cnvref.current} />;
+		} else {
+			el = <TrivialHexViewer data={filedata} />
+		}
 	}
 
 	return (

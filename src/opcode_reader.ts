@@ -986,7 +986,7 @@ function intParser(primitive: PrimitiveInt): ChunkParser<number> {
 			return {
 				type: "integer",
 				maximum: 2 ** (primitive.bytes * 8 + (primitive.unsigned ? 0 : -1)) - 1,
-				minimum: (primitive.unsigned ? 0 : -1 * (2 ** (primitive.bytes * 8)))
+				minimum: (primitive.unsigned ? 0 : -1 * (2 ** (primitive.bytes * 8 - 1)))
 			}
 		}
 	}
