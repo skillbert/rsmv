@@ -353,9 +353,11 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, sta
 	source: CacheFileSource | null;
 	sceneCache: ThreejsSceneCache | null;
 	renderer: ThreeJsRenderer | null;
+	rootElement: HTMLElement;
 
-	constructor() {
+	constructor(rootelement: HTMLElement) {
 		super();
+		this.rootElement = rootelement;
 	}
 
 	setCacheSource(source: CacheFileSource | null) {

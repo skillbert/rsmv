@@ -16,6 +16,22 @@
 	padding: 0px;
 	overflow: hidden;
 	background-color: var(--main-bg-colour);
+	position: absolute;
+	top: 0px;
+	bottom: 0px;
+	left: 0px;
+	right: 0px;
+	display: grid;
+	grid-template-columns: auto min-content;
+	grid-template-rows: minmax(0, 1fr);
+}
+.mv-root--vertical {
+	grid-template-columns: 100%;
+	grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+.mv-root--vertical .mv-sidebar {
+	width: 100%;
+	max-width: 100%;
 }
 .mv-image-preview {
 	display: flex;
@@ -51,18 +67,6 @@
 	background-image: url("search-btn-minus.png");
 	background-color: transparent;
 	border: hidden;
-}
-.mv-root {
-	position: absolute;
-	top: 0px;
-	bottom: 0px;
-	left: 0px;
-	right: 0px;
-	overflow: hidden;
-
-	display: grid;
-	grid-template-columns: auto min-content;
-	grid-template-rows: minmax(0, 100fr);
 }
 .mv-style input[type="text"],
 .mv-style input[type="number"],

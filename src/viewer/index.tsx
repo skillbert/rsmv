@@ -9,6 +9,7 @@ import { ModelBrowser, RendererControls } from "./scenenodes";
 
 import { UIScriptFile } from "./scriptsui";
 import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache } from "./maincomponents";
+import classNames from "classnames";
 
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
@@ -24,7 +25,7 @@ export function start(rootelement: HTMLElement) {
 		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 	});
 
-	let ctx = new UIContext();
+	let ctx = new UIContext(rootelement);
 	let root = ReactDOM.createRoot(rootelement);
 	root.render(<App ctx={ctx} />);
 
@@ -59,7 +60,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 					scene.textureType = await detectTextureMode(cache);
 				}
 				this.props.ctx.setSceneCache(scene);
-				
+
 				globalThis.sceneCache = scene;
 				globalThis.engine = engine;
 			} catch (e) {
@@ -88,14 +89,21 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 		this.forceUpdate();
 	}
 
+	@boundMethod
+	resized() {
+		this.forceUpdate();
+	}
+
 	componentDidMount() {
 		this.props.ctx.on("openfile", this.openFile);
 		this.props.ctx.on("statechange", this.stateChanged);
+		window.addEventListener("resize", this.resized);
 	}
 
 	componentWillUnmount() {
 		this.props.ctx.off("openfile", this.openFile);
 		this.props.ctx.off("statechange", this.stateChanged);
+		window.removeEventListener("resize", this.resized);
 	}
 
 	@boundMethod
@@ -104,8 +112,11 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 	}
 
 	render() {
+		let width = this.props.ctx.rootElement.clientWidth;
+		let vertical = width < 550;
+
 		return (
-			<div className="mv-root mv-style">
+			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
 				<canvas className="mv-canvas" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
 				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
 				<div className="mv-sidebar">

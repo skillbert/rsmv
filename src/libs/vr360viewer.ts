@@ -23,11 +23,17 @@ export default class VR360Viewer {
 	prog: ReturnType<typeof makeProgram>;
 	constructor(imgsrc?: ViewerImageSource) {
 		this.cnv = document.createElement("canvas");
+		this.cnv.style.position = "absolute";
+		this.cnv.style.left = "0";
+		this.cnv.style.top = "0";
+		this.cnv.style.width = "100%";
+		this.cnv.style.height = "100%";
 		this.gl = this.cnv.getContext("webgl2")!;
 		this.plane = createPlane(this.gl);
 		this.prog = makeProgram(this.gl);
 
 		this.cnv.addEventListener("mousedown", this.onMouseDown);
+		this.cnv.addEventListener("touchstart", this.onMouseDown);
 		this.cnv.addEventListener("wheel", this.onScroll);
 
 		if (imgsrc) {
@@ -35,14 +41,36 @@ export default class VR360Viewer {
 		}
 	}
 
-	onScroll = (e: WheelEvent) => {
-		this.cam.zoom = Math.max(0.45, Math.min(1.5, this.cam.zoom - e.deltaY / 350));
+	updateZoom(dz: number) {
+		this.cam.zoom = Math.max(0.45, Math.min(1.5, this.cam.zoom + dz));
 		this.draw();
 	}
 
-	onMouseDown = (e: MouseEvent) => {
-		let lastx = e.screenX;
-		let lasty = e.screenY;
+	onScroll = (e: WheelEvent) => {
+		this.updateZoom(-e.deltaY / 350);
+		e.preventDefault();
+	}
+
+	onMouseDown = (e: MouseEvent | TouchEvent) => {
+		let lastx: number
+		let lasty: number;
+		let lasttouchgap = -1;
+		let averageTouches = (touches: TouchList): [number, number] => {
+			let x = 0;
+			let y = 0;
+			for (let i = 0; i < touches.length; i++) {
+				x += touches[i].screenX;
+				y += touches[i].screenY;
+			}
+			return [x / touches.length, y / touches.length];
+		}
+		if (e instanceof TouchEvent) {
+			if (e.touches.length > 1) { return; }
+			[lastx, lasty] = averageTouches(e.touches);
+		} else {
+			lastx = e.screenX;
+			lasty = e.screenY;
+		}
 		let lasttime = performance.now();
 		this.cam.dragging = true;
 		let update = (screenx: number, screeny: number) => {
@@ -52,7 +80,7 @@ export default class VR360Viewer {
 
 			//update velocity
 			let time = performance.now();
-			let delta = time - lasttime;
+			let delta = Math.max(1, time - lasttime);
 			let newweight = Math.min(1, delta / 140);
 			let oldweight = 1 - newweight;
 			this.cam.latv = oldweight * this.cam.latv + newweight * (newlat - this.cam.lat) / delta;
@@ -71,20 +99,54 @@ export default class VR360Viewer {
 		let move = (e2: MouseEvent) => {
 			update(e2.screenX, e2.screenY);
 		}
+		let touchmove = (e2: TouchEvent) => {
+			if (e2.touches.length >= 1) {
+				update(...averageTouches(e2.touches));
+			}
+			if (e2.touches.length >= 2) {
+				let t1 = e2.touches[0];
+				let t2 = e2.touches[1];
+				let gap = Math.hypot(t1.screenX - t2.screenX, t1.screenY - t2.screenY);
+				if (lasttouchgap > 0) { this.updateZoom((gap - lasttouchgap) / 100); }
+				lasttouchgap = gap;
+			}
+		}
 		let end = (e2: MouseEvent) => {
-			window.removeEventListener("mousemove", move);
 			update(e2.screenX, e2.screenY);
+			endlisteners();
+		}
+		let touchend = (e2: TouchEvent) => {
+			lasttouchgap = -1;
+			if (e2.touches.length == 0) {
+				endlisteners();
+			} else {
+				[lastx, lasty] = averageTouches(e2.touches);
+			}
+		}
+		let touchstart = (e2: TouchEvent) => {
+			[lastx, lasty] = averageTouches(e2.touches);
+		}
+		let endlisteners = () => {
 			this.cam.dragging = false;
 			this.cam.lastUpdate = performance.now();
+			window.removeEventListener("mousemove", move);
+			window.removeEventListener("mouseup", end);
+			window.removeEventListener("touchmove", touchmove);
+			window.removeEventListener("touchend", touchend);
+			window.removeEventListener("touchstart", touchstart);
 		}
 
-		window.addEventListener("mouseup", end, { once: true });
+		window.addEventListener("mouseup", end);
 		window.addEventListener("mousemove", move);
+		window.addEventListener("touchmove", touchmove);
+		window.addEventListener("touchend", touchend);
+		window.addEventListener("touchstart", touchstart);
 		e.preventDefault();
 	}
 
 	free() {
 		this.cnv.removeEventListener("mousedown", this.onMouseDown);
+		this.cnv.removeEventListener("touchstart", this.onMouseDown);
 		this.cnv.removeEventListener("wheel", this.onScroll);
 	}
 
@@ -100,7 +162,7 @@ export default class VR360Viewer {
 
 	animateCamera() {
 		let time = performance.now();
-		let delta = time - this.cam.lastUpdate;
+		let delta = Math.max(1, time - this.cam.lastUpdate);
 		if (!this.cam.dragging) {
 			this.cam.lat += this.cam.latv * delta;
 			this.cam.long += this.cam.longv * delta;
