@@ -19,19 +19,15 @@ export function unload(root: ReactDOM.Root) {
 	root.unmount();
 }
 
-export function start(rootelement: HTMLElement) {
+export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 	window.addEventListener("keydown", e => {
 		if (e.key == "F5") { document.location.reload(); }
 		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
 	});
 
-	let ctx = new UIContext(rootelement);
+	let ctx = new UIContext(rootelement, serviceworker ?? false);
 	let root = ReactDOM.createRoot(rootelement);
 	root.render(<App ctx={ctx} />);
-
-	//this service worker holds a reference to the cache fs handle which will keep the handles valid 
-	//across tab reloads
-	navigator.serviceWorker.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
 
 	return root;
 }
@@ -120,10 +116,22 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 				<canvas className="mv-canvas" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
 				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
 				<div className="mv-sidebar">
-					{!this.props.ctx.source && (<CacheSelector onOpen={this.openCache} />)}
-					{this.props.ctx.source && <input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.props.ctx.source.getCacheName()}`} />}
-					<RendererControls visible={!!this.props.ctx.source} ctx={this.props.ctx} />
-					{this.props.ctx.source && <ModelBrowser ctx={this.props.ctx} />}
+					{!this.props.ctx.source && (
+						<React.Fragment>
+							<CacheSelector onOpen={this.openCache} />
+							<div style={{ flex: "1" }} />
+							<div style={{ textAlign: "center" }}>
+								Go to <a href="https://runeapps.org/modelviewer_about">RuneApps</a> for more info. Source code hosted at <a href="https://github.com/skillbert/rsmv" target="_blank">github.com/skillbert/rsmv</a>
+							</div>
+						</React.Fragment>
+					)}
+					{this.props.ctx.source && (
+						<React.Fragment>
+							<input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.props.ctx.source.getCacheName()}`} />
+							<RendererControls ctx={this.props.ctx} />
+							<ModelBrowser ctx={this.props.ctx} />
+						</React.Fragment>
+					)}
 				</div>
 			</div >
 		);

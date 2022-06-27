@@ -37,18 +37,18 @@ npm start
 Cache extraction tool
 ```sh
 #to dump item ids 0-100
-node dist/extract   # name of the script
-    -o cache        # open NXT cache at default location
-    -s cache/items  # where to dump the files
-    --mode items    # extraction mode, determines how ids are interpreted and the format of the output
-    -i 0-100        # ids of the files to extract
+node dist/cli extract  # name of the script
+    -o cache           # open NXT cache at default location
+    -s cache/items     # where to dump the files
+    --mode items       # extraction mode, determines how ids are interpreted and the format of the output
+    -i 0-100           # ids of the files to extract
 
 #to download raw data from groups 10-20 of cache index 53 (png textures)
-node dist/extract
-    -o live         # download files directly from jagex game servers
+node dist/cli extract
+    -o live            # download files directly from jagex game servers
 	-s cache/textures
-	--mode bin      # dumps the raw file
-	-i 53.10-53.20  # some modes use tuples as id, both tuple interpretation and range interpolation depend on mode
+	--mode bin         # dumps the raw file
+	-i 53.10-53.20     # some modes use tuples as id, both tuple interpretation and range interpolation depend on mode
 ```
 The are more tools in src/scripts, most are used for testing, they are also in various degrees of completeness.
 
@@ -57,8 +57,12 @@ Jagex is generally aware of the existence of cache decoding tools like this one 
 
 
 ## Todo
-* Add back the electron distribution packager
-* Test in mac/linux
+* Rewrite RT5 anims (again) in order to convert shear anims to multiple bones
+* Figure out the rest of RT7 anims
+* Particles and billboards (both RT and RT7)
+* Color animations
+* DAE exporter? (thres.js one doesn't work out of the box)
+* properly implement caching, currrently doesn't clear texture/model cache
 
 ## Credits
 Modern rewrite by Skillbert

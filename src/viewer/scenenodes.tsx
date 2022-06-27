@@ -1213,7 +1213,7 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 	)
 }
 
-export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
+export function RendererControls(p: { ctx: UIContext }) {
 	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
 	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
 
@@ -1248,7 +1248,7 @@ export function RendererControls(p: { ctx: UIContext, visible: boolean }) {
 		setshowsettings(!showsettings);
 	}, [showsettings]);
 
-	return (p.visible || null) && (
+	return (
 		<React.Fragment>
 			<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
 				<input type="button" className={classNames("sub-btn", { "active": showexport })} onClick={e => setshowexport(!showexport)} value="Export" />

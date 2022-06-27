@@ -1,5 +1,3 @@
-
-import { write } from "fs";
 import type * as jsonschema from "json-schema";
 
 type PrimitiveInt = {

@@ -354,10 +354,18 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, sta
 	sceneCache: ThreejsSceneCache | null;
 	renderer: ThreeJsRenderer | null;
 	rootElement: HTMLElement;
+	useServiceWorker: boolean;
 
-	constructor(rootelement: HTMLElement) {
+	constructor(rootelement: HTMLElement, useServiceWorker: boolean) {
 		super();
 		this.rootElement = rootelement;
+		this.useServiceWorker = useServiceWorker;
+
+		if (useServiceWorker) {
+			//this service worker holds a reference to the cache fs handle which will keep the handles valid 
+			//across tab reloads
+			navigator.serviceWorker.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
+		}
 	}
 
 	setCacheSource(source: CacheFileSource | null) {
