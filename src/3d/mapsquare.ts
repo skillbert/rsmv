@@ -166,6 +166,8 @@ type FloorMorph = {
 	scale: THREE.Vector3,
 	placementMode: "simple" | "followfloor" | "followfloorceiling"
 	scaleModelHeightOffset: number,
+	originx: number,
+	originz: number,
 	level: number
 }
 
@@ -531,8 +533,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 
 	let gridoffsetx = rootx;
 	let gridoffsetz = rootz;
-	let origin = new Vector3().applyMatrix4(matrix);
-	let centery = getTileHeight(grid, (origin.x + gridoffsetx) / tiledimensions, (origin.z + gridoffsetz) / tiledimensions, morph.level);
+	let centery = getTileHeight(grid, (morph.originx) / tiledimensions, (morph.originz) / tiledimensions, morph.level);
 
 	let pos = mesh.attributes.pos;
 	if (mesh.attributes.pos.itemSize != 3) {
@@ -836,7 +837,8 @@ export class TileGrid implements TileGridSource {
 				for (let level = 0; level < squareLevels; level++) {
 					let tile = tiles[tileindex];
 					if (tile.height != undefined) {
-						height += tile.height;
+						//not sure what the 1=0 thing is about, but seems correct for trees
+						height += (tile.height == 1 ? 0 : tile.height);
 					} else {
 						//TODO this is a guess that sort of fits
 						height += 30;
@@ -1243,7 +1245,9 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 				level: loc.plane,
 				placementMode: "followfloor",
 				translate, rotation, scale,
-				scaleModelHeightOffset: 0
+				scaleModelHeightOffset: 0,
+				originx: translate.x,
+				originz: translate.z
 			},
 			miny: model.miny,
 			maxy: model.maxy,
@@ -1289,7 +1293,9 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 				rotation: new THREE.Quaternion(),
 				scale: new THREE.Vector3(1, 1, 1),
 				translate: translate,
-				scaleModelHeightOffset: 0
+				scaleModelHeightOffset: 0,
+				originx: translate.x,
+				originz: translate.z
 			},
 			miny: 0,
 			maxy: 0,
@@ -1366,11 +1372,9 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 		}
 		let modelmods = model.modelmods;
 
-		let translate = new THREE.Vector3(
-			(inst.x + inst.sizex / 2) * tiledimensions,//- rootx,
-			0,//modely,
-			(inst.z + inst.sizez / 2) * tiledimensions// - rootz
-		).add(model.translate);
+		let originx = (inst.x + inst.sizex / 2) * tiledimensions;
+		let originz = (inst.z + inst.sizez / 2) * tiledimensions
+		let translate = new THREE.Vector3(originx, 0, originz).add(model.translate);
 
 		let scale = new THREE.Vector3().copy(model.scale);
 		let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, inst.rotation / 2 * Math.PI);
@@ -1410,7 +1414,8 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 			translate, rotation, scale,
 			level: inst.plane,
 			placementMode: (linkabove ? "followfloorceiling" : followfloor ? "followfloor" : "simple"),
-			scaleModelHeightOffset: objectmeta.probably_morphCeilingOffset ?? 0
+			scaleModelHeightOffset: objectmeta.probably_morphCeilingOffset ?? 0,
+			originx, originz
 		};
 
 		let extras: ModelExtrasLocation = {
