@@ -345,11 +345,13 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	async takeCanvasPicture(width = this.canvas.width, height = this.canvas.height) {
 		let rendertarget: THREE.WebGLRenderTarget | null = null;
 		if (width != this.canvas.width || height != this.canvas.height) {
+			let gl = this.renderer.getContext();
 			rendertarget = new THREE.WebGLRenderTarget(width, height, {
 				minFilter: THREE.LinearFilter,
 				magFilter: THREE.LinearFilter,
 				format: THREE.RGBAFormat,
-				encoding: (this.camMode != "vr360" ? this.renderer.outputEncoding : THREE.LinearEncoding)
+				encoding: (this.camMode != "vr360" ? this.renderer.outputEncoding : THREE.LinearEncoding),
+				samples: gl.getParameter(gl.SAMPLES)
 			});
 			// (rendertarget as any).isXRRenderTarget = true;
 		}
