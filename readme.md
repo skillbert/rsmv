@@ -1,10 +1,9 @@
 # RuneScape Model Viewer (.js)
-A RuneScape cache downloader, decoder and model viewer implemented in javascript. The tool will download the cache directly from the game servers and decode parts of into usable data and models. 
+A RuneScape cache downloader, decoder and model viewer implemented in TypeScript. The tool will download the cache directly from the game servers and decode parts of into usable data and models. 
 
 ## Installation
 A new-ish version of node.js is needed with native build tools installed (the node.js installer will ask about this).
 After that run the following commands in your systems console.
-
 
 ```sh
 #install the dependencies
@@ -53,22 +52,21 @@ node dist/cli extract
 The are more tools in src/scripts, most are used for testing, they are also in various degrees of completeness.
 
 ## Jagex copyrights
-Jagex is generally aware of the existence of cache decoding tools like this one and they are extensively used for the runescape wiki. However, in the interest of the games integrity and the future of these tools please do no publicly share leaks or unreleased content found using this tool.
-
+Jagex is generally aware of the existence of cache decoding tools like this one and they are extensively used for the runescape wiki. However, in the interest of the games integrity and the future of these tools please do not publicly share leaks or unreleased content found using this tool.
 
 ## Todo
 * Rewrite RT5 anims (again) in order to convert shear anims to multiple bones
 * Figure out the rest of RT7 anims
 * Particles and billboards (both RT and RT7)
 * Color animations
-* DAE exporter? (thres.js one doesn't work out of the box)
+* DAE exporter? (three.js one doesn't work out of the box)
 * properly implement caching, currrently doesn't clear texture/model cache
 
 ## Credits
 Modern rewrite by Skillbert
 
-Based on downloader/3d viewer by Sahima, ui by Manpaint
+Based on downloader/3d viewer by Sahima, ui by [manpaint](https://github.com/manpaint)
 
-2d map based on code by Mej
+2d map based on code by [mejrs](https://github.com/mejrs)
 
-Cache loader based on code by Villerman
+Cache loader based on code by [villermen](https://github.com/villermen)
