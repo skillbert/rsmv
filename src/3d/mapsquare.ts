@@ -543,7 +543,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 	//let ceiling = typeof morph.tiletransform?.scaleModelHeight != "undefined";
 	let followfloor = morph.placementMode == "followfloor" || morph.placementMode == "followfloorceiling";
 	let followceiling = morph.placementMode == "followfloorceiling";
-	let yscale = (followceiling && modelheight > 0 ? 1 / (modelheight + morph.scaleModelHeightOffset) : 1);
+	let yscale = (followceiling && modelheight > 0 ? 1 / modelheight : 1);
 
 	//TODO get this as argument instead
 	//needs to be cast to float since int16 overflows
@@ -561,7 +561,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 			if (followceiling) {
 				let wceiling = vertexy * yscale;
 				let floory = getTileHeight(grid, gridx, gridz, morph.level);
-				let ceily = getTileHeight(grid, gridx, gridz, morph.level + 1);
+				let ceily = getTileHeight(grid, gridx, gridz, morph.level + 1) - morph.scaleModelHeightOffset;
 				vector.y += -vertexy + ceily * wceiling + floory * (1 - wceiling);
 			} else {
 				vector.y += getTileHeight(grid, gridx, gridz, morph.level);
