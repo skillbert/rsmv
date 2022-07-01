@@ -235,8 +235,17 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 
 	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parseFrames.read(q.buffer)]));
 
+	//three.js doesn't interpolate from end frame to start, so insert the start frame at the end
+	const insertLoopFrame = true;
+
+	//calculate frame times
+	let endtime = 0;
+	let keyframetimes = new Float32Array(sequenceframes.length + (insertLoopFrame ? 1 : 0));
 	let orderedframes: frames[] = [];
-	for (let seqframe of sequenceframes) {
+	for (let i = 0; i < sequenceframes.length; i++) {
+		let seqframe = sequenceframes[i];
+		keyframetimes[i] = endtime;
+		endtime += sequenceframes[i].framelength * 0.020;
 		if (frames[seqframe.frameidlow]) {
 			orderedframes.push(frames[seqframe.frameidlow]);
 		} else {
@@ -244,18 +253,16 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		}
 	}
 
+	if (insertLoopFrame) {
+		orderedframes.push(orderedframes[0]);
+		keyframetimes[keyframetimes.length - 1] = endtime;
+	}
+
 	let framebase = parseFramemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id));
 
 	// let { bones } = buildFramebaseSkeleton(framebase);
 	let clips = getFrameClips(framebase, orderedframes);
 
-	//calculate frame times
-	let endtime = 0;
-	let keyframetimes = new Float32Array(sequenceframes.length);
-	for (let i = 0; i < sequenceframes.length; i++) {
-		keyframetimes[i] = endtime;
-		endtime += sequenceframes[i].framelength * 0.020;
-	}
 
 	return (model: ModelData) => {
 		let centers = getBoneCenters(model);
@@ -304,7 +311,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		if (skippedbones != 0) {
 			console.log("skipped " + skippedbones + " bone animations since the model didn't have them");
 		}
-		let clip = new AnimationClip("anim", undefined, tracks);;
+		let clip = new AnimationClip("anim", undefined, tracks);
 		return clip;
 	}
 }
