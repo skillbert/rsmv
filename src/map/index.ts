@@ -14,6 +14,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { RSMapChunk } from "../viewer/scenenodes";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
+import { delay } from "../utils";
 
 const electron = (() => {
 	try {
@@ -53,7 +54,11 @@ let cmd = cmdts.command({
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput("");
-		await runMapRender(output, await args.source(), args.mapname, args.endpoint, args.auth);
+		//for some reason electron crashes if you pass it any argument with a `:` in it, so pass urls without scheme instead
+		let endpoint = args.endpoint;
+		if (endpoint.startsWith("localhost")) { endpoint = "http://" + endpoint; }
+		else { endpoint = "https://" + endpoint; }
+		await runMapRender(output, await args.source(), args.mapname, endpoint, args.auth);
 	}
 });
 
@@ -328,7 +333,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	output.log("done");
 }
 
-type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number, used: boolean };
+type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number };
 
 export class MapRenderer {
 	renderer: ThreeJsRenderer;
@@ -358,31 +363,32 @@ export class MapRenderer {
 		});
 	}
 
-	getChunk(x: number, z: number) {
+	private getChunk(x: number, z: number) {
 		let existing = this.squares.find(q => q.x == x && q.z == z);
 		if (existing) {
 			return existing;
 		} else {
 			let id = this.idcounter++;
-			if (!this.scenecache || (id % 16 == 0)) {
+			// if (!this.scenecache || (id % 16 == 0)) {
+			if (!this.scenecache) {
+				console.log("refreshing scenecache");
 				this.scenecache = new ThreejsSceneCache(this.engine);
 			}
 			let square: MaprenderSquare = {
 				x: x,
 				z: z,
 				chunk: new RSMapChunk({ x, z, xsize: 1, zsize: 1 }, this.scenecache, this.opts),
-				id,
-				used: false
+				id
 			}
-			this.squares.push(square)
+			this.squares.push(square);
 			return square;
 		}
 	}
 
-	async setArea(x: number, z: number, width: number, length: number) {
+	async setArea(x: number, z: number, xsize: number, zsize: number) {
 		let load: MaprenderSquare[] = [];
-		for (let dz = 0; dz < length; dz++) {
-			for (let dx = 0; dx < width; dx++) {
+		for (let dz = 0; dz < zsize; dz++) {
+			for (let dx = 0; dx < xsize; dx++) {
 				load.push(this.getChunk(x + dx, z + dz))
 			}
 		}
@@ -440,7 +446,7 @@ function disposeThreeTree(node: THREE.Object3D | null) {
 }
 
 export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRenderer, engine: EngineCache, deps: DependencyGraph, rects: MapRect[], config: MapRender, progress: ProgressUI) {
-	let maprender = getRenderer();
+	let maprender: MapRenderer | null = null;
 
 	let errs: Error[] = [];
 	const zscan = 4;
@@ -473,6 +479,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		if (output.state != "running") { break; }
 		for (let retry = 0; retry <= maxretries; retry++) {
 			try {
+				maprender ??= getRenderer();
 				await renderMapsquare(engine, config, maprender, deps, mipper, progress, chunk.x, chunk.z);
 				completed++;
 
@@ -481,9 +488,14 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 				}
 				break;
 			} catch (e) {
-				maprender = getRenderer();
-				console.warn(e);
-				errs.push(e);
+				console.warn(e.toString());
+				errs.push(e.toString());
+				maprender = null;
+				e = null;//e references the complete stack
+				//new stack frame
+				await delay(1);
+				//force garbage collection if exposed in nodejs/electron flags
+				globalThis.gc?.();
 			}
 		}
 	}
@@ -492,9 +504,6 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 }
 
 type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: ({ name: string, hash: number } | null)[] };
-
-//TODO remove
-let didmip = new Set<string>();
 
 class MipScheduler {
 	render: MapRender;
@@ -569,10 +578,6 @@ class MipScheduler {
 					file: out,
 					hash: crc,
 					run: async () => {
-						if (didmip.has(out)) {
-							debugger;
-						}
-						didmip.add(out);
 						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9);
 						await this.render.saveFile(out, crc, buf);
 					},
@@ -741,8 +746,8 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				file: filename,
 				hash: depcrc,
 				async run() {
-					let chunk = renderer.getChunk(x, z);
-					let { grid } = await chunk.chunk.model;
+					let chunks = await renderer.setArea(x, z, 1, 1);
+					let { grid } = await chunks[0].chunk.model;
 					let file = grid.getHeightFile(x * 64, z * 64, thiscnf.level, 64, 64);
 					return { file: () => Promise.resolve(Buffer.from(file)) };
 				}
