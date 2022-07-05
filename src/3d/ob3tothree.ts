@@ -94,12 +94,15 @@ export class EngineCache {
 			this.materialArchive.set(file.fileid, file.buffer);
 		}
 
-		this.mapUnderlays = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
-			.map(q => parseMapsquareUnderlays.read(q.buffer));
-		this.mapOverlays = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
-			.map(q => parseMapsquareOverlays.read(q.buffer));
-		this.mapMapscenes = (await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
-			.map(q => parseMapscenes.read(q.buffer));
+		this.mapUnderlays = [];
+		(await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
+			.forEach(q => this.mapUnderlays[q.fileid] = parseMapsquareUnderlays.read(q.buffer));
+		this.mapOverlays = [];
+		(await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
+			.forEach(q => this.mapOverlays[q.fileid] = parseMapsquareOverlays.read(q.buffer));
+		this.mapMapscenes = [];
+		(await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
+			.forEach(q => this.mapMapscenes[q.fileid] = parseMapscenes.read(q.buffer));
 
 		return this;
 	}
