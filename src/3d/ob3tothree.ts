@@ -181,9 +181,9 @@ export async function detectTextureMode(source: CacheFileSource) {
 }
 
 export class ThreejsSceneCache {
-	modelCache = new Map<number, WeakRef<Promise<ModelData>>>();
-	threejsTextureCache = new Map<number, WeakRef<Promise<ParsedTexture>>>();
-	threejsMaterialCache = new Map<number, WeakRef<Promise<THREE.Material>>>();
+	modelCache = new Map<number, Promise<ModelData>>();
+	threejsTextureCache = new Map<number, Promise<ParsedTexture>>();
+	threejsMaterialCache = new Map<number, Promise<THREE.Material>>();
 	source: CacheFileSource;
 	cache: EngineCache;
 	textureType: "png" | "dds" | "bmp" = "dds";//png support currently incomplete (and seemingly unused by jagex)
@@ -207,7 +207,7 @@ export class ThreejsSceneCache {
 	}
 
 	getTextureFile(texid: number, stripAlpha: boolean) {
-		let texprom = this.threejsTextureCache.get(texid)?.deref();
+		let texprom = this.threejsTextureCache.get(texid);
 		if (!texprom) {
 			texprom = (async () => {
 				let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
@@ -215,16 +215,16 @@ export class ThreejsSceneCache {
 				return parsed;
 			})();
 
-			this.threejsTextureCache.set(texid, new WeakRef(texprom));
+			this.threejsTextureCache.set(texid, texprom);
 		}
 		return texprom;
 	}
 
 	getModelData(id: number) {
-		let model = this.modelCache.get(id)?.deref();
+		let model = this.modelCache.get(id);
 		if (!model) {
 			model = this.source.getFileById(cacheMajors.models, id).then(f => parseOb3Model(f));
-			this.modelCache.set(id, new WeakRef(model));
+			this.modelCache.set(id, model);
 		}
 		return model;
 	}
@@ -232,7 +232,7 @@ export class ThreejsSceneCache {
 	getMaterial(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
 		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
-		let cached = this.threejsMaterialCache.get(matcacheid)?.deref();
+		let cached = this.threejsMaterialCache.get(matcacheid);
 		if (!cached) {
 			cached = (async () => {
 				let material = this.cache.getMaterialData(matid);
@@ -327,7 +327,7 @@ export class ThreejsSceneCache {
 				}
 				return mat;
 			})();
-			this.threejsMaterialCache.set(matcacheid, new WeakRef(cached));
+			this.threejsMaterialCache.set(matcacheid, cached);
 		}
 		return cached;
 	}
