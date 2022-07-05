@@ -16,6 +16,7 @@ import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, drawTexture, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
+import { Downloader } from "../cache/downloader";
 
 const electron = (() => {
 	try {
@@ -40,6 +41,8 @@ export type SavedCacheSource = {
 } | {
 	type: "sqlitenodejs",
 	location: string
+} | {
+	type: "live"
 });
 
 export async function downloadBlob(name: string, blob: Blob) {
@@ -235,6 +238,11 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	}
 
 	@boundMethod
+	async clickOpenLive() {
+		this.props.onOpen({ type: "live" });
+	}
+
+	@boundMethod
 	async clickReopen() {
 		if (!this.state.lastFolderOpen) { return; }
 		if (await this.state.lastFolderOpen.requestPermission() == "granted") {
@@ -296,7 +304,14 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 					<React.Fragment>
 						<h2>Native local RS3 cache</h2>
 						<p>Only works when running in electron</p>
-						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cace" />
+						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cache" />
+					</React.Fragment>
+				)}
+				{electron && (
+					<React.Fragment>
+						<h2>Jagex Servers</h2>
+						<p>Download directly from content servers. Only works when running in electron</p>
+						<input type="button" className="sub-btn" onClick={this.clickOpenLive} value="Stream from Jagex" />
 					</React.Fragment>
 				)}
 				<h2>Local Cache</h2>
@@ -425,6 +440,9 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	}
 	if (electron && source.type == "sqlitenodejs") {
 		cache = new GameCacheLoader(source.location);
+	}
+	if (source.type == "live") {
+		cache = new Downloader();
 	}
 	if (remember) {
 		datastore.set("openedcache", source);
