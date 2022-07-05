@@ -16,10 +16,13 @@ import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/depend
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay } from "../utils";
 
+// @ts-ignore type import also fails when targeting web
+import type * as electronType from "electron/renderer";
+
 const electron = (() => {
 	try {
 		if (typeof __non_webpack_require__ != "undefined") {
-			return __non_webpack_require__("electron/renderer") as typeof import("electron/renderer");
+			return __non_webpack_require__("electron/renderer") as typeof electronType;
 		}
 	} catch (e) { }
 	return null;

@@ -10,7 +10,6 @@ import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStr
 import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 
-import type { OpenDialogReturnValue } from "electron/renderer";
 import { UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
@@ -18,10 +17,13 @@ import { delay, drawTexture, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
 import { Downloader } from "../cache/downloader";
 
+// @ts-ignore type import also fails when targeting web
+import type * as electronType from "electron/renderer";
+
 const electron = (() => {
 	try {
 		if (typeof __non_webpack_require__ != "undefined") {
-			return __non_webpack_require__("electron/renderer") as typeof import("electron/renderer");
+			return __non_webpack_require__("electron/renderer") as typeof electronType;
 		}
 	} catch (e) { }
 	return null;
@@ -231,7 +233,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	@boundMethod
 	async clickOpenNative() {
 		if (!electron) { return; }
-		let dir: OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", "%programdata%/jagex/runescape/");
+		let dir: electronType.OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", "%programdata%/jagex/runescape/");
 		if (!dir.canceled) {
 			this.props.onOpen({ type: "sqlitenodejs", location: dir.filePaths[0] });
 		}
