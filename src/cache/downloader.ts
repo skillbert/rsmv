@@ -4,6 +4,7 @@ import { decompress } from "./compression";
 import * as fs from "fs";
 import * as net from "net";
 import fetch from "node-fetch";
+import { cacheMajors } from "../constants";
 
 type ClientConfig = {
 	[id: string]: string | {}
@@ -112,7 +113,7 @@ export class Downloader extends CacheFileSource {
 	}
 
 
-	indexMap = new Map<number, CacheIndexFile>();
+	indexMap = new Map<number, Promise<CacheIndexFile>>();
 
 	async getFile(major: number, minor: number, crc?: number) {
 		return decompress(await this.downloadFile(major, minor, (major == 255 && minor == 255 ? undefined : crc)));
@@ -120,18 +121,22 @@ export class Downloader extends CacheFileSource {
 	async getFileArchive(meta: CacheIndex) {
 		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindices);
 	}
-	async getIndexFile(major: number) {
-		if (!this.indexMap.get(major)) {
-			let crc: number | undefined = undefined;
-			if (major != 255) {
-				let index = await this.getIndexFile(255);
-				crc = index[major].crc;
-			}
-			let indexfile = await this.getFile(255, major, crc);
-			let decoded = indexBufferToObject(major, indexfile);
-			this.indexMap.set(major, decoded);
+	getIndexFile(major: number) {
+		let index = this.indexMap.get(major);
+		if (!index) {
+			index = (async () => {
+				let crc: number | undefined = undefined;
+				if (major != cacheMajors.index) {
+					let index = await this.getIndexFile(cacheMajors.index);
+					crc = index[major].crc;
+				}
+				let indexfile = await this.getFile(255, major, crc);
+				let decoded = indexBufferToObject(major, indexfile);
+				return decoded;
+			})();
+			this.indexMap.set(major, index);
 		}
-		return this.indexMap.get(major)!;
+		return index;
 	}
 
 	close() {
