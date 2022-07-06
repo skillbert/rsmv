@@ -180,8 +180,19 @@ export function VR360View(p: { img: string | ImageData | TexImageSource }) {
 
 	React.useEffect(() => () => viewer.current?.free(), []);
 
+	let wrapper = React.useRef<HTMLElement | null>(null);
+	let ref = (el: HTMLElement | null) => {
+		viewer.current?.cnv && el && el.appendChild(viewer.current?.cnv);
+		wrapper.current = el;
+	}
+
 	return (
-		<DomWrap el={viewer.current.cnv} style={{ position: "relative" }} />
+		<React.Fragment>
+			<div>
+				<input type="button" className="sub-btn" value="Fullscreen" onClick={() => wrapper.current?.requestFullscreen()} />
+			</div>
+			<div ref={ref} style={{ position: "relative", paddingBottom: "60%" }} />
+		</React.Fragment>
 	)
 }
 
@@ -189,7 +200,7 @@ export function DomWrap(p: { el: HTMLElement | null | undefined, style?: React.C
 	let ref = (el: HTMLElement | null) => {
 		p.el && el && el.appendChild(p.el);
 	}
-	return <div ref={ref} style={p.style}></div >
+	return <div ref={ref} style={p.style}></div>;
 }
 
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {

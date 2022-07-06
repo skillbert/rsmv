@@ -42,11 +42,13 @@ export class VR360Render {
 
 	constructor(parent: WebGLRenderer, size: number, near: number, far: number) {
 		this.size = size;
+		let gl = parent.getContext();
 		this.cubeRenderTarget = new WebGLCubeRenderTarget(size, {
 			minFilter: LinearFilter,
 			magFilter: LinearFilter,
 			format: RGBAFormat,
-			encoding: parent.outputEncoding
+			encoding: parent.outputEncoding,
+			samples: gl.getParameter(gl.SAMPLES)
 		});
 		//threejs always renders non-default render targets in linear, however they programmed in a 
 		//special case for webxr render targets to still render in srgb
