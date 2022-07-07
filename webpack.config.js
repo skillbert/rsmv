@@ -51,8 +51,9 @@ module.exports = {
 	externalsType: "commonjs",
 	output: {
 		libraryTarget: "commonjs",
-		filename: '[name].js',
-		path: path.resolve(__dirname, 'dist'),
+		filename: "[name].js",
+		chunkFilename: "[contenthash].js",
+		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [
 		new CopyWebpackPlugin({
