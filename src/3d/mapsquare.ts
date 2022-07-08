@@ -30,7 +30,7 @@ export const worldStride = 128;
 const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 const wallmodels = generateWallModels();
 
-const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255] };
+const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
 
 export type MapRect = {
 	x: number,
@@ -74,7 +74,8 @@ type TileShape = {
 
 export type TileVertex = {
 	material: number,
-	color: number[]
+	color: number[],
+	usesColor: boolean
 }
 
 export type ChunkData = {
@@ -853,11 +854,11 @@ export class TileGrid implements TileGridSource {
 						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
 							visible = true;
 						}
-						underlayprop = { material: underlay.material ?? -1, color: underlay.color ?? [255, 0, 255] };
+						underlayprop = { material: underlay.material ?? -1, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
 					}
 					let overlay = (tile.overlay != undefined ? this.engine.mapOverlays[tile.overlay - 1] : undefined);
 					if (overlay) {
-						overlayprop = { material: overlay.material ?? -1, color: overlay.primary_colour ?? [255, 0, 255] };
+						overlayprop = { material: overlay.material ?? -1, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
@@ -930,7 +931,7 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 			let mapunderlaymeta = await scene.source.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
 			if (!selfindex) {
-				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
+				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
 				continue;
 			}
 			let selfarchive = (await scene.source.getFileArchive(selfindex));
@@ -938,7 +939,7 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 			let tileindexwater = selfindex.subindices.indexOf(cacheMapFiles.squaresWater);
 
 			if (tileindex == -1) {
-				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
+				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
 				continue;
 			}
 			let tilefile = selfarchive[tileindex].buffer;
@@ -1925,13 +1926,11 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		for (let i = 0; i < polyprops.length; i++) {
 			const subprop = polyprops[i];
 			let texdata: SimpleTexturePackerAlloc | undefined = undefined;
-			let usescolor = true;
 			if (subprop && subprop.material != -1) {
 				let mat = grid.engine.getMaterialData(subprop.material);
 				if (mat.textures.diffuse) {
 					texdata = atlas.map.get(mat.textures.diffuse)!;
 				}
-				usescolor = mat.vertexColors;
 			}
 			if (!texdata) {
 				//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
@@ -1947,7 +1946,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + subx) / gridsize) * maxuv;
 			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + subz) / gridsize) * maxuv;
 			texweightbuffer[texweightpointer + i] = (i == currentmat ? 255 : 0);
-			texusescolorbuffer[texusescolorpointer + i] = (usescolor ? 255 : 0);
+			texusescolorbuffer[texusescolorpointer + i] = (subprop.usesColor ? 255 : 0);
 		}
 
 		return vertexindex++;
@@ -2009,7 +2008,11 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 								return defaultVertexProp;
 							});
 						} else {
-							props = Array(shape.overlay.length).fill({ color, material: 0 } as TileVertex);
+							props = Array(shape.overlay.length).fill({
+								color,
+								material: 0,
+								usesColor: true
+							} as TileVertex);
 						}
 						for (let i = 2; i < shape.overlay.length; i++) {
 							let v0 = shape.overlay[0];
@@ -2045,7 +2048,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 							return defaultVertexProp;
 						});
 					} else {
-						props = Array(shape.underlay.length).fill({ color: tile.underlayprops.color, material: 0 } as TileVertex);
+						props = Array(shape.underlay.length).fill({ color: tile.underlayprops.color, material: 0, usesColor: true } as TileVertex);
 					}
 					for (let i = 2; i < shape.underlay.length; i++) {
 						let v0 = shape.underlay[0];
