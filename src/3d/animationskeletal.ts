@@ -132,7 +132,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		// if (boneid >= 6 && boneid <= 8) { continue; }
 		let bonename = "bone_" + boneid;
 
-		let defaultvalue = (tracktype.t == "scale" ? 1 : 9);
+		let defaultvalue = (tracktype.t == "scale" ? 1 : 0);
 		let intp = (v: { time: number, value: number[] }[] | null, i: number, t: number) => {
 			let v1 = v?.[i]?.value[0] ?? defaultvalue;
 			let v2 = v?.[i + 1]?.value[0] ?? defaultvalue;
