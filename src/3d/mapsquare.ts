@@ -143,7 +143,10 @@ export type TileProps = {
 	y10: number,
 	y01: number,
 	y11: number,
-	playery: number,
+	playery00: number,
+	playery01: number,
+	playery10: number,
+	playery11: number,
 	shape: TileShape,
 	visible: boolean,
 	normalX: number,
@@ -681,7 +684,8 @@ export class TileGrid implements TileGridSource {
 				let tile = this.getTile(x + dx, z + dz, level);
 				if (tile) {
 					let index = dx + dz * xsize;
-					file[index] = tile.playery / 16;
+					let y = (tile.playery00 + tile.playery01 + tile.playery10 + tile.playery11) / 4;
+					file[index] = y / 16;
 				}
 			}
 		}
@@ -741,7 +745,11 @@ export class TileGrid implements TileGridSource {
 					currenttile.y01 = xnext?.y ?? currenttile.y;
 					currenttile.y10 = znext?.y ?? currenttile.y;
 					currenttile.y11 = xznext?.y ?? currenttile.y;
-					currenttile.playery = (currenttile.y + currenttile.y01 + currenttile.y10 + currenttile.y11) / 4;
+					//need 4 separate player y's since the y can be non-continuous because of tile flag-2
+					currenttile.playery00 = currenttile.y;
+					currenttile.playery01 = xnext?.y ?? currenttile.y01;
+					currenttile.playery10 = znext?.y ?? currenttile.y10;
+					currenttile.playery11 = xznext?.y ?? currenttile.y11;
 
 					currenttile.next01 = xnext;
 					currenttile.next10 = znext;
@@ -764,7 +772,10 @@ export class TileGrid implements TileGridSource {
 							effectiveVisualLevel = effectiveTile.effectiveVisualLevel;
 						}
 						effectiveTile.effectiveCollision = currenttile.rawCollision;
-						effectiveTile.playery = currenttile.playery;
+						effectiveTile.playery00 = currenttile.playery00;
+						effectiveTile.playery01 = currenttile.playery01;
+						effectiveTile.playery10 = currenttile.playery10;
+						effectiveTile.playery11 = currenttile.playery11;
 					}
 					currenttile.effectiveLevel = (alwaysshow ? 0 : effectiveLevel);
 					currenttile.effectiveVisualLevel = Math.max(currenttile.effectiveVisualLevel, effectiveVisualLevel);
@@ -889,7 +900,7 @@ export class TileGrid implements TileGridSource {
 						y: y,
 						z: tilez,
 						y01: y, y10: y, y11: y,
-						playery: y,
+						playery00: y, playery01: y, playery10: y, playery11: y,
 						shape,
 						visible,
 						normalX: 0, normalZ: 0,
@@ -1055,6 +1066,8 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 	for (let level = 0; level < squareLevels; level++) {
 		let boxes = mapsquareCollisionToThree(chunk, level);
 		if (boxes) { node.add(boxes); }
+		let rawboxes = mapsquareCollisionToThree(chunk, level, true);
+		if (rawboxes) { node.add(rawboxes); }
 	}
 	return node;
 }
@@ -1600,6 +1613,9 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, inst.plane);
 						if (tile) {
 							let col = tile.rawCollision!;
+							if (objectmeta.maybe_blocks_movement) {
+								col.walk = true;
+							}
 							if (inst.type == 0) {
 								col.walkwalls[inst.rotation] = true;
 								if (!objectmeta.maybe_allows_lineofsight) {
@@ -1627,7 +1643,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 	return locs;
 }
 
-function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number) {
+function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number, rawmode = false) {
 	const maxtriangles = squareSize * squareSize * 5 * 6 * 2;
 	let posoffset = 0;
 	let coloroffset = 12;
@@ -1647,8 +1663,12 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 	let writevertex = (tile: TileProps, dx: number, dy: number, dz: number, color: number[]) => {
 		const pospointer = vertexindex * posstride + posoffset;
 		const colorpointer = vertexindex * colorstride + coloroffset;
+		const y00 = (rawmode ? tile.y : tile.playery00) * (1 - dx) * (1 - dz);
+		const y01 = (rawmode ? tile.y01 : tile.playery01) * dx * (1 - dz);
+		const y10 = (rawmode ? tile.y10 : tile.playery10) * (1 - dx) * dz;
+		const y11 = (rawmode ? tile.y11 : tile.playery11) * dx * dz;
 		posbuffer[pospointer + 0] = tile.x + dx * tiledimensions - rootx;
-		posbuffer[pospointer + 1] = tile.y * (1 - dx) * (1 - dz) + tile.y01 * dx * (1 - dz) + tile.y10 * (1 - dx) * dz + tile.y11 * dx * dz + dy * tiledimensions;
+		posbuffer[pospointer + 1] = y00 + y01 + y10 + y11 + dy * tiledimensions;
 		posbuffer[pospointer + 2] = tile.z + dz * tiledimensions - rootz;
 
 		colorbuffer[colorpointer + 0] = color[0];
@@ -1689,22 +1709,23 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 	for (let z = chunk.zoffset; z < chunk.zoffset + squareSize; z++) {
 		for (let x = chunk.xoffset; x < chunk.xoffset + squareSize; x++) {
 			let tile = grid.getTile(x, z, level);
-			if (tile?.rawCollision) {
-				if (tile.rawCollision.walk) {
-					let height = (tile.rawCollision.sight ? 1.8 : 0.3);
+			let collision = (rawmode ? tile?.rawCollision : tile?.effectiveCollision);
+			if (tile && collision) {
+				if (collision.walk) {
+					let height = (collision.sight ? 1.8 : 0.3);
 					writebox(tile, 0.05, 0, 0.05, 0.9, height, 0.9, [100, 50, 50, 255]);
 				}
-				if (tile.rawCollision.settings & (2 | 4 | 8 | 16)) {
+				if (rawmode && collision.settings & (2 | 4 | 8 | 16)) {
 					let r = 0, g = 0, b = 0;
-					if (tile.rawCollision.settings & 2) { r += 0; g += 127; b += 127; }
-					if (tile.rawCollision.settings & 4) { r += 0; g += 127; b += 0; }
-					if (tile.rawCollision.settings & 8) { r += 127; g += 0; b += 0; }
-					if (tile.rawCollision.settings & ~(1 | 2 | 4 | 8)) { r += 0; g += 0; b += 127; }
+					if (collision.settings & 2) { r += 0; g += 127; b += 127; }
+					if (collision.settings & 4) { r += 0; g += 127; b += 0; }
+					if (collision.settings & 8) { r += 127; g += 0; b += 0; }
+					if (collision.settings & ~(1 | 2 | 4 | 8)) { r += 0; g += 0; b += 127; }
 					writebox(tile, -0.05, -0.05, 0, 1.1, 0.25, 1.1, [r, g, b, 255]);
 				}
 				for (let dir = 0; dir < 4; dir++) {
-					if (tile.rawCollision.walkwalls[dir]) {
-						let height = (tile.rawCollision.sightwalls[dir] ? 2 : 0.5);
+					if (collision.walkwalls[dir]) {
+						let height = (collision.sightwalls[dir] ? 2 : 0.5);
 						let col = [255, 60, 60, 255];
 						if (dir == 0) { writebox(tile, 0, 0, 0, 0.15, height, 1, col); }
 						if (dir == 1) { writebox(tile, 0, 0, 0.85, 1, height, 0.15, col); }
@@ -1719,7 +1740,7 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 	let extra: ModelExtras = {
 		modeltype: "overlay",
 		isclickable: false,
-		modelgroup: "collision" + level,
+		modelgroup: (rawmode ? "collision-raw" : "collision") + level,
 		level
 	}
 
@@ -1735,8 +1756,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number)
 	}
 }
 
-function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number) {
-	let { color, indices, pos, coloroffset, colorstride, posoffset, posstride, extra } = mapsquareCollisionMesh(modeldata.grid, modeldata.chunk, level);
+function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number, rawmode = false) {
+	let { color, indices, pos, coloroffset, colorstride, posoffset, posstride, extra } = mapsquareCollisionMesh(modeldata.grid, modeldata.chunk, level, rawmode);
 
 	if (indices.length == 0) { return undefined; }
 	let geo = new THREE.BufferGeometry();
