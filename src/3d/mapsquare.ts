@@ -53,11 +53,9 @@ export function mapRectContains(rect: MapRect, x: number, z: number) {
 
 type CollisionData = {
 	settings: number,
-	walk: boolean,
-	sight: boolean,
-	//left,bot,right,top,center
-	walkwalls: boolean[],
-	sightwalls: boolean[],
+	//center,left,bot,right,top,topleft,botleft,botright,topright
+	walk: boolean[],
+	sight: boolean[],
 }
 
 type FloorvertexInfo = {
@@ -677,15 +675,22 @@ export class TileGrid implements TileGridSource {
 		this.tiles = [];
 	}
 
-	getHeightFile(x: number, z: number, level: number, xsize: number, zsize: number) {
+	getHeightCollisionFile(x: number, z: number, level: number, xsize: number, zsize: number) {
 		let file = new Uint16Array(xsize * zsize);
 		for (let dz = 0; dz < zsize; dz++) {
 			for (let dx = 0; dx < xsize; dx++) {
 				let tile = this.getTile(x + dx, z + dz, level);
 				if (tile) {
-					let index = dx + dz * xsize;
+					let index = (dx + dz * xsize) * 2;
 					let y = (tile.playery00 + tile.playery01 + tile.playery10 + tile.playery11) / 4;
-					file[index] = y / 16;
+					file[index + 0] = y / 16;
+					let colint = 0;
+					let col = tile.effectiveCollision!;
+					for (let i = 0; i < 9; i++) {
+						let v = (col.walk[i] ? col.sight[i] ? 2 : 1 : 0);
+						colint += Math.pow(3, i) * v;
+					}
+					file[index + 1] = colint;
 				}
 			}
 		}
@@ -883,10 +888,8 @@ export class TileGrid implements TileGridSource {
 						let blocked = ((tile.settings ?? 0) & 1) != 0;
 						collision = {
 							settings: tile.settings ?? 0,
-							walk: blocked,
-							sight: false,
-							walkwalls: [false, false, false, false],
-							sightwalls: [false, false, false, false]
+							walk: [blocked, false, false, false, false, false, false, false, false],
+							sight: [false, false, false, false, false, false, false, false, false]
 						}
 					}
 					let parsedTile: TileProps = {
@@ -942,7 +945,7 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 			let mapunderlaymeta = await scene.source.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
 			if (!selfindex) {
-				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
+				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
 				continue;
 			}
 			let selfarchive = (await scene.source.getFileArchive(selfindex));
@@ -950,7 +953,7 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 			let tileindexwater = selfindex.subindices.indexOf(cacheMapFiles.squaresWater);
 
 			if (tileindex == -1) {
-				console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
+				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
 				continue;
 			}
 			let tilefile = selfarchive[tileindex].buffer;
@@ -988,7 +991,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 		fogColor = mainchunk.extra.unk00.unk20.slice(1);
 	}
 	if (mainchunk?.extra.unk80) {
-		let envarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
+		let envarch = await scene.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
 		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
 		let env = parseEnvironments.read(envfile.buffer);
 		if (typeof env.model == "number") {
@@ -1614,24 +1617,29 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 						if (tile) {
 							let col = tile.rawCollision!;
 							if (objectmeta.maybe_blocks_movement) {
-								col.walk = true;
+								col.walk[0] = true;
 							}
 							if (inst.type == 0) {
-								col.walkwalls[inst.rotation] = true;
+								col.walk[1 + inst.rotation] = true;
 								if (!objectmeta.maybe_allows_lineofsight) {
-									col.sightwalls[inst.rotation] = true;
+									col.sight[1 + inst.rotation] = true;
 								}
 							} else if (inst.type == 2) {
-								col.walkwalls[inst.rotation] = true;
-								col.walkwalls[(inst.rotation + 1) % 4] = true;
+								col.walk[1 + inst.rotation] = true;
+								col.walk[1 + (inst.rotation + 1) % 4] = true;
 								if (!objectmeta.maybe_allows_lineofsight) {
-									col.sightwalls[inst.rotation] = true;
-									col.sightwalls[(inst.rotation + 1) % 4] = true;
+									col.sight[1 + inst.rotation] = true;
+									col.sight[1 + (inst.rotation + 1) % 4] = true;
+								}
+							} else if (inst.type == 1 || inst.type == 3) {
+								col.walk[5 + inst.rotation] = true;
+								if (!objectmeta.maybe_allows_lineofsight) {
+									col.sight[5 + inst.rotation] = true;
 								}
 							} else if (fullcollisiontypes.includes(inst.type)) {
-								col.walk = true;
+								col.walk[0] = true;
 								if (!objectmeta.maybe_allows_lineofsight) {
-									col.sight = true;
+									col.sight[0] = true;
 								}
 							}
 						}
@@ -1711,8 +1719,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 			let tile = grid.getTile(x, z, level);
 			let collision = (rawmode ? tile?.rawCollision : tile?.effectiveCollision);
 			if (tile && collision) {
-				if (collision.walk) {
-					let height = (collision.sight ? 1.8 : 0.3);
+				if (collision.walk[0]) {
+					let height = (collision.sight[0] ? 1.8 : 0.3);
 					writebox(tile, 0.05, 0, 0.05, 0.9, height, 0.9, [100, 50, 50, 255]);
 				}
 				if (rawmode && collision.settings & (2 | 4 | 8 | 16)) {
@@ -1724,13 +1732,21 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 					writebox(tile, -0.05, -0.05, 0, 1.1, 0.25, 1.1, [r, g, b, 255]);
 				}
 				for (let dir = 0; dir < 4; dir++) {
-					if (collision.walkwalls[dir]) {
-						let height = (collision.sightwalls[dir] ? 2 : 0.5);
+					if (collision.walk[1 + dir]) {
+						let height = (collision.sight[1 + dir] ? 2 : 0.5);
 						let col = [255, 60, 60, 255];
 						if (dir == 0) { writebox(tile, 0, 0, 0, 0.15, height, 1, col); }
 						if (dir == 1) { writebox(tile, 0, 0, 0.85, 1, height, 0.15, col); }
 						if (dir == 2) { writebox(tile, 0.85, 0, 0, 0.15, height, 1, col); }
 						if (dir == 3) { writebox(tile, 0, 0, 0, 1, height, 0.15, col); }
+					}
+					if (collision.walk[5 + dir]) {
+						let height = (collision.sight[5 + dir] ? 2 : 0.5);
+						let col = [255, 60, 60, 255];
+						if (dir == 0) { writebox(tile, 0, 0, 0.85, 0.15, height, 0.15, col); }
+						if (dir == 1) { writebox(tile, 0.85, 0, 0.85, 0.15, height, 0.15, col); }
+						if (dir == 2) { writebox(tile, 0.85, 0, 0, 0.15, height, 0.15, col); }
+						if (dir == 3) { writebox(tile, 0, 0, 0, 0.15, height, 0.15, col); }
 					}
 				}
 			}

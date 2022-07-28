@@ -15,6 +15,7 @@ import { RSMapChunk } from "../viewer/scenenodes";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay } from "../utils";
+import { drawCollision } from "./collisionimage";
 
 // @ts-ignore type import also fails when targeting web
 import type * as electronType from "electron/renderer";
@@ -90,6 +91,8 @@ type LayerConfig = {
 	wallsonly: boolean
 } | {
 	mode: "height"
+} | {
+	mode: "collision"
 });
 
 async function initMapConfig(endpoint: string, auth: string, version: number, overwrite: boolean) {
@@ -353,7 +356,7 @@ export class MapRenderer {
 		//TODO revert to using local renderer
 		this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
 		// this.renderer = globalThis.render;
-		this.renderer.addSceneElement({ getSceneElements() { return { options: { opaqueBackground: true, autoFrames: false } }; } });
+		this.renderer.addSceneElement({ getSceneElements() { return { options: { opaqueBackground: true, autoFrames: false, hideFog: true } }; } });
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await Promise.race([
 				new Promise(d => setTimeout(() => d(false), 10 * 1000)),
@@ -620,6 +623,7 @@ async function mipCanvas(render: MapRender, files: MipCommand["files"], format: 
 
 		let img = new Image(subtilesize, subtilesize);
 		// let blobsrc = URL.createObjectURL(await res.blob());
+		img.crossOrigin = "";
 		img.src = src;
 		// img.src = blobsrc;
 		await img.decode();
@@ -640,6 +644,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 			toggles["walls" + i] = false;
 			toggles["floorhidden" + i] = false;
 			toggles["collision" + i] = false;
+			toggles["collision-raw" + i] = false;
 		}
 		for (let chunk of chunks) {
 			chunk.chunk.setToggles(toggles);
@@ -751,8 +756,33 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
 					let { grid } = await chunks[0].chunk.model;
-					let file = grid.getHeightFile(x * 64, z * 64, thiscnf.level, 64, 64);
-					return { file: () => Promise.resolve(Buffer.from(file)) };
+					let file = grid.getHeightCollisionFile(x * 64, z * 64, thiscnf.level, 64, 64);
+					return { file: () => Promise.resolve(Buffer.from(file.buffer, file.byteOffset, file.byteLength)) };
+				}
+			});
+		}
+		if (cnf.mode == "collision") {
+			let thiscnf = cnf;
+			let filename = config.makeFileName(thiscnf.name, zooms.base, x, y, cnf.format ?? "webp");
+
+			chunktasks.push({
+				layer: thiscnf,
+				file: filename,
+				hash: depcrc,
+				async run() {
+					//TODO try enable 2d map render without loading all the 3d stuff
+					let chunks = await renderer.setArea(x - 1, z - 1, squares + 1, squares + 1);
+					let grid = new CombinedTileGrid(chunks.map(ch => ({
+						src: ch.chunk.loaded!.grid,
+						rect: {
+							x: ch.chunk.rect.x * squareSize,
+							z: ch.chunk.rect.z * squareSize,
+							xsize: ch.chunk.rect.xsize * squareSize,
+							zsize: ch.chunk.rect.zsize * squareSize,
+						}
+					})));
+					let file = drawCollision(grid, area, thiscnf.level, thiscnf.pxpersquare, 1);
+					return { file: () => file };
 				}
 			});
 		}
