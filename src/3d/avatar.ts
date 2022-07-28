@@ -135,7 +135,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 	let avabase = parseAvatars.read(avadata);
 	let models: SimpleModelDef = [];
 
-	let playerkitarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
+	let playerkitarch = await scene.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
 	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parseIdentitykit.read(q.buffer)]));
 
 	let slots: (EquipSlot | null)[] = [];
@@ -313,7 +313,7 @@ export function writeAvatar(avatar: avataroverrides | null, gender: number, npc:
 }
 
 async function animGroupToAnims(scene: ThreejsSceneCache, groupid: number) {
-	let animsetarch = await scene.source.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
+	let animsetarch = await scene.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let animsetfile = animsetarch[groupid];
 	let animset = parseAnimgroupConfigs.read(animsetfile.buffer);
 
