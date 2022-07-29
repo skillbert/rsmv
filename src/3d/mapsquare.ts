@@ -1616,7 +1616,9 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, inst.plane);
 						if (tile) {
 							let col = tile.rawCollision!;
-							if (objectmeta.maybe_blocks_movement) {
+							//TODO check for other loc types
+							//22 should block, 4 should not
+							if (inst.type == 22 && objectmeta.maybe_blocks_movement) {
 								col.walk[0] = true;
 							}
 							if (inst.type == 0) {
