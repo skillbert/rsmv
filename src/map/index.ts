@@ -16,9 +16,13 @@ import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/depend
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay } from "../utils";
 import { drawCollision } from "./collisionimage";
+import { registerWebglTracker } from "../3d/webglleaktest";
 
 // @ts-ignore type import also fails when targeting web
 import type * as electronType from "electron/renderer";
+
+//TODO remove
+registerWebglTracker();
 
 const electron = (() => {
 	try {
