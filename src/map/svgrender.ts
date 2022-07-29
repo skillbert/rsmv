@@ -180,7 +180,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 					let width = 0;
 					let height = 0;
 					if (mapscene.sprite_id != undefined) {
-						let spritefile = await engine.source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
+						let spritefile = await engine.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 						let sprite = parseSprite(spritefile);
 						src = await pixelsToDataUrl(sprite[0]);
 						width = sprite[0].width;

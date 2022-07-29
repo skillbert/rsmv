@@ -928,11 +928,11 @@ export class TileGrid implements TileGridSource {
 export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, skybox?: boolean, mask?: MapRect[] };
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
-export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
+export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
 
 	let chunkfloorpadding = (opts?.padfloor ? 10 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
 	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
-	let grid = new TileGrid(scene, {
+	let grid = new TileGrid(engine, {
 		x: rect.x * squareSize - chunkfloorpadding,
 		z: rect.z * squareSize - chunkfloorpadding,
 		xsize: rect.xsize * squareSize + chunkfloorpadding * 2,
@@ -942,13 +942,13 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
 		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
-			let mapunderlaymeta = await scene.source.getIndexFile(cacheMajors.mapsquares);
+			let mapunderlaymeta = await engine.getIndexFile(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
 			if (!selfindex) {
 				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
 				continue;
 			}
-			let selfarchive = (await scene.source.getFileArchive(selfindex));
+			let selfarchive = (await engine.getFileArchive(selfindex));
 			let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
 			let tileindexwater = selfindex.subindices.indexOf(cacheMapFiles.squaresWater);
 
@@ -978,7 +978,7 @@ export async function parseMapsquare(scene: EngineCache, rect: MapRect, opts?: P
 	}
 	grid.blendUnderlays();
 	for (let chunk of chunks) {
-		chunk.locs = await mapsquareObjects(scene, chunk, grid, !!opts?.collision);
+		chunk.locs = await mapsquareObjects(engine, chunk, grid, !!opts?.collision);
 	}
 
 	return { grid, chunks };
@@ -991,7 +991,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 		fogColor = mainchunk.extra.unk00.unk20.slice(1);
 	}
 	if (mainchunk?.extra.unk80) {
-		let envarch = await scene.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
+		let envarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
 		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
 		let env = parseEnvironments.read(envfile.buffer);
 		if (typeof env.model == "number") {
@@ -1010,7 +1010,7 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 		let textures = new Map<number, CanvasImage>();
 		let textureproms: Promise<void>[] = [];
 		for (let matid of matids) {
-			let mat = scene.cache.getMaterialData(matid);
+			let mat = scene.engine.getMaterialData(matid);
 			if (mat.textures.diffuse) {
 				textureproms.push(scene.getTextureFile(mat.textures.diffuse, mat.stripDiffuseAlpha)
 					.then(tex => tex.toWebgl())
@@ -1040,7 +1040,7 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 			}
 		}
 		let models = mapsquareObjectModels(chunk.locs);
-		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.cache, grid, chunk.locs));
+		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
 		squareDatas.push({
 			chunk,
 			floors,
@@ -1281,7 +1281,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 		if (!group) {
 			let mapscene = grid.engine.mapMapscenes[sceneid];
 			if (mapscene.sprite_id == undefined) { return; }
-			let spritefile = await engine.source.getFileById(cacheMajors.sprites, mapscene.sprite_id);
+			let spritefile = await engine.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 			let sprite = parseSprite(spritefile);
 			let mat = new THREE.MeshBasicMaterial();
 			mat.map = new THREE.DataTexture(sprite[0].data, sprite[0].width, sprite[0].height, THREE.RGBAFormat);
@@ -1560,7 +1560,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 
 
 	for (let loc of locations) {
-		let objectmeta = await resolveMorphedObject(engine.source, loc.id);
+		let objectmeta = await resolveMorphedObject(engine, loc.id);
 		if (!objectmeta) { continue; }
 
 		for (let inst of loc.uses) {

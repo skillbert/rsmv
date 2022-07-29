@@ -151,7 +151,7 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 		throw new Error("animation has no frames");
 	}
 
-	let framearch = await loader.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
+	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
 	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parseFrames.read(q.buffer)]));
 
@@ -231,7 +231,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		throw new Error("animation has no frames");
 	}
 
-	let framearch = await loader.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
+	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
 	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parseFrames.read(q.buffer)]));
 

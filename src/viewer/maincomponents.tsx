@@ -3,7 +3,7 @@ import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
 import { boundMethod } from "autobind-decorator";
 import { WasmGameCacheLoader } from "../cache/sqlitewasm";
-import { CacheFileSource, cachingFileSourceMixin } from "../cache";
+import { CacheFileSource } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView } from "./commoncontrols";

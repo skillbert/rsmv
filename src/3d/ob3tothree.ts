@@ -7,7 +7,7 @@ import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
 import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
 import { parseSkeletalAnimation } from "./animationskeletal";
-import { archiveToFileId, CacheFileSource, CacheIndex, SubFile } from "../cache";
+import { archiveToFileId, CachedObject, CacheFileSource, CacheIndex, CachingFileSource, SubFile } from "../cache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh, Texture } from "three";
 import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -67,9 +67,8 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 
 
 //basically stores all the config of the game engine
-export class EngineCache {
-	ready: Promise<EngineCache>;
-	source: CacheFileSource;
+export class EngineCache<T extends CacheFileSource = any> extends CachingFileSource<T> {
+	ready: Promise<EngineCache<T>>;
 
 	materialArchive = new Map<number, Buffer>();
 	materialCache = new Map<number, MaterialData>();
@@ -83,25 +82,25 @@ export class EngineCache {
 		return ret.ready;
 	}
 
-	private constructor(source: CacheFileSource) {
-		this.source = source;
+	private constructor(source: T) {
+		super(source);
 		this.ready = this.preload();
 	}
 
 	private async preload() {
-		let matarch = await this.source.getArchiveById(cacheMajors.materials, 0);
+		let matarch = await this.getArchiveById(cacheMajors.materials, 0);
 		for (let file of matarch) {
 			this.materialArchive.set(file.fileid, file.buffer);
 		}
 
 		this.mapUnderlays = [];
-		(await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
+		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
 			.forEach(q => this.mapUnderlays[q.fileid] = parseMapsquareUnderlays.read(q.buffer));
 		this.mapOverlays = [];
-		(await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
+		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
 			.forEach(q => this.mapOverlays[q.fileid] = parseMapsquareOverlays.read(q.buffer));
 		this.mapMapscenes = [];
-		(await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
+		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
 			.forEach(q => this.mapMapscenes[q.fileid] = parseMapscenes.read(q.buffer));
 
 		return this;
@@ -131,7 +130,7 @@ export class EngineCache {
 			let mode = cacheFileJsonModes[modename as keyof typeof cacheFileJsonModes];
 			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
-				let allfiles = await mode.lookup.logicalRangeToFiles(this.source, [0, 0], [Infinity, Infinity]);
+				let allfiles = await mode.lookup.logicalRangeToFiles(this, [0, 0], [Infinity, Infinity]);
 				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 				let files: any[] = [];
 				for (let fileid of allfiles) {
@@ -139,7 +138,7 @@ export class EngineCache {
 					if (lastarchive && lastarchive.index == fileid.index) {
 						arch = lastarchive.subfiles;
 					} else {
-						arch = await this.source.getFileArchive(fileid.index);
+						arch = await this.getFileArchive(fileid.index);
 						lastarchive = { index: fileid.index, subfiles: arch };
 					}
 					let file = arch[fileid.subindex];
@@ -180,26 +179,12 @@ export async function detectTextureMode(source: CacheFileSource) {
 	return textureMode;
 }
 
-type CachedObject<T> = {
-	size: number,
-	lastuse: number,
-	usecount: number,
-	owner: Map<number, CachedObject<T>>,
-	id: number,
-	data: Promise<T>
-}
 
 export class ThreejsSceneCache {
 	private modelCache = new Map<number, CachedObject<ModelData>>();
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
 	private threejsMaterialCache = new Map<number, CachedObject<THREE.Material>>();
-	private archieveCache = new Map<number, CachedObject<SubFile[]>>();
-	private cachedObjects: CachedObject<any>[] = [];
-	private cacheFetchCounter = 0;
-	private cacheAddCounter = 0;
-	maxcachesize = 200e6;
-	source: CacheFileSource;
-	cache: EngineCache;
+	engine: EngineCache;
 	textureType: "png" | "dds" | "bmp" = "dds";//png support currently incomplete (and seemingly unused by jagex)
 
 	static textureIndices = {
@@ -209,79 +194,14 @@ export class ThreejsSceneCache {
 	}
 
 	constructor(scenecache: EngineCache) {
-		this.cache = scenecache;
-		this.source = scenecache.source;
+		this.engine = scenecache;
 	}
-
-	private fetchCachedObject<T>(map: Map<number, CachedObject<T>>, id: number, create: () => Promise<T>, getSize: (obj: T) => number) {
-		let bucket = map.get(id);
-		if (!bucket) {
-			let data = create();
-			bucket = {
-				data: data,
-				owner: map,
-				id: id,
-				lastuse: 0,
-				size: 0,
-				usecount: 0
-			}
-			data.then(obj => bucket!.size = getSize(obj));
-			this.cachedObjects.push(bucket);
-			map.set(id, bucket);
-			if (++this.cacheAddCounter % 100 == 0) {
-				this.sweepCachedObjects();
-			}
-		}
-		bucket.usecount++;
-		bucket.lastuse = this.cacheFetchCounter++;
-		return bucket.data;
-	}
-
-	sweepCachedObjects() {
-		let score = (bucket: CachedObject<any>) => {
-			//less is better
-			return (
-				//up to 100 penalty for not being used recently
-				Math.min(100, this.cacheFetchCounter - bucket.lastuse)
-				//up to 100 score for being used often
-				+ Math.max(-100, -bucket.usecount * 10)
-			)
-		}
-		this.cachedObjects.sort((a, b) => score(a) - score(b));
-		let newlength = this.cachedObjects.length;
-		let totalsize = 0;
-		for (let i = 0; i < this.cachedObjects.length; i++) {
-			let bucket = this.cachedObjects[i];
-			totalsize += bucket.size;
-			if (totalsize > this.maxcachesize) {
-				newlength = Math.min(newlength, i);
-				bucket.owner.delete(bucket.id);
-			} else {
-				bucket.usecount = 0;
-			}
-		}
-		console.log("scenecache sweep completed, removed", this.cachedObjects.length - newlength, "of", this.cachedObjects.length, "objects");
-		console.log("old totalsize", totalsize);
-		this.cachedObjects.length = newlength;
-	}
-
 	getFileById(major: number, id: number) {
-		return this.source.getFileById(major, id);
-	}
-	getArchiveById(major: number, minor: number) {
-		let get = () => this.source.getArchiveById(major, minor);
-
-		//don't attempt to cache large files that have their own cache
-		if (major == cacheMajors.models || major == cacheMajors.texturesBmp || major == cacheMajors.texturesDds || major == cacheMajors.texturesPng) {
-			return get();
-		} else {
-			let cachekey = (major << 23) | minor;//23bit so it still fits in a 31bit smi
-			return this.fetchCachedObject(this.archieveCache, cachekey, get, obj => obj.reduce((a, v) => a + v.size, 0));
-		}
+		return this.engine.getFileById(major, id);
 	}
 
 	getTextureFile(texid: number, stripAlpha: boolean) {
-		return this.fetchCachedObject(this.threejsTextureCache, texid, async () => {
+		return this.engine.fetchCachedObject(this.threejsTextureCache, texid, async () => {
 			let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
 			let parsed = new ParsedTexture(file, stripAlpha, true);
 			return parsed;
@@ -289,16 +209,16 @@ export class ThreejsSceneCache {
 	}
 
 	getModelData(id: number) {
-		return this.fetchCachedObject(this.modelCache, id, () => {
-			return this.source.getFileById(cacheMajors.models, id).then(f => parseOb3Model(f));
+		return this.engine.fetchCachedObject(this.modelCache, id, () => {
+			return this.engine.getFileById(cacheMajors.models, id).then(f => parseOb3Model(f));
 		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 	}
 
 	getMaterial(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
 		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
-		return this.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
-			let material = this.cache.getMaterialData(matid);
+		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
+			let material = this.engine.getMaterialData(matid);
 
 			// let mat = new THREE.MeshPhongMaterial();
 			// mat.shininess = 0;

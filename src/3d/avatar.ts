@@ -131,11 +131,11 @@ export type EquipSlot = {
 
 //TODO remove output and name args
 export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
-	let kitdata = await loadKitData(scene.source);
+	let kitdata = await loadKitData(scene.engine);
 	let avabase = parseAvatars.read(avadata);
 	let models: SimpleModelDef = [];
 
-	let playerkitarch = await scene.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
+	let playerkitarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
 	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parseIdentitykit.read(q.buffer)]));
 
 	let slots: (EquipSlot | null)[] = [];
@@ -171,7 +171,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 			}
 			//have to do some guessing here since the format overflowed and is corrupted
 			let itemid = (slot - 0x4000) & 0xffff;
-			let file = await scene.source.getFileById(cacheMajors.items, itemid);
+			let file = await scene.engine.getFileById(cacheMajors.items, itemid);
 			let item = parseItem.read(file);
 
 			let animprop = item.extra?.find(q => q.prop == 686);
@@ -266,7 +266,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 		} else {
 			let animgroup = 2699;
 			if (animstruct != -1) {
-				let file = await scene.source.getFileById(cacheMajors.structs, animstruct);
+				let file = await scene.engine.getFileById(cacheMajors.structs, animstruct);
 				let animfile = parseStructs.read(file);
 				//2954 for combat stance
 				let noncombatset = animfile.extra?.find(q => q.prop == 2954);
@@ -275,7 +275,7 @@ export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsS
 			anims = await animGroupToAnims(scene, animgroup);
 		}
 	} else if (avabase.npc) {
-		let file = await scene.source.getFileById(cacheMajors.npcs, avabase.npc.id);
+		let file = await scene.engine.getFileById(cacheMajors.npcs, avabase.npc.id);
 		let npc = parseNpc.read(file);
 		let mods: ModelModifications = {
 			replaceColors: npc.color_replacements ?? [],
@@ -313,7 +313,7 @@ export function writeAvatar(avatar: avataroverrides | null, gender: number, npc:
 }
 
 async function animGroupToAnims(scene: ThreejsSceneCache, groupid: number) {
-	let animsetarch = await scene.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
+	let animsetarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let animsetfile = animsetarch[groupid];
 	let animset = parseAnimgroupConfigs.read(animsetfile.buffer);
 

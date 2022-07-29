@@ -29,7 +29,7 @@ export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileJs
 	}
 
 	let modal = showModal({ title: "Select item" }, (
-		<JsonSearchPreview cache={ctx.sceneCache.cache} mode={mode} onSelect={onselect} initialFilters={initialFilters} />
+		<JsonSearchPreview cache={ctx.sceneCache.engine} mode={mode} onSelect={onselect} initialFilters={initialFilters} />
 	));
 }
 

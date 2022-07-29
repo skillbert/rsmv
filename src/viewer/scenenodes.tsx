@@ -248,7 +248,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
 		let { chunks, grid } = await this.model;
 		let rect: MapRect = { x: this.rect.x * 64, z: this.rect.z * 64, xsize: this.rect.xsize * 64, zsize: this.rect.zsize * 64 };
-		return svgfloor(this.cache.cache, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
+		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
 	getSceneElements(): ThreeJsSceneElement {
@@ -289,7 +289,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.cache = cache;
 		this.model = (async () => {
 			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
-			let { grid, chunks } = await parseMapsquare(cache.cache, rect, opts);
+			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
 			let modeldata = await mapsquareModels(cache, grid, chunks, opts);
 			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
@@ -729,7 +729,7 @@ const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number
 async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	let modeldata = await cache.getModelData(id);
 	//getting the same file a 2nd time to get the full json
-	let modelfile = await cache.source.getFileById(cacheMajors.models, id);
+	let modelfile = await cache.engine.getFileById(cacheMajors.models, id);
 	let info = parseModels.read(modelfile);
 	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info }, id };
 }
@@ -787,7 +787,7 @@ async function npcToModel(cache: ThreejsSceneCache, id: { id: number, head: bool
 	let anims: Record<string, number> = {};
 	let modelids = (id.head ? npc.headModels : npc.models) ?? [];
 	if (!id.head && npc.animation_group) {
-		let arch = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
+		let arch = await cache.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 		let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
 		anims = serializeAnimset(animgroup);
 	}
@@ -815,7 +815,7 @@ async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 async function locToModel(cache: ThreejsSceneCache, id: number) {
-	let obj = await resolveMorphedObject(cache.source, id);
+	let obj = await resolveMorphedObject(cache.engine, id);
 	let mods: ModelModifications = {};
 	let anims: Record<string, number> = {};
 	let models: SimpleModelDef = [];
@@ -851,7 +851,7 @@ async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
 	// mods.replaceMaterials = [
 	// 	[8868, +searchid]
 	// ];
-	let mat = sceneCache.cache.getMaterialData(modelid);
+	let mat = sceneCache.engine.getMaterialData(modelid);
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let addtex = async (name: string, texid: number) => {
 		let tex = await sceneCache.getTextureFile(texid, mat.stripDiffuseAlpha && name == "diffuse");
@@ -955,14 +955,14 @@ function ScenePlayer(p: LookupModeProps) {
 					<p>You can update your avatar by going to the photo booth southwest of falador in-game</p>
 				</React.Fragment>
 			)}
-			{ data && (
+			{data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model?.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model?.targetAnimId ?? -1}>
 						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
 					</select>
 				</LabeledInput>
 			)}
-			{ data && <label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>}
+			{data && <label><input type="checkbox" checked={head} onChange={oncheck} />Head</label>}
 			<div className="mv-sidebar-scroll">
 				{data && <h2>Slots</h2>}
 				<div style={{ userSelect: "text" }}>
@@ -1262,7 +1262,7 @@ export function RendererControls(p: { ctx: UIContext }) {
 					<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
 				</div>
 			)}
-			{ showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} renderopts={newopts} />}
+			{showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} renderopts={newopts} />}
 		</React.Fragment>
 	)
 }
@@ -1379,7 +1379,7 @@ function SceneLocation(p: LookupModeProps) {
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="objects" onChange={setId} initialid={initid} />}
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="objects" onChange={setId} initialid={initid} />}
 			{id == null && (
 				<React.Fragment>
 					<p>Enter a location id or search by name.</p>
@@ -1399,7 +1399,7 @@ function SceneItem(p: LookupModeProps) {
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="items" onChange={setId} initialid={initid} />}
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="items" onChange={setId} initialid={initid} />}
 			{id == null && (
 				<p>Enter an item id or search by name.</p>
 			)}
@@ -1418,7 +1418,7 @@ function SceneNpc(p: LookupModeProps) {
 
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.cache} mode="npcs" onChange={v => setId({ id: v, head })} initialid={initid} />}
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="npcs" onChange={v => setId({ id: v, head })} initialid={initid} />}
 			{id == null && (
 				<p>Enter an NPC id or search by name.</p>
 			)}

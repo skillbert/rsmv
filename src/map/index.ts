@@ -329,7 +329,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	output.setUI(progress.root);
 
 	progress.updateProp("deps", "starting dependency graph");
-	let deps = await getDependencies(engine.source);
+	let deps = await getDependencies(engine);
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
 	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
 
