@@ -60,6 +60,10 @@ export function delay(ms: number) {
 	return new Promise(d => setTimeout(d, ms))
 }
 
+export function posmod(x: number, n: number) {
+	return ((x % n) + n) % n;
+}
+
 /**
  * used to get an array with enum typing
  */

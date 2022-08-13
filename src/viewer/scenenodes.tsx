@@ -1492,7 +1492,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			this.selectCleanup = highlightModelGroup(e.vertexgroups);
 
 			//show data about what we clicked
-			console.log(Array.isArray(e.obj.material) ? e.obj.material : e.obj.material.userData);
+			// console.log(Array.isArray(e.obj.material) ? e.obj.material : e.obj.material.userData);
 			let meshdata = e.meshdata;
 			if (meshdata.modeltype == "locationgroup") {
 				let typedmatch = e.match as typeof meshdata.subobjects[number];

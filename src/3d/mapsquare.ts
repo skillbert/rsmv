@@ -1,4 +1,4 @@
-import { packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
+import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseEnvironments, parseMapscenes, parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseMapsquareWaterTiles, parseObject } from "../opdecoder";
@@ -30,7 +30,7 @@ export const worldStride = 128;
 const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 const wallmodels = generateWallModels();
 
-const defaultVertexProp: TileVertex = { material: -1, color: [255, 0, 255], usesColor: true };
+const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255], usesColor: true };
 
 export type MapRect = {
 	x: number,
@@ -72,6 +72,7 @@ type TileShape = {
 
 export type TileVertex = {
 	material: number,
+	materialTiling: number,
 	color: number[],
 	usesColor: boolean
 }
@@ -821,18 +822,33 @@ export class TileGrid implements TileGridSource {
 	}
 
 	gatherMaterials(x: number, z: number, xsize: number, zsize: number) {
-		let mats = new Set<number>();
+		let mats = new Map<number, number>();
+		let addmat = (id: number, tiling: number) => {
+			let repeat = 1;
+			const defaultTiling = 128;
+			if (tiling < defaultTiling) {
+				//our sampling rect is larger than the texture
+				repeat = Math.ceil(defaultTiling / tiling);
+			} else if (tiling % defaultTiling != 0) {
+				//our sampling rect does not fit an exact number of times inside our texture
+				repeat = 1 + defaultTiling / tiling;
+			}
+			let old = mats.get(id);
+			if (!old || old < repeat) {
+				mats.set(id, repeat);
+			}
+		}
 		for (let level = 0; level < squareLevels; level++) {
 			for (let dz = 0; dz < zsize; dz++) {
 				for (let dx = 0; dx < xsize; dx++) {
 					let tile = this.getTile(x + dx, z + dz, level);
 					if (!tile) { continue; }
-					if (tile.overlayprops.material == 0 || tile.underlayprops.material == 0) {
-						debugger;
+					if (tile.underlayprops.material != -1) {
+						addmat(tile.underlayprops.material, tile.underlayprops.materialTiling);
 					}
-					//TODO skip 0/-1 values?
-					mats.add(tile.underlayprops.material ?? -1);
-					mats.add(tile.overlayprops.material ?? -1);
+					if (tile.overlayprops.material != -1) {
+						addmat(tile.overlayprops.material, tile.overlayprops.materialTiling);
+					}
 				}
 			}
 		}
@@ -870,11 +886,21 @@ export class TileGrid implements TileGridSource {
 						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
 							visible = true;
 						}
-						underlayprop = { material: underlay.material ?? -1, color: underlay.color ?? [255, 0, 255], usesColor: !underlay.unknown_0x04 };
+						underlayprop = {
+							material: underlay.material ?? -1,
+							materialTiling: underlay.unknown_0x03 ?? 128,
+							color: underlay.color ?? [255, 0, 255],
+							usesColor: !underlay.unknown_0x04
+						};
 					}
 					let overlay = (tile.overlay != undefined ? this.engine.mapOverlays[tile.overlay - 1] : undefined);
 					if (overlay) {
-						overlayprop = { material: overlay.material ?? -1, color: overlay.primary_colour ?? [255, 0, 255], usesColor: !overlay.unknown_0x0A };
+						overlayprop = {
+							material: overlay.material ?? -1,
+							materialTiling: overlay.unknown_0x09 ?? 128,//TODO is there a prop for this like with underlay?
+							color: overlay.primary_colour ?? [255, 0, 255],
+							usesColor: !overlay.unknown_0x0A
+						};
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
@@ -1007,14 +1033,16 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 	for (let chunk of chunks) {
 		let floors: FloorMeshData[] = [];
 		let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareSize + 1, squareSize + 1);
-		let textures = new Map<number, CanvasImage>();
+		let textures = new Map<number, { tex: CanvasImage, repeat: number }>();
 		let textureproms: Promise<void>[] = [];
-		for (let matid of matids) {
+		for (let [matid, repeat] of matids.entries()) {
 			let mat = scene.engine.getMaterialData(matid);
 			if (mat.textures.diffuse) {
 				textureproms.push(scene.getTextureFile(mat.textures.diffuse, mat.stripDiffuseAlpha)
 					.then(tex => tex.toWebgl())
-					.then(src => { textures.set(mat.textures.diffuse!, src); })
+					.then(src => {
+						textures.set(mat.textures.diffuse!, { tex: src, repeat });
+					})
 				);
 			}
 		}
@@ -1022,8 +1050,8 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 		let atlas!: SimpleTexturePacker;
 		retrysize: for (let size = 256; size <= 4096; size *= 2) {
 			atlas = new SimpleTexturePacker(size);
-			for (let [id, tex] of textures.entries()) {
-				if (!atlas.addTexture(tex, id)) {
+			for (let [id, { tex, repeat }] of textures.entries()) {
+				if (!atlas.addTexture(id, tex, repeat)) {
 					continue retrysize;
 				}
 			}
@@ -1114,7 +1142,7 @@ function copyCanvasImage(ctx: CanvasRenderingContext2D, src: CanvasImage, destx:
 }
 
 type CanvasImage = Exclude<CanvasImageSource, SVGImageElement>;
-type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, img: CanvasImage }
+type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, repeatWidth: number, repeatHeight: number, img: CanvasImage }
 
 class SimpleTexturePacker {
 	padsize = 32;//was still bleeding at 16
@@ -1129,13 +1157,15 @@ class SimpleTexturePacker {
 		this.size = size;
 	}
 
-	addTexture(img: CanvasImage, id: number) {
+	addTexture(id: number, img: CanvasImage, repeat: number) {
 		if (this.result != null) {
 			this.result = null;
 			console.log("adding textures to atlas after creation of texture");
 		}
-		let sizex = img.width + 2 * this.padsize;
-		let sizey = img.height + 2 * this.padsize;
+		let repeatWidth = Math.floor(img.width * repeat);
+		let repeatHeight = Math.floor(img.height * repeat);
+		let sizex = repeatWidth + 2 * this.padsize;
+		let sizey = repeatHeight + 2 * this.padsize;
 		if (this.allocx + sizex > this.size) {
 			this.allocx = 0;
 			this.allocy += this.allocLineHeight;
@@ -1146,16 +1176,19 @@ class SimpleTexturePacker {
 			return false;
 		}
 		let alloc: SimpleTexturePackerAlloc = {
-			u: (this.allocx + this.padsize) / this.size, v: (this.allocy + this.padsize) / this.size,
-			usize: img.width / this.size, vsize: img.height / this.size,
-			x: this.allocx + this.padsize, y: this.allocy + this.padsize,
+			u: (this.allocx + this.padsize) / this.size,
+			v: (this.allocy + this.padsize) / this.size,
+			usize: img.width / this.size,
+			vsize: img.height / this.size,
+			x: this.allocx + this.padsize,
+			y: this.allocy + this.padsize,
+			repeatWidth: repeatWidth,
+			repeatHeight: repeatHeight,
 			img
 		};
 		this.allocs.push(alloc);
 		this.allocx += sizex;
-		if (typeof id != "undefined") {
-			this.map.set(id, alloc);
-		}
+		this.map.set(id, alloc);
 		return true;
 	}
 	convert() {
@@ -1165,24 +1198,27 @@ class SimpleTexturePacker {
 		let ctx = cnv.getContext("2d")!;
 		console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
 		for (let alloc of this.allocs) {
-			const x0 = alloc.x - this.padsize;
-			const x1 = alloc.x;
-			const x2 = alloc.x + alloc.img.width;
-			const y0 = alloc.y - this.padsize;
-			const y1 = alloc.y;
-			const y2 = alloc.y + alloc.img.height;
-			//YIKES
-			copyCanvasImage(ctx, alloc.img, x0, y0, alloc.img.width - this.padsize, alloc.img.height - this.padsize, this.padsize, this.padsize);
-			copyCanvasImage(ctx, alloc.img, x1, y0, 0, alloc.img.height - this.padsize, alloc.img.width, this.padsize);
-			copyCanvasImage(ctx, alloc.img, x2, y0, 0, alloc.img.height - this.padsize, this.padsize, this.padsize);
+			let xx1 = -this.padsize;
+			let xx2 = alloc.repeatWidth + this.padsize
+			let yy1 = -this.padsize;
+			let yy2 = alloc.repeatHeight + this.padsize;
 
-			copyCanvasImage(ctx, alloc.img, x0, y1, alloc.img.width - this.padsize, 0, this.padsize, alloc.img.height);
-			copyCanvasImage(ctx, alloc.img, x1, y1, 0, 0, alloc.img.width, alloc.img.height);
-			copyCanvasImage(ctx, alloc.img, x2, y1, 0, 0, this.padsize, alloc.img.height);
+			for (let y = yy1; y < yy2; y = nexty) {
+				var nexty = Math.min(yy2, Math.ceil((y + 1) / alloc.img.height) * alloc.img.height);
+				for (let x = xx1; x < xx2; x = nextx) {
+					var nextx = Math.min(xx2, Math.ceil((x + 1) / alloc.img.width) * alloc.img.width);
 
-			copyCanvasImage(ctx, alloc.img, x0, y2, alloc.img.width - this.padsize, 0, this.padsize, this.padsize);
-			copyCanvasImage(ctx, alloc.img, x1, y2, 0, 0, alloc.img.width, this.padsize);
-			copyCanvasImage(ctx, alloc.img, x2, y2, 0, 0, this.padsize, this.padsize);
+					copyCanvasImage(ctx, alloc.img,
+						alloc.x + x,
+						alloc.y + y,
+						posmod(x, alloc.img.width),
+						posmod(y, alloc.img.height),
+						nextx - x,
+						nexty - y
+					);
+
+				}
+			}
 		}
 		this.result = cnv;
 		return cnv;
@@ -1965,11 +2001,13 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		for (let i = 0; i < polyprops.length; i++) {
 			const subprop = polyprops[i];
 			let texdata: SimpleTexturePackerAlloc | undefined = undefined;
+			let vertexcolor = true;
 			if (subprop && subprop.material != -1) {
 				let mat = grid.engine.getMaterialData(subprop.material);
 				if (mat.textures.diffuse) {
 					texdata = atlas.map.get(mat.textures.diffuse)!;
 				}
+				vertexcolor = mat.vertexColors;
 			}
 			if (!texdata) {
 				//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
@@ -1978,14 +2016,15 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 			}
 			//TODO is the 128px per tile a constant?
 			//definitely not, there are also 64px textures
-			let gridsize = Math.max(1, texdata.img.width / 128);
+			let gridsize = subprop.materialTiling / 128;
 			let ubase = (tile.x / tiledimensions) % gridsize;
 			let vbase = (tile.z / tiledimensions) % gridsize;
 			const maxuv = 0x10000;
 			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + subx) / gridsize) * maxuv;
 			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + subz) / gridsize) * maxuv;
+
 			texweightbuffer[texweightpointer + i] = (i == currentmat ? 255 : 0);
-			texusescolorbuffer[texusescolorpointer + i] = (subprop.usesColor ? 255 : 0);
+			texusescolorbuffer[texusescolorpointer + i] = (vertexcolor ? 255 : 0);
 		}
 
 		return vertexindex++;
