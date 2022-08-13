@@ -9,6 +9,7 @@ export async function indexOverview(output: ScriptOutput, source: CacheFileSourc
 
 	let majors: any[] = [];
 	for (let indexfile of rootindex) {
+		if (!indexfile) { continue; }
 		let index = await source.getIndexFile(indexfile.minor);
 		let minorcount = index.reduce((a, v) => a + 1, 0);
 		let subfilecount = index.reduce((a, v) => a + v.subindexcount, 0);

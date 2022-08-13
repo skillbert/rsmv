@@ -333,8 +333,8 @@ export class CachingFileSource<T extends CacheFileSource> extends CacheFileSourc
 				bucket.usecount = 0;
 			}
 		}
-		console.log("scenecache sweep completed, removed", this.cachedObjects.length - newlength, "of", this.cachedObjects.length, "objects");
-		console.log("old totalsize", totalsize);
+		// console.log("scenecache sweep completed, removed", this.cachedObjects.length - newlength, "of", this.cachedObjects.length, "objects");
+		// console.log("old totalsize", totalsize);
 		this.cachedObjects.length = newlength;
 	}
 

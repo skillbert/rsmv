@@ -676,7 +676,7 @@ export class TileGrid implements TileGridSource {
 	}
 
 	getHeightCollisionFile(x: number, z: number, level: number, xsize: number, zsize: number) {
-		let file = new Uint16Array(xsize * zsize);
+		let file = new Uint16Array(xsize * zsize * 2);
 		for (let dz = 0; dz < zsize; dz++) {
 			for (let dx = 0; dx < xsize; dx++) {
 				let tile = this.getTile(x + dx, z + dz, level);

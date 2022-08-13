@@ -21,9 +21,6 @@ import { registerWebglTracker } from "../3d/webglleaktest";
 // @ts-ignore type import also fails when targeting web
 import type * as electronType from "electron/renderer";
 
-//TODO remove
-registerWebglTracker();
-
 const electron = (() => {
 	try {
 		if (typeof __non_webpack_require__ != "undefined") {
@@ -282,6 +279,18 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 			//hardcoded extra bits
 			mask.push({ x: 2176, z: 3456, xsize: 64, zsize: 64 });//prif top ocean doesn't exist on any map
 			mask.push({ x: 2432, z: 2624, xsize: 128, zsize: 128 });//use the original ashdale and hope for the best
+
+			//hardcoded areas that aren't on any normal map
+			mask.push({ x: 59 * 64, z: 109 * 64, xsize: 128, zsize: 128 });//telos
+			mask.push({ x: 47 * 64, z: 93 * 64, xsize: 2 * 64, zsize: 4 * 64 });//vorago
+			mask.push({ x: 14 * 64, z: 4 * 64, xsize: 3 * 64, zsize: 4 * 64 });//zuk
+			mask.push({ x: 23 * 64, z: 24 * 64, xsize: 4 * 64, zsize: 4 * 64 });//zamorak
+			mask.push({ x: 70 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed1
+			mask.push({ x: 76 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed2
+			mask.push({ x: 82 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed3
+			mask.push({ x: 69 * 64, z: 96 * 64, xsize: 6 * 64, zsize: 4 * 64 });//araxxor
+			mask.push({ x: 5 * 64, z: 2 * 64, xsize: 1 * 64, zsize: 1 * 64 });//kerapac
+			mask.push({ x: 43 * 64, z: 27 * 64, xsize: 3 * 64, zsize: 3 * 64 });//kerapac
 
 
 			areas = mask.map(q => {
