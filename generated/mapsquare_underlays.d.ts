@@ -5,7 +5,7 @@
 export type mapsquare_underlays = {
 	color?: number[] | null
 	material?: number | null
-	unknown_0x03?: number | null
+	material_tiling?: number | null
 	unknown_0x04?: true | null
 	unknown_0x05?: true | null
 };

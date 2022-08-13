@@ -8,7 +8,7 @@ export type mapsquare_overlays = {
 	unknown_0x05?: true | null
 	secondary_colour?: number[] | null
 	unknown_0x08?: true | null
-	unknown_0x09?: number | null
+	material_tiling?: number | null
 	unknown_0x0A?: true | null
 	unknown_0x0B?: number | null
 	bleedToUnderlay?: true | null

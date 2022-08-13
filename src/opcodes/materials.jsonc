@@ -40,7 +40,7 @@
 			["unk09_bool","bool"],//true=7
 			["unk0a_bool","bool"],
 			["specular","ubyte"],
-			["metalness","ubyte"],
+			["ignoreVertexColors","ubyte"],//probably indicates the mix ratio with colorint and vertex colors
 			["colorint","ushort"]
 		]]]
 	]]],

@@ -34,7 +34,7 @@ export type models = {
 		boneidBuffer: Uint16Array | null,
 		skin: {
 			skinVertexCount: number,
-			skinBoneBuffer: Uint8Array,
+			skinBoneBuffer: Uint16Array,
 			skinWeightBuffer: Uint8Array,
 		} | null,
 	}[],

@@ -30,7 +30,7 @@ export const worldStride = 128;
 const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 const wallmodels = generateWallModels();
 
-const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255], usesColor: true };
+const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255] };
 
 export type MapRect = {
 	x: number,
@@ -73,8 +73,7 @@ type TileShape = {
 export type TileVertex = {
 	material: number,
 	materialTiling: number,
-	color: number[],
-	usesColor: boolean
+	color: number[]
 }
 
 export type ChunkData = {
@@ -888,18 +887,16 @@ export class TileGrid implements TileGridSource {
 						}
 						underlayprop = {
 							material: underlay.material ?? -1,
-							materialTiling: underlay.unknown_0x03 ?? 128,
-							color: underlay.color ?? [255, 0, 255],
-							usesColor: !underlay.unknown_0x04
+							materialTiling: underlay.material_tiling ?? 128,
+							color: underlay.color ?? [255, 0, 255]
 						};
 					}
 					let overlay = (tile.overlay != undefined ? this.engine.mapOverlays[tile.overlay - 1] : undefined);
 					if (overlay) {
 						overlayprop = {
 							material: overlay.material ?? -1,
-							materialTiling: overlay.unknown_0x09 ?? 128,//TODO is there a prop for this like with underlay?
-							color: overlay.primary_colour ?? [255, 0, 255],
-							usesColor: !overlay.unknown_0x0A
+							materialTiling: overlay.material_tiling ?? 128,
+							color: overlay.primary_colour ?? [255, 0, 255]
 						};
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
@@ -2086,11 +2083,11 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 								return defaultVertexProp;
 							});
 						} else {
-							props = Array(shape.overlay.length).fill({
+							props = Array<TileVertex>(shape.overlay.length).fill({
 								color,
 								material: 0,
-								usesColor: true
-							} as TileVertex);
+								materialTiling: 128
+							});
 						}
 						for (let i = 2; i < shape.overlay.length; i++) {
 							let v0 = shape.overlay[0];
@@ -2126,7 +2123,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 							return defaultVertexProp;
 						});
 					} else {
-						props = Array(shape.underlay.length).fill({ color: tile.underlayprops.color, material: 0, usesColor: true } as TileVertex);
+						props = Array<TileVertex>(shape.underlay.length).fill({ color: tile.underlayprops.color, material: 0, materialTiling: 128 });
 					}
 					for (let i = 2; i < shape.underlay.length; i++) {
 						let v0 = shape.underlay[0];

@@ -55,7 +55,7 @@ export function convertMaterial(data: Buffer) {
 			mat.uvAnim = { u: (raw.animtexU ?? 0) * scale, v: (raw.animtexV ?? 0) * scale };
 		}
 		//TODO it looks like vertexColorness is non-binary!!
-		mat.vertexColors = !raw.extra || raw.extra.metalness != 255;
+		mat.vertexColors = !raw.extra || raw.extra.ignoreVertexColors != 255;
 		if (raw.extra) {
 			// mat.stripDiffuseAlpha = (raw.extra.unk00_flags & 1) != 0;//TODO this is wrong, makes floor of mapsquare 22,4 black
 			mat.reflectionColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));

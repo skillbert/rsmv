@@ -36,7 +36,7 @@ export type materials = {
 			unk09_bool: boolean,
 			unk0a_bool: boolean,
 			specular: number,
-			metalness: number,
+			ignoreVertexColors: number,
 			colorint: number,
 		} | null,
 	} | null,

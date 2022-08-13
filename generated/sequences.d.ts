@@ -28,6 +28,10 @@ export type sequences = {
 	unknown_16?: number | null
 	unknown_18?: number | null
 	skeletal_animation?: number | null
+	skeletal_range?: [
+		number,
+		number,
+	] | null
 	unknown_70?: {
 		intlow: number,
 		maybe_file: number,
