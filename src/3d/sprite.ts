@@ -29,6 +29,9 @@ export function parseSprite(buf: Buffer) {
 			});
 		}
 		let palette = buf.slice(buf.length - 7 - 8 * count - 3 * palette_count, buf.length - 7 - 8 * count);
+		if (palette[0] == 0 && palette[1] == 0 && palette[2] == 0) {
+			palette[2] = 1;//yep, the game does this, i don't know why
+		}
 		offset = 0;
 		for (let imgdef of subimgs) {
 			let imgsize = imgdef.width * imgdef.height;
@@ -48,9 +51,9 @@ export function parseSprite(buf: Buffer) {
 
 						let pxindex = buf.readUInt8(indexoffset + inoffset);
 						if (pxindex == 0) {
-							imgdata[outoffset + 0] = 255;
+							imgdata[outoffset + 0] = 0;
 							imgdata[outoffset + 1] = 0;
-							imgdata[outoffset + 2] = 255;
+							imgdata[outoffset + 2] = 0;
 							imgdata[outoffset + 3] = 0;
 						} else {
 							let paletteoffset = (pxindex - 1) * 3;

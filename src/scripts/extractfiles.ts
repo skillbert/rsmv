@@ -6,6 +6,10 @@ import { constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
+import { parseSprite } from "../3d/sprite";
+import { pixelsToImageFile } from "../imgutils";
+import { crc32, CrcBuilder } from "../libs/crc32util";
+import { getModelHashes } from "3d/ob3tothree";
 
 
 type CacheFileId = {
@@ -204,7 +208,7 @@ type DecodeLookup = {
 export type DecodeMode<T = Buffer | string> = {
 	ext: string,
 	parser?: FileParser<any>,
-	read(buf: Buffer, fileid: LogicalIndex): T,
+	read(buf: Buffer, fileid: LogicalIndex): T | Promise<T>,
 	prepareDump(output: ScriptOutput): void,
 	write(files: Buffer): Buffer,
 	combineSubs(files: T[]): T
@@ -226,6 +230,76 @@ const decodeBinary: DecodeModeFactory = () => {
 		read(b) { return b; },
 		write(b) { return b; },
 		combineSubs(b: Buffer[]) { return Buffer.concat(b); }
+	}
+}
+
+const decodeSprite: DecodeModeFactory = () => {
+	return {
+		ext: "png",
+		major: cacheMajors.sprites,
+		logicalDimensions: 1,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let major = cacheMajors.sprites;
+			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
+		},
+		prepareDump() { },
+		read(b, id) {
+			//TODO support subimgs
+			return pixelsToImageFile(parseSprite(b)[0], "png", 1);
+		},
+		write(b) { throw new Error("write not supported"); },
+		combineSubs(b: Buffer[]) { throw new Error("not supported"); }
+	}
+}
+
+const decodeSpriteHash: DecodeModeFactory = () => {
+	return {
+		ext: "json",
+		major: cacheMajors.sprites,
+		logicalDimensions: 1,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let major = cacheMajors.sprites;
+			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
+		},
+		prepareDump() { },
+		async read(b, id) {
+			//TODO support subimgs
+			let images = parseSprite(b);
+			let str = "";
+			for (let [sub, img] of images.entries()) {
+				let hash = crc32(img.data);
+				str += (str == "" ? "" : ",") + `{"id":${id[0]},"sub":${sub},"hash":${hash}}`;
+			}
+			return str;
+		},
+		write(b) { throw new Error("write not supported"); },
+		combineSubs(b: string[]) { return "[" + b.join(",\n") + "]"; }
+	}
+}
+
+const decodeMeshHash: DecodeModeFactory = () => {
+	return {
+		ext: "json",
+		major: cacheMajors.models,
+		logicalDimensions: 1,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major: cacheMajors.models, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let major = cacheMajors.models;
+			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
+		},
+		prepareDump() { },
+		read(b, id) {
+			let model = parseModels.read(b);
+			let meshhashes = getModelHashes(model, id[0]);
+			return JSON.stringify(meshhashes);
+		},
+		write(b) { throw new Error("write not supported"); },
+		combineSubs(b: string[]) { return "[" + b.filter(q => q).join(",\n") + "]"; }
 	}
 }
 
@@ -266,10 +340,38 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	indices: { parser: parseCacheIndex, lookup: indexfileIndex() },
 	rootindex: { parser: parseRootCacheIndex, lookup: rootindexfileIndex() }
-})
+});
+
+const npcmodels: DecodeModeFactory = function (flags) {
+	return {
+		...chunkedIndex(cacheMajors.npcs),
+		ext: "json",
+		prepareDump(output) { },
+		read(b, id) {
+			let obj = parseNpc.read(b);
+			return prettyJson({
+				id: id[0],
+				size: obj.boundSize ?? 1,
+				name: obj.name ?? "",
+				models: obj.models ?? []
+			});
+		},
+		write(files) {
+			throw new Error("");
+		},
+		combineSubs(b) {
+			return `[${b.join(",\n")}]`;
+		}
+	}
+}
 
 export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin", DecodeModeFactory> = {
 	bin: decodeBinary,
+	sprites: decodeSprite,
+	spritehash: decodeSpriteHash,
+	modelhash: decodeMeshHash,
+
+	npcmodels: npcmodels,
 
 	...Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)]))
 } as any;
@@ -327,7 +429,8 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 		let file = arch[fileid.subindex];
 		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
 		let res = mode.read(file.buffer, logicalid);
-		if (args.batched) {
+		if (res instanceof Promise) { res = await res; }
+		if (batchSubfile || batchMaxFiles != -1) {
 			let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;
 			let newarch = currentBatch && currentBatch.arch != arch
 			if (!currentBatch || maxedbatchsize || (batchSubfile && newarch)) {

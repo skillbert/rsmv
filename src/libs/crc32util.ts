@@ -35,10 +35,61 @@ function build_crc_tables() {
 }
 build_crc_tables();
 
-export function crc32(buf: Uint8Array, crc = 0, rangeStart = 0, rangeEnd = buf.length) {
+export function crc32(buf: Uint8Array | Uint8ClampedArray, crc = 0, rangeStart = 0, rangeEnd = buf.length) {
 	crc = crc ^ 0xffffffff;
 	for (let i = rangeStart; i < rangeEnd; i++) {
 		crc = (crc >>> 8) ^ crc32_table[(crc ^ buf[i]) & 0xff];
+	}
+	return (crc ^ 0xffffffff) >>> 0;
+}
+
+export class CrcBuilder {
+	crc: number;
+	constructor(initcrc = 0) {
+		this.crc = initcrc ^ 0xffffffff;
+	}
+	addbyte(byte: number) {
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ (byte & 0xff)) & 0xff];
+	}
+	addUint16Flipped(u16: number) {
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ ((u16 >> 16) & 0xff)) & 0xff];
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ (u16 & 0xff)) & 0xff];
+	}
+	addUint16(u16: number) {
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ (u16 & 0xff)) & 0xff];
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ ((u16 >> 16) & 0xff)) & 0xff];
+	}
+	addUint32(u16: number) {
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ ((u16 >> 0) & 0xff)) & 0xff];
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ ((u16 >> 16) & 0xff)) & 0xff];
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ ((u16 >> 24) & 0xff)) & 0xff];
+		this.crc = (this.crc >>> 8) ^ crc32_table[(this.crc ^ ((u16 >> 32) & 0xff)) & 0xff];
+	}
+	get() {
+		return (this.crc ^ 0xffffffff) >>> 0;
+	}
+	fork() {
+		return new CrcBuilder(this.get());
+	}
+}
+
+/**
+ * Used to hash parts of an interlaced buffer
+ * @param buf the interlaced buffer
+ * @param offset offset of byte group
+ * @param stride number of bytes between the start of each occurance of the byte group
+ * @param bytes number of bytes per group
+ * @param chunkcount number of groups
+ * @param crc optional starting value for crc
+ */
+export function crc32Interlaced(buf: Uint8Array, offset: number, stride: number, bytes: number, chunkcount: number, crc = 0) {
+	crc = crc ^ 0xffffffff;
+	for (let i = 0; i < chunkcount; i++) {
+		let base = offset + i * stride;
+		for (let b = 0; b < bytes; b++) {
+			let index = base + b;
+			crc = (crc >>> 8) ^ crc32_table[(crc ^ buf[index]) & 0xff];
+		}
 	}
 	return (crc ^ 0xffffffff) >>> 0;
 }

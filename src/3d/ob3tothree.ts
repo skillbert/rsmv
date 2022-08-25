@@ -16,6 +16,7 @@ import { mapscenes } from "../../generated/mapscenes";
 import { cacheFileJsonModes } from "../scripts/extractfiles";
 import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
+import { crc32, CrcBuilder } from "../libs/crc32util";
 
 export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 	mat.customProgramCacheKey = () => "floortex";
@@ -372,4 +373,96 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		rootnode.add(mesh);
 	}
 	return rootnode;
+}
+
+export function getModelHashes(model: models, id: number) {
+	let meshhashes: {
+		id: number,
+		sub: number,
+		uvshead: number,
+		uvsfull: number,
+		normalshead: number,
+		normalsfull: number,
+		poshead: number,
+		posfull: number,
+		verts: number,
+		indexpos: {
+			id: number,
+			head: number,
+			full: number,
+			count: number
+		}[]
+	}[] = [];
+	const matchvertices = 20;
+	const maxfullvertices = 1000;
+	const bufsize = matchvertices * 2 * 2;
+	const normalssize = matchvertices * 3;
+	const possize = matchvertices * 3 * 2;
+	for (let [sub, mesh] of model.meshes.entries()) {
+		let uvshead = 0;
+		let uvsfull = 0;
+		let normalshead = 0;
+		let normalsfull = 0;
+		let poshead = 0;
+		let posfull = 0;
+		if (mesh.uvBuffer && mesh.uvBuffer.length >= bufsize) {
+			let hasnonnull = false;
+			for (let i = 0; i < bufsize; i++) {
+				if (mesh.uvBuffer[i] != 0) {
+					hasnonnull = true;
+					break;
+				}
+			}
+			if (hasnonnull) {
+				uvshead = crc32(Buffer.from(mesh.uvBuffer.buffer, mesh.uvBuffer.byteOffset, bufsize));
+				uvsfull = crc32(Buffer.from(mesh.uvBuffer.buffer, mesh.uvBuffer.byteOffset, Math.min(maxfullvertices * 2 * 2, mesh.uvBuffer.byteLength)));
+			}
+		}
+		if (mesh.normalBuffer && mesh.normalBuffer.length >= normalssize) {
+			normalshead = crc32(Buffer.from(mesh.normalBuffer.buffer, mesh.normalBuffer.byteOffset, normalssize));
+			normalsfull = crc32(Buffer.from(mesh.normalBuffer.buffer, mesh.normalBuffer.byteOffset, Math.min(maxfullvertices * 3, mesh.normalBuffer.byteLength)));
+		}
+		if (mesh.positionBuffer && mesh.positionBuffer.length >= possize) {
+			poshead = crc32(Buffer.from(mesh.positionBuffer.buffer, mesh.positionBuffer.byteOffset, possize));
+			posfull = crc32(Buffer.from(mesh.positionBuffer.buffer, mesh.positionBuffer.byteOffset, Math.min(maxfullvertices * 3 * 2, mesh.positionBuffer.byteLength)));
+		}
+		let indexedposcrcs: { id: number, head: number, full: number, count: number }[] = [];
+		if (mesh.positionBuffer) {
+			for (let indices of mesh.indexBuffers) {
+				let primcount = indices.length / 3 | 0;
+				if (primcount >= matchvertices) {
+					let crc = new CrcBuilder();
+					let head = 0;
+					for (let i = 0; i < primcount; i++) {
+						for (let j = 0; j < 3; j++) {
+							let index = indices[i * 3 + j];
+							crc.addUint16(mesh.positionBuffer[index * 3 + 0]);
+							crc.addUint16(mesh.positionBuffer[index * 3 + 1]);
+							crc.addUint16(mesh.positionBuffer[index * 3 + 2]);
+						}
+						if (i == matchvertices - 1) {
+							head = crc.get();
+						}
+					}
+					indexedposcrcs.push({
+						id,
+						head,
+						full: crc.get(),
+						count: primcount
+					});
+				}
+			}
+		}
+		if (uvshead || poshead || normalshead || indexedposcrcs.length != 0) {
+			meshhashes.push({
+				id,
+				sub,
+				uvshead, uvsfull,
+				normalshead, normalsfull,
+				poshead, posfull,
+				verts: mesh.vertexCount!,
+				indexpos: indexedposcrcs
+			});
+		}
+	}
 }

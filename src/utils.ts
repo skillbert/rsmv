@@ -203,7 +203,7 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 		var lower = data[scan++];
 		var mantissa = lower | ((upper << 8) & 0x0300);
 		var exponent = (upper >> 2) & 0x1F;
-		mantissa = mantissa * Math.pow(2.0, -10.0) + 1.0;
+		mantissa = mantissa * Math.pow(2.0, -10.0) + (exponent == 0 ? 0.0 : 1.0);
 		mantissa *= Math.pow(2.0, exponent - 15.0);
 		if ((upper & 0x80) == 0x80)
 			mantissa *= -1.0;
