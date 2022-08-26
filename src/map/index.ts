@@ -16,7 +16,8 @@ import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/depend
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay } from "../utils";
 import { drawCollision } from "./collisionimage";
-import { registerWebglTracker } from "../3d/webglleaktest";
+import prettyJson from "json-stringify-pretty-compact";
+import { chunksummary } from "./chunksummary";
 
 // @ts-ignore type import also fails when targeting web
 import type * as electronType from "electron/renderer";
@@ -94,6 +95,8 @@ type LayerConfig = {
 	mode: "height"
 } | {
 	mode: "collision"
+} | {
+	mode: "locs"
 });
 
 async function initMapConfig(endpoint: string, auth: string, version: number, overwrite: boolean) {
@@ -676,10 +679,6 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 	];
 	let depcrc = rootdeps.reduce((a, v) => deps.hashDependencies(v, a), 0);
 	// let depfiles = rootdeps.reduce((a, v) => deps.cascadeDependencies(v, a), []);
-	//TODO remove
-	// depcrc = Math.random() * 10000 | 0;
-
-	// console.log("dependencies", x, z, depcrc, depfiles);
 
 	let chunktasks: {
 		layer: LayerConfig,
@@ -771,6 +770,22 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 					let { grid } = await chunks[0].chunk.model;
 					let file = grid.getHeightCollisionFile(x * 64, z * 64, thiscnf.level, 64, 64);
 					return { file: () => Promise.resolve(Buffer.from(file.buffer, file.byteOffset, file.byteLength)) };
+				}
+			});
+		}
+		if (cnf.mode == "locs") {
+			let thiscnf = cnf;
+			let filename = `${thiscnf.name}/${x}-${z}.json`;
+			chunktasks.push({
+				layer: thiscnf,
+				file: filename,
+				hash: depcrc,
+				async run() {
+					let chunks = await renderer.setArea(x, z, 1, 1);
+					let { grid, modeldata } = await chunks[0].chunk.model;
+					let res = await chunksummary(engine, grid, modeldata);
+					let textual = prettyJson(res, { indent: "\t" });
+					return { file: () => Promise.resolve(Buffer.from(textual, "utf8")) };
 				}
 			});
 		}

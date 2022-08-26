@@ -9,7 +9,7 @@ import { ModelMeshData, ModelData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache } from "./ob3tothree";
-import { BufferAttribute, DataTexture, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
+import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
@@ -525,30 +525,22 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 	return newmesh;
 }
 
-export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: TileGrid, modelheight: number, rootx: number, rootz: number) {
+export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number) {
 	let matrix = new THREE.Matrix4()
-		.makeTranslation(morph.translate.x - rootx, morph.translate.y, morph.translate.z - rootz)
+		.makeTranslation(morph.translate.x - gridoffsetx, morph.translate.y, morph.translate.z - gridoffsetz)
 		.multiply(new THREE.Matrix4().makeRotationFromQuaternion(morph.rotation))
 		.multiply(new THREE.Matrix4().makeScale(morph.scale.x, morph.scale.y, morph.scale.z));
+
 	let vector = new THREE.Vector3();
 
-	let gridoffsetx = rootx;
-	let gridoffsetz = rootz;
 	let centery = getTileHeight(grid, (morph.originx) / tiledimensions, (morph.originz) / tiledimensions, morph.level);
-
-	let pos = mesh.attributes.pos;
-	if (mesh.attributes.pos.itemSize != 3) {
-		throw new Error("unexpected mesh pos type during model transform");
-	}
 
 	//let ceiling = typeof morph.tiletransform?.scaleModelHeight != "undefined";
 	let followfloor = morph.placementMode == "followfloor" || morph.placementMode == "followfloorceiling";
 	let followceiling = morph.placementMode == "followfloorceiling";
 	let yscale = (followceiling && modelheight > 0 ? 1 / modelheight : 1);
 
-	//TODO get this as argument instead
-	//needs to be cast to float since int16 overflows
-	let newposarray = new Float32Array(mesh.attributes.pos.count * 3);
+	let newposarray = new Float32Array(pos.count * 3);
 	let newpos = new THREE.BufferAttribute(newposarray, 3);
 	// const maxdistance = tiledimensions / 2;
 	for (let i = 0; i < pos.count; i++) {
@@ -572,6 +564,13 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 		}
 		newpos.setXYZ(i, vector.x, vector.y, vector.z);
 	}
+	return { newpos, matrix };
+}
+
+export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number) {
+	let { newpos, matrix } = transformVertexPositions(mesh.attributes.pos, morph, grid, modelheight, gridoffsetx, gridoffsetz);
+
+	let vector = new THREE.Vector3();
 	let newnorm = mesh.attributes.normals;
 	if (mesh.attributes.normals) {
 		let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
@@ -1024,69 +1023,64 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 	return { skybox, fogColor };
 }
 
-export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunks: ChunkData[], opts?: ParsemapOpts) {
-	let squareDatas: ChunkModelData[] = [];
-
-	for (let chunk of chunks) {
-		let floors: FloorMeshData[] = [];
-		let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareSize + 1, squareSize + 1);
-		let textures = new Map<number, { tex: CanvasImage, repeat: number }>();
-		let textureproms: Promise<void>[] = [];
-		for (let [matid, repeat] of matids.entries()) {
-			let mat = scene.engine.getMaterialData(matid);
-			if (mat.textures.diffuse) {
-				textureproms.push(scene.getTextureFile(mat.textures.diffuse, mat.stripDiffuseAlpha)
-					.then(tex => tex.toWebgl())
-					.then(src => {
-						textures.set(mat.textures.diffuse!, { tex: src, repeat });
-					})
-				);
-			}
+export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
+	let floors: FloorMeshData[] = [];
+	let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareSize + 1, squareSize + 1);
+	let textures = new Map<number, { tex: CanvasImage, repeat: number }>();
+	let textureproms: Promise<void>[] = [];
+	for (let [matid, repeat] of matids.entries()) {
+		let mat = scene.engine.getMaterialData(matid);
+		if (mat.textures.diffuse) {
+			textureproms.push(scene.getTextureFile(mat.textures.diffuse, mat.stripDiffuseAlpha)
+				.then(tex => tex.toWebgl())
+				.then(src => {
+					textures.set(mat.textures.diffuse!, { tex: src, repeat });
+				})
+			);
 		}
-		await Promise.all(textureproms);
-		let atlas!: SimpleTexturePacker;
-		retrysize: for (let size = 256; size <= 4096; size *= 2) {
-			atlas = new SimpleTexturePacker(size);
-			for (let [id, { tex, repeat }] of textures.entries()) {
-				if (!atlas.addTexture(id, tex, repeat)) {
-					continue retrysize;
-				}
-			}
-			break;
-		}
-
-		for (let level = 0; level < squareLevels; level++) {
-			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, true, false));
-			if (opts?.map2d) {
-				floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
-			}
-			if (opts?.invisibleLayers) {
-				floors.push(mapsquareMesh(grid, chunk, level, atlas, true));
-			}
-		}
-		let models = mapsquareObjectModels(chunk.locs);
-		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
-		squareDatas.push({
-			chunk,
-			floors,
-			models,
-			grid,
-			overlays
-		});
 	}
-	return squareDatas;
+	await Promise.all(textureproms);
+	let atlas!: SimpleTexturePacker;
+	retrysize: for (let size = 256; size <= 4096; size *= 2) {
+		atlas = new SimpleTexturePacker(size);
+		for (let [id, { tex, repeat }] of textures.entries()) {
+			if (!atlas.addTexture(id, tex, repeat)) {
+				continue retrysize;
+			}
+		}
+		break;
+	}
+
+	for (let level = 0; level < squareLevels; level++) {
+		floors.push(mapsquareMesh(grid, chunk, level, atlas, false, true, false));
+		if (opts?.map2d) {
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
+		}
+		if (opts?.invisibleLayers) {
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, true));
+		}
+	}
+	let models = mapsquareObjectModels(chunk.locs);
+	let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
+	let r: ChunkModelData = {
+		chunk,
+		floors,
+		models,
+		grid,
+		overlays
+	}
+	return r;
 }
 
-export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkModelData) {
+export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkModelData, placedlocs: PlacedModel[]) {
 	let node = new THREE.Group();
 	node.matrixAutoUpdate = false;
 	node.position.set(chunk.chunk.xoffset * tiledimensions, 0, chunk.chunk.zoffset * tiledimensions);
 	node.updateMatrix();
-	let models = await generateLocationMeshgroups(scene, chunk.models);
 
 	let rootx = chunk.chunk.xoffset * tiledimensions;
 	let rootz = chunk.chunk.zoffset * tiledimensions;
-	if (models.length != 0) { node.add(...models.map(q => meshgroupsToThree(grid, q, rootx, rootz))); }
+	if (placedlocs.length != 0) { node.add(...placedlocs.map(q => meshgroupsToThree(grid, q, rootx, rootz))); }
 	let chunkoverlays = chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(grid, q, rootx, rootz));
 	if (chunkoverlays.length != 0) { node.add(...chunkoverlays); }
 	let floors = (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any;
@@ -1098,21 +1092,6 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 		if (rawboxes) { node.add(rawboxes); }
 	}
 	return node;
-}
-
-
-/**
- * @deprecated
- */
-export async function mapsquareToThree(scene: ThreejsSceneCache, grid: TileGrid, chunks: ChunkModelData[]) {
-	let root = new THREE.Group();
-
-	let chunkmodels = await Promise.all(chunks.map(q => mapsquareToThreeSingle(scene, grid, q)));
-	if (chunkmodels.length != 0) {
-		root.add(...chunkmodels);
-	}
-
-	return root;
 }
 
 function copyImageData(dest: ImageData, src: ImageData, destx: number, desty: number, srcx = 0, srcy = 0, width?: number, height?: number) {
@@ -1222,14 +1201,16 @@ class SimpleTexturePacker {
 	}
 }
 
+export type PlacedMesh = {
+	model: ModelMeshData,
+	morph: FloorMorph,
+	miny: number,
+	maxy: number,
+	extras: ModelExtrasLocation | ModelExtrasOverlay
+}
+
 type PlacedModel = {
-	models: {
-		model: ModelMeshData,
-		morph: FloorMorph,
-		miny: number,
-		maxy: number,
-		extras: ModelExtrasLocation | ModelExtrasOverlay
-	}[],
+	models: PlacedMesh[],
 	material: THREE.Material,
 	overlayIndex: number,
 	groupid: string
@@ -1824,10 +1805,11 @@ function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number, raw
 	return model;
 }
 
-async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: MapsquareLocation[]) {
+export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: MapsquareLocation[]) {
 	let loadedmodels = new Map<number, ModelData>();
 
 	let matmeshes: Map<string, Map<number, PlacedModel>> = new Map();
+	let byLogical: PlacedMesh[][] = [];
 
 	let loadproms: Promise<any>[] = [];
 	for (let loc of locs) {
@@ -1845,6 +1827,7 @@ async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: Mapsqu
 			miny = Math.min(model.miny, miny);
 			maxy = Math.max(model.maxy, maxy);
 		}
+		let meshes: PlacedModel["models"] = [];
 		for (let modelinst of obj.models) {
 			let model = loadedmodels.get(modelinst.model)!;
 			for (let rawmesh of model.meshes) {
@@ -1865,21 +1848,26 @@ async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: Mapsqu
 					};
 					group.set(matkey, matgroup);
 				}
-				matgroup.models.push({
+				let mesh: PlacedModel["models"][number] = {
 					model: modified,
 					morph: modelinst.morph,
 					miny: miny,
 					maxy: maxy,
 					extras: obj.extras
-				});
+				}
+				meshes.push(mesh);
+				matgroup.models.push(mesh);
 			}
 		}
+		if (meshes.length != 0) {
+			byLogical.push(meshes);
+		}
 	}
-	let r: PlacedModel[] = [];
+	let byMaterial: PlacedModel[] = [];
 	for (let group of matmeshes.values()) {
-		r.push(...group.values());
+		byMaterial.push(...group.values());
 	}
-	return r;
+	return { byMaterial, byLogical };
 }
 
 function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number) {

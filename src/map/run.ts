@@ -10,7 +10,9 @@ app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("js-flags", "--expose-gc");
-
+//these flags only make it worse right now since it prevents a full crash when buffer allocs start failing
+// app.commandLine.appendSwitch("js-flags", "--max-old-space-size=16384");
+// app.commandLine.appendSwitch("js-flags", "--max-heap-size=16384");
 
 //for some reason it very crashes very often if using embedded GPU
 //so force dedicated GPU if available

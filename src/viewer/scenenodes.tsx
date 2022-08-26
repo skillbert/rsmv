@@ -3,8 +3,8 @@ import { augmentThreeJsFloorMaterial, ThreejsSceneCache, mergeModelDatas, ob3Mod
 import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
-import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThree, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Bone, Clock, Material, Matrix4, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2, Vector3, VectorKeyframeTrack } from "three";
+import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight, ChunkModelData, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
+import { AnimationClip, AnimationMixer, Bone, Clock, Group, Material, Matrix4, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2, Vector3, VectorKeyframeTrack } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseModels, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
@@ -222,9 +222,18 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 }
 
 
+type RSMapChunkData = {
+	grid: TileGrid,
+	chunks: ChunkData[],
+	groups: Set<string>,
+	sky: { skybox: Object3D, fogColor: number[] } | null,
+	modeldata: PlacedMesh[][],
+	chunkmodels: Group[]
+}
+
 export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements ThreeJsSceneElementSource {
-	model: Promise<{ grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string> }>;
-	loaded: { grid: TileGrid, chunks: ChunkData[], chunkmodels: Object3D[], groups: Set<string>, sky: { skybox: Object3D, fogColor: number[] } | null } | null = null;
+	model: Promise<RSMapChunkData>;
+	loaded: RSMapChunkData | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
 	mixer = new AnimationMixer(this.rootnode);
@@ -290,12 +299,16 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.model = (async () => {
 			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
-			let modeldata = await mapsquareModels(cache, grid, chunks, opts);
-			let chunkmodels = await Promise.all(modeldata.map(q => mapsquareToThreeSingle(this.cache, grid, q)));
+			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
+				let chunk = await mapsquareModels(cache, grid, chunkdata, opts);
+				let locmeshes = await generateLocationMeshgroups(cache, chunk.models);
+				let group = await mapsquareToThreeSingle(this.cache, grid, chunk, locmeshes.byMaterial);
+				return { locmeshes, group, chunk };
+			}));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
-			if (chunkmodels.length != 0) {
-				this.rootnode.add(...chunkmodels);
+			if (processedChunks.length != 0) {
+				this.rootnode.add(...processedChunks.map(q => q.group));
 			}
 
 			let groups = new Set<string>();
@@ -319,7 +332,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 				}
 			});
 
-			this.loaded = { grid, chunks, chunkmodels, groups, sky };
+			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
+			let chunkmodels = processedChunks.map(q => q.group);
+			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels };
 			this.onModelLoaded();
 			return this.loaded;
 		})();
