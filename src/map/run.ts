@@ -11,15 +11,15 @@ app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("js-flags", "--expose-gc");
 //these flags only make it worse right now since it prevents a full crash when buffer allocs start failing
-// app.commandLine.appendSwitch("js-flags", "--max-old-space-size=16384");
-// app.commandLine.appendSwitch("js-flags", "--max-heap-size=16384");
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=16384");
+app.commandLine.appendSwitch("js-flags", "--max-heap-size=16384");
 
 //for some reason it very crashes very often if using embedded GPU
 //so force dedicated GPU if available
-app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
+// app.commandLine.appendSwitch("force_high_performance_gpu");//only works for mac
 //forces dedicated gpu on windows
 //https://stackoverflow.com/questions/54464276/how-to-force-discrete-gpu-in-electron-js/63668188#63668188
-process.env.SHIM_MCCOMPAT = '0x800000001';
+// process.env.SHIM_MCCOMPAT = '0x800000001';
 
 //prevents computer from sleeping
 const id = powerSaveBlocker.start("prevent-app-suspension");
