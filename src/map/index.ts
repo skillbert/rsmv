@@ -17,7 +17,7 @@ import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
-import { chunksummary } from "./chunksummary";
+import { chunkSummary } from "./chunksummary";
 
 // @ts-ignore type import also fails when targeting web
 import type * as electronType from "electron/renderer";
@@ -783,7 +783,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
 					let { grid, modeldata } = await chunks[0].chunk.model;
-					let res = await chunksummary(engine, grid, modeldata);
+					let res = await chunkSummary(engine, grid, modeldata);
 					let textual = prettyJson(res, { indent: "\t" });
 					return { file: () => Promise.resolve(Buffer.from(textual, "utf8")) };
 				}

@@ -6,12 +6,12 @@ import { EngineCache } from "../3d/ob3tothree";
 import { cacheMajors } from "../constants";
 
 
-export async function chunksummary(engine: EngineCache, grid: TileGrid, models: PlacedMesh[][]) {
+export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: PlacedMesh[][]) {
 	let sum = new Vector3();
 	let tmp = new Vector3();
 
 	let locids = new Map<number, objects>();
-	let locs: { id: number, x: number, z: number, l: number, center: number[] }[] = [];
+	let locs: { id: number, x: number, z: number, l: number, r: number, center: number[] }[] = [];
 	for (let model of models) {
 		let first = model[0];
 		if (first.extras.modeltype != "location") { continue; }
@@ -43,6 +43,7 @@ export async function chunksummary(engine: EngineCache, grid: TileGrid, models: 
 			x: first.extras.worldx,
 			z: first.extras.worldz,
 			l: first.extras.level,
+			r: first.extras.rotation,
 			center: [
 				Math.round(newpos.getX(0) / 512 * 100) / 100,
 				Math.round(newpos.getY(0) / 512 * 100) / 100,
@@ -51,7 +52,7 @@ export async function chunksummary(engine: EngineCache, grid: TileGrid, models: 
 		});
 	}
 
-	let locdatas = Object.fromEntries([...locids]);
+	let locdatas = Object.fromEntries([...locids].filter(([id, loc]) => loc.name));
 
 	return { locs, locdatas };
 }
