@@ -1,12 +1,12 @@
 import { parseObject } from "../opdecoder";
 import { BufferAttribute, Vector3 } from "three";
 import { objects } from "../../generated/objects";
-import { PlacedMesh, TileGrid, transformVertexPositions } from "../3d/mapsquare";
+import { MapRect, PlacedMesh, TileGrid, transformVertexPositions } from "../3d/mapsquare";
 import { EngineCache } from "../3d/ob3tothree";
 import { cacheMajors } from "../constants";
 
 
-export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: PlacedMesh[][]) {
+export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
 	let sum = new Vector3();
 	let tmp = new Vector3();
 
@@ -14,12 +14,23 @@ export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: 
 	let locs: { id: number, x: number, z: number, l: number, r: number, center: number[] }[] = [];
 	for (let model of models) {
 		let first = model[0];
-		if (first.extras.modeltype != "location") { continue; }
-		let loc = locids.get(first.extras.locationid);
+		let info = first.extras;
+		if (info.modeltype != "location") { continue; }
+		if (
+			info.worldx < rect.x
+			|| info.worldz < rect.z
+			|| info.worldx >= rect.x + rect.xsize
+			|| info.worldz >= rect.z + rect.zsize
+		) {
+			continue;
+		}
+
+
+		let loc = locids.get(info.locationid);
 		if (!loc) {
-			let buf = await engine.getFileById(cacheMajors.objects, first.extras.locationid)
+			let buf = await engine.getFileById(cacheMajors.objects, info.locationid)
 			loc = parseObject.read(buf);
-			locids.set(first.extras.locationid, loc);
+			locids.set(info.locationid, loc);
 		}
 		if (!loc.name) { continue; }
 
@@ -39,11 +50,11 @@ export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: 
 		let { newpos } = transformVertexPositions(pos, first.morph, grid, first.maxy - first.miny, 0, 0);
 
 		locs.push({
-			id: first.extras.locationid,
-			x: first.extras.worldx,
-			z: first.extras.worldz,
-			l: first.extras.level,
-			r: first.extras.rotation,
+			id: info.locationid,
+			x: info.worldx,
+			z: info.worldz,
+			l: info.level,
+			r: info.rotation,
 			center: [
 				Math.round(newpos.getX(0) / 512 * 100) / 100,
 				Math.round(newpos.getY(0) / 512 * 100) / 100,
@@ -54,5 +65,9 @@ export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: 
 
 	let locdatas = Object.fromEntries([...locids].filter(([id, loc]) => loc.name));
 
-	return { locs, locdatas };
+	return {
+		locs,
+		locdatas,
+		rect
+	};
 }

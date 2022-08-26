@@ -783,7 +783,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
 					let { grid, modeldata } = await chunks[0].chunk.model;
-					let res = await chunkSummary(engine, grid, modeldata);
+					let res = await chunkSummary(engine, grid, modeldata, { x: x * squareSize, z: z * squareSize, xsize: squareSize, zsize: squareSize });
 					let textual = prettyJson(res, { indent: "\t" });
 					return { file: () => Promise.resolve(Buffer.from(textual, "utf8")) };
 				}
