@@ -704,8 +704,11 @@ export class TileGrid implements TileGridSource {
 	blendUnderlays(kernelRadius = 3) {
 		for (let z = this.zoffset; z < this.zoffset + this.height; z++) {
 			for (let x = this.xoffset; x < this.xoffset + this.width; x++) {
-				let effectiveLevel = -1;
 				let effectiveVisualLevel = 0;
+				let layer1tile = this.getTile(x, z, 1);
+				let flag2 = ((layer1tile?.raw.settings ?? 0) & 2) != 0;
+				let leveloffset = (flag2 ? -1 : 0);
+
 				for (let level = 0; level < squareLevels; level++) {
 					let currenttile = this.getTile(x, z, level);
 					if (!currenttile) { continue; }
@@ -759,22 +762,16 @@ export class TileGrid implements TileGridSource {
 					currenttile.next10 = znext;
 					currenttile.next11 = xznext;
 
-					let mergeunder = ((currenttile.raw.settings ?? 0) & 2) != 0;
 					let alwaysshow = ((currenttile.raw.settings ?? 0) & 8) != 0;
 
+					let effectiveLevel = level + leveloffset;
 					//weirdness with flag 2 and 8 related to effective levels
-					if (!mergeunder) { effectiveLevel++; }
 					if (alwaysshow) { effectiveVisualLevel = 0; }
-					effectiveLevel = Math.max(0, effectiveLevel);
 
-					let effectiveTile = this.getTile(x, z, effectiveLevel)!;
-					let hasroof = ((effectiveTile.raw.settings ?? 0) & 4) != 0;
+					let effectiveTile = this.getTile(x, z, effectiveLevel);
+					let hasroof = ((effectiveTile?.raw.settings ?? 0) & 4) != 0;
 
-					if (effectiveLevel != level) {
-						//keep using old effectivelevel if it was already determined
-						if (effectiveLevel == effectiveTile.effectiveLevel) {
-							effectiveVisualLevel = effectiveTile.effectiveVisualLevel;
-						}
+					if (effectiveTile && effectiveLevel != level) {
 						effectiveTile.effectiveCollision = currenttile.rawCollision;
 						effectiveTile.playery00 = currenttile.playery00;
 						effectiveTile.playery01 = currenttile.playery01;
@@ -1627,9 +1624,9 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 			if (collision && !objectmeta.probably_nocollision) {
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
-						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, inst.plane);
+						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, callingtile.effectiveLevel);
 						if (tile) {
-							let col = tile.rawCollision!;
+							let col = tile.effectiveCollision!;
 							//TODO check for other loc types
 							//22 should block, 4 should not
 							if (inst.type == 22 && objectmeta.maybe_blocks_movement) {
