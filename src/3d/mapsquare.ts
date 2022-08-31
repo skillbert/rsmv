@@ -826,7 +826,7 @@ export class TileGrid implements TileGridSource {
 			const defaultTiling = 128;
 			if (tiling < defaultTiling) {
 				//our sampling rect is larger than the texture
-				repeat = Math.ceil(defaultTiling / tiling);
+				repeat = defaultTiling / tiling + 1;
 			} else if (tiling % defaultTiling != 0) {
 				//our sampling rect does not fit an exact number of times inside our texture
 				repeat = 1 + defaultTiling / tiling;
