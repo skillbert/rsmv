@@ -1745,11 +1745,12 @@ function ExtractFilesScript(p: UiScriptProps) {
 function MaprenderScript(p: UiScriptProps) {
 	let [endpoint, setEndpoint] = React.useState(localStorage.rsmv_script_map_endpoint ?? "");
 	let [auth, setAuth] = React.useState("");
+	let [mapid, setMapId] = React.useState(0);
 
 	let run = () => {
 		let output = new UIScriptOutput();
 		localStorage.rsmv_script_map_endpoint = endpoint;
-		output.run(runMapRender, p.source, "main", endpoint, auth);
+		output.run(runMapRender, p.source, "main", endpoint, auth, mapid, false);
 		p.onRun(output);
 	}
 
@@ -1761,6 +1762,9 @@ function MaprenderScript(p: UiScriptProps) {
 			</LabeledInput>
 			<LabeledInput label="Auth">
 				<InputCommitted type="text" onChange={e => setAuth(e.currentTarget.value)} value={auth} />
+			</LabeledInput>
+			<LabeledInput label="mapid">
+				<InputCommitted type="number" onChange={e => setMapId(+e.currentTarget.value)} value={mapid} />
 			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>

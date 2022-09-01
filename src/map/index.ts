@@ -56,7 +56,7 @@ let cmd = cmdts.command({
 		mapname: cmdts.option({ long: "mapname", defaultValue: () => "main" }),
 		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
 		auth: cmdts.option({ long: "auth", short: "p" }),
-		overwrite: cmdts.flag({ long: "overwrite", short: "f" })
+		mapid: cmdts.option({ long: "mapid", type: cmdts.number })
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput("");
@@ -64,7 +64,7 @@ let cmd = cmdts.command({
 		let endpoint = args.endpoint;
 		if (endpoint.startsWith("localhost")) { endpoint = "http://" + endpoint; }
 		else { endpoint = "https://" + endpoint; }
-		await runMapRender(output, await args.source(), args.mapname, endpoint, args.auth);
+		await runMapRender(output, await args.source(), args.mapname, endpoint, args.auth, args.mapid, false);
 	}
 });
 
@@ -99,11 +99,11 @@ type LayerConfig = {
 	mode: "locs"
 });
 
-async function initMapConfig(endpoint: string, auth: string, version: number, overwrite: boolean) {
+async function initMapConfig(endpoint: string, auth: string, uploadmapid: number, version: number, overwrite: boolean) {
 	let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
 	if (!res.ok) { throw new Error("map config fetch error"); }
 	let config: Mapconfig = await res.json();
-	return new MapRender(endpoint, auth, config, version, overwrite);
+	return new MapRender(endpoint, auth, uploadmapid, config, version, overwrite);
 }
 
 //The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
@@ -114,17 +114,19 @@ class MapRender {
 	config: Mapconfig;
 	layers: LayerConfig[];
 	endpoint: string;
+	uploadmapid: number;
 	auth: string;
 	version: number;
 	overwrite: boolean;
 	minzoom: number;
-	constructor(endpoint: string, auth: string, config: Mapconfig, version: number, overwrite: boolean) {
+	constructor(endpoint: string, auth: string, uploadmapid: number, config: Mapconfig, version: number, overwrite: boolean) {
 		this.endpoint = endpoint;
 		this.auth = auth;
 		this.config = config;
 		this.layers = config.layers;
 		this.version = version;
 		this.overwrite = overwrite;
+		this.uploadmapid = uploadmapid;
 		this.minzoom = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
 	}
 	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
@@ -137,7 +139,7 @@ class MapRender {
 		return { min, max, base };
 	}
 	async saveFile(name: string, hash: number, data: Buffer) {
-		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}`, {
+		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&mapid=${this.uploadmapid}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
 			body: data
@@ -145,7 +147,7 @@ class MapRender {
 		if (!send.ok) { throw new Error("file upload failed"); }
 	}
 	async symlink(name: string, hash: number, target: string) {
-		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&symlink=${target}`, {
+		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&mapid=${this.uploadmapid}&symlink=${target}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
 		});
@@ -155,7 +157,7 @@ class MapRender {
 		if (this.overwrite) {
 			return [];
 		} else {
-			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.join(","))}`, {
+			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.join(","))}&mapid=${this.uploadmapid}`, {
 				headers: { "Authorization": this.auth },
 			});
 			if (!req.ok) { throw new Error("req failed"); }
@@ -163,7 +165,7 @@ class MapRender {
 		}
 	}
 	getFileUrl(name: string, hash: number) {
-		return `${this.endpoint}/getfile?file=${encodeURIComponent(name)}&hash=${+hash}`;
+		return `${this.endpoint}/getfile?file=${encodeURIComponent(name)}&hash=${+hash}&mapid=${this.uploadmapid}`;
 	}
 }
 
@@ -255,7 +257,7 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, overwrite = false) {
+export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, uploadmapid: number, overwrite = false) {
 	let engine = await EngineCache.create(filesource);
 
 	let areas: MapRect[] = [];
@@ -345,7 +347,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
 	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
 
-	let config = await initMapConfig(endpoint, auth, deps.maxVersion, overwrite);
+	let config = await initMapConfig(endpoint, auth, uploadmapid, deps.maxVersion, overwrite);
 
 	let getRenderer = () => {
 		let cnv = document.createElement("canvas");

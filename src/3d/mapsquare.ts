@@ -778,7 +778,7 @@ export class TileGrid implements TileGridSource {
 						effectiveTile.playery10 = currenttile.playery10;
 						effectiveTile.playery11 = currenttile.playery11;
 					}
-					currenttile.effectiveLevel = (alwaysshow ? 0 : effectiveLevel);
+					currenttile.effectiveLevel = effectiveLevel;
 					currenttile.effectiveVisualLevel = Math.max(currenttile.effectiveVisualLevel, effectiveVisualLevel);
 
 					//spread to our neighbours
