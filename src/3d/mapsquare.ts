@@ -1361,6 +1361,7 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 		translate: THREE.Vector3,
 		rotate: THREE.Quaternion,
 		scale: THREE.Vector3,
+		mirrored: boolean,
 		modelmods: ModelModifications
 	}
 	let modelcache = new Map<number, CachedLoc>();
@@ -1386,14 +1387,15 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 			let scale = new Vector3(
 				(objectmeta.scaleX ?? 128) * scalefactor,
 				(objectmeta.scaleY ?? 128) * scalefactor,
-				(objectmeta.scaleZ ?? 128) * scalefactor * (objectmeta.mirror ? -1 : 1)
+				(objectmeta.scaleZ ?? 128) * scalefactor
 			);
 			let rotate = new THREE.Quaternion();
 			model = {
 				rotate,
 				scale,
 				translate,
-				modelmods
+				modelmods,
+				mirrored: !!objectmeta.mirror
 			};
 			modelcache.set(inst.locid, model);
 		}
@@ -1401,10 +1403,17 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 
 		let originx = (inst.x + inst.sizex / 2) * tiledimensions;
 		let originz = (inst.z + inst.sizez / 2) * tiledimensions
-		let translate = new THREE.Vector3(originx, 0, originz).add(model.translate);
+		let translate = new THREE.Vector3().copy(model.translate);
 
 		let scale = new THREE.Vector3().copy(model.scale);
 		let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, inst.rotation / 2 * Math.PI);
+		if (inst.rotation % 2 == 1) {
+			let tmp = scale.x;
+			scale.x = scale.z;
+			scale.z = tmp;
+		}
+		if (model.mirrored) { scale.z *= -1; }
+		translate.add(new Vector3(originx, 0, originz));
 
 		if (inst.placement) {
 			translate.add(new Vector3().set(
