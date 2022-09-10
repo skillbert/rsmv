@@ -949,7 +949,7 @@ export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocatio
 
 export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
 
-	let chunkfloorpadding = (opts?.padfloor ? 10 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
+	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
 	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
 	let grid = new TileGrid(engine, {
 		x: rect.x * squareSize - chunkfloorpadding,
