@@ -1878,7 +1878,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 
 function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number) {
 	let geos = meshgroup.models.map(m => {
-		let transformed = transformMesh(m.model, m.morph, grid, m.maxy, rootx, rootz);
+		let transformed = transformMesh(m.model, m.morph, grid, m.maxy - m.miny, rootx, rootz);
 		let attrs = transformed.attributes;
 		let geo = new THREE.BufferGeometry();
 		geo.setAttribute("position", attrs.pos.clone());
