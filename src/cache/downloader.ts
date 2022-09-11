@@ -202,9 +202,10 @@ class ConnectionState extends State<void> {
 		if (this.read == 0x0) this.buffer[this.read++] = this.status = data[scan++];
 		if (this.status == 6) this.onEnd();
 
-		for (; this.read < this.buffer.length && scan < data.length; ++this.read, ++scan) this.buffer[this.read] = data[scan];
-
-		if (this.buffer.length <= this.read) this.onEnd();
+		//server no longer sends this
+		// for (; this.read < this.buffer.length && scan < data.length; ++this.read, ++scan) this.buffer[this.read] = data[scan];
+		// if (this.buffer.length <= this.read) this.onEnd();
+		this.onEnd();
 	}
 
 	async onEnd() {
