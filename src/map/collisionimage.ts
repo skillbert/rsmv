@@ -41,7 +41,7 @@ export function drawCollision(grid: TileGridSource, rect: MapRect, maplevel: num
 			colcheck(tile, 4, true, true, true, false);
 
 			//corners
-			colcheck(tile, 5, true, false, true, false);
+			colcheck(tile, 5, true, false, false, true);
 			colcheck(tile, 6, false, false, true, true);
 			colcheck(tile, 7, false, true, true, false);
 			colcheck(tile, 8, true, true, false, false);

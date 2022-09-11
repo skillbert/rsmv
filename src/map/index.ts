@@ -801,6 +801,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				hash: depcrc,
 				async run() {
 					//TODO try enable 2d map render without loading all the 3d stuff
+					//TODO locs that cross chun boundaries currently don't show up
 					let chunks = await renderer.setArea(x - 1, z - 1, squares + 1, squares + 1);
 					let grid = new CombinedTileGrid(chunks.map(ch => ({
 						src: ch.chunk.loaded!.grid,
