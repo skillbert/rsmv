@@ -64,6 +64,27 @@ export function getBoneCenters(model: ModelData) {
 	return bonecenters;
 }
 
+export function getModelCenter(model: ModelData) {
+	let center: BoneCenter = {
+		xsum: 0,
+		ysum: 0,
+		zsum: 0,
+		weightsum: 0
+	}
+	for (let mesh of model.meshes) {
+		let indices = mesh.indices;
+		let pos = mesh.attributes.pos;
+		for (let i = 0; i < indices.count; i++) {
+			let vert = indices.array[i];
+			center.xsum += pos.array[pos.itemSize * vert + 0];
+			center.ysum += pos.array[pos.itemSize * vert + 1];
+			center.zsum += pos.array[pos.itemSize * vert + 2];
+			center.weightsum += 1;
+		}
+	}
+	return center;
+}
+
 export function parseOb3Model(modelfile: Buffer) {
 	let model: Stream = new Stream(modelfile);
 	let format = model.readByte();

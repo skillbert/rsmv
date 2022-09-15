@@ -8,7 +8,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, PerspectiveCamera } from "three";
+import { AnimationClip, AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
@@ -46,12 +46,13 @@ export type ThreeJsSceneElement = {
 		hideFog?: boolean,
 		camMode?: RenderCameraMode,
 		camControls?: CameraControlMode,
-		autoFrames?: boolean | undefined
+		autoFrames?: boolean | undefined,
+		aspect?: number
 	}
 }
 
 type CameraControlMode = "free" | "world";
-export type RenderCameraMode = "standard" | "vr360";
+export type RenderCameraMode = "standard" | "vr360" | "item" | "topdown";
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private renderer: THREE.WebGLRenderer;
@@ -71,7 +72,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private sceneElements = new Set<ThreeJsSceneElementSource>();
 	private animationCallbacks = new Set<NonNullable<ThreeJsSceneElement["updateAnimation"]>>();
 	private vr360cam: VR360Render | null = null;
+	private itemcam = new THREE.PerspectiveCamera();
+	private topdowncam = new THREE.OrthographicCamera();
 	private camMode: RenderCameraMode = "standard";
+	private forceAspectRatio: number | null = null;
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -150,6 +154,24 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.sceneElementsChanged();
 	}
 
+
+	getStandardCamera() {
+		return this.camera as any;
+	}
+	getVr360Camera() {
+		if (!this.vr360cam) {
+			this.vr360cam = new VR360Render(this.renderer, 512, 0.1, 1000);
+			this.camera.add(this.vr360cam.cubeCamera);
+			globalThis.cube = this.vr360cam.cubeCamera;
+		}
+		return this.vr360cam;
+	}
+	getItemCamera() {
+		return this.itemcam;
+	}
+	getTopdownCamera() {
+		return this.topdowncam;
+	}
 	getModelNode() {
 		return this.modelnode;
 	}
@@ -168,6 +190,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let sky: ThreeJsSceneElement["sky"] = null;
 		let animated = false;
 		let opaqueBackground = false;
+		let aspect: number | null = null;
 		let cammode: RenderCameraMode = "standard";
 		let controls: CameraControlMode = "free";
 		let hideFog = false;
@@ -187,6 +210,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			if (el.options?.hideFloor) { showfloor = false; }
 			if (el.options?.camMode) { cammode = el.options.camMode; }
 			if (el.options?.camControls) { controls = el.options.camControls; }
+			if (el.options?.aspect) { aspect = el.options.aspect; }
 			if (typeof el.options?.autoFrames == "boolean") { autoframes = el.options.autoFrames; }
 			if (el.modelnode) {
 				nodeDeleteList.delete(el.modelnode);
@@ -203,6 +227,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.floormesh.visible = showfloor;
 		this.camMode = cammode;
 		this.controls.screenSpacePanning = controls == "free";
+		this.forceAspectRatio = aspect;
 
 		//fog/skybox
 		let fogobj = (this.scene.fog as THREE.Fog);
@@ -239,8 +264,12 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 	resizeRendererToDisplaySize() {
 		const canvas = this.renderer.domElement;
-		const width = canvas.clientWidth;
-		const height = canvas.clientHeight;
+		let width = canvas.clientWidth;
+		let height = canvas.clientHeight;
+		if (this.forceAspectRatio) {
+			height = Math.min(height, Math.floor(width / this.forceAspectRatio));
+			width = Math.min(width, Math.floor(height * this.forceAspectRatio));
+		}
 		const needResize = canvas.width !== width || canvas.height !== height;
 		if (needResize) {
 			this.renderer.setSize(width, height, false);
@@ -285,7 +314,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	}
 
 	@boundMethod
-	render(cam: THREE.Camera = this.camera) {
+	render(cam?: THREE.Camera) {
 		cancelAnimationFrame(this.queuedFrameId);
 		this.queuedFrameId = 0;
 
@@ -295,17 +324,19 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.resizeRendererToDisplaySize();
 
-		if (this.camMode != "vr360") {
+		if (cam) {
 			this.renderScene(cam);
+		} else if (this.camMode == "standard") {
+			this.renderScene(this.getStandardCamera());
+		} else if (this.camMode == "item") {
+			this.renderScene(this.getItemCamera());
+		} else if (this.camMode == "topdown") {
+			this.renderScene(this.getTopdownCamera());
 		} else {
-			if (!this.vr360cam) {
-				this.vr360cam = new VR360Render(this.renderer, 512, 0.1, 1000);
-				this.camera.add(this.vr360cam.cubeCamera);
-				globalThis.cube = this.vr360cam.cubeCamera;
-			}
-			this.renderCube(this.vr360cam);
+			let cam = this.getVr360Camera();
+			this.renderCube(cam);
 			this.renderer.clearColor();
-			this.vr360cam.render(this.renderer);
+			cam.render(this.renderer);
 		}
 		if (this.automaticFrames) {
 			this.forceFrame();

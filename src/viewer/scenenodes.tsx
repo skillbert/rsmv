@@ -4,7 +4,7 @@ import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { ModelExtras, MeshTileInfo, ClickableMesh, resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, squareSize, CombinedTileGrid, getTileHeight, ChunkModelData, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Bone, Clock, Group, Material, Matrix4, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2, Vector3, VectorKeyframeTrack } from "three";
+import { AnimationClip, AnimationMixer, Bone, Camera, Clock, Euler, Group, Material, Matrix3, Matrix4, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Object3D, PerspectiveCamera, Quaternion, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2, Vector3, VectorKeyframeTrack } from "three";
 import { MountableAnimation, mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { parseAnimgroupConfigs, parseEnvironments, parseItem, parseModels, parseNpc, parseObject, parseSequences, parseSpotAnims } from "../opdecoder";
 import { cacheConfigPages, cacheMajors } from "../constants";
@@ -12,7 +12,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, avatarToModel, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRenderer, ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
-import { ModelData } from "../3d/ob3togltf";
+import { getBoneCenters, getModelCenter, ModelData } from "../3d/ob3togltf";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { TypedEmitter } from "../utils";
 import { svgfloor } from "../map/svgrender";
@@ -29,6 +29,7 @@ import { JsonSearch, selectEntity, showModal } from "./jsonsearch";
 import { findImageBounds } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView } from "./commoncontrols";
+import { items } from "../../generated/items";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -1409,9 +1410,98 @@ function SceneLocation(p: LookupModeProps) {
 	)
 }
 
+function ItemCameraMode({ ctx, meta, center }: { ctx: UIContextReady, meta?: items, center: Vector3 }) {
+	let [translatex, settranslatex] = React.useState(meta?.modelTranslate_0 ?? 0);
+	let [translatey, settranslatey] = React.useState(meta?.modelTranslate_1 ?? 0);
+	let [rotx, setrotx] = React.useState(meta?.rotation_0 ?? 0);
+	let [roty, setroty] = React.useState(meta?.rotation_1 ?? 0);
+	let [rotz, setrotz] = React.useState(meta?.rotation_2 ?? 0);
+	let [zoom, setzoom] = React.useState(meta?.model_zoom ?? 2048);
+	let [lastmeta, setlastmeta] = React.useState(meta);
+
+	let reset = () => {
+		settranslatex(meta?.modelTranslate_0 ?? 0);
+		settranslatey(meta?.modelTranslate_1 ?? 0);
+		setrotx(meta?.rotation_0 ?? 0);
+		setroty(meta?.rotation_1 ?? 0);
+		setrotz(meta?.rotation_2 ?? 0);
+		setzoom(meta?.model_zoom ?? 2048);
+		setlastmeta(meta);
+	}
+	if (meta != lastmeta) {
+		reset();
+	}
+
+	const defaultcamdist = 8;//found through testing
+	const imgheight = 32;
+	const imgwidth = 36;
+
+	let cam = ctx.renderer.getItemCamera();
+
+	//fov such that the value 32 ends up in the projection matrix.yy
+	//not sure if coincidence that this is equal to height
+	cam.fov = Math.atan(1 / 32) / (Math.PI / 180) * 2;
+	cam.aspect = imgwidth / imgheight;
+	cam.updateProjectionMatrix();
+
+	let rot = new Quaternion().setFromEuler(new Euler(
+		-rotx / 2048 * 2 * Math.PI,
+		roty / 2048 * 2 * Math.PI,
+		-rotz / 2048 * 2 * Math.PI,
+		"ZYX"
+	));
+	let pos = new Vector3().copy(center);
+	let camoffset = new Vector3(-translatex / 512, -translatey / 512, defaultcamdist * zoom / 1024).applyQuaternion(rot);
+	pos.add(camoffset);
+	cam.position.copy(pos);
+	cam.quaternion.copy(rot);
+	cam.updateProjectionMatrix();
+	cam.updateMatrixWorld(true);
+
+	React.useEffect(() => {
+		let el: ThreeJsSceneElementSource = {
+			getSceneElements() {
+				return {
+					options: {
+						camMode: "item",
+						// aspect: imgwidth / imgheight
+					}
+				};
+			},
+		}
+		ctx.renderer.addSceneElement(el);
+		return () => ctx.renderer.removeSceneElement(el);
+	}, [cam]);
+
+	ctx.renderer.forceFrame();
+
+	return (
+		<React.Fragment>
+			<input type="button" className="sub-btn" value="reset" onClick={reset} />
+			<div><label><input type="range" value={rotx} onChange={e => setrotx(+e.currentTarget.value)} min={0} max={2048} step={1} />Rotate x: {rotx}</label></div>
+			<div><label><input type="range" value={roty} onChange={e => setroty(+e.currentTarget.value)} min={0} max={2048} step={1} />Rotate y: {roty}</label></div>
+			<div><label><input type="range" value={rotz} onChange={e => setrotz(+e.currentTarget.value)} min={0} max={2048} step={1} />Rotate z: {rotz}</label></div>
+			<div><label><input type="range" value={zoom} onChange={e => setzoom(+e.currentTarget.value)} min={10} max={10000} step={1} />Zoom: {zoom}</label></div>
+			<div><label><input type="range" value={translatex} onChange={e => settranslatex(+e.currentTarget.value)} min={-200} max={208} step={1} />Translate x: {translatex}</label></div>
+			<div><label><input type="range" value={translatey} onChange={e => settranslatey(+e.currentTarget.value)} min={-200} max={200} step={1} />Translate y: {translatey}</label></div>
+		</React.Fragment>
+	)
+}
+
 function SceneItem(p: LookupModeProps) {
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, itemToModel);
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
+	let [enablecam, setenablecam] = React.useState(false);
+
+	let center = new Vector3();
+	if (model?.loaded) {
+		let totalcenter = getModelCenter(model.loaded.modeldata);
+		center.setX(totalcenter.xsum / totalcenter.weightsum);
+		center.setY(totalcenter.ysum / totalcenter.weightsum);
+		center.setZ(totalcenter.zsum / totalcenter.weightsum);
+		center.divideScalar(512);
+	}
+
 	return (
 		<React.Fragment>
 			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="items" onChange={setId} initialid={initid} />}
@@ -1419,6 +1509,8 @@ function SceneItem(p: LookupModeProps) {
 				<p>Enter an item id or search by name.</p>
 			)}
 			<div className="mv-sidebar-scroll">
+				<input type="button" className="sub-btn" value={enablecam ? "exit" : "Icon Camera"} onClick={e => setenablecam(!enablecam)} />
+				{enablecam && p.ctx && <ItemCameraMode ctx={p.ctx} meta={data?.info} center={center} />}
 				<JsonDisplay obj={data?.info} />
 			</div>
 		</React.Fragment>

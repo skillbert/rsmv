@@ -7,9 +7,9 @@ export type items = {
 	baseModel?: number | null
 	name?: string | null
 	buff_effect?: string | null
+	model_zoom?: number | null
 	rotation_0?: number | null
 	rotation_1?: number | null
-	rotation_2?: number | null
 	modelTranslate_0?: number | null
 	modelTranslate_1?: number | null
 	unknown_0A?: true | null
@@ -59,7 +59,7 @@ export type items = {
 	maleHeads_1?: number | null
 	femaleHeads_1?: number | null
 	category?: number | null
-	modelYaw?: number | null
+	rotation_2?: number | null
 	dummyItem?: number | null
 	noteData?: number | null
 	noteTemplate?: number | null
