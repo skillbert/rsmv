@@ -17,6 +17,8 @@ export interface ScriptOutput {
 	setUI(ui: HTMLElement | null): void;
 	mkDir(name: string): Promise<any>;
 	writeFile(name: string, data: Buffer | string): Promise<void>;
+	readFileText(name: string): Promise<string>,
+	readFileBuffer(name: string): Promise<Buffer>,
 	setState(state: ScriptState): void;
 	run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null>;
 }
@@ -45,6 +47,12 @@ export class CLIScriptOutput implements ScriptOutput {
 	}
 	writeFile(name: string, data: Buffer | string) {
 		return fs.promises.writeFile(path.resolve(this.dir, name), data);
+	}
+	readFileBuffer(name: string) {
+		return fs.promises.readFile(path.resolve(this.dir, name));
+	}
+	readFileText(name: string) {
+		return fs.promises.readFile(path.resolve(this.dir, name), "utf-8");
 	}
 
 	setState(state: ScriptState) {
@@ -92,6 +100,12 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		this.files.push({ name, data });
 		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
+	}
+	readFileBuffer(name: string): Promise<Buffer> {
+		throw new Error("not implemented");
+	}
+	readFileText(name: string): Promise<string> {
+		throw new Error("not implemented");
 	}
 	setState(state: ScriptState) {
 		this.state = state;

@@ -10,17 +10,17 @@
 	["unkCount3","ubyte"],
 
 	["meshes",["array",["ref","meshCount"],["struct",
-		["groupFlags","ubyte"],
+		["$groupFlags","ubyte"],
 		["unkint","uint"],
 		["materialArgument","ushort le"],
 		["faceCount","ushort le"],
 
-		["hasVertices",["ref","groupFlags",[0,1]]],
-		["hasVertexAlpha",["ref","groupFlags",[1,1]]],
-		["hasFaceBones",["ref","groupFlags",[2,1]]],
-		["hasBoneIds",["ref","groupFlags",[3,1]]],
-		["isHidden",["ref","groupFlags",[4,1]]],
-		["hasSkin",["ref","groupFlags",[5,1]]],
+		["hasVertices",["ref","$groupFlags",[0,1]]],
+		["hasVertexAlpha",["ref","$groupFlags",[1,1]]],
+		["hasFaceBones",["ref","$groupFlags",[2,1]]],
+		["hasBoneIds",["ref","$groupFlags",[3,1]]],
+		["isHidden",["ref","$groupFlags",[4,1]]],
+		["hasSkin",["ref","$groupFlags",[5,1]]],
 
 		
 		["colourBuffer",["opt",["hasVertices",1],["buffer",["ref","faceCount"],"ushort"]]],

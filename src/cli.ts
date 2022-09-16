@@ -44,7 +44,8 @@ const extract = command({
 		edit: flag({ long: "edit", short: "e" }),
 		fixhash: flag({ long: "fixhash", short: "h" }),
 		batched: flag({ long: "batched", short: "b" }),
-		batchlimit: option({ long: "batchsize", type: cmdts.number, defaultValue: () => -1 })
+		batchlimit: option({ long: "batchsize", type: cmdts.number, defaultValue: () => -1 }),
+		keepbuffers: flag({ long: "keepbuffers" })
 	},
 	handler: async (args) => {
 		let outdir = path.resolve(args.save);

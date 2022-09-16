@@ -1,7 +1,7 @@
 
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams } from "../opdecoder";
-import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
+import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptOutput } from "../viewer/scriptsui";
@@ -10,6 +10,7 @@ import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { getModelHashes } from "../3d/ob3tothree";
+import { GameCacheLoader } from "../cache/sqlite";
 
 
 type CacheFileId = {
@@ -157,7 +158,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 				if (!name) { throw new Error(); }
 				let schema = parser.parser.getJsonSchema();
 				//need seperate files since vscode doesn't seem to support hastag paths in the uri
-				if (args.batched) {
+				if (args.batched == "true") {
 					let batchschema: JSONSchema6Definition = {
 						type: "object",
 						properties: {
@@ -174,7 +175,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 				}
 			},
 			read(b, id) {
-				let obj = parser.read(b);
+				let obj = parser.read(b, undefined, args.keepbuffers == "true");
 				if (args.batched) {
 					obj.$fileid = (id.length == 1 ? id[0] : id);
 				} else {
@@ -376,11 +377,12 @@ export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin
 	...Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)]))
 } as any;
 
-export async function extractCacheFiles(output: ScriptOutput, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string }) {
+export async function extractCacheFiles(output: ScriptOutput, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string, edit: boolean, keepbuffers: boolean }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
 	let flags: Record<string, string> = {};
 	if (args.batched || args.batchlimit != -1) { flags.batched = "true"; }
+	if (args.keepbuffers) { flags.keepbuffers = "true"; }
 	let mode = modeconstr(flags);
 	mode.prepareDump(output);
 
@@ -454,37 +456,37 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 	flushbatch();
 
 
-	// if (args.edit) {
-	// 	await new Promise<any>(d => process.stdin.once('data', d));
+	if (args.edit) {
+		output.log("press any key to save edits");
+		await new Promise<any>(d => process.stdin.once('data', d));
 
-	// 	let archedited = () => {
-	// 		if (!(source instanceof GameCacheLoader)) { throw new Error("can only do this on file source of type gamecacheloader"); }
-	// 		if (lastarchive) {
-	// 			console.log("writing archive", lastarchive.index.major, lastarchive.index.minor, "files", lastarchive.subfiles.length);
-	// 			console.log(lastarchive.index);
-	// 			// let arch = new cache.Archive(lastarchive.subfiles.map(q => q.buffer));
-	// 			// arch.forgecrc(lastarchive.index.uncompressed_crc, lastarchive.index.subindices.indexOf(3), 10);
-	// 			// return source.writeFile(lastarchive.index.major, lastarchive.index.minor, arch.packSqlite());
-	// 			return source.writeFileArchive(lastarchive.index, lastarchive.subfiles.map(q => q.buffer));
-	// 		}
-	// 	}
+		let archedited = () => {
+			if (!(source instanceof GameCacheLoader)) { throw new Error("can only do this on file source of type gamecacheloader"); }
+			if (lastarchive) {
+				console.log("writing archive", lastarchive.index.major, lastarchive.index.minor, "files", lastarchive.subfiles.length);
+				console.log(lastarchive.index);
+				// let arch = new Archive(lastarchive.subfiles.map(q => q.buffer));
+				// arch.forgecrc(lastarchive.index.uncompressed_crc, lastarchive.index.subindices.indexOf(3), 10);
+				// return source.writeFile(lastarchive.index.major, lastarchive.index.minor, arch.packSqlite());
+				return source.writeFileArchive(lastarchive.index, lastarchive.subfiles.map(q => q.buffer));
+			}
+		}
 
-	// 	for (let fileid of allfiles) {
-	// 		let arch: SubFile[];
-	// 		if (lastarchive && lastarchive.index == fileid.index) {
-	// 			arch = lastarchive.subfiles;
-	// 		} else {
-	// 			await archedited();
-	// 			arch = await source.getFileArchive(fileid.index);
-	// 			lastarchive = { index: fileid.index, subfiles: arch };
-	// 		}
-	// 		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
-	// 		let filename = path.resolve(outdir, `${args.mode}-${logicalid.join("_")}.${mode.ext}`);
-	// 		let newfile = fs.readFileSync(filename);
-	// 		arch[fileid.subindex].buffer = mode.write(newfile);
-	// 	}
-	// 	await archedited();
-	// }
+		for (let fileid of allfiles) {
+			let arch: SubFile[];
+			if (lastarchive && lastarchive.index == fileid.index) {
+				arch = lastarchive.subfiles;
+			} else {
+				await archedited();
+				arch = await source.getFileArchive(fileid.index);
+				lastarchive = { index: fileid.index, subfiles: arch };
+			}
+			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
+			let newfile = await output.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);
+			arch[fileid.subindex].buffer = mode.write(newfile);
+		}
+		await archedited();
+	}
 	output.log("done");
 }
 

@@ -14,8 +14,9 @@ if (typeof __non_webpack_require__ != "undefined") {
 type CacheTable = {
 	db: sqlite3.Database | null,
 	indices: Promise<cache.CacheIndexFile>,
-	getFile: (minor: number) => Promise<{ DATA: Buffer, CRC: number }>,
-	getIndexFile: () => Promise<{ DATA: Buffer, CRC: number }>
+	readFile: (minor: number) => Promise<{ DATA: Buffer, CRC: number }>,
+	updateFile: (minor: number, data: Buffer) => Promise<void>,
+	readIndexFile: () => Promise<{ DATA: Buffer, CRC: number }>
 }
 
 export class GameCacheLoader extends cache.CacheFileSource {
@@ -63,13 +64,15 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		if (!this.opentables.get(major)) {
 			let db: CacheTable["db"] = null;
 			let indices: CacheTable["indices"];
-			let getFile: CacheTable["getFile"];
-			let getIndexFile: CacheTable["getIndexFile"];
+			let getFile: CacheTable["readFile"];
+			let writeFile: CacheTable["updateFile"];
+			let getIndexFile: CacheTable["readIndexFile"];
 
 			if (major == cacheMajors.index) {
 				indices = this.generateRootIndex();
-				getFile = (minor) => this.openTable(minor).getIndexFile();
+				getFile = (minor) => this.openTable(minor).readIndexFile();
 				getIndexFile = () => { throw new Error("root index file no accesible for sqlite cache"); }
+				writeFile = (minor, data) => { throw new Error("writing index files not supported"); }
 			} else {
 				db = new sqlite.Database(path.resolve(this.cachedir, `js5-${major}.jcache`), this.writable ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY);
 				let ready = new Promise<void>(done => db!.once("open", done));
@@ -91,20 +94,21 @@ export class GameCacheLoader extends cache.CacheFileSource {
 						})
 					})
 				}
+				writeFile = (minor, data) => dbrun(`UPDATE cache SET DATA=? WHERE KEY=?`, [data, minor]);
 				getFile = (minor) => dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
 				getIndexFile = () => dbget(`SELECT DATA FROM cache_index`, []);
 				indices = getIndexFile().then(row => {
 					return cache.indexBufferToObject(major, decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength)));
 				});
 			}
-			this.opentables.set(major, { db, getFile, getIndexFile, indices });
+			this.opentables.set(major, { db, readFile: getFile, updateFile: writeFile, readIndexFile: getIndexFile, indices });
 		}
 		return this.opentables.get(major)!;
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
 		if (major == cacheMajors.index) { return this.getIndex(minor); }
-		let { getFile } = this.openTable(major);
+		let { readFile: getFile } = this.openTable(major);
 		let row = await getFile(minor);
 		if (typeof crc == "number" && row.CRC != crc) {
 			//TODO this is always off by either 1 or 2
@@ -122,23 +126,23 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		return res;
 	}
 
-	// writeFile(major: number, minor: number, file: Buffer) {
-	// 	let { dbrun } = this.openTable(major);
-	// 	let compressed = compressSqlite(file, "zlib");
-	// 	return dbrun("UPDATE `cache` SET `DATA`=? WHERE `KEY`=?", [compressed, minor]);
-	// }
+	writeFile(major: number, minor: number, file: Buffer) {
+		let table = this.openTable(major);
+		let compressed = compressSqlite(file, "zlib");
+		return table.updateFile(minor, compressed);
+	}
 
-	// writeFileArchive(index: cache.CacheIndex, files: Buffer[]) {
-	// 	let arch = cache.packSqliteBufferArchive(files);
-	// 	return this.writeFile(index.major, index.minor, arch);
-	// }
+	writeFileArchive(index: cache.CacheIndex, files: Buffer[]) {
+		let arch = cache.packSqliteBufferArchive(files);
+		return this.writeFile(index.major, index.minor, arch);
+	}
 
 	async getIndexFile(major: number) {
 		return this.openTable(major).indices;
 	}
 
 	async getIndex(major: number) {
-		let row = await this.openTable(major).getIndexFile();
+		let row = await this.openTable(major).readIndexFile();
 		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
 		return decompressSqlite(file);
 	}

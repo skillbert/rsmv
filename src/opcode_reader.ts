@@ -1,4 +1,5 @@
 import type * as jsonschema from "json-schema";
+import { Statement } from "sqlite3";
 
 type PrimitiveInt = {
 	primitive: "int",
@@ -79,7 +80,8 @@ export type DecodeState = {
 	endoffset: number,
 	startoffset: number,
 	buffer: Buffer,
-	args: Record<string, any>
+	args: Record<string, any>,
+	keepBufferJson: boolean
 }
 
 type EncodeState = {
@@ -706,6 +708,22 @@ function chunkedArrayParser<T extends object>(lengthtype: ChunkParser<number>, c
 	return r;
 }
 
+function bufferParserValue(value: unknown, type: typeof BufferTypes[keyof typeof BufferTypes], scalartype: keyof typeof BufferTypes) {
+	if (typeof value == "string") {
+		if (scalartype == "hex") {
+			return Buffer.from(value, "hex");
+		} else {
+			//accept json-ified version of our data as well
+			let m = value.match(/^buffer ([\w\[\]]+){([\d,\-\.]+)}/);
+			if (!m) { throw new Error("invalid arraybuffer string"); }
+			return new type.constr(m[2].split(",").map(q => +q));
+		}
+	}
+
+	if (!(value instanceof type.constr)) { throw new Error("arraybuffer expected"); }
+	return value;
+}
+
 function bufferParser(lengthtype: ChunkParser<number>, scalartype: keyof typeof BufferTypes, vectorLength: number): ChunkParser<ArrayLike<number>> {
 	const type = BufferTypes[scalartype];
 	let refparent: ChunkParserContainer | null = null;
@@ -719,11 +737,12 @@ function bufferParser(lengthtype: ChunkParser<number>, scalartype: keyof typeof 
 			state.scan += bytelen;
 			let array = new type.constr(backing);
 			if (scalartype == "hex") { (array as any).toJSON = () => bytes.toString("hex"); }
-			else { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
+			else if (!state.keepBufferJson) { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
+			else { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[]{${[...array].join(",")}}` }
 			return array;
 		},
-		write(state, value) {
-			if (!(value instanceof type.constr)) { throw new Error("arraybuffer expected"); }
+		write(state, rawvalue) {
+			let value = bufferParserValue(rawvalue, type, scalartype);
 			if (value.length % vectorLength != 0) { throw new Error("araybuffer is not integer multiple of vectorlength"); }
 			lengthtype.write(state, value.length / vectorLength);
 
@@ -739,7 +758,14 @@ function bufferParser(lengthtype: ChunkParser<number>, scalartype: keyof typeof 
 			return buildReference(name, refparent, {
 				owner: r,
 				stackdepth: child.stackdepth,
-				resolve: child.resolve
+				resolve(rawvalue, old) {
+					let value = bufferParserValue(rawvalue, type, scalartype);
+					if (child.owner == lengthtype) {
+						return child.resolve(value.length / vectorLength, old);
+					}
+					//possibly do this for all elements in the array if needed and allowed by performance
+					return child.resolve(value[0], old);
+				}
 			});
 		},
 		getTypescriptType(indent) {
@@ -1025,9 +1051,14 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 			//noop, the referenced value does the writing and will get its value from this prop through refgetter
 		},
 		setReferenceParent(parent) {
-			ref = refgetter(r, parent, propname, (v) => {
+			ref = refgetter(r, parent, propname, (v, old) => {
 				if (typeof v != "number") { throw new Error("number expected"); }
-				return v;
+				if (minbit != -1) {
+					let mask = (~(-1 << bitlength)) << minbit;
+					return (old & ~mask) | (v << minbit);
+				} else {
+					return v;
+				}
 			});
 		},
 		getTypescriptType() {

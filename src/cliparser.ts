@@ -24,32 +24,35 @@ export function setLoadingIndicator(ind: typeof loadingIndicator) {
 	loadingIndicator = ind;
 }
 
-export const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
-	async from(str) {
-		let [mode, ...argparts] = str.split(":",);
-		let arg = argparts.join(":");
-		return async (opts) => {
-			switch (mode) {
-				case "live":
-					return new Downloader();
-				case "local":
-					updater.on("update-progress", loadingIndicator.progress.bind(loadingIndicator));
-					await loadingIndicator.start();
-					await updater.run(arg || "cache", loadingIndicator.interval);
-					await loadingIndicator.done();
-					return updater.fileSource;
-				case "cache":
-					return new GameCacheLoader(arg, !!opts?.writable);
-				case "files":
-					return new RawFileLoader(arg, 0);
-				case "openrs2":
-					return new Openrs2CacheSource(arg);
-				default:
-					throw new Error("unknown mode");
-			}
+
+function cacheSourceFromString(str: string) {
+	let [mode, ...argparts] = str.split(":",);
+	let arg = argparts.join(":");
+	return async (opts?: { writable?: boolean }) => {
+		switch (mode) {
+			case "live":
+				return new Downloader();
+			case "local":
+				updater.on("update-progress", loadingIndicator.progress.bind(loadingIndicator));
+				await loadingIndicator.start();
+				await updater.run(arg || "cache", loadingIndicator.interval);
+				await loadingIndicator.done();
+				return updater.fileSource;
+			case "cache":
+				return new GameCacheLoader(arg, !!opts?.writable);
+			case "files":
+				return new RawFileLoader(arg, 0);
+			case "openrs2":
+				return new Openrs2CacheSource(arg);
+			default:
+				throw new Error("unknown mode");
 		}
-	},
-	defaultValue: () => () => Promise.resolve(new GameCacheLoader()),//yep, you saw it here first, the double lambda without brackets
+	}
+}
+
+export const ReadCacheSource: Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
+	async from(str) { return cacheSourceFromString(str); },
+	defaultValue: () => cacheSourceFromString("cache"),
 	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
 };
 

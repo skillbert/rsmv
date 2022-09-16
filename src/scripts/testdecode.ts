@@ -131,7 +131,8 @@ export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, bu
 		scan: 0,
 		startoffset: 0,
 		endoffset: buffer.byteLength,
-		args: args ?? {}
+		args: args ?? {},
+		keepBufferJson: false
 	};
 	try {
 		let res = decoder.readInternal(state);

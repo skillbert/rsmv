@@ -7,7 +7,7 @@ const typedef = commentJson.parse(require("./opcodes/typedef.json")) as any;
 //alloc a large static buffer to write data to without knowing the data size
 //then copy what we need out of it
 //the buffer is reused so it saves a ton of buffer allocs
-const scratchbuf = Buffer.alloc(1024 * 100);
+const scratchbuf = Buffer.alloc(1024 * 1024);
 
 let bytesleftoverwarncount = 0;
 
@@ -40,7 +40,7 @@ export class FileParser<T> {
 		return res;
 	}
 
-	read(buffer: Buffer, args?: Record<string, any>) {
+	read(buffer: Buffer, args?: Record<string, any>, keepBufferJson = false) {
 		let state: opcode_reader.DecodeState = {
 			buffer,
 			stack: [],
@@ -48,7 +48,8 @@ export class FileParser<T> {
 			scan: 0,
 			startoffset: 0,
 			endoffset: buffer.byteLength,
-			args: args ?? {}
+			args: args ?? {},
+			keepBufferJson
 		};
 		return this.readInternal(state);
 	}

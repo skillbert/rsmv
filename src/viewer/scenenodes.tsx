@@ -1813,7 +1813,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 
 	let run = () => {
 		let output = new UIScriptOutput();
-		output.run(extractCacheFiles, p.source, { files, mode, batched: batched, batchlimit: -1 });
+		output.run(extractCacheFiles, p.source, { files, mode, batched: batched, batchlimit: -1, edit: false, keepbuffers: false });
 		p.onRun(output);
 	}
 
