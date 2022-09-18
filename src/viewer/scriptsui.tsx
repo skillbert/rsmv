@@ -262,8 +262,7 @@ export function DomWrap(p: { el: HTMLElement | null | undefined, style?: React.C
 }
 
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
-	let [tab, setTab] = React.useState<"console" | "files">("console");
-	let [fsname, setfsname] = React.useState("");
+	let [tab, setTab] = React.useState<"console" | string>("console");
 
 	let forceUpdate = useForceUpdate();
 	React.useLayoutEffect(() => {
@@ -275,20 +274,28 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 		}
 	}, [p.output]);
 
-	let selectedfs = p.output?.fs[fsname];
+	if (!p.output) {
+		return (
+			<div>Waiting</div>
+		);
+	}
+
+	let fstabmatch = tab.match(/^fs-(.*)$/);
+	let selectedfs = fstabmatch && p.output && p.output.fs[fstabmatch[1]];
+
+	let tabs = { console: "Console" };
+	for (let fsname in p.output?.fs) { tabs["fs-" + fsname] = fsname; }
 
 	return (
 		<div>
 			<div>
-				{p.output?.state}
-				{p.output?.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
+				{p.output.state}
+				{p.output.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
 			</div>
-			{selectedfs && !selectedfs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + selectedfs.files.length} onClick={async e => selectedfs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
-			{selectedfs?.rootdirhandle && <div>Saved files to disk: {selectedfs.files.length}</div>}
-			{p.output?.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
-			<TabStrip value={tab} onChange={setTab as any} tabs={{ console: "Console", files: "Files" }} />
+			{p.output.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
+			<TabStrip value={tab} onChange={setTab as any} tabs={tabs} />
 			{tab == "console" && <UIScriptConsole output={p.output} />}
-			{tab == "files" && <UIScriptFiles fs={selectedfs} onSelect={p.ctx.openFile} />}
+			{selectedfs && <UIScriptFiles fs={selectedfs} onSelect={p.ctx.openFile} />}
 		</div>
 	)
 
@@ -312,6 +319,8 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, onSelect: (file: UISc
 		const maxlist = 1000;
 		return (
 			<div>
+				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.files.length} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
+				{p.fs?.rootdirhandle && <div>Saved files to disk: {p.fs.files.length}</div>}
 				{files.length > maxlist && <div>Only showing first {maxlist} files</div>}
 				{files.slice(0, maxlist).map(q => (<div key={q.name} onClick={e => p.onSelect(q)}>{q.name}</div>))}
 			</div>
