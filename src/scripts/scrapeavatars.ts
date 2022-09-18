@@ -1,7 +1,7 @@
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import fetch from "node-fetch";
 import { avatarStringToBytes, avatarToModel, lowname } from "../3d/avatar";
-import { ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptFS, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import prettyJson from "json-stringify-pretty-compact";
 import { CacheFileSource } from "../cache";
 
@@ -24,7 +24,7 @@ async function getPlayerAvatar(name: string) {
 	return avatarStringToBytes(await res.text());
 }
 
-export async function scrapePlayerAvatars(output: ScriptOutput, source: CacheFileSource | null, skip: number, max: number, parsed: boolean) {
+export async function scrapePlayerAvatars(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource | null, skip: number, max: number, parsed: boolean) {
 	let scene: ThreejsSceneCache | null = null;
 	if (parsed) {
 		if (!source) { throw new Error("need file source when extracting avatar data"); }
@@ -34,9 +34,9 @@ export async function scrapePlayerAvatars(output: ScriptOutput, source: CacheFil
 	for await (let file of fetchPlayerAvatars(skip, max)) {
 		if (parsed) {
 			let data = await avatarToModel(null, scene!, file.buf);
-			await output.writeFile(`playerdata_${file.name}.json`, prettyJson(data.info.avatar));
+			await outdir.writeFile(`playerdata_${file.name}.json`, prettyJson(data.info.avatar));
 		} else {
-			output.writeFile(`playerdata_${file.name}.bin`, file.buf);
+			outdir.writeFile(`playerdata_${file.name}.bin`, file.buf);
 		}
 	}
 }

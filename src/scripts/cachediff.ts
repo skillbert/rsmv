@@ -8,7 +8,7 @@ import { archiveToFileId, CacheFileSource, fileIdToArchiveminor } from "../cache
 import * as fs from "fs";
 import prettyJson from "json-stringify-pretty-compact";
 import { crc32 } from "../libs/crc32util";
-import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 
 
 type FileAction = {
@@ -139,7 +139,7 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 	return changes;
 }
 
-export async function diffCaches(output: ScriptOutput, sourcea: CacheFileSource, sourceb: CacheFileSource) {
+export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea: CacheFileSource, sourceb: CacheFileSource) {
 	let majors: number[] = [];
 	let roota = await sourcea.getIndexFile(cacheMajors.index);
 	let rootb = await sourceb.getIndexFile(cacheMajors.index);
@@ -161,23 +161,23 @@ export async function diffCaches(output: ScriptOutput, sourcea: CacheFileSource,
 			let name = change.action.getFileName(change.major, change.minor, change.subfile);
 			let dir = `${change.action.name}`;
 
-			await output.mkDir(dir);
+			await outdir.mkDir(dir);
 			if (change.action.parser) {
 				if (change.before) {
 					let parsedbefore = change.action.parser.read(change.before);
-					await output.writeFile(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
+					await outdir.writeFile(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
 				}
 				if (change.after) {
 					let parsedafter = change.action.parser.read(change.after);
-					await output.writeFile(`${dir}/${name}-after.json`, prettyJson(parsedafter));
+					await outdir.writeFile(`${dir}/${name}-after.json`, prettyJson(parsedafter));
 				}
 			} else {
 				let ext = (change.action.isTexture ? "rstex" : "bin");
 				if (change.before) {
-					await output.writeFile(`${dir}/${name}-before.${ext}`, change.before);
+					await outdir.writeFile(`${dir}/${name}-before.${ext}`, change.before);
 				}
 				if (change.after) {
-					await output.writeFile(`${dir}/${name}-after.${ext}`, change.after);
+					await outdir.writeFile(`${dir}/${name}-after.${ext}`, change.after);
 				}
 			}
 		}

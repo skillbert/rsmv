@@ -1,7 +1,7 @@
 import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./extractfiles";
-import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser } from "opdecoder";
 
 
@@ -26,7 +26,7 @@ export function defaultTestDecodeOpts() {
 	};
 }
 
-export async function testDecode(output: ScriptOutput, source: CacheFileSource, mode: JsonBasedFile, opts: ReturnType<typeof defaultTestDecodeOpts>) {
+export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
 	let memuse = 0;
 	let errminors: number[] = [];
@@ -98,10 +98,10 @@ export async function testDecode(output: ScriptOutput, source: CacheFileSource, 
 				errorcount++;
 				let filename = (file.name ? `err-${file.name}` : `err-${file.major}_${file.minor}_${file.subfile}`);
 				if (opts.outmode == "json") {
-					output.writeFile(filename + ".hexerr.json", res.errorfile);
+					outdir.writeFile(filename + ".hexerr.json", res.errorfile);
 				}
 				if (opts.outmode == "original" || opts.outmode == "hextext") {
-					output.writeFile(filename + ".bin", res.errorfile);
+					outdir.writeFile(filename + ".bin", res.errorfile);
 				}
 			}
 		}

@@ -1813,7 +1813,8 @@ function ExtractFilesScript(p: UiScriptProps) {
 
 	let run = () => {
 		let output = new UIScriptOutput();
-		output.run(extractCacheFiles, p.source, { files, mode, batched: batched, batchlimit: -1, edit: false, keepbuffers: false });
+		let outdir = output.makefs("out");
+		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched: batched, batchlimit: -1, edit: false, keepbuffers: false });
 		p.onRun(output);
 	}
 
@@ -1876,10 +1877,11 @@ function CacheDiffScript(p: UiScriptProps) {
 	React.useEffect(() => () => cache2?.close(), [cache2]);
 
 	let run = async () => {
-		let output = new UIScriptOutput();
 		if (!cache2) { return; }
+		let output = new UIScriptOutput();
+		let outdir = output.makefs("diff");
 		p.onRun(output);
-		let res = output.run(diffCaches, cache2, p.source);
+		let res = output.run(diffCaches, outdir, cache2, p.source);
 		res.then(setResult);
 	}
 
@@ -1947,8 +1949,9 @@ function TestFilesScript(p: UiScriptProps) {
 		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
 		if (!modeobj) { return; }
 		let output = new UIScriptOutput();
+		let outdir = output.makefs("output")
 		let opts = defaultTestDecodeOpts();
-		output.run(testDecode, p.source, modeobj, opts);
+		output.run(testDecode, outdir, p.source, modeobj, opts);
 		p.onRun(output);
 	}
 

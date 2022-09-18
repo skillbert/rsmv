@@ -4,7 +4,7 @@ import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
-import { ScriptOutput } from "../viewer/scriptsui";
+import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
 import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
@@ -153,7 +153,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 			...lookup,
 			ext: "json",
 			parser: parser,
-			prepareDump(output: ScriptOutput) {
+			prepareDump(output: ScriptFS) {
 				let name = Object.entries(cacheFileDecodeModes).find(q => q[1] == constr);
 				if (!name) { throw new Error(); }
 				let schema = parser.parser.getJsonSchema();
@@ -210,7 +210,7 @@ export type DecodeMode<T = Buffer | string> = {
 	ext: string,
 	parser?: FileParser<any>,
 	read(buf: Buffer, fileid: LogicalIndex): T | Promise<T>,
-	prepareDump(output: ScriptOutput): void,
+	prepareDump(output: ScriptFS): void,
 	write(files: Buffer): Buffer,
 	combineSubs(files: T[]): T
 } & DecodeLookup;
@@ -377,14 +377,14 @@ export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin
 	...Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)]))
 } as any;
 
-export async function extractCacheFiles(output: ScriptOutput, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string, edit: boolean, keepbuffers: boolean }) {
+export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string, edit: boolean, keepbuffers: boolean }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
 	let flags: Record<string, string> = {};
 	if (args.batched || args.batchlimit != -1) { flags.batched = "true"; }
 	if (args.keepbuffers) { flags.keepbuffers = "true"; }
 	let mode = modeconstr(flags);
-	mode.prepareDump(output);
+	mode.prepareDump(outdir);
 
 	let batchMaxFiles = args.batchlimit;
 	let batchSubfile = args.batched;
@@ -414,7 +414,7 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 				let filename = `${args.mode}-${currentBatch.startIndex.major}_${currentBatch.startIndex.minor}.batch`;
 				if (batchMaxFiles != -1) { filename += "." + currentBatch.batchchunknr; }
 				filename += `.${mode.ext}`;
-				output.writeFile(filename, mode.combineSubs(currentBatch.outputs));
+				outdir.writeFile(filename, mode.combineSubs(currentBatch.outputs));
 				currentBatch = null;
 			})();
 		}
@@ -450,7 +450,7 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 			currentBatch.outputs.push(res);
 		} else {
 			let filename = `${args.mode}${logicalid.length == 0 ? "" : "-" + logicalid.join("_")}.${mode.ext}`;
-			await output.writeFile(filename, res);
+			await outdir.writeFile(filename, res);
 		}
 	}
 	flushbatch();
@@ -482,7 +482,7 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 				lastarchive = { index: fileid.index, subfiles: arch };
 			}
 			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
-			let newfile = await output.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);
+			let newfile = await outdir.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);
 			arch[fileid.subindex].buffer = mode.write(newfile);
 		}
 		await archedited();
@@ -490,3 +490,10 @@ export async function extractCacheFiles(output: ScriptOutput, source: CacheFileS
 	output.log("done");
 }
 
+export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSource, diffdir: ScriptFS) {
+	let files = await diffdir.readDir(".");
+
+	for (let file of files) {
+
+	}
+}

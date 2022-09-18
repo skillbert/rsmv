@@ -15,33 +15,25 @@ export interface ScriptOutput {
 	state: ScriptState;
 	log(...args: any[]): void;
 	setUI(ui: HTMLElement | null): void;
-	mkDir(name: string): Promise<any>;
-	writeFile(name: string, data: Buffer | string): Promise<void>;
-	readFileText(name: string): Promise<string>,
-	readFileBuffer(name: string): Promise<Buffer>,
 	setState(state: ScriptState): void;
 	run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null>;
 }
 
-export class CLIScriptOutput implements ScriptOutput {
-	state: ScriptState = "running";
-	dir: string;
+export interface ScriptFS {
+	mkDir(name: string): Promise<any>;
+	writeFile(name: string, data: Buffer | string): Promise<void>;
+	readFileText(name: string): Promise<string>,
+	readFileBuffer(name: string): Promise<Buffer>,
+	readDir(name: string): Promise<string[]>,
+	unlink(name: string): Promise<void>
+}
 
+export class CLIScriptFS implements ScriptFS {
+	dir: string;
 	constructor(dir: string) {
-		this.dir = dir;
+		this.dir = path.resolve(dir);
 		if (dir) { fs.mkdirSync(dir, { recursive: true }); }
 	}
-
-	log(...args: any[]) {
-		console.log(...args);
-	}
-
-	setUI(ui: HTMLElement | null) {
-		if (ui && typeof document != "undefined") {
-			document.body.appendChild(ui)
-		}
-	}
-
 	mkDir(name: string) {
 		return fs.promises.mkdir(path.resolve(this.dir, name), { recursive: true });
 	}
@@ -53,6 +45,26 @@ export class CLIScriptOutput implements ScriptOutput {
 	}
 	readFileText(name: string) {
 		return fs.promises.readFile(path.resolve(this.dir, name), "utf-8");
+	}
+	readDir(name: string): Promise<string[]> {
+		return fs.promises.readdir(path.resolve(this.dir, name));
+	}
+	unlink(name: string) {
+		return fs.promises.unlink(path.resolve(this.dir, name));
+	}
+}
+
+export class CLIScriptOutput implements ScriptOutput {
+	state: ScriptState = "running";
+
+	log(...args: any[]) {
+		console.log(...args);
+	}
+
+	setUI(ui: HTMLElement | null) {
+		if (ui && typeof document != "undefined") {
+			document.body.appendChild(ui)
+		}
 	}
 
 	setState(state: ScriptState) {
@@ -78,28 +90,28 @@ export class CLIScriptOutput implements ScriptOutput {
 }
 
 export type UIScriptFile = { name: string, data: Buffer | string };
-export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undefined, statechange: undefined }> implements ScriptOutput {
-	state: ScriptState = "running";
-	logs: string[] = [];
+
+export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implements ScriptFS {
 	files: UIScriptFile[] = [];
 	rootdirhandle: FileSystemDirectoryHandle | null = null;
 	outdirhandles = new Map<string, FileSystemDirectoryHandle | null>();
-	outputui: HTMLElement | null = null;
+	output: UIScriptOutput;
 
-	log(...args: any[]) {
-		let str = args.join(" ");
-		this.logs.push(str);
-		this.emit("log", str);
+	constructor(output: UIScriptOutput) {
+		super();
+		this.output = output;
 	}
 
 	async mkDir(name: string) {
 		this.outdirhandles.set(name, null);
 		this.emit("writefile", undefined);
+		this.output.emit("writefile", undefined);
 	}
 	async writeFile(name: string, data: Buffer | string) {
 		this.files.push({ name, data });
 		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
+		this.output.emit("writefile", undefined);
 	}
 	readFileBuffer(name: string): Promise<Buffer> {
 		throw new Error("not implemented");
@@ -107,13 +119,11 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 	readFileText(name: string): Promise<string> {
 		throw new Error("not implemented");
 	}
-	setState(state: ScriptState) {
-		this.state = state;
-		this.emit("statechange", undefined);
+	readDir(name: string): Promise<string[]> {
+		throw new Error("not implemented");
 	}
-	setUI(el: HTMLElement | null) {
-		this.outputui = el;
-		this.emit("statechange", undefined);
+	unlink(name: string): Promise<void> {
+		throw new Error("not implemented");
 	}
 
 	async setSaveDirHandle(dir: FileSystemDirectoryHandle) {
@@ -127,7 +137,7 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 			}
 			await Promise.all(this.files.map(q => this.saveLocalFile(q.name, q.data)));
 		}
-		this.emit("statechange", undefined);
+		this.output.emit("statechange", undefined);
 	}
 
 	async mkdirLocal(path: string[]) {
@@ -152,6 +162,40 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, writefile: undef
 		let writable = await filehandle.createWritable({ keepExistingData: false });
 		await writable.write(file);
 		await writable.close();
+	}
+}
+
+export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: undefined, writefile: undefined }> implements ScriptOutput {
+	state: ScriptState = "running";
+	logs: string[] = [];
+	outputui: HTMLElement | null = null;
+	fs: Record<string, UIScriptFS>;
+
+	log(...args: any[]) {
+		let str = args.join(" ");
+		this.logs.push(str);
+		this.emit("log", str);
+	}
+
+	setState(state: ScriptState) {
+		this.state = state;
+		this.emit("statechange", undefined);
+	}
+	setUI(el: HTMLElement | null) {
+		this.outputui = el;
+		this.emit("statechange", undefined);
+	}
+
+	constructor() {
+		super();
+		this.fs = {};
+	}
+
+	makefs(name: string) {
+		let fs = new UIScriptFS(this);
+		this.fs[name] = fs;
+		this.emit("statechange", undefined);
+		return fs;
 	}
 
 	async run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null> {
@@ -219,6 +263,7 @@ export function DomWrap(p: { el: HTMLElement | null | undefined, style?: React.C
 
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
 	let [tab, setTab] = React.useState<"console" | "files">("console");
+	let [fsname, setfsname] = React.useState("");
 
 	let forceUpdate = useForceUpdate();
 	React.useLayoutEffect(() => {
@@ -230,33 +275,35 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 		}
 	}, [p.output]);
 
+	let selectedfs = p.output?.fs[fsname];
+
 	return (
 		<div>
 			<div>
 				{p.output?.state}
 				{p.output?.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
 			</div>
-			{p.output && !p.output.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.output?.files.length} onClick={async e => p.output?.setSaveDirHandle(await showDirectoryPicker({}))} />}
-			{p.output?.rootdirhandle && <div>Saved files to disk: {p.output.files.length}</div>}
+			{selectedfs && !selectedfs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + selectedfs.files.length} onClick={async e => selectedfs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
+			{selectedfs?.rootdirhandle && <div>Saved files to disk: {selectedfs.files.length}</div>}
 			{p.output?.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
 			<TabStrip value={tab} onChange={setTab as any} tabs={{ console: "Console", files: "Files" }} />
 			{tab == "console" && <UIScriptConsole output={p.output} />}
-			{tab == "files" && <UIScriptFiles output={p.output} onSelect={p.ctx.openFile} />}
+			{tab == "files" && <UIScriptFiles fs={selectedfs} onSelect={p.ctx.openFile} />}
 		</div>
 	)
 
 }
 
-export function UIScriptFiles(p: { output?: UIScriptOutput | null, onSelect: (file: UIScriptFile | null) => void }) {
-	let [files, setFiles] = React.useState(p.output?.files);
+export function UIScriptFiles(p: { fs?: UIScriptFS | null, onSelect: (file: UIScriptFile | null) => void }) {
+	let [files, setFiles] = React.useState(p.fs?.files);
 
 	useEffect(() => {
-		if (p.output) {
-			let onchange = () => setFiles(p.output!.files);
-			p.output.on("writefile", onchange);
-			return () => p.output?.off("writefile", onchange);
+		if (p.fs) {
+			let onchange = () => setFiles(p.fs!.files);
+			p.fs.on("writefile", onchange);
+			return () => p.fs?.off("writefile", onchange);
 		}
-	}, [p.output]);
+	}, [p.fs]);
 
 	if (!files) {
 		return <div />;

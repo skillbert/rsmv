@@ -3,11 +3,11 @@ import { quickchatcategories } from "../../generated/quickchatcategories";
 import { parseQuickchatCategories, parseQuickchatLines } from "../opdecoder";
 import { quickchatlines } from "../../generated/quickchatlines";
 import prettyJson from "json-stringify-pretty-compact";
-import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { CacheFileSource } from "../cache";
 
 
-export async function quickChatLookup(output: ScriptOutput, source: CacheFileSource) {
+export async function quickChatLookup(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource) {
 	let catarch = await source.getArchiveById(cacheMajors.quickchat, 0);
 	let linesarch = await source.getArchiveById(cacheMajors.quickchat, 1);
 
@@ -42,5 +42,5 @@ export async function quickChatLookup(output: ScriptOutput, source: CacheFileSou
 	}
 	iter(cats[85], "");
 
-	output.writeFile("quickchat.json", prettyJson(hotkeys));
+	outdir.writeFile("quickchat.json", prettyJson(hotkeys));
 }

@@ -59,7 +59,7 @@ let cmd = cmdts.command({
 		mapid: cmdts.option({ long: "mapid", type: cmdts.number })
 	},
 	handler: async (args) => {
-		let output = new CLIScriptOutput("");
+		let output = new CLIScriptOutput();
 		//for some reason electron crashes if you pass it any argument with a `:` in it, so pass urls without scheme instead
 		let endpoint = args.endpoint;
 		if (endpoint.startsWith("localhost")) { endpoint = "http://" + endpoint; }

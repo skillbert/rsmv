@@ -6,7 +6,7 @@ import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from
 import { SimpleModelDef, serializeAnimset } from "../viewer/scenenodes";
 import { items } from "../../generated/items";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { ScriptOutput } from "../viewer/scriptsui";
+import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { testDecodeFile } from "../scripts/testdecode";
 import { avatars } from "../../generated/avatars";
 
@@ -130,7 +130,7 @@ export type EquipSlot = {
 }
 
 //TODO remove output and name args
-export async function avatarToModel(output: ScriptOutput | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
+export async function avatarToModel(output: ScriptFS | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
 	let kitdata = await loadKitData(scene.engine);
 	let avabase = parseAvatars.read(avadata);
 	let models: SimpleModelDef = [];

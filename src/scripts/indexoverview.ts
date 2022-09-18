@@ -1,10 +1,10 @@
 import { cacheMajors } from "../constants";
-import { CLIScriptOutput, ScriptOutput } from "viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "viewer/scriptsui";
 import { CacheFileSource } from "cache";
 import prettyJson from "json-stringify-pretty-compact";
 
 
-export async function indexOverview(output: ScriptOutput, source: CacheFileSource) {
+export async function indexOverview(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource) {
 	let rootindex = await source.getIndexFile(cacheMajors.index);
 
 	let majors: any[] = [];
@@ -35,5 +35,5 @@ export async function indexOverview(output: ScriptOutput, source: CacheFileSourc
 			missingindices: index.subindexcount + 1 - index.subindices[index.subindices.length - 1]
 		});
 	}
-	output.writeFile("indexoverview.json", prettyJson({ majors, configs }));
+	outdir.writeFile("indexoverview.json", prettyJson({ majors, configs }));
 }

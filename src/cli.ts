@@ -2,8 +2,8 @@ import { filesource, cliArguments, ReadCacheSource } from "./cliparser";
 import { run, command, option, flag } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
-import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes } from "./scripts/extractfiles";
-import { CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
+import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes, writeCacheFiles } from "./scripts/extractfiles";
+import { CLIScriptFS, CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
 import { defaultTestDecodeOpts, testDecode } from "./scripts/testdecode";
 import * as cmdts from "cmd-ts";
 import { indexOverview } from "./scripts/indexoverview";
@@ -18,19 +18,18 @@ const testdecode = command({
 		mode: option({ long: "mode", short: "m" })
 	},
 	handler: async (args) => {
-		const errdir = "./cache5/errs";
-		fs.mkdirSync(errdir, { recursive: true });
-		let olderrfiles = fs.readdirSync(errdir);
+		const errdir = new CLIScriptFS("./cache5/errs");
+		let olderrfiles = await errdir.readDir(".");
 		if (olderrfiles.find(q => !q.match(/^err/))) {
 			throw new Error("file not starting with 'err' in error dir");
 		}
-		olderrfiles.forEach(q => fs.unlinkSync(path.resolve(errdir, q)));
+		await Promise.all(olderrfiles.map(q => errdir.unlink(q)));
 
-		let output = new CLIScriptOutput(errdir);
+		let output = new CLIScriptOutput();
 		let source = await args.source();
 		let mode = cacheFileJsonModes[args.mode];
 		if (!mode) { throw new Error(`mode ${args.mode} not found, possible modes: ${Object.keys(cacheFileJsonModes).join(", ")}`) }
-		await output.run(testDecode, source, mode, defaultTestDecodeOpts());
+		await output.run(testDecode, errdir, source, mode, defaultTestDecodeOpts());
 	}
 });
 
@@ -47,15 +46,29 @@ const extract = command({
 		batchlimit: option({ long: "batchsize", type: cmdts.number, defaultValue: () => -1 }),
 		keepbuffers: flag({ long: "keepbuffers" })
 	},
-	handler: async (args) => {
-		let outdir = path.resolve(args.save);
-		fs.mkdirSync(outdir, { recursive: true });
-		let output = new CLIScriptOutput(outdir);
+	async handler(args) {
+		let outdir = new CLIScriptFS(args.save);
+		let output = new CLIScriptOutput();
 		let source = await args.source({ writable: args.edit });
-		await output.run(extractCacheFiles, source, args);
+		await output.run(extractCacheFiles, outdir, source, args);
 		source.close();
 	}
 });
+
+const edit = command({
+	name: "edit",
+	args: {
+		...filesource,
+		diffdir: option({ long: "diffdir", short: "d", type: cmdts.string })
+	},
+	async handler(args) {
+		let diffdir = new CLIScriptFS(args.diffdir);
+		let output = new CLIScriptOutput();
+		let source = await args.source({ writable: true });
+		await output.run(writeCacheFiles, source, diffdir);
+		source.close();
+	},
+})
 
 const indexoverview = command({
 	name: "run",
@@ -64,8 +77,9 @@ const indexoverview = command({
 	},
 	handler: async (args) => {
 		let source = await args.source();
-		let output = new CLIScriptOutput("");
-		await output.run(indexOverview, source);
+		let output = new CLIScriptOutput();
+		let outdir = new CLIScriptFS(".");
+		await output.run(indexOverview, outdir, source);
 	}
 });
 
@@ -74,13 +88,15 @@ const diff = command({
 	args: {
 		a: option({ long: "cache1", short: "a", type: ReadCacheSource }),
 		b: option({ long: "cache2", short: "b", type: ReadCacheSource }),
+		out: option({ long: "out", short: "s", type: cmdts.string })
 	},
 	handler: async (args) => {
 		let sourcea = await args.a();
 		let sourceb = await args.b();
 
-		let output = new CLIScriptOutput("cache5/changes2");
-		await output.run(diffCaches, sourcea, sourceb);
+		let outdir = new CLIScriptFS(args.out);
+		let output = new CLIScriptOutput();
+		await output.run(diffCaches, outdir, sourcea, sourceb);
 
 		sourcea.close();
 		sourceb.close();
@@ -93,9 +109,10 @@ const quickchat = command({
 		...filesource
 	},
 	handler: async (args) => {
-		let output = new CLIScriptOutput("");
+		let output = new CLIScriptOutput();
+		let outdir = new CLIScriptFS(".");
 		let source = await args.source();
-		output.run(quickChatLookup, source);
+		output.run(quickChatLookup, outdir, source);
 		source.close();
 	}
 });
@@ -110,15 +127,16 @@ const scrapeavatars = command({
 		json: flag({ long: "json", short: "j" })
 	},
 	handler: async (args) => {
-		let output = new CLIScriptOutput(args.save);
+		let outdir = new CLIScriptFS(args.save);
+		let output = new CLIScriptOutput();
 		let source = (args.json ? await args.source() : null);
-		await output.run(scrapePlayerAvatars, source, args.skip, args.max, args.json);
+		await output.run(scrapePlayerAvatars, outdir, source, args.skip, args.max, args.json);
 	}
 });
 
 let subcommands = cmdts.subcommands({
 	name: "cache tools cli",
-	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars }
+	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit }
 });
 
 cmdts.run(subcommands, cliArguments());
