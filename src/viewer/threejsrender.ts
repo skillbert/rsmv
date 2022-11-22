@@ -7,8 +7,8 @@ import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 
-import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera } from "three";
+import { ModelExtras, ClickableMesh } from '../3d/mapsquare';
+import { AnimationClip, Clock, Mesh, Object3D, PerspectiveCamera } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache } from '../3d/ob3tothree';
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, EngineCache, mergeNaiveBoneids } from '../3d/ob3tothree';
 import { ModelModifications, constrainedMap, delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
@@ -129,6 +129,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				return modified;
 			}));
 			let modeldata = mergeModelDatas(meshdatas);
+			mergeNaiveBoneids(modeldata);
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
 
 			let nullbones: Object3D[] = [];
