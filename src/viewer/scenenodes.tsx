@@ -1410,7 +1410,7 @@ function SceneLocation(p: LookupModeProps) {
 	)
 }
 
-function ItemCameraMode({ ctx, meta, center }: { ctx: UIContextReady, meta?: items, center: Vector3 }) {
+function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: items, centery: number }) {
 	let [translatex, settranslatex] = React.useState(meta?.modelTranslate_0 ?? 0);
 	let [translatey, settranslatey] = React.useState(meta?.modelTranslate_1 ?? 0);
 	let [rotx, setrotx] = React.useState(meta?.rotation_0 ?? 0);
@@ -1432,7 +1432,7 @@ function ItemCameraMode({ ctx, meta, center }: { ctx: UIContextReady, meta?: ite
 		reset();
 	}
 
-	const defaultcamdist = 8;//found through testing
+	const defaultcamdist = 16;//found through testing
 	const imgheight = 32;
 	const imgwidth = 36;
 
@@ -1450,9 +1450,26 @@ function ItemCameraMode({ ctx, meta, center }: { ctx: UIContextReady, meta?: ite
 		-rotz / 2048 * 2 * Math.PI,
 		"ZYX"
 	));
-	let pos = new Vector3().copy(center);
-	let camoffset = new Vector3(-translatex / 512, -translatey / 512, defaultcamdist * zoom / 1024).applyQuaternion(rot);
-	pos.add(camoffset);
+	let pos = new Vector3(
+		6,//no clue where the 6 comes from
+		0,
+		4 * -zoom
+	);
+	let quatx = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), rotx / 2048 * 2 * Math.PI);
+	let quaty = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -roty / 2048 * 2 * Math.PI);
+	let quatz = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), -rotz / 2048 * 2 * Math.PI)
+	pos.applyQuaternion(quatx);
+	pos.add(new Vector3(
+		-translatex * 4,
+		translatey * 4,
+		-translatey * 4//yep this is y not z, i don't fucking know
+	));
+	pos.applyQuaternion(quaty);
+	pos.applyQuaternion(quatz);
+	pos.y += centery;
+	pos.divideScalar(512);
+	pos.z = -pos.z;
+
 	cam.position.copy(pos);
 	cam.quaternion.copy(rot);
 	cam.updateProjectionMatrix();
@@ -1493,14 +1510,7 @@ function SceneItem(p: LookupModeProps) {
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	let [enablecam, setenablecam] = React.useState(false);
 
-	let center = new Vector3();
-	if (model?.loaded) {
-		let totalcenter = getModelCenter(model.loaded.modeldata);
-		center.setX(totalcenter.xsum / totalcenter.weightsum);
-		center.setY(totalcenter.ysum / totalcenter.weightsum);
-		center.setZ(totalcenter.zsum / totalcenter.weightsum);
-		center.divideScalar(512);
-	}
+	let centery = (model?.loaded ? (model.loaded.modeldata.maxy + model.loaded.modeldata.miny) / 2 : 0);
 
 	return (
 		<React.Fragment>
@@ -1510,7 +1520,7 @@ function SceneItem(p: LookupModeProps) {
 			)}
 			<div className="mv-sidebar-scroll">
 				<input type="button" className="sub-btn" value={enablecam ? "exit" : "Icon Camera"} onClick={e => setenablecam(!enablecam)} />
-				{enablecam && p.ctx && <ItemCameraMode ctx={p.ctx} meta={data?.info} center={center} />}
+				{enablecam && p.ctx && <ItemCameraMode ctx={p.ctx} meta={data?.info} centery={centery} />}
 				<JsonDisplay obj={data?.info} />
 			</div>
 		</React.Fragment>

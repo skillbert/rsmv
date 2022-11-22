@@ -30,9 +30,9 @@
 		["indexBuffers",["array","ubyte",["buffer","ushort le","ushort"]]],
 
 		["vertexCount",["opt",["hasVertices",1],"ushort le"]],
-		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",3]]],
+		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
 		["normalBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"byte",3]]],
-		["tagentBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],
+		["tagentBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",2]]],
 		["uvBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],
 		["boneidBuffer",["opt",["hasBoneIds",1],["buffer",["ref","vertexCount"],"ushort"]]],
 		

@@ -714,7 +714,7 @@ function bufferParserValue(value: unknown, type: typeof BufferTypes[keyof typeof
 			return Buffer.from(value, "hex");
 		} else {
 			//accept json-ified version of our data as well
-			let m = value.match(/^buffer ([\w\[\]]+){([\d,\-\.]+)}/);
+			let m = value.match(/^buffer ([\w\[\]]+){([\d,\-\.]*)}/);
 			if (!m) { throw new Error("invalid arraybuffer string"); }
 			return new type.constr(m[2].split(",").map(q => +q));
 		}
