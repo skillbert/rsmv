@@ -42,7 +42,7 @@ async function run(filesource: CacheFileSource, npcid: number) {
 	let width = 500;
 	let height = 500;
 
-	let opts: WebGLRendererParameters = { antialias: true, alpha: false };
+	let opts: WebGLRendererParameters = { antialias: true, alpha: false, preserveDrawingBuffer: true };
 
 	let cnv: HTMLCanvasElement;
 	let ctx: WebGLRenderingContext | undefined = undefined;
@@ -67,6 +67,11 @@ async function run(filesource: CacheFileSource, npcid: number) {
 		context: ctx,
 		...opts
 	});
+	render.addSceneElement({
+		getSceneElements() {
+			return { options: { autoFrames: false } };
+		}
+	})
 
 	globalThis.render = render;
 
@@ -82,14 +87,13 @@ async function run(filesource: CacheFileSource, npcid: number) {
 	// render.addSceneElement(map);
 
 	let npc = await npcToModel(scene, { id: npcid, head: false });
-	render.addSceneElement(new RSModel(npc.models, scene));
+	let model = new RSModel(npc.models, scene);
+	render.addSceneElement(model);
 
-	await delay(5000);
-	while (true) {
-		await delay(500);
-		render.render();
-		dumpimage(render);
-	}
+	await model.model;
+	await delay(1);
+	render.render();
+	dumpimage(render);
 }
 
 

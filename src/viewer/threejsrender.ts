@@ -8,7 +8,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, Texture } from "three";
+import { AnimationClip, AnimationMixer, Clock, Color, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, Texture } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
@@ -126,6 +126,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			height: 2,
 			colorSpace: "srgb"
 		});
+		texture.needsUpdate = true;
 		// const loader = new THREE.TextureLoader();
 		// const texture = loader.load(new URL('../assets/checker.png', import.meta.url).href, () => this.forceFrame());
 		texture.wrapS = THREE.RepeatWrapping;
@@ -422,7 +423,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			}
 			this.renderer.setRenderTarget(oldtarget);
 		});
-		let buf = new Uint8ClampedArray(width * height * 4);
+		let buf = new Uint8Array(width * height * 4);//node-gl doesn't accept clamped
 		if (rendertarget) {
 			this.renderer.readRenderTargetPixels(rendertarget as any, 0, 0, width, height, buf);
 			rendertarget.dispose();

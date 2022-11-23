@@ -1,7 +1,7 @@
 import { parseAnimgroupConfigs, parseItem, parseModels, parseNpc, parseSequences, parseSpotAnims } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree } from '../3d/ob3tothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids } from '../3d/ob3tothree';
 import { ModelModifications, constrainedMap, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
@@ -210,6 +210,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				return modified;
 			}));
 			let modeldata = mergeModelDatas(meshdatas);
+			mergeNaiveBoneids(modeldata);
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
 
 			let nullbones: Object3D[] = [];

@@ -1,7 +1,12 @@
 //structure similar to ImageData, but without prototype chain or clamped constraint, easy to consume with sharp
 
-export function makeImageData(data: Uint8ClampedArray | null, width: number, height: number): ImageData {
-	if (!data) { data = new Uint8ClampedArray(width * height * 4); }
+export function makeImageData(data: Uint8ClampedArray | Uint8Array | null, width: number, height: number): ImageData {
+	if (!data) {
+		data = new Uint8ClampedArray(width * height * 4);
+	}
+	if (data instanceof Uint8Array) {
+		data = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length);
+	}
 	if (typeof ImageData != "undefined") {
 		return new ImageData(data, width, height);
 	} else {

@@ -315,6 +315,43 @@ export class ThreejsSceneCache {
 	}
 }
 
+/**
+ * When merging player npc models the client incorrectly merge vertices which
+ * have the same position+color+material, but with different bone ids. The second
+ * vertex will be merged and its bone id is lost. This bug is so entrenched in
+ * the game that player models will have detached arms and waist if not replicated
+ */
+export function mergeNaiveBoneids(model: ModelData) {
+	let mergecount = 0;
+	for (let meshid1 = 0; meshid1 < model.meshes.length; meshid1++) {
+		let mesh1 = model.meshes[meshid1];
+		if (!mesh1.attributes.color || !mesh1.attributes.skinids || !mesh1.attributes.skinweights) { continue; }
+		for (let i1 = 0; i1 < mesh1.attributes.pos.count; i1++) {
+			let x = mesh1.attributes.pos.getX(i1); let y = mesh1.attributes.pos.getY(i1); let z = mesh1.attributes.pos.getZ(i1);
+			let r = mesh1.attributes.color.getX(i1); let g = mesh1.attributes.color.getY(i1); let b = mesh1.attributes.color.getZ(i1);
+			for (let meshidb = 0; meshidb <= meshid1; meshidb++) {
+				let mesh2 = model.meshes[meshidb];
+				if (!mesh2.attributes.color || !mesh2.attributes.skinids || !mesh2.attributes.skinweights) { continue; }
+				// if (mesh2.materialId != mesh1.materialId) { continue; }
+
+				let i2end = (meshidb == meshid1 ? i1 - 1 : mesh2.attributes.pos.count);
+				for (let i2 = 0; i2 < i2end; i2++) {
+					let posmatch = x == mesh2.attributes.pos.getX(i2) && y == mesh2.attributes.pos.getY(i2) && z == mesh2.attributes.pos.getZ(i2);
+					// let colmatch = r == mesh2.attributes.color.getX(i2) && g == mesh2.attributes.color.getY(i2) && b == mesh2.attributes.color.getZ(i2);
+					if (posmatch) {
+						if (mesh1.attributes.skinids.getX(i1) != mesh2.attributes.skinids.getX(i2)) {
+							mergecount++;
+						}
+						mesh1.attributes.skinids.copyAt(i1, mesh2.attributes.skinids, i2);
+						mesh1.attributes.skinweights.copyAt(i1, mesh2.attributes.skinweights, i2);
+					}
+				}
+			}
+		}
+	}
+	console.log("merged", mergecount);
+}
+
 export function mergeModelDatas(models: ModelData[]) {
 	let r: ModelData = {
 		bonecount: Math.max(...models.map(q => q.bonecount)),

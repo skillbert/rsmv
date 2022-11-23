@@ -61,7 +61,6 @@ export function ModelBrowser(p: { ctx: UIContext }) {
 	);
 }
 
-
 function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioComponent | null, onChange: (v: ScenarioAction | null) => void }) {
 	const action = p.action;
 	let targetname = p.comp?.modelkey ?? "??";
