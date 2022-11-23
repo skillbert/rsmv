@@ -1,4 +1,4 @@
-import { BufferGeometry, Camera, CubeCamera, DoubleSide, LinearFilter, Mesh, OrthographicCamera, PlaneBufferGeometry, RawShaderMaterial, Renderer, RGBAFormat, RGBFormat, Scene, WebGLCubeRenderTarget, WebGLRenderer } from "three";
+import { BufferGeometry, Camera, CubeCamera, DoubleSide, LinearFilter, Mesh, OrthographicCamera, PlaneGeometry, RawShaderMaterial, Renderer, RGBAFormat, RGBFormat, Scene, WebGLCubeRenderTarget, WebGLRenderer } from "three";
 
 class EquirectangularMaterial extends RawShaderMaterial {
 	transparent = true;
@@ -61,7 +61,7 @@ export class VR360Render {
 
 		this.cubeCamera = new CubeCamera(near, far, this.cubeRenderTarget);
 		this.skyCubeCamera = new CubeCamera(near, far, this.cubeRenderTarget);
-		this.quad = new Mesh(new PlaneBufferGeometry(2, 2), new EquirectangularMaterial());
+		this.quad = new Mesh(new PlaneGeometry(2, 2), new EquirectangularMaterial());
 		this.quad.frustumCulled = false;
 		this.projectCamera = new Camera();
 	}

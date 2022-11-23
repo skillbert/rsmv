@@ -2,13 +2,13 @@ import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { delay, TypedEmitter } from '../utils';
-import { FlatImageData, flipImage } from '../imgutils';
+import { flipImage, makeImageData } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera } from "three";
+import { AnimationClip, AnimationMixer, Clock, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, Texture } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
@@ -119,8 +119,15 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		const planeSize = 11;
 
 		//floor mesh
-		const loader = new THREE.TextureLoader();
-		const texture = loader.load(new URL('../assets/checker.png', import.meta.url).href, () => this.forceFrame());
+		//inline since nodejs doesn't have a texture loader
+		const texture = new Texture({
+			data: new Uint8ClampedArray([128, 128, 128, 255, 192, 192, 192, 255, 192, 192, 192, 255, 128, 128, 128, 255]),
+			width: 2,
+			height: 2,
+			colorSpace: "srgb"
+		});
+		// const loader = new THREE.TextureLoader();
+		// const texture = loader.load(new URL('../assets/checker.png', import.meta.url).href, () => this.forceFrame());
 		texture.wrapS = THREE.RepeatWrapping;
 		texture.wrapT = THREE.RepeatWrapping;
 		texture.magFilter = THREE.NearestFilter;
@@ -344,7 +351,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	}
 
 	renderScene(cam: THREE.Camera) {
-		let size = this.renderer.getRenderTarget() ?? this.renderer.getContext().canvas;
+		let size = this.renderer.getRenderTarget() ?? this.renderer.getContext().canvas ?? this.canvas;
 		let aspect = size.width / size.height;
 		if (cam instanceof THREE.PerspectiveCamera && cam.aspect != aspect) {
 			this.camera.aspect = aspect;
@@ -423,9 +430,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			let gl = this.renderer.getContext()
 			gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
 		}
-		flipImage({ data: buf, width, height, channels: 4 });
-		let data = new ImageData(buf, width, height);
-		return data;
+		let r = makeImageData(buf, width, height);
+		flipImage(r);
+		return r;
 	}
 
 	async takeMapPicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
@@ -442,16 +449,16 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		cam.projectionMatrix.transpose();
 		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
 
-		let res: FlatImageData | null = null
+		let res: ImageData | null = null
 		await this.guaranteeGlCalls(() => {
 			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
-			res = { data: pixelbuffer, width: ctx.canvas.width, height: ctx.canvas.height, channels: 4 };
+			res = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
 		});
 
-		return res! as FlatImageData;
+		return res!;
 	}
 
 	setCameraLimits() {

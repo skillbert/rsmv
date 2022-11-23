@@ -1,18 +1,11 @@
-
+import { makeImageData } from "../imgutils";
 
 export function parseSprite(buf: Buffer) {
 	let data = buf.readUInt16BE(buf.length - 2);
 	let format = data >> 15;
 	let count = (data & 0x7FFF);
 
-	let spriteimgs: {
-		x: number,
-		y: number,
-		width: number,
-		height: number,
-		channels: 4,
-		data: Uint8Array
-	}[] = [];
+	let spriteimgs: { x: number, y: number, img: ImageData }[] = [];
 
 	if (format == 0) {
 		let offset = buf.length - 7 - 8 * count;
@@ -39,7 +32,7 @@ export function parseSprite(buf: Buffer) {
 				let flags = buf.readUInt8(offset); offset++;
 				let transposed = (flags & 1) != 0;
 				let alpha = (flags & 2) != 0;
-				let imgdata = new Uint8Array(imgsize * 4);
+				let imgdata = new Uint8ClampedArray(imgsize * 4);
 				let indexoffset = offset;
 				let alphaoffset = offset + imgsize;
 				offset += imgsize + (alpha ? imgsize : 0);
@@ -64,7 +57,7 @@ export function parseSprite(buf: Buffer) {
 						}
 					}
 				}
-				spriteimgs.push({ ...imgdef, channels: 4, data: imgdata });
+				spriteimgs.push({ x: imgdef.x, y: imgdef.y, img: makeImageData(imgdata, imgdef.width, imgdef.height) });
 			}
 		}
 	} else {
@@ -81,7 +74,7 @@ export function parseSprite(buf: Buffer) {
 		let alphaoffset = offset;
 		offset += (alpha ? width * height : 0);
 
-		let imgdata = new Uint8Array(width * height * 4);
+		let imgdata = new Uint8ClampedArray(width * height * 4);
 
 		for (let y = 0; y < height; y++) {
 			for (let x = 0; x < width; x++) {
@@ -94,7 +87,7 @@ export function parseSprite(buf: Buffer) {
 				imgdata[outoffset + 3] = alpha ? buf.readUInt8(alphaoffset + inoffset + 2) : 255;
 			}
 		}
-		spriteimgs.push({ x: 0, y: 0, width, height, channels: 4, data: imgdata });
+		spriteimgs.push({ x: 0, y: 0, img: makeImageData(imgdata, width, height) });
 	}
 	return spriteimgs;
 }

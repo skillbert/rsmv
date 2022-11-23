@@ -270,7 +270,7 @@ const decodeSprite: DecodeModeFactory = () => {
 		prepareDump() { },
 		read(b, id) {
 			//TODO support subimgs
-			return pixelsToImageFile(parseSprite(b)[0], "png", 1);
+			return pixelsToImageFile(parseSprite(b)[0].img, "png", 1);
 		},
 		write(b) { throw new Error("write not supported"); },
 		combineSubs(b: Buffer[]) { throw new Error("not supported"); }
@@ -295,7 +295,7 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 			let images = parseSprite(b);
 			let str = "";
 			for (let [sub, img] of images.entries()) {
-				let hash = crc32(img.data);
+				let hash = crc32(img.img.data);
 				str += (str == "" ? "" : ",") + `{"id":${id[0]},"sub":${sub},"hash":${hash}}`;
 			}
 			return str;

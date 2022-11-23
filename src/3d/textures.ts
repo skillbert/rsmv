@@ -1,3 +1,4 @@
+import { makeImageData } from "../imgutils";
 import sharp from "sharp";
 import { loadDds } from "./ddsimage";
 
@@ -117,16 +118,16 @@ export class ParsedTexture {
 				let height = this.bmpHeight >> subimg;
 				let imgdata = loadBmp(this.imagefiles[subimg], width, height, padsize, this.stripAlpha);
 				let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-				return new ImageData(pixbuf, imgdata.width, imgdata.height);
+				return makeImageData(pixbuf, imgdata.width, imgdata.height);
 			} else if (this.type == "png") {
 				let img = sharp(this.imagefiles[subimg]);
 				let decoded = await img.raw().toBuffer({ resolveWithObject: true });
 				let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
-				return new ImageData(pixbuf, decoded.info.width, decoded.info.height);
+				return makeImageData(pixbuf, decoded.info.width, decoded.info.height);
 			} else if (this.type == "dds") {
 				let imgdata = loadDds(this.imagefiles[subimg], padsize, this.stripAlpha);
 				let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-				return new ImageData(pixbuf, imgdata.width, imgdata.height);
+				return makeImageData(pixbuf, imgdata.width, imgdata.height);
 			} else {
 				throw new Error("unknown format");
 			}

@@ -8,16 +8,16 @@ import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parseEnums, parseMapZones } from "../opdecoder";
-import { canvasToImageFile, FlatImageData, flipImage, isImageEqual, pixelsToImageFile } from "../imgutils";
+import { canvasToImageFile, flipImage, isImageEqual, pixelsToImageFile } from "../imgutils";
 import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
-import { RSMapChunk } from "../viewer/scenenodes";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
 import { chunkSummary } from "./chunksummary";
+import { RSMapChunk } from "../3d/modelnodes";
 
 // @ts-ignore type import also fails when targeting web
 import type * as electronType from "electron/renderer";
@@ -671,7 +671,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 	let y = config.config.mapsizez - 1 - z;
 
-	let baseimgs: Record<string, FlatImageData> = {};
+	let baseimgs: Record<string, ImageData> = {};
 	progress.update(x, z, "rendering");
 	let rootdeps = [
 		deps.makeDeptName("mapsquare", (x - 1) + (z - 1) * worldStride),

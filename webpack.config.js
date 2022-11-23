@@ -11,10 +11,11 @@ module.exports = {
 		main: "./src/main.ts",
 		electronviewer: "./src/viewer/",
 		cli: "./src/cli.ts",
-		// searchmap: "./src/scripts/searchmap.ts",
 		buildfiletypes: "./src/buildfiletypes.ts",
 		maprender: "./src/map/",
-		runmap: "./src/map/run.ts"
+		runmap: "./src/map/run.ts",
+		headless: "./src/headless/",
+		runheadless: "./src/headless/runelectron.ts"
 	},
 	module: {
 		rules: [
@@ -43,7 +44,9 @@ module.exports = {
 		"zlib": { commonjs: "zlib" },
 		"lzma": { commonjs: "lzma" },
 		"cmd-ts": { commonjs: "cmd-ts" },
-		"comment-json": { commonjs: "comment-json" }
+		"comment-json": { commonjs: "comment-json" },
+		"gl": { commonjs: "gl" },
+		"canvas": { commonjs: "canvas" }
 	},
 	resolve: {
 		extensions: ['.tsx', '.ts', '.js'],

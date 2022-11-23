@@ -2,7 +2,7 @@ import { TileGridSource, ChunkData, squareLevels, squareSize, TileVertex, WorldL
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
 import { EngineCache } from "../3d/ob3tothree";
-import { pixelsToDataUrl } from "../imgutils";
+import { makeImageData, pixelsToDataUrl } from "../imgutils";
 
 let similarangle = (a1: number, a2: number) => {
 	const PI2 = Math.PI * 2;
@@ -38,7 +38,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	}
 
 	if (drawground) {
-		let underlaybitmap = new Uint8Array(rect.xsize * rect.zsize * 4);
+		let underlaybitmap = new Uint8ClampedArray(rect.xsize * rect.zsize * 4);
 		//make this 4x as large as needed so we can use the same indices
 		// let tiledepthbuffer = new Uint8Array(rect.xsize * rect.zsize * 4);
 		//fill with solid black, no transparency jokes here
@@ -122,7 +122,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 			}
 		}
 
-		underlay = await pixelsToDataUrl({ data: underlaybitmap, width: rect.xsize, height: rect.zsize, channels: 4 });
+		underlay = await pixelsToDataUrl(makeImageData(underlaybitmap, rect.xsize, rect.zsize));
 	}
 
 	let addline = (group: typeof whitelines, tilex: number, tilez: number, corner1: number, corner2: number, rotation: number) => {
@@ -182,9 +182,9 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 					if (mapscene.sprite_id != undefined) {
 						let spritefile = await engine.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 						let sprite = parseSprite(spritefile);
-						src = await pixelsToDataUrl(sprite[0]);
-						width = sprite[0].width;
-						height = sprite[0].height;
+						src = await pixelsToDataUrl(sprite[0].img);
+						width = sprite[0].img.width;
+						height = sprite[0].img.height;
 					}
 					group = { src: src, width, height, uses: [] };
 					mapscenes.set(loc.location.mapscene, group);

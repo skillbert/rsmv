@@ -1295,7 +1295,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 			let spritefile = await engine.getFileById(cacheMajors.sprites, mapscene.sprite_id);
 			let sprite = parseSprite(spritefile);
 			let mat = new THREE.MeshBasicMaterial();
-			mat.map = new THREE.DataTexture(sprite[0].data, sprite[0].width, sprite[0].height, THREE.RGBAFormat);
+			mat.map = new THREE.DataTexture(sprite[0].img.data, sprite[0].img.width, sprite[0].img.height, THREE.RGBAFormat);
 			mat.depthTest = false;
 			mat.transparent = true;
 			mat.needsUpdate = true;

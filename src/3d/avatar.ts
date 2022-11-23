@@ -3,12 +3,12 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import { parseAnimgroupConfigs, parseAvatarOverrides, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
 import { ThreejsSceneCache } from "./ob3tothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../utils";
-import { SimpleModelDef, serializeAnimset } from "../viewer/scenenodes";
 import { items } from "../../generated/items";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { testDecodeFile } from "../scripts/testdecode";
 import { avatars } from "../../generated/avatars";
+import { SimpleModelDef, serializeAnimset } from "./modelnodes";
 
 export function avatarStringToBytes(text: string) {
 	let base64 = text.replace(/\*/g, "+").replace(/-/g, "/");

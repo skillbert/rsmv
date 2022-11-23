@@ -1,25 +1,25 @@
 //structure similar to ImageData, but without prototype chain or clamped constraint, easy to consume with sharp
-export type FlatImageData = {
-	data: Uint8Array | Uint8ClampedArray,
-	width: number,
-	height: number,
-	channels: 4
-};
 
-export async function pixelsToImageFile(pixels: FlatImageData, format: "png" | "webp", quality: number) {
-	if (pixels.channels != 4) { throw new Error("4 image channels expected"); }
+export function makeImageData(data: Uint8ClampedArray | null, width: number, height: number): ImageData {
+	if (!data) { data = new Uint8ClampedArray(width * height * 4); }
+	if (typeof ImageData != "undefined") {
+		return new ImageData(data, width, height);
+	} else {
+		return { data, width, height, colorSpace: "srgb" };
+	}
+}
+
+export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "webp", quality: number) {
 	if (typeof document != "undefined") {
 		let cnv = document.createElement("canvas");
-		cnv.width = pixels.width;
-		cnv.height = pixels.height;
+		cnv.width = imgdata.width;
+		cnv.height = imgdata.height;
 		let ctx = cnv.getContext("2d")!;
-		let clamped = new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.length);
-		let imgdata = new ImageData(clamped, pixels.width, pixels.height);
 		ctx.putImageData(imgdata, 0, 0);
 		return canvasToImageFile(cnv, format, quality);
 	} else {
 		const sharp = require("sharp") as typeof import("sharp");
-		let img = sharp(pixels.data, { raw: { width: pixels.width, height: pixels.height, channels: pixels.channels } });
+		let img = sharp(imgdata.data, { raw: { width: imgdata.width, height: imgdata.height, channels: 4 } });
 		if (format == "png") {
 			return img.png().toBuffer();
 		} else if (format == "webp") {
@@ -30,25 +30,22 @@ export async function pixelsToImageFile(pixels: FlatImageData, format: "png" | "
 	}
 }
 
-export async function pixelsToDataUrl(pixels: FlatImageData) {
-	if (pixels.channels != 4) { throw new Error("4 image channels expected"); }
+export async function pixelsToDataUrl(imgdata: ImageData) {
 	if (typeof document != "undefined") {
 		let cnv = document.createElement("canvas");
-		cnv.width = pixels.width;
-		cnv.height = pixels.height;
+		cnv.width = imgdata.width;
+		cnv.height = imgdata.height;
 		let ctx = cnv.getContext("2d")!;
-		let clamped = new Uint8ClampedArray(pixels.data.buffer, pixels.data.byteOffset, pixels.data.length);
-		let imgdata = new ImageData(clamped, pixels.width, pixels.height);
 		ctx.putImageData(imgdata, 0, 0);
 		return cnv.toDataURL("image/png");
 	} else {
 		const sharp = require("sharp") as typeof import("sharp");
-		let pngfile = await sharp(pixels.data, { raw: { width: pixels.width, height: pixels.height, channels: pixels.channels } }).png().toBuffer();
+		let pngfile = await sharp(imgdata.data, { raw: { width: imgdata.width, height: imgdata.height, channels: 4 } }).png().toBuffer();
 		return "data:image/png;base64," + pngfile.toString("base64");
 	}
 }
 
-export function isImageEqual(overlay: FlatImageData, background: FlatImageData, x1 = 0, y1 = 0, width = overlay.width, height = overlay.height) {
+export function isImageEqual(overlay: ImageData, background: ImageData, x1 = 0, y1 = 0, width = overlay.width, height = overlay.height) {
 	if (overlay.width != background.width || overlay.height != background.height) {
 		throw new Error("only equal sized images supported");
 	}
@@ -72,7 +69,7 @@ export function isImageEqual(overlay: FlatImageData, background: FlatImageData, 
 	return true;
 }
 
-export function isImageEmpty(img: FlatImageData, mode: "black" | "transparent", x1 = 0, y1 = 0, width = img.width, height = img.height) {
+export function isImageEmpty(img: ImageData, mode: "black" | "transparent", x1 = 0, y1 = 0, width = img.width, height = img.height) {
 	let intview = new Uint32Array(img.data.buffer, img.data.byteOffset, img.data.byteLength / 4);
 	let mask = (mode == "black" ? 0xffffffff : 0xff);
 	let target = 0;
@@ -98,7 +95,7 @@ export async function canvasToImageFile(cnv: HTMLCanvasElement, format: "png" | 
 	return Buffer.from(buf);
 }
 
-export function flipImage(img: FlatImageData) {
+export function flipImage(img: ImageData) {
 	let stride = img.width * 4;
 	let tmp = new Uint8Array(stride);
 	for (let y = 0; y < img.height / 2; y++) {
@@ -111,8 +108,7 @@ export function flipImage(img: FlatImageData) {
 }
 
 
-export function findImageBounds(img: FlatImageData | ImageData) {
-	if ("channels" in img && img.channels != 4) { throw new Error("4 channels expected"); }
+export function findImageBounds(img: ImageData | ImageData) {
 	let intview = new Uint32Array(img.data.buffer, img.data.byteOffset, img.data.byteLength / 4);
 
 	let minx = img.width, maxx = 0;

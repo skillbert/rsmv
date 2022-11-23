@@ -17,6 +17,7 @@ import { cacheFileJsonModes } from "../scripts/extractfiles";
 import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
+import { makeImageData } from "../imgutils";
 
 export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 	mat.customProgramCacheKey = () => "floortex";
@@ -244,8 +245,8 @@ export class ThreejsSceneCache {
 				if (material.textures.normal) {
 					let parsed = await this.getTextureFile(material.textures.normal, false);
 					let raw = await parsed.toImageData();
-					let normals = new ImageData(raw.width, raw.height);
-					let emisive = new ImageData(raw.width, raw.height);
+					let normals = makeImageData(null, raw.width, raw.height);
+					let emisive = makeImageData(null, raw.width, raw.height);
 					const data = raw.data;
 					for (let i = 0; i < data.length; i += 4) {
 						//normals
@@ -277,7 +278,7 @@ export class ThreejsSceneCache {
 				}
 				if (material.textures.compound) {
 					let compound = await (await this.getTextureFile(material.textures.compound, false)).toImageData();
-					let compoundmapped = new ImageData(compound.width, compound.height);
+					let compoundmapped = makeImageData(null, compound.width, compound.height);
 					//threejs expects g=metal,b=roughness, rs has r=metal,g=roughness
 					for (let i = 0; i < compound.data.length; i += 4) {
 						compoundmapped.data[i + 1] = compound.data[i + 1];

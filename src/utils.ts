@@ -1,4 +1,3 @@
-import type { FlatImageData } from "imgutils";
 import type { Texture } from "three";
 
 export type ModelModifications = {
@@ -24,16 +23,11 @@ export type Stream = {
 	bytesLeft(): number;
 }
 
-export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | FlatImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData  | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
 	const cnv = ctx.canvas;
 	if ("data" in img) {
 		cnv.width = img.width;
 		cnv.height = img.height;
-		//flatimagedata or shallow copy that threejs does to datatexture sources
-		if (!(img instanceof ImageData)) {
-			let data = (img.data instanceof Uint8ClampedArray ? img.data : new Uint8ClampedArray(img.data.buffer, img.data.byteOffset, img.data.byteLength));
-			img = new ImageData(data, img.width, img.height);
-		}
 		ctx.putImageData(img, 0, 0);
 	} else if ("source" in img) {
 		cnv.width = img.source.data.width;
