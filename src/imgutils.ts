@@ -15,7 +15,7 @@ export function makeImageData(data: Uint8ClampedArray | Uint8Array | null, width
 }
 
 export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "webp", quality: number) {
-	if (typeof document != "undefined") {
+	if (typeof HTMLCanvasElement != "undefined") {
 		let cnv = document.createElement("canvas");
 		cnv.width = imgdata.width;
 		cnv.height = imgdata.height;
@@ -36,7 +36,7 @@ export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "web
 }
 
 export async function pixelsToDataUrl(imgdata: ImageData) {
-	if (typeof document != "undefined") {
+	if (typeof HTMLCanvasElement != "undefined") {
 		let cnv = document.createElement("canvas");
 		cnv.width = imgdata.width;
 		cnv.height = imgdata.height;

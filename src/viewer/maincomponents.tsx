@@ -48,17 +48,12 @@ export type SavedCacheSource = {
 });
 
 export async function downloadBlob(name: string, blob: Blob) {
-	if (!electron) {
-		let a = document.createElement("a");
-		let url = URL.createObjectURL(blob);
-		a.download = name;
-		a.href = url;
-		a.click();
-		setTimeout(() => URL.revokeObjectURL(url), 1);
-	} else {
-		//TODO
-		console.log("TODO");
-	}
+	let a = document.createElement("a");
+	let url = URL.createObjectURL(blob);
+	a.download = name;
+	a.href = url;
+	a.click();
+	setTimeout(() => URL.revokeObjectURL(url), 1);
 }
 
 /**@deprecated requires a service worker and is pretty sketchy, also no actual streaming output file sources atm */

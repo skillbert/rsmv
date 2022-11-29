@@ -13,6 +13,7 @@ import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationsk
 import { svgfloor } from "../map/svgrender";
 import { ThreeJsRenderer, ThreeJsSceneElement, ThreeJsSceneElementSource } from "../viewer/threejsrender";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
+import fetch from "node-fetch";
 
 
 export type SimpleModelDef = {

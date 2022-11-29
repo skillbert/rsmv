@@ -5,8 +5,8 @@
 	"main": "dist/main.js",
 	"exports": {
 		".": "./dist/main.js",
-		"./src/*": "./src/*",
-		"./*": "./dist/*"
+		"./src/*": "./src/*.ts",
+		"./*": "./dist/*.js"
 	},
 	"scripts": {
 		"start": "electron --inspect ./dist/main.js",
@@ -40,10 +40,12 @@
 		"autobind-decorator": "^2.4.0",
 		"browserify-zlib": "^0.2.0",
 		"buffer": "^6.0.3",
+		"canvas": "^2.10.2",
 		"copy-webpack-plugin": "^10.2.4",
 		"electron": "^13.6.9",
 		"electron-rebuild": "^3.2.7",
 		"file-loader": "^6.2.0",
+		"gl": "^6.0.1",
 		"process": "^0.11.10",
 		"rimraf": "^3.0.2",
 		"stream-browserify": "^3.0.0",
@@ -60,7 +62,6 @@
 		"cmd-ts": "^0.7.0",
 		"comment-json": "^4.2.2",
 		"crc": "^3.8.0",
-		"gl": "^6.0.1",
 		"idb-keyval": "^6.1.0",
 		"json-stringify-pretty-compact": "^3.0.0",
 		"leaflet": "^1.7.1",

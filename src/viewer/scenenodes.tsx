@@ -23,6 +23,7 @@ import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView } from "./commoncontrols";
 import { items } from "../../generated/items";
 import { itemToModel, locToModel, materialToModel, modelToModel, npcToModel, playerDataToModel, playerToModel, primitiveModelInits, RSMapChunk, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
+import fetch from "node-fetch";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 

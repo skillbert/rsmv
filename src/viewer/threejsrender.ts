@@ -6,13 +6,24 @@ import { flipImage, makeImageData } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
-
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, Color, CubeCamera, Group, Material, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, Texture } from "three";
+import { AnimationClip, AnimationMixer, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
 globalThis.THREE = THREE;
+
+
+//nodejs compatiable animframe calls
+//should in theory be able to get rid of these completely by enforcing autoframes=false
+function compatRequestAnimationFrame(cb: (timestamp: number) => void) {
+	if (typeof requestAnimationFrame != "undefined") { return requestAnimationFrame(cb); }
+	else { return +setTimeout(cb, 50, Date.now() + 50); }
+}
+function compatCancelAnimationFrame(id: number) {
+	if (typeof cancelAnimationFrame != "undefined") { return cancelAnimationFrame(id); }
+	else { return +clearTimeout(id); }
+}
 
 
 let lastob3modelcall: { args: any[], inst: ThreeJsRenderer } | null = null;
@@ -323,7 +334,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 	@boundMethod
 	render(cam?: THREE.Camera) {
-		cancelAnimationFrame(this.queuedFrameId);
+		compatCancelAnimationFrame(this.queuedFrameId);
 		this.queuedFrameId = 0;
 
 		let delta = this.clock.getDelta();
@@ -391,7 +402,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	@boundMethod
 	forceFrame() {
 		if (!this.queuedFrameId) {
-			this.queuedFrameId = requestAnimationFrame(() => this.render());
+			this.queuedFrameId = compatRequestAnimationFrame(() => this.render());
 		}
 	}
 
@@ -462,20 +473,26 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return res!;
 	}
 
-	setCameraLimits() {
+	setCameraPosition(pos: Vector3) {
+		this.camera.position.copy(pos);
+	}
+
+	setCameraLimits(target?: Vector3) {
 		// compute the box that contains all the stuff
 		// from root and below
-		const box = new THREE.Box3().setFromObject(this.modelnode);
-		const boxSize = box.getSize(new THREE.Vector3()).length();
-		const boxCenter = box.getCenter(new THREE.Vector3());
+		if (!target) {
+			const box = new THREE.Box3().setFromObject(this.modelnode);
+			const boxSize = box.getSize(new THREE.Vector3()).length();
+			target = box.getCenter(new THREE.Vector3());
+		}
 
 		// update the Trackball controls to handle the new size
 		// this.controls.maxDistance = Math.min(500, boxSize * 10 + 10);
-		this.controls.target.copy(boxCenter);
+		this.controls.target.copy(target);
 		this.controls.update();
 		this.controls.screenSpacePanning = true;
 
-		this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
+		// this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
 	}
 
 	@boundMethod
@@ -562,9 +579,9 @@ export function exportThreeJsGltf(node: THREE.Object3D) {
 	return new Promise<Buffer>((resolve, reject) => {
 		let exporter = new GLTFExporter();
 		let anims: AnimationClip[] = [];
-		// node.traverseVisible(node => {
-		// 	if (node.animations) { anims.push(...node.animations); }
-		// });
+		node.traverseVisible(node => {
+			if (node.animations) { anims.push(...node.animations); }
+		});
 		exporter.parse(node, gltf => resolve(gltf as any), reject, {
 			binary: true,
 			animations: anims
