@@ -131,12 +131,11 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		//floor mesh
 		//inline since nodejs doesn't have a texture loader
-		const texture = new Texture({
-			data: new Uint8ClampedArray([128, 128, 128, 255, 192, 192, 192, 255, 192, 192, 192, 255, 128, 128, 128, 255]),
-			width: 2,
-			height: 2,
-			colorSpace: "srgb"
-		});
+		let floortex = makeImageData(new Uint8ClampedArray([
+			128, 128, 128, 255, 192, 192, 192, 255,
+			192, 192, 192, 255, 128, 128, 128, 255
+		]), 2, 2);
+		const texture = new Texture(floortex);
 		texture.needsUpdate = true;
 		// const loader = new THREE.TextureLoader();
 		// const texture = loader.load(new URL('../assets/checker.png', import.meta.url).href, () => this.forceFrame());

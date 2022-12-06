@@ -2,7 +2,7 @@ import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./extractfiles";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
-import { FileParser } from "opdecoder";
+import { FileParser } from "../opdecoder";
 
 
 export type DecodeErrorJson = {

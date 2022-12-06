@@ -90,10 +90,12 @@ export var mapareasourceoptional = literal({
 });
 
 
+declare var originalcmd: { argv: string[], cwd: string };
+
 export function cliArguments(argv?: string[]) {
 	//skip command line arguments until we find two args that aren't flags (electron.exe and the main script)
 	//we have to do this since electron also includes flags like --inspect in argv
-	let args = argv ?? process.argv.slice();
+	let args = argv ?? (typeof originalcmd != "undefined" ? originalcmd.argv : process.argv.slice());
 	for (let skip = 2; skip > 0 && args.length > 0; args.shift()) {
 		if (!args[0].startsWith("-")) { skip--; }
 	}

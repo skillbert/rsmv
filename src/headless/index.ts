@@ -1,11 +1,11 @@
 
 import { exportThreeJsGltf, ThreeJsRenderer } from "../viewer/threejsrender";
-import { filesource } from "../cliparser";
+import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
-import { npcToModel, playerToModel, RSMapChunk, RSModel } from "../3d/modelnodes";
+import { itemToModel, npcToModel, playerToModel, RSMapChunk, RSModel } from "../3d/modelnodes";
 import sharp from "sharp";
 import { delay } from "../utils";
 import { mapsquareSkybox, parseMapsquare } from "../3d/mapsquare";
@@ -16,27 +16,39 @@ import { Downloader } from "../cache/downloader";
 import { polyfillNode } from "./nodegltfplugin";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
 
-polyfillNode();
-// let cmd = cmdts.command({
-// 	name: "render",
-// 	args: {
-// 		...filesource,
-// 	},
-// 	handler: async (args) => {
-// 		let output = new CLIScriptOutput();
-// 		let src = await args.source();
-// 		await run(output, src, 0);
-// 	}
-// });
+// polyfillNode();
 
-if (require.main?.id == module.id) {
+
+let cmd = cmdts.command({
+	name: "render",
+	args: {
+		...filesource,
+		avatar: cmdts.option({ long: "avatar", type: cmdts.string })
+	},
+	handler: async (args) => {
+		let output = new CLIScriptOutput();
+		let src = await args.source();
+		if (args.avatar) {
+			let ava = await renderAvatar(src, args.avatar);
+			fs.writeFile("model.png", ava.imgfile);
+			fs.writeFile("model.glb", Buffer.from(ava.modelfile));
+		}
+	}
+});
+
+if (true || __non_webpack_require__.main?.id == module.id) {
 	// run(new GameCacheLoader(), 0);
 	// cmdts.run(cmd, process.argv.slice(2));
-
 	(async () => {
-		let ava = await renderAvatar("skillbert");
-		fs.writeFile("model.png", ava.imgfile);
-		fs.writeFile("model.glb", ava.modelfile);
+		try {
+			await cmdts.run(cmd, cliArguments());
+		} finally {
+			window.close();
+		}
+		// let src = new Openrs2CacheSource("1152");
+		// let ava = await renderAvatar(src, "skillbert");
+		// fs.writeFile("model.png", ava.imgfile);
+		// fs.writeFile("model.glb", Buffer.from(ava.modelfile));
 	})()
 }
 
@@ -65,8 +77,8 @@ export function getRenderer(width: number, height: number, extraopts?: WebGLRend
 	return render;
 }
 
-export async function renderAvatar(playername: string) {
-	let engine = await EngineCache.create(new Openrs2CacheSource("1152"));
+export async function renderAvatar(source: CacheFileSource, playername: string) {
+	let engine = await EngineCache.create(source);
 	let scene = new ThreejsSceneCache(engine);
 
 	let width = 500;
@@ -79,6 +91,7 @@ export async function renderAvatar(playername: string) {
 	})
 
 	let player = await playerToModel(scene, playername);
+	// let player = await itemToModel(scene, 0);
 	let model = new RSModel(player.models, scene);
 	model.setAnimation(player.anims.default);
 	render.addSceneElement(model);
@@ -94,65 +107,4 @@ export async function renderAvatar(playername: string) {
 		.png().toBuffer();
 
 	return { imgfile, modelfile };
-}
-
-
-async function run(filesource: CacheFileSource, npcid: number) {
-	let engine = await EngineCache.create(filesource);
-	let scene = new ThreejsSceneCache(engine);
-
-	let width = 1024;
-	let height = 2048;
-
-	let opts: WebGLRendererParameters = { antialias: true, alpha: true };
-
-	let render = getRenderer(width, height, opts);
-	render.addSceneElement({
-		getSceneElements() {
-			return { options: { autoFrames: false, hideFloor: true } };
-		}
-	})
-
-	globalThis.render = render;
-
-
-
-	let maprect = { x: 52, z: 47, xsize: 1, zsize: 1 };
-	// let { chunks } = await parseMapsquare(engine, maprect, {});
-	// let sky = await mapsquareSkybox(scene, chunks[0]);
-	// render.addSceneElement({
-	// 	getSceneElements() {
-	// 		return { sky }
-	// 	},
-	// });
-	// let map = new RSMapChunk(maprect, scene);
-	// render.addSceneElement(map);
-	// await map.model;
-
-	let player = await playerToModel(scene, "skillbert");
-	// let npc = await npcToModel(scene, { id: npcid, head: false });
-	let model = new RSModel(player.models, scene);
-	// model.setAnimation(player.anims.default);
-	render.addSceneElement(model);
-
-	await model.model;
-	await delay(1);
-	render.setCameraPosition(new Vector3(0, 0.8, 2.5));
-	// // render.setCameraPosition(3328, 10, 3008);
-	render.setCameraLimits(new Vector3(0, 0.8, 0));
-	await dumpimage(render);
-
-	let file = await exportThreeJsGltf(model.loaded!.mesh);
-	fs.writeFile("model.glb", Buffer.from(file));
-
-	// await delay(40000);
-	filesource.close();
-}
-
-
-async function dumpimage(render: ThreeJsRenderer) {
-	let img = await render.takeCanvasPicture(1024, 2048);
-	let file = await sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } })
-		.toFile("test.png");
-	console.log(file);
 }

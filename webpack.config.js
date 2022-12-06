@@ -15,7 +15,8 @@ module.exports = {
 		maprender: "./src/map/",
 		runmap: "./src/map/run.ts",
 		headless: "./src/headless/",
-		runheadless: "./src/headless/runelectron.ts"
+		runheadless: "./src/headless/runelectron.ts",
+		runbrowser: "./src/headless/runbrowser.ts"
 	},
 	module: {
 		rules: [

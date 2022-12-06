@@ -1,4 +1,4 @@
-import { CacheFileSource } from "cache";
+import { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { parseAnimgroupConfigs, parseAvatarOverrides, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
 import { ThreejsSceneCache } from "./ob3tothree";
