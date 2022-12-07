@@ -223,10 +223,10 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 					node.bind(nullskel);
 				}
 				if (node instanceof Mesh && node.material instanceof Material) {
-					let uvanim = node.material.userData.gltfExtensions?.RA_materials_uvanim;
-					if (uvanim) {
+					let uvExt = node.material.userData.gltfExtensions?.RA_materials_uvanim;
+					if (uvExt) {
 						let tex = (node.material as MeshBasicMaterial).map!;
-						matUvAnims.push({ tex, v: new Vector2(uvanim[0], uvanim[1]) });
+						matUvAnims.push({ tex, v: new Vector2(uvExt.usAnim[0], uvExt.usAnim[1]) });
 					}
 				}
 			});

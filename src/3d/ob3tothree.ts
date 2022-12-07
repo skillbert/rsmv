@@ -308,7 +308,9 @@ export class ThreejsSceneCache {
 			}
 			mat.userData = material;
 			if (material.uvAnim) {
-				(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = [material.uvAnim.u, material.uvAnim.v];
+				(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = {
+					usAnim: [material.uvAnim.u, material.uvAnim.v]
+				};
 			}
 			return mat;
 		}, mat => 256 * 256 * 4 * 2);
