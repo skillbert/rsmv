@@ -18,13 +18,13 @@
 		"hot": "webpack serve --config webpack.config.web.js",
 		"web": "webpack --config webpack.config.web.js",
 		"webrelease": "webpack --config webpack.config.web.js --mode production",
-		"clean": "rimraf dist"
+		"clean": "rimraf dist",
+		"nodegl": "electron dist/runbrowser"
 	},
 	"author": "Skillbert",
 	"license": "GPL-4",
 	"devDependencies": {
 		"@types/crc": "^3.4.0",
-		"@types/gl": "^6.0.2",
 		"@types/json-schema": "^7.0.9",
 		"@types/leaflet": "^1.7.6",
 		"@types/node-fetch": "^2.6.1",

@@ -19,36 +19,6 @@ import prettyJson from "json-stringify-pretty-compact";
 import { chunkSummary } from "./chunksummary";
 import { RSMapChunk } from "../3d/modelnodes";
 
-// @ts-ignore type import also fails when targeting web
-import type * as electronType from "electron/renderer";
-
-const electron = (() => {
-	try {
-		if (typeof __non_webpack_require__ != "undefined") {
-			return __non_webpack_require__("electron/renderer") as typeof electronType;
-		}
-	} catch (e) { }
-	return null;
-})();
-
-
-if (electron?.ipcRenderer) {
-	window.addEventListener("keydown", e => {
-		if (e.key == "F5") { document.location.reload(); }
-		if (e.key == "F12") { electron.ipcRenderer.send("toggledevtools"); }
-	});
-	electron.ipcRenderer.invoke("getargv").then(async obj => {
-		console.log(obj);
-		process.chdir(obj.cwd);
-		let res = await cmdts.runSafely(cmd, cliArguments(obj.argv));
-		if (res._tag == "error") {
-			console.error(res.error.config.message);
-		} else {
-			console.log("cmd completed", res.value);
-		}
-	});
-}
-
 let cmd = cmdts.command({
 	name: "download",
 	args: {
@@ -60,13 +30,19 @@ let cmd = cmdts.command({
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
-		//for some reason electron crashes if you pass it any argument with a `:` in it, so pass urls without scheme instead
-		let endpoint = args.endpoint;
-		if (endpoint.startsWith("localhost")) { endpoint = "http://" + endpoint; }
-		else { endpoint = "https://" + endpoint; }
-		await runMapRender(output, await args.source(), args.mapname, endpoint, args.auth, args.mapid, false);
+		await runMapRender(output, await args.source(), args.mapname, args.endpoint, args.auth, args.mapid, false);
 	}
 });
+
+(async () => {
+	await delay(1);
+	let res = await cmdts.runSafely(cmd, cliArguments());
+	if (res._tag == "error") {
+		console.error(res.error.config.message);
+	} else {
+		console.log("cmd completed", res.value);
+	}
+})();
 
 type Mapconfig = {
 	layers: LayerConfig[],

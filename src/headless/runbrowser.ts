@@ -54,15 +54,20 @@ for (let i = 0; i < process.argv.length; i++) {
 let argv = ["electron.exe", entry, ...args];
 
 const js = `
+document.body.style.background="white";
+window.addEventListener("keydown", e => {
+	if (e.key == "F5") { document.location.reload(); }
+	if (e.key == "F12") { require("electron/renderer").ipcRenderer.send("toggledevtools"); }
+});
+
 process.chdir(${JSON.stringify(process.cwd())});
 var originalcmd={
 	argv:(${JSON.stringify(argv)}),
 	cwd:(${JSON.stringify(process.cwd())})
 };
+
 require("${entry}");
 `;
-
-
 
 (async () => {
 	await app.whenReady();
@@ -77,6 +82,7 @@ require("${entry}");
 		},
 		show: !hidden
 	});
+	index.webContents.openDevTools();
 	index.loadURL(`about:blank`);
 	// index.webContents.openDevTools();
 	index.webContents.on("did-finish-load", () => {
