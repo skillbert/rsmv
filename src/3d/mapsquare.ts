@@ -504,13 +504,13 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 		}
 
 		for (let i = 0; i < colors.count; i++) {
-			let key = (colors.getX(i) << 16) | (colors.getY(i) << 8) | colors.getZ(i);
+			let key = (colors.getX(i) * 255 << 16) | (colors.getY(i) * 255 << 8) | colors.getZ(i) * 255;
 			for (let repl of map) {
 				if (key == repl[0]) {
 					if (!clonedcolors) {
 						clonedcolors = colors.clone();
 					}
-					clonedcolors.setXYZ(i, ...repl[1]);
+					clonedcolors.setXYZ(i, repl[1][0] / 255, repl[1][1] / 255, repl[1][2] / 255);
 					break;
 				}
 			}
