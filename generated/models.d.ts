@@ -12,7 +12,6 @@ export type models = {
 	unkCount2: number,
 	unkCount3: number,
 	meshes: {
-		groupFlags: number,
 		unkint: number,
 		materialArgument: number,
 		faceCount: number,
@@ -27,9 +26,9 @@ export type models = {
 		faceboneidBuffer: Uint16Array | null,
 		indexBuffers: Uint16Array[],
 		vertexCount: number | null,
-		positionBuffer: Uint16Array | null,
+		positionBuffer: Int16Array | null,
 		normalBuffer: Int8Array | null,
-		tagentBuffer: Uint16Array | null,
+		tagentBuffer: Int16Array | null,
 		uvBuffer: Uint16Array | null,
 		boneidBuffer: Uint16Array | null,
 		skin: {
