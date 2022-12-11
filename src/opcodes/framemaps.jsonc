@@ -11,13 +11,15 @@
 			["parentbone","ubyte"],
 			["nonskinboneid","ushort"],
 			["bonematrix",["array",16,"float"]],
+			//unknown, always the same for all bones in a skeleton
 			["dataq",["buffer",11,"hex"]]
-		],
-		[
-			["skinid","ushort le"]
 		]
 	]],
-
-	["bool0","bool"],
-	["always0","ushort"]
+	
+	//exact use unknown
+	//contains more entries that the skeleton list
+	//seems to be a list of "short le"
+	//highest possible rounded up to 16 for first bone, always counts down to 2 on bones after that
+	//but also some times starts at 0 or a different number and not always unique
+	["activebones",["buffer",["bytesleft"],"hex"]]
 ]

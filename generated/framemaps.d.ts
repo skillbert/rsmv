@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\framemaps.json'
+// This source data is located at '..\src\opcodes\framemaps.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type framemaps = {
@@ -15,8 +15,6 @@ export type framemaps = {
 		nonskinboneid: number,
 		bonematrix: number[],
 		dataq: Uint8Array,
-		skinid: number,
 	}[],
-	bool0: boolean,
-	always0: number,
+	activebones: Uint8Array,
 };
