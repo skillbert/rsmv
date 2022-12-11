@@ -601,7 +601,7 @@ function checkCondition(condmode: CompareMode, compValue: number, v: number) {
 }
 
 function chunkedArrayParser<T extends object>(lengthtype: ChunkParser<number>, chunktypes: Record<string, ChunkParser>[]): ChunkParser<T[]> {
-	let keys = Object.keys(chunktypes.flatMap(Object.keys));
+	let keys = chunktypes.flatMap(Object.keys);
 	let fullobj: Record<string, ChunkParser> = Object.assign({}, ...chunktypes);
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	let refparent: ChunkParserContainer | null = null;
