@@ -12,6 +12,7 @@ export type BoneCenter = {
 export type ModelData = {
 	maxy: number,
 	miny: number,
+	skincount: number,
 	bonecount: number,
 	meshes: ModelMeshData[]
 }
@@ -25,8 +26,12 @@ export type ModelMeshData = {
 		normals?: THREE.BufferAttribute,
 		color?: THREE.BufferAttribute,
 		texuvs?: THREE.BufferAttribute,
+		//new skeletal animations
 		skinids?: THREE.BufferAttribute,
-		skinweights?: THREE.BufferAttribute
+		skinweights?: THREE.BufferAttribute,
+		//old transform based animations
+		boneids?: THREE.BufferAttribute,
+		boneweights?: THREE.BufferAttribute
 	}
 }
 
@@ -43,8 +48,8 @@ export function getBoneCenters(model: ModelData) {
 	}
 
 	for (let mesh of model.meshes) {
-		let ids = mesh.attributes.skinids;
-		let weights = mesh.attributes.skinweights;
+		let ids = mesh.attributes.boneids;
+		let weights = mesh.attributes.boneweights;
 		let pos = mesh.attributes.pos;
 		let indices = mesh.indices;
 		if (!ids || !weights) { continue; }
@@ -100,6 +105,7 @@ export function parseOb3Model(modelfile: Buffer) {
 	let maxy = 0;
 	let miny = 0;
 	let bonecount = 0;
+	let skincount = 0;
 	let meshes: ModelMeshData[] = [];
 
 	// let colmap: Record<number, number> = {};//TODO remove
@@ -200,8 +206,8 @@ export function parseOb3Model(modelfile: Buffer) {
 					remainder -= weight;
 					skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);//TODO this should be boneid+1since we're shifting in -1 to 0?
 					skinWeightBuffer[i * 4 + j] = actualweight;
-					if (boneid >= bonecount) {
-						bonecount = boneid + 2;//we are adding a root bone at 0, and count is max+1
+					if (boneid >= skincount) {
+						skincount = boneid + 2;//we are adding a root bone at 0, and count is max+1
 					}
 					if (weight == 0) { break; }
 				}
@@ -249,7 +255,8 @@ export function parseOb3Model(modelfile: Buffer) {
 		if (skinIdBuffer && skinWeightBuffer) {
 			meshdata.attributes.skinids = new THREE.BufferAttribute(skinIdBuffer, 4);
 			meshdata.attributes.skinweights = new THREE.BufferAttribute(skinWeightBuffer, 4, true);
-		} else if (boneidBuffer) {
+		}
+		if (boneidBuffer) {
 			let quadboneids = new Uint8Array(boneidBuffer.length * 4);
 			let quadboneweights = new Uint8Array(boneidBuffer.length * 4);
 			const maxshort = (1 << 16) - 1;
@@ -262,8 +269,8 @@ export function parseOb3Model(modelfile: Buffer) {
 					bonecount = id + 2;//we are adding a root bone at 0, and count is max+1
 				}
 			}
-			meshdata.attributes.skinids = new THREE.BufferAttribute(quadboneids, 4);
-			meshdata.attributes.skinweights = new THREE.BufferAttribute(quadboneweights, 4, true);
+			meshdata.attributes.boneids = new THREE.BufferAttribute(quadboneids, 4);
+			meshdata.attributes.boneweights = new THREE.BufferAttribute(quadboneweights, 4, true);
 		}
 
 
@@ -366,7 +373,7 @@ export function parseOb3Model(modelfile: Buffer) {
 	}
 
 
-	let r: ModelData = { maxy, miny, meshes, bonecount };
+	let r: ModelData = { maxy, miny, meshes, bonecount: bonecount, skincount: skincount };
 
 	if (model.scanloc() != model.getData().length) {
 		console.log("extra model bytes", model.getData().length - model.scanloc(), "format", format, "unk1", unk1, "version", version, "unkcounts", unkCount0, unkCount1, unkCount2, unkCount3);

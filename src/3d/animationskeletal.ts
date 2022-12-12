@@ -1,7 +1,7 @@
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
 import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
-import { AnimationClip, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
+import { AnimationClip, Bone, BufferGeometry, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
 import { ThreejsSceneCache } from "./ob3tothree";
@@ -69,6 +69,9 @@ export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSc
 	rootnode.traverse(node => {
 		if (node instanceof SkinnedMesh) {
 			node.bind(skeleton, childbind);
+			let geo = node.geometry as BufferGeometry;
+			geo.attributes.skinIndex = geo.attributes.RA_skinIndex_skin;
+			geo.attributes.skinWeight = geo.attributes.RA_skinWeight_skin;
 		}
 	});
 }
@@ -189,10 +192,8 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 			convertedtracks.push(new QuaternionKeyframeTrack(`${bonename}.quaternion`, times as any, quatdata as any));
 		}
 	}
-	//TODO remove
-	// convertedtracks = [];
+	
 	let clip = new AnimationClip("anim_" + (Math.random() * 1000 | 0), undefined, convertedtracks);
-
 
 	return { clip, framebaseid: anim.framebase };
 }

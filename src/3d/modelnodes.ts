@@ -215,7 +215,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
 
 			let nullbones: Object3D[] = [];
-			for (let i = 0; i < modeldata.bonecount; i++) { nullbones.push(mesh); }
+			for (let i = 0; i < Math.max(modeldata.bonecount, modeldata.skincount); i++) { nullbones.push(mesh); }
 			let nullskel = new Skeleton(nullbones as any);
 			let matUvAnims: { tex: Texture, v: Vector2 }[] = [];
 			mesh.traverse(node => {
@@ -245,7 +245,9 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 	private mountAnim(clip: AnimationClip) {
 		if (!this.loaded) { throw new Error("attempting to mount anim before model is loaded"); }
 		if (this.mountedanim == clip) { return; }
-		if (this.loaded.modeldata.bonecount == 0) { return; }
+		//TODO is this required?
+		if (this.loaded.modeldata.bonecount == 0 && this.loaded.modeldata.skincount == 0) { return; }
+
 		let mesh = this.loaded.mesh;
 		if (mesh.animations.indexOf(clip) == -1) { mesh.animations.push(clip); }
 		this.mixer.stopAllAction();

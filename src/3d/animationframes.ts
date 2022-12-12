@@ -2,7 +2,7 @@ import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
 import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
-import { AnimationClip, AnimationMixer, Bone, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
+import { AnimationClip, AnimationMixer, Bone, BufferGeometry, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
 import { ThreejsSceneCache } from "./ob3tothree";
@@ -217,6 +217,9 @@ export function mountBakedSkeleton(rootnode: Object3D, model: ModelData) {
 	rootnode.traverse(node => {
 		if (node instanceof SkinnedMesh) {
 			node.bind(skeleton, childbind);
+			let geo = node.geometry as BufferGeometry;
+			geo.attributes.skinIndex = geo.attributes.RA_skinIndex_bone;
+			geo.attributes.skinWeight = geo.attributes.RA_skinWeight_bone;
 		}
 	});
 
