@@ -268,7 +268,7 @@ export async function run(cachedirarg: string, progressDebounceDelay?: number) {
 	var downloader = new Downloader(config);
 
 	progress("Downloading index...");
-	let indices = downloader.getIndexFile(cacheMajors.index);
+	let indices = downloader.getCacheIndex(cacheMajors.index);
 
 	progress("Finding updates...");
 	for (let i in indices) {
@@ -314,7 +314,7 @@ export const fileSource = new class extends CacheFileSource {
 		throw new Error("not implemented");
 		return null as any;//return to make typescript shut up
 	}
-	getIndexFile(major) {
+	getCacheIndex(major) {
 		throw new Error("not implemented");
 		return null as any;
 	}

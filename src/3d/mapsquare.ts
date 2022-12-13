@@ -961,7 +961,7 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
 		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
-			let mapunderlaymeta = await engine.getIndexFile(cacheMajors.mapsquares);
+			let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
 			let selfindex = mapunderlaymeta[squareindex];
 			if (!selfindex) {
 				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);

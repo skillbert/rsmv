@@ -107,7 +107,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
-		if (major == cacheMajors.index) { return this.getIndex(minor); }
+		if (major == cacheMajors.index) { return this.getIndexFile(minor); }
 		let { readFile: getFile } = this.openTable(major);
 		let row = await getFile(minor);
 		if (typeof crc == "number" && row.CRC != crc) {
@@ -137,11 +137,11 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		return this.writeFile(index.major, index.minor, arch);
 	}
 
-	async getIndexFile(major: number) {
+	async getCacheIndex(major: number) {
 		return this.openTable(major).indices;
 	}
 
-	async getIndex(major: number) {
+	async getIndexFile(major: number) {
 		let row = await this.openTable(major).readIndexFile();
 		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
 		return decompressSqlite(file);

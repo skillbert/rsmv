@@ -5,12 +5,12 @@ import prettyJson from "json-stringify-pretty-compact";
 
 
 export async function indexOverview(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource) {
-	let rootindex = await source.getIndexFile(cacheMajors.index);
+	let rootindex = await source.getCacheIndex(cacheMajors.index);
 
 	let majors: any[] = [];
 	for (let indexfile of rootindex) {
 		if (!indexfile) { continue; }
-		let index = await source.getIndexFile(indexfile.minor);
+		let index = await source.getCacheIndex(indexfile.minor);
 		let minorcount = index.reduce((a, v) => a + 1, 0);
 		let subfilecount = index.reduce((a, v) => a + v.subindexcount, 0);
 		let maxsubfiles = index.reduce((a, v) => Math.max(a, v.subindexcount), 0);
@@ -24,7 +24,7 @@ export async function indexOverview(output: ScriptOutput, outdir: ScriptFS, sour
 		majors.push({ major: indexfile.minor, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles });
 	}
 	let configs: any[] = [];
-	let configindices = await source.getIndexFile(cacheMajors.config);
+	let configindices = await source.getCacheIndex(cacheMajors.config);
 	for (let i in configindices) {//has gaps so cant use for of
 		let index = configindices[i];
 		configs.push({

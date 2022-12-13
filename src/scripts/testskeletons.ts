@@ -11,7 +11,7 @@ async function start() {
 	let cache = new GameCacheLoader();
 
 
-	let seqindices = await cache.getIndexFile(cacheMajors.sequences);
+	let seqindices = await cache.getCacheIndex(cacheMajors.sequences);
 	let skeltoseqs = new Map<number, number[]>();
 	for (let index of seqindices) {
 		if (!index) { continue; }
@@ -25,7 +25,7 @@ async function start() {
 			}
 		}
 	}
-	let locindices = await cache.getIndexFile(cacheMajors.objects);
+	let locindices = await cache.getCacheIndex(cacheMajors.objects);
 	let seqtolocs = new Map<number, number[]>();
 	for (let index of locindices) {
 		if (!index) { continue; }
@@ -52,7 +52,7 @@ async function start() {
 		}
 	}
 
-	let npcindices = await cache.getIndexFile(cacheMajors.npcs);
+	let npcindices = await cache.getCacheIndex(cacheMajors.npcs);
 	let groupstonpcs = new Map<number, number[]>();
 	for (let index of npcindices) {
 		if (!index) { continue; }
@@ -68,7 +68,7 @@ async function start() {
 		}
 	}
 
-	let skelindices = await cache.getIndexFile(cacheMajors.skeletalAnims);
+	let skelindices = await cache.getCacheIndex(cacheMajors.skeletalAnims);
 	skelindices.sort((a, b) => a.size! - b.size!);
 	for (let skelindex of skelindices) {
 		if (!skelindex) { continue; }
@@ -87,7 +87,7 @@ start();
 async function loadSkeletons() {
 	let source = new GameCacheLoader();
 
-	let skelindex = await source.getIndexFile(cacheMajors.skeletalAnims);
+	let skelindex = await source.getCacheIndex(cacheMajors.skeletalAnims);
 
 	let files: Buffer[] = [];
 	for (let index of skelindex) {

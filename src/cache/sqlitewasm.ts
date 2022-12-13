@@ -75,7 +75,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
-		if (major == cacheMajors.index) { return this.getIndex(minor); }
+		if (major == cacheMajors.index) { return this.getIndexFile(minor); }
 		let data = await this.sendWorker({ type: "getfile", major, minor, crc }) as Uint8Array;
 		return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 	}
@@ -85,17 +85,17 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		return cache.unpackSqliteBufferArchive(arch, index.subindices);
 	}
 
-	async getIndexFile(major: number) {
-		if (major == 255) { return this.generateRootIndex(); }
+	async getCacheIndex(major: number) {
+		if (major == cacheMajors.index) { return this.generateRootIndex(); }
 		let index = this.indices.get(major);
 		if (!index) {
-			index = this.getIndex(major).then(file => cache.indexBufferToObject(major, file));
+			index = this.getIndexFile(major).then(file => cache.indexBufferToObject(major, file));
 			this.indices.set(major, index);
 		}
 		return index;
 	}
 
-	async getIndex(major: number) {
+	async getIndexFile(major: number) {
 		let data = await this.sendWorker({ type: "getindex", major }) as Uint8Array;
 		return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 	}

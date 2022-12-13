@@ -2,7 +2,7 @@ import * as cmdts from "cmd-ts";
 import { ArgParser } from "cmd-ts/dist/cjs/argparser";
 
 import { Type, option } from 'cmd-ts';
-import { CacheFileSource } from "./cache";
+import { CacheFileSource, CallbackCacheLoader } from "./cache";
 import { Downloader } from "./cache/downloader";
 import * as updater from "./cache/updater";
 import { GameCacheLoader } from "./cache/sqlite";
@@ -32,6 +32,12 @@ function cacheSourceFromString(str: string) {
 		switch (mode) {
 			case "live":
 				return new Downloader();
+			case "global":
+				let fn = globalThis[arg];
+				if (typeof fn != "function") {
+					throw new Error("the 'global' cache source requires a callback function with name <arg> to be exposed on the global scope");
+				}
+				return new CallbackCacheLoader(fn, false);
 			case "local":
 				updater.on("update-progress", loadingIndicator.progress.bind(loadingIndicator));
 				await loadingIndicator.start();

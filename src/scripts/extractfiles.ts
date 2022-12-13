@@ -22,7 +22,7 @@ type LogicalIndex = number[];
 
 async function filerange(source: CacheFileSource, startindex: FileId, endindex: FileId) {
 	if (startindex.major != endindex.major) { throw new Error("range must span one major"); }
-	let indexfile = await source.getIndexFile(startindex.major);
+	let indexfile = await source.getCacheIndex(startindex.major);
 	let files: CacheFileId[] = [];
 	for (let index of indexfile) {
 		if (!index) { continue; }
@@ -52,7 +52,7 @@ function worldmapIndex(subfile: number): DecodeLookup {
 			return { major, minor: id[0] + id[1] * worldStride, subid: subfile };
 		},
 		async logicalRangeToFiles(source, start, end) {
-			let indexfile = await source.getIndexFile(major);
+			let indexfile = await source.getCacheIndex(major);
 			let files: CacheFileId[] = [];
 			for (let index of indexfile) {
 				if (!index) { continue; }
@@ -141,7 +141,7 @@ function indexfileIndex(): DecodeLookup {
 		fileToLogical(major, minor, subfile) { return [minor]; },
 		logicalToFile(id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let indices = await source.getIndexFile(cacheMajors.index);
+			let indices = await source.getCacheIndex(cacheMajors.index);
 			return indices
 				.filter(index => index.minor >= start[0] && index.minor <= end[0])
 				.map(index => ({ index, subindex: 0 }));
@@ -571,7 +571,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	}
 
 	for (let [major, majormap] of incompletearchs) {
-		let indexfile = await source.getIndexFile(major);
+		let indexfile = await source.getCacheIndex(major);
 		for (let [minor, group] of majormap) {
 			let index = indexfile[minor];
 			let prevarch: SubFile[] = [];

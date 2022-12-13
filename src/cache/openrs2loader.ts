@@ -1,14 +1,10 @@
 import * as cache from "./index";
-import { compressSqlite, decompress, decompressSqlite } from "./compression";
+import { decompress } from "./compression";
 import { cacheMajors } from "../constants";
 import { CacheIndex } from "./index";
 import fetch from "node-fetch";
 
 const endpoint = `https://archive.openrs2.org`;
-
-type CacheTable = {
-	indices: Promise<cache.CacheIndexFile>
-}
 
 export type Openrs2CacheMeta = {
 	id: number,
@@ -30,9 +26,8 @@ export type Openrs2CacheMeta = {
 	disk_store_valid: boolean
 };
 
-export class Openrs2CacheSource extends cache.CacheFileSource {
+export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	cachename: string;
-	opentables = new Map<number, CacheTable>();
 	totalbytes = 0;
 
 	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
@@ -40,7 +35,7 @@ export class Openrs2CacheSource extends cache.CacheFileSource {
 	}
 
 	constructor(cachename: string) {
-		super();
+		super(false);
 		this.cachename = cachename;
 	}
 	getCacheName() {
@@ -85,7 +80,9 @@ export class Openrs2CacheSource extends cache.CacheFileSource {
 	}
 
 	async downloadFile(major: number, minor: number) {
-		const req = await fetch(`${endpoint}/caches/runescape/${this.cachename}/archives/${major}/groups/${minor}.dat`);
+		let url = `${endpoint}/caches/runescape/${this.cachename}/archives/${major}/groups/${minor}.dat`;
+		console.log(url);
+		const req = await fetch(url);
 		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
 		//at least make sure we are aware if we're ddossing someone....
@@ -100,28 +97,8 @@ export class Openrs2CacheSource extends cache.CacheFileSource {
 		return decompress(await this.downloadFile(major, minor));
 	}
 
-	async getFileArchive(index: cache.CacheIndex) {
-		let arch = await this.getFile(index.major, index.minor, index.crc);
-		let res = cache.unpackBufferArchive(arch, index.subindices);
-		return res;
-	}
-
-	async getIndexFile(major: number) {
-		if (!this.opentables.get(major)) {
-			let indices: Promise<cache.CacheIndex[]>;
-			if (major == cacheMajors.index) {
-				indices = this.generateRootIndex();
-			} else {
-				indices = this.getFile(cacheMajors.index, major).then(file => {
-					return cache.indexBufferToObject(major, file);
-				});
-			}
-			this.opentables.set(major, { indices });
-		}
-		return this.opentables.get(major)!.indices;
-	}
-
-	async getIndex(major: number) {
-		return this.getFile(cacheMajors.index, major);
+	getCacheIndex(major: number) {
+		if (major == cacheMajors.index) { return this.generateRootIndex(); }
+		else { return super.getCacheIndex(major); }
 	}
 }

@@ -219,7 +219,8 @@ export function archiveToFileId(major: number, minor: number, subfile: number) {
 	return minor * archsize + subfile;
 }
 
-export class CacheFileSource {
+
+export abstract class CacheFileSource {
 	getCacheName() {
 		return "unkown";
 	}
@@ -230,7 +231,7 @@ export class CacheFileSource {
 	getFileArchive(index: CacheIndex): Promise<SubFile[]> {
 		throw new Error("not implemented");
 	}
-	getIndexFile(major: number): Promise<CacheIndexFile> {
+	getCacheIndex(major: number): Promise<CacheIndexFile> {
 		throw new Error("not implemented");
 	}
 
@@ -243,7 +244,7 @@ export class CacheFileSource {
 	}
 
 	async getArchiveById(major: number, minor: number) {
-		let indexfile = await this.getIndexFile(major);
+		let indexfile = await this.getCacheIndex(major);
 		let index = indexfile[minor];
 		if (!index) { throw new Error(`minor id ${minor} does not exist in major ${major}.`); }
 		return this.getFileArchive(index);
@@ -251,7 +252,7 @@ export class CacheFileSource {
 
 	async getFileById(major: number, fileid: number) {
 		let holderindex = fileIdToArchiveminor(major, fileid);
-		let indexfile = await this.getIndexFile(major);
+		let indexfile = await this.getCacheIndex(major);
 		//TODO cache these in a map or something
 		let holder = indexfile[holderindex.minor];
 		if (!holder) { throw new Error(`file id ${fileid} in major ${major} has no archive`); }
@@ -264,6 +265,53 @@ export class CacheFileSource {
 	close() { }
 }
 
+//basic implementation for cache sources that only download major/minor pairs
+export abstract class DirectCacheFileSource extends CacheFileSource {
+	indexMap = new Map<number, Promise<CacheIndexFile>>();
+	requiresCrc: boolean;
+
+	constructor(needscrc: boolean) {
+		super();
+		this.requiresCrc = needscrc;
+	}
+
+	getFile(major: number, minor: number, crc?: number): Promise<Buffer> {
+		throw new Error("not implemented");
+	}
+
+	async getFileArchive(meta: CacheIndex) {
+		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindices);
+	}
+	getCacheIndex(major: number) {
+		let index = this.indexMap.get(major);
+		if (!index) {
+			index = (async () => {
+				let crc: number | undefined = undefined;
+				if (this.requiresCrc && major != cacheMajors.index) {
+					let index = await this.getCacheIndex(cacheMajors.index);
+					crc = index[major].crc;
+				}
+				let indexfile = await this.getFile(cacheMajors.index, major, crc);
+				let decoded = indexBufferToObject(major, indexfile);
+				return decoded;
+			})();
+			this.indexMap.set(major, index);
+		}
+		return index;
+	}
+}
+
+export class CallbackCacheLoader extends DirectCacheFileSource {
+	constructor(fn: (major: number, minor: number, crc?: number) => Promise<Buffer>,needsCrc:boolean) {
+		super(needsCrc);
+		this.getFile = fn;
+	}
+
+	getCacheName() {
+		return "callback";
+	}
+}
+
 export type CachedObject<T> = {
 	size: number,
 	lastuse: number,
@@ -272,16 +320,16 @@ export type CachedObject<T> = {
 	id: number,
 	data: Promise<T>
 }
-export class CachingFileSource<T extends CacheFileSource> extends CacheFileSource {
+export class CachingFileSource extends CacheFileSource {
 	private archieveCache = new Map<number, CachedObject<SubFile[]>>();
 	private cachedObjects: CachedObject<any>[] = [];
 	private cacheFetchCounter = 0;
 	private cacheAddCounter = 0;
 	maxcachesize = 200e6;
 
-	rawsource: T;
+	rawsource: CacheFileSource;
 
-	constructor(base: T) {
+	constructor(base: CacheFileSource) {
 		super();
 		this.rawsource = base;
 	}
@@ -338,8 +386,8 @@ export class CachingFileSource<T extends CacheFileSource> extends CacheFileSourc
 		this.cachedObjects.length = newlength;
 	}
 
-	getIndexFile(major: number) {
-		return this.rawsource.getIndexFile(major);
+	getCacheIndex(major: number) {
+		return this.rawsource.getCacheIndex(major);
 	}
 	getFile(major: number, minor: number, crc?: number | undefined) {
 		return this.rawsource.getFile(major, minor, crc);

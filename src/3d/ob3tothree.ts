@@ -69,8 +69,8 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 
 
 //basically stores all the config of the game engine
-export class EngineCache<T extends CacheFileSource = any> extends CachingFileSource<T> {
-	ready: Promise<EngineCache<T>>;
+export class EngineCache extends CachingFileSource {
+	ready: Promise<EngineCache>;
 
 	materialArchive = new Map<number, Buffer>();
 	materialCache = new Map<number, MaterialData>();
@@ -84,7 +84,7 @@ export class EngineCache<T extends CacheFileSource = any> extends CachingFileSou
 		return ret.ready;
 	}
 
-	private constructor(source: T) {
+	private constructor(source: CacheFileSource) {
 		super(source);
 		this.ready = this.preload();
 	}
@@ -162,7 +162,7 @@ export class EngineCache<T extends CacheFileSource = any> extends CachingFileSou
 export async function detectTextureMode(source: CacheFileSource) {
 	let lastdds = -1;
 	try {
-		let ddsindex = await source.getIndexFile(cacheMajors.texturesDds);
+		let ddsindex = await source.getCacheIndex(cacheMajors.texturesDds);
 		let last = ddsindex[ddsindex.length - 1];
 		await source.getFile(last.major, last.minor, last.crc);
 		lastdds = last.minor;
@@ -170,7 +170,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 
 	let lastbmp = -1;
 	try {
-		let bmpindex = await source.getIndexFile(cacheMajors.texturesBmp);
+		let bmpindex = await source.getCacheIndex(cacheMajors.texturesBmp);
 		let last = bmpindex[bmpindex.length - 1];
 		await source.getFile(last.major, last.minor, last.crc);
 		lastbmp = last.minor;

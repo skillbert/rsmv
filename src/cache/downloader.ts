@@ -1,10 +1,8 @@
-import { CacheIndex, indexBufferToObject, unpackBufferArchive, CacheFileSource, CacheIndexFile } from "./index";
+import { DirectCacheFileSource } from "./index";
 import { crc32 } from "crc";
 import { decompress } from "./compression";
-import * as fs from "fs";
 import * as net from "net";
 import fetch from "node-fetch";
-import { cacheMajors } from "../constants";
 
 type ClientConfig = {
 	[id: string]: string | {}
@@ -28,7 +26,7 @@ export async function downloadServerConfig() {
 	return config;
 }
 
-export class Downloader extends CacheFileSource {
+export class Downloader extends DirectCacheFileSource {
 	state: State<any>;
 	socket: net.Socket;
 	server_version: number;
@@ -38,7 +36,7 @@ export class Downloader extends CacheFileSource {
 	ready: Promise<void>;
 
 	constructor(config?: Promise<ClientConfig>) {
-		super();
+		super(true);
 		if (!config) { config = downloadServerConfig(); }
 		config.then(cnf => {
 			this.server_version = parseInt(cnf["server_version"] as any);
@@ -112,31 +110,8 @@ export class Downloader extends CacheFileSource {
 		throw new Error("download did not match crc after 5 attempts");
 	}
 
-
-	indexMap = new Map<number, Promise<CacheIndexFile>>();
-
 	async getFile(major: number, minor: number, crc?: number) {
 		return decompress(await this.downloadFile(major, minor, (major == 255 && minor == 255 ? undefined : crc)));
-	}
-	async getFileArchive(meta: CacheIndex) {
-		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindices);
-	}
-	getIndexFile(major: number) {
-		let index = this.indexMap.get(major);
-		if (!index) {
-			index = (async () => {
-				let crc: number | undefined = undefined;
-				if (major != cacheMajors.index) {
-					let index = await this.getIndexFile(cacheMajors.index);
-					crc = index[major].crc;
-				}
-				let indexfile = await this.getFile(255, major, crc);
-				let decoded = indexBufferToObject(major, indexfile);
-				return decoded;
-			})();
-			this.indexMap.set(major, index);
-		}
-		return index;
 	}
 
 	close() {

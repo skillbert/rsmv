@@ -17,7 +17,7 @@ type HashCallback = (depType: DepTypes, depId: number, hash: number, version: nu
 type DepCollector = (cache: CacheFileSource, addDep: DepCallback, addHash: HashCallback) => Promise<void>;
 
 const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
-	let mapsquareindices = await cache.getIndexFile(cacheMajors.mapsquares);
+	let mapsquareindices = await cache.getCacheIndex(cacheMajors.mapsquares);
 	for (let square of mapsquareindices) {
 		if (!square) { continue; }
 		let locsconfig = square.subindices.indexOf(cacheMapFiles.locations);
@@ -34,7 +34,7 @@ const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 
 
 const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
-	let seqindices = await cache.getIndexFile(cacheMajors.sequences);
+	let seqindices = await cache.getCacheIndex(cacheMajors.sequences);
 	for (let index of seqindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
@@ -52,7 +52,7 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 const locationDeps: DepCollector = async (cache, addDep, addHash) => {
-	let locindices = await cache.getIndexFile(cacheMajors.objects);
+	let locindices = await cache.getCacheIndex(cacheMajors.objects);
 	for (let index of locindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
@@ -81,7 +81,7 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 const itemDeps: DepCollector = async (cache, addDep, addHash) => {
-	let itemindices = await cache.getIndexFile(cacheMajors.items);
+	let itemindices = await cache.getCacheIndex(cacheMajors.items);
 	for (let index of itemindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
@@ -117,7 +117,7 @@ const animgroupDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 const materialDeps: DepCollector = async (cache, addDep, addHash) => {
-	let indices = await cache.getIndexFile(cacheMajors.materials);
+	let indices = await cache.getCacheIndex(cacheMajors.materials);
 	for (let index of indices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
@@ -134,7 +134,7 @@ const materialDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 const npcDeps: DepCollector = async (cache, addDep, addHash) => {
-	let npcindices = await cache.getIndexFile(cacheMajors.npcs);
+	let npcindices = await cache.getCacheIndex(cacheMajors.npcs);
 	for (let index of npcindices) {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
@@ -160,7 +160,7 @@ const npcDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
-	let skelindices = await cache.getIndexFile(cacheMajors.skeletalAnims);
+	let skelindices = await cache.getCacheIndex(cacheMajors.skeletalAnims);
 	for (let skelindex of skelindices) {
 		if (!skelindex) { continue; }
 		addHash("skeleton", skelindex.minor, skelindex.crc, skelindex.version);
@@ -171,7 +171,7 @@ const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
 }
 
 const framesetDeps: DepCollector = async (cache, addDep, addHash) => {
-	let framesetindices = await cache.getIndexFile(cacheMajors.frames);
+	let framesetindices = await cache.getCacheIndex(cacheMajors.frames);
 	for (let index of framesetindices) {
 		if (!index) { continue; }
 		addHash("frameset", index.minor, index.crc, index.version);
@@ -184,7 +184,7 @@ const framesetDeps: DepCollector = async (cache, addDep, addHash) => {
 }
 
 const modelDeps: DepCollector = async (cache, addDep, addHash) => {
-	let modelindices = await cache.getIndexFile(cacheMajors.models);
+	let modelindices = await cache.getCacheIndex(cacheMajors.models);
 	for (let modelindex of modelindices) {
 		if (!modelindex) { continue; }
 		addHash("model", modelindex.minor, modelindex.crc, modelindex.version);

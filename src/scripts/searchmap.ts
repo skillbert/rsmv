@@ -15,7 +15,7 @@ let cmd = command({
 	},
 	handler: async (args) => {
 		let source = await args.source();
-		let index = await source.getIndexFile(cacheMajors.mapsquares);
+		let index = await source.getCacheIndex(cacheMajors.mapsquares);
 
 		let result: { chunkx: number, chunkz: number, subx: number, subz: number }[] = [];
 		for (let sq of index) {

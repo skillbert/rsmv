@@ -43,7 +43,7 @@ export class RawFileLoader extends CacheFileSource {
 		let file = await this.getFile(index.major, index.minor, index.crc)
 		return [{ fileid: 0, offset: 0, size: file.byteLength, buffer: file }];
 	}
-	async getIndexFile(major: number): Promise<CacheIndexFile> {
+	async getCacheIndex(major: number): Promise<CacheIndexFile> {
 		return this.index;
 	}
 }
