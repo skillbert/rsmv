@@ -321,7 +321,7 @@ async function animGroupToAnims(scene: ThreejsSceneCache, groupid: number) {
 }
 
 export function appearanceUrl(name: string) {
-	if (typeof document != "undefined" && typeof document.location != "undefined" && document.location.protocol.startsWith("http")) {
+	if (typeof document != "undefined" && typeof document.location != "undefined" && (document.location.protocol.startsWith("http") || document.location.protocol == "about:")) {
 		//proxy through runeapps if we are running in a browser
 		return `https://runeapps.org/data/getplayeravatar.php?player=${encodeURIComponent(name)}`;
 	} else {

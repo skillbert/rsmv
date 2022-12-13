@@ -1,55 +1,80 @@
 
 import { exportThreeJsGltf, ThreeJsRenderer } from "../viewer/threejsrender";
-import { cliArguments, filesource } from "../cliparser";
-import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
-import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
-import { itemToModel, npcToModel, playerToModel, RSMapChunk, RSModel } from "../3d/modelnodes";
-import sharp from "sharp";
+import { itemToModel, npcToModel, RSModel, SimpleModelInfo } from "../3d/modelnodes";
 import { delay } from "../utils";
-import { mapsquareSkybox, parseMapsquare } from "../3d/mapsquare";
-import { GameCacheLoader } from "../cache/sqlite";
-import { Mesh, Vector3, WebGLRendererParameters } from "three";
-import { promises as fs } from "fs";
-import { Downloader } from "../cache/downloader";
-import { polyfillNode } from "./nodegltfplugin";
-import { Openrs2CacheSource } from "../cache/openrs2loader";
+import { Vector3, WebGLRendererParameters } from "three";
+import { appearanceUrl, avatarStringToBytes, avatarToModel } from "../3d/avatar";
+import { pixelsToImageFile } from "../imgutils";
 
-// polyfillNode();
+//TODO remove bypass cors, since we are in a browser context and the runeapps server isn't cooperating atm
+globalThis.fetch = require("node-fetch").default;
 
-
-let cmd = cmdts.command({
-	name: "render",
-	args: {
-		...filesource,
-		avatar: cmdts.option({ long: "avatar", type: cmdts.string })
-	},
-	handler: async (args) => {
-		let output = new CLIScriptOutput();
-		let src = await args.source();
-		if (args.avatar) {
-			let ava = await renderAvatar(src, args.avatar);
-			fs.writeFile("model.png", ava.imgfile);
-			fs.writeFile("model.glb", Buffer.from(ava.modelfile));
+export async function runServer(source: CacheFileSource, endpoint: string, auth: string) {
+	let backoff = 1;
+	while (true) {
+		let res = false;
+		try {
+			res = await runConnection(source, endpoint, auth);
+		} catch { }
+		if (!res) {
+			await delay(backoff * 1000);
+			backoff = Math.min(5 * 60, backoff * 2);
+		} else {
+			await delay(1000);
+			backoff = 1;
 		}
 	}
-});
+}
 
-if (true || __non_webpack_require__.main?.id == module.id) {
-	// run(new GameCacheLoader(), 0);
-	// cmdts.run(cmd, process.argv.slice(2));
-	(async () => {
-		try {
-			await cmdts.run(cmd, cliArguments());
-		} finally {
-			window.close();
+
+export function runConnection(source: CacheFileSource, endpoint: string, auth: string) {
+	return new Promise<boolean>(async (done, err) => {
+		let engine = await EngineCache.create(source);
+		let scene = new ThreejsSceneCache(engine);
+
+		let ws = new WebSocket(endpoint);
+		let didopen = false;
+		ws.onopen = () => { ws.send(auth); didopen = true; };
+		ws.onclose = () => done(didopen);
+		ws.onerror = () => done(didopen);
+		ws.onmessage = async (msg) => {
+			let packet = JSON.parse(msg.data);
+			try {
+				if (packet.type == "player") {
+					let ava = await renderAppearance(scene, "player", packet.data);
+					ws.send(JSON.stringify({
+						reqid: packet.reqid,
+						type: "modelbase64",
+						data: {
+							model: ava.modelfile.toString("base64"),
+							image: ava.imgfile.toString("base64")
+						}
+					}));
+				} else if (packet.type == "appearance") {
+					let ava = await renderAppearance(scene, "appearance", packet.data);
+					ws.send(JSON.stringify({
+						reqid: packet.reqid,
+						type: "modelbase64",
+						data: {
+							model: ava.modelfile.toString("base64"),
+							image: ava.imgfile.toString("base64")
+						}
+					}));
+				} else {
+					throw new Error("unknown packet type " + packet.type);
+				}
+			}
+			catch (e) {
+				ws.send(JSON.stringify({
+					reqid: packet.reqid,
+					type: "err",
+					data: e + ""
+				}));
+			}
 		}
-		// let src = new Openrs2CacheSource("1152");
-		// let ava = await renderAvatar(src, "skillbert");
-		// fs.writeFile("model.png", ava.imgfile);
-		// fs.writeFile("model.glb", Buffer.from(ava.modelfile));
-	})()
+	});
 }
 
 export function getRenderer(width: number, height: number, extraopts?: WebGLRendererParameters) {
@@ -61,7 +86,6 @@ export function getRenderer(width: number, height: number, extraopts?: WebGLRend
 		cnv = document.createElement("canvas");
 		cnv.width = width;
 		cnv.height = height;
-		document.body.appendChild(cnv);
 	} else {
 		cnv = {
 			width, height,
@@ -77,10 +101,7 @@ export function getRenderer(width: number, height: number, extraopts?: WebGLRend
 	return render;
 }
 
-export async function renderAvatar(source: CacheFileSource, playername: string) {
-	let engine = await EngineCache.create(source);
-	let scene = new ThreejsSceneCache(engine);
-
+export async function renderAppearance(scene: ThreejsSceneCache, mode: "player" | "appearance" | "item" | "npc", argument: string, headmodel = false) {
 	let width = 500;
 	let height = 700;
 	let render = getRenderer(width, height);
@@ -88,23 +109,41 @@ export async function renderAvatar(source: CacheFileSource, playername: string) 
 		getSceneElements() {
 			return { options: { autoFrames: false, hideFloor: true } };
 		}
-	})
+	});
 
-	let player = await playerToModel(scene, playername);
+	let meshdata: SimpleModelInfo<any, any>;
+	if (mode == "player" || mode == "appearance") {
+		let appearance = argument;
+		if (mode == "player") {
+			let url = appearanceUrl(argument);
+			appearance = await fetch(url).then(q => q.text());
+			if (appearance.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
+		}
+		console.log(appearance);
+		let ava = await avatarToModel(null, scene, avatarStringToBytes(appearance), "", headmodel);
+		meshdata = { ...ava, id: argument };
+	} else if (mode == "item") {
+		if (isNaN(+argument)) { throw new Error("number expected"); }
+		meshdata = await itemToModel(scene, +argument);
+	} else if (mode == "npc") {
+		if (isNaN(+argument)) { throw new Error("number expected"); }
+		meshdata = await npcToModel(scene, { id: +argument, head: headmodel });
+	} else {
+		throw new Error("unknown mode " + mode);
+	}
 	// let player = await itemToModel(scene, 0);
-	let model = new RSModel(player.models, scene);
-	model.setAnimation(player.anims.default);
+	let model = new RSModel(meshdata.models, scene);
+	model.setAnimation(meshdata.anims.default);
 	render.addSceneElement(model);
 
 	await model.model;
 	await delay(1);
-	render.setCameraPosition(new Vector3(0, 0.8, 2.5));
-	render.setCameraLimits(new Vector3(0, 0.8, 0));
+	render.setCameraPosition(new Vector3(0, 0.85, 2.7));
+	render.setCameraLimits(new Vector3(0, 0.85, 0));
 
-	let modelfile = await exportThreeJsGltf(model.loaded!.mesh);
+	let modelfile = Buffer.from(await exportThreeJsGltf(render.getModelNode()));
 	let img = await render.takeCanvasPicture();
-	let imgfile = await sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } })
-		.png().toBuffer();
+	let imgfile = await pixelsToImageFile(img, "png", 1);
 
 	return { imgfile, modelfile };
 }

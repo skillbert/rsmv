@@ -61,8 +61,8 @@ function getMajorAction(major: number) {
 }
 
 export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFileSource, sourceb: CacheFileSource, major: number) {
-	let indexa = await sourcea.getIndexFile(major);
-	let indexb = await sourceb.getIndexFile(major);
+	let indexa = await sourcea.getCacheIndex(major);
+	let indexb = await sourceb.getCacheIndex(major);
 	let len = Math.max(indexa.length, indexb.length);
 
 	let changes: FileEdit[] = [];
@@ -141,8 +141,8 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 
 export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea: CacheFileSource, sourceb: CacheFileSource) {
 	let majors: number[] = [];
-	let roota = await sourcea.getIndexFile(cacheMajors.index);
-	let rootb = await sourceb.getIndexFile(cacheMajors.index);
+	let roota = await sourcea.getCacheIndex(cacheMajors.index);
+	let rootb = await sourceb.getCacheIndex(cacheMajors.index);
 	let rootmaxlen = Math.max(roota.length, rootb.length);
 	for (let i = 0; i < rootmaxlen; i++) {
 		if (roota[i] && !rootb[i]) { output.log(`major ${i} removed`); }

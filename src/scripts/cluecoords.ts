@@ -19,7 +19,7 @@ let cmd = command({
 		fs.mkdirSync(outdir, { recursive: true });
 
 		let enums: number[] = [];
-		let itemindex = await filesource.getIndexFile(cacheMajors.items);
+		let itemindex = await filesource.getCacheIndex(cacheMajors.items);
 		for (let index of itemindex) {
 			let files = await filesource.getFileArchive(index);
 			for (let file of files) {

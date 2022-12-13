@@ -66,6 +66,25 @@ var originalcmd={
 	cwd:(${JSON.stringify(process.cwd())})
 };
 
+let originallog=console.log.bind(console);
+let originalwarn=console.warn.bind(console);
+let originalerror=console.error.bind(console);
+
+console.log=function(...args){
+	require("electron/renderer").ipcRenderer.send("console","log",args.map(q=>q+""));
+	originallog(...args);
+}
+console.warn=function(...args){
+	require("electron/renderer").ipcRenderer.send("console","warn",args.map(q=>q+""));
+	originalwarn(...args);
+}
+console.error=function(...args){
+	require("electron/renderer").ipcRenderer.send("console","error",args.map(q=>q+""));
+	originalerror(...args);
+}
+window.onerror=e=>console.error(e);
+window.onunhandledrejection=e=>console.error(e);
+
 require("${entry}");
 `;
 
@@ -73,6 +92,11 @@ require("${entry}");
 	await app.whenReady();
 
 	ipcMain.on("toggledevtools", () => index.webContents.toggleDevTools());
+	ipcMain.on("console", (e, type: string, args: any[]) => {
+		if (type == "error") { console.error("[renderer]", ...args); }
+		else if (type == "warn") { console.warn("[renderer]", ...args); }
+		else { console.log("[renderer]", ...args); }
+	});
 
 	var index = new BrowserWindow({
 		width: 800, height: 600,
