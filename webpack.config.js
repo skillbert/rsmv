@@ -13,7 +13,7 @@ module.exports = {
 		cli: "./src/cli.ts",
 		buildfiletypes: "./src/buildfiletypes.ts",
 		maprender: "./src/map/",
-		headless: "./src/headless/",
+		api: "./src/headless/api",
 		runbrowser: "./src/headless/runbrowser.ts"
 	},
 	module: {

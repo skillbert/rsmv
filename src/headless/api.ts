@@ -11,6 +11,12 @@ import { pixelsToImageFile } from "../imgutils";
 //TODO remove bypass cors, since we are in a browser context and the runeapps server isn't cooperating atm
 globalThis.fetch = require("node-fetch").default;
 
+export { Downloader } from "../cache/downloader";
+export { GameCacheLoader } from "../cache/sqlite";
+export { CallbackCacheLoader } from "../cache";
+//export buffer since we're polyfilling it in browsers
+export const BufferPoly = Buffer;
+
 export async function runServer(source: CacheFileSource, endpoint: string, auth: string) {
 	let backoff = 1;
 	while (true) {
@@ -83,10 +89,12 @@ export function getRenderer(width: number, height: number, extraopts?: WebGLRend
 	let cnv: HTMLCanvasElement;
 	let ctx: WebGLRenderingContext | undefined = undefined;
 	if (typeof HTMLCanvasElement != "undefined") {
+		//browser/electron/puppeteer
 		cnv = document.createElement("canvas");
 		cnv.width = width;
 		cnv.height = height;
 	} else {
+		//nodejs "gl" implementation, currently not maintained
 		cnv = {
 			width, height,
 			clientWidth: width, clientHeight: height,

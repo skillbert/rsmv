@@ -11,7 +11,7 @@ import { UIScriptFile } from "./scriptsui";
 import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache } from "./maincomponents";
 import classNames from "classnames";
 
-export * as headless from "../headless";
+// export * as api from "../headless/api";
 
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);

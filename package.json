@@ -4,7 +4,8 @@
 	"description": "A viewer for NXT client models and materials",
 	"main": "dist/main.js",
 	"exports": {
-		".": "./dist/main.js",
+		".": "./dist/api.js",
+		"./web": "./dist/web/api.js",
 		"./src/*": "./src/*.ts",
 		"./*": "./dist/*.js"
 	},

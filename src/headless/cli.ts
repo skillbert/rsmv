@@ -1,7 +1,7 @@
 
 import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
-import { renderAppearance, runServer } from ".";
+import { renderAppearance, runServer } from "./api";
 import { EngineCache, ThreejsSceneCache } from "3d/ob3tothree";
 import { promises as fs } from "fs";
 
@@ -31,12 +31,6 @@ let cmd = cmdts.command({
 	}
 });
 
-if (true || __non_webpack_require__.main?.id == module.id) {
-	(async () => {
-		try {
-			await cmdts.runSafely(cmd, cliArguments());
-		} finally {
-			// window.close();
-		}
-	})()
-}
+cmdts.runSafely(cmd, cliArguments()).finally(() => {
+	// window.close();
+})

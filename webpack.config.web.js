@@ -15,6 +15,13 @@ module.exports = {
 				type: "umd",
 				name: { root: "RSMV", amd: "rsmv", commonjs: "rsmv" }
 			}
+		},
+		api: {
+			import: "./src/headless/api.ts",
+			library: {
+				type: "umd",
+				name: { root: "RSMVApi", amd: "rsmv-api", commonjs: "rsmv-api" }
+			}
 		}
 	},
 	module: {
