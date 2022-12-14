@@ -289,7 +289,7 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 	return (
 		<div>
 			<div>
-				{p.output.state}
+				Script state: {p.output.state}
 				{p.output.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
 			</div>
 			{p.output.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}

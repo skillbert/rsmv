@@ -1,5 +1,4 @@
 import type * as jsonschema from "json-schema";
-import { Statement } from "sqlite3";
 
 type PrimitiveInt = {
 	primitive: "int",
@@ -1034,7 +1033,9 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 				return typeof primitive.value;
 			}
 		},
-		getJsonSchema() { return { type: typeof primitive.value as any } }
+		getJsonSchema() {
+			return { const: primitive.value as any }
+		}
 	}
 }
 function referenceValueParser(propname: string, minbit: number, bitlength: number, offset: number): ChunkParser<number> {
@@ -1068,7 +1069,7 @@ function referenceValueParser(propname: string, minbit: number, bitlength: numbe
 			return {
 				type: "integer",
 				minimum: (bitlength == -1 ? undefined : 0),
-				maximum: (bitlength == -1 ? undefined : 2 ** (bitlength * 8) - 1)
+				maximum: (bitlength == -1 ? undefined : 2 ** bitlength - 1)
 			}
 		}
 	}
