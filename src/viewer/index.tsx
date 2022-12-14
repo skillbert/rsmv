@@ -11,6 +11,8 @@ import { UIScriptFile } from "./scriptsui";
 import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache } from "./maincomponents";
 import classNames from "classnames";
 
+export * as headless from "../headless";
+
 if (module.hot) {
 	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
 }
@@ -114,7 +116,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 		return (
 			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
 				<canvas className="mv-canvas" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
-				{ this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
+				{this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
 				<div className="mv-sidebar">
 					{!this.props.ctx.source && (
 						<React.Fragment>

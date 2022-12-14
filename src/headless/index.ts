@@ -94,7 +94,7 @@ export function getRenderer(width: number, height: number, extraopts?: WebGLRend
 			removeEventListener: event => { },
 			style: {}
 		} as any;
-		ctx = require("gl")(width, height, opts);
+		ctx = __non_webpack_require__("gl")(width, height, opts);
 	}
 
 	let render = new ThreeJsRenderer(cnv, { context: ctx, ...opts });

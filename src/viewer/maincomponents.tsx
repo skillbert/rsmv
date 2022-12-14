@@ -17,17 +17,9 @@ import { delay, drawTexture, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
 import { Downloader } from "../cache/downloader";
 
-// @ts-ignore type import also fails when targeting web
-import type * as electronType from "electron/renderer";
-
-const electron = (() => {
-	try {
-		if (typeof __non_webpack_require__ != "undefined") {
-			return __non_webpack_require__("electron/renderer") as typeof electronType;
-		}
-	} catch (e) { }
-	return null;
-})();
+//work around typescript being weird when compiling for browser
+const electron = require("electron/renderer");
+const hasElectrion = !!electron.ipcRenderer;
 
 export type SavedCacheSource = {
 	type: string
@@ -58,7 +50,7 @@ export async function downloadBlob(name: string, blob: Blob) {
 
 /**@deprecated requires a service worker and is pretty sketchy, also no actual streaming output file sources atm */
 export async function downloadStream(name: string, stream: ReadableStream) {
-	if (!electron) {
+	if (!hasElectrion) {
 		let url = new URL(`download_${Math.random() * 10000 | 0}_${name}`, document.location.href).href;
 		let sw = await navigator.serviceWorker.ready;
 		if (!sw.active) { throw new Error("no service worker"); }
@@ -227,8 +219,8 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 
 	@boundMethod
 	async clickOpenNative() {
-		if (!electron) { return; }
-		let dir: electronType.OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", "%programdata%/jagex/runescape/");
+		if (!hasElectrion) { return; }
+		let dir = await electron.ipcRenderer.invoke("openfolder", "%programdata%/jagex/runescape/");
 		if (!dir.canceled) {
 			this.props.onOpen({ type: "sqlitenodejs", location: dir.filePaths[0] });
 		}
@@ -297,14 +289,14 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	render() {
 		return (
 			<React.Fragment>
-				{electron && (
+				{hasElectrion && (
 					<React.Fragment>
 						<h2>Native local RS3 cache</h2>
 						<p>Only works when running in electron</p>
 						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cache" />
 					</React.Fragment>
 				)}
-				{electron && (
+				{hasElectrion && (
 					<React.Fragment>
 						<h2>Jagex Servers</h2>
 						<p>Download directly from content servers. Only works when running in electron</p>
@@ -435,7 +427,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	if (source.type == "openrs2") {
 		cache = new Openrs2CacheSource(source.cachename);
 	}
-	if (electron && source.type == "sqlitenodejs") {
+	if (hasElectrion && source.type == "sqlitenodejs") {
 		cache = new GameCacheLoader(source.location);
 	}
 	if (source.type == "live") {

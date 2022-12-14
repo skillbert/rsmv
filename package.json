@@ -26,7 +26,6 @@
 	"devDependencies": {
 		"@types/crc": "^3.4.0",
 		"@types/json-schema": "^7.0.9",
-		"@types/leaflet": "^1.7.6",
 		"@types/node-fetch": "^2.6.1",
 		"@types/react": "^18.0.12",
 		"@types/react-dom": "^18.0.5",
@@ -41,13 +40,23 @@
 		"browserify-zlib": "^0.2.0",
 		"buffer": "^6.0.3",
 		"canvas": "^2.10.2",
+		"classnames": "^2.3.1",
 		"copy-webpack-plugin": "^10.2.4",
 		"electron": "^13.6.9",
 		"electron-rebuild": "^3.2.7",
 		"file-loader": "^6.2.0",
+		"idb-keyval": "^6.1.0",
+		"json-stringify-pretty-compact": "^3.0.0",
+		"lzma-native": "^8.0.1",
 		"process": "^0.11.10",
+		"react": "^18.1.0",
+		"react-dom": "^18.1.0",
 		"rimraf": "^3.0.2",
+		"sharp": "^0.30.5",
+		"sql.js": "file:./src/libs/sqljsfork",
+		"sqlite3": "^5.0.8",
 		"stream-browserify": "^3.0.0",
+		"three": "^0.146.0",
 		"ts-loader": "^9.2.8",
 		"typescript": "^4.9.3",
 		"util": "^0.12.4",
@@ -56,22 +65,38 @@
 		"webpack-dev-server": "^4.7.4"
 	},
 	"dependencies": {
-		"bzip2": "^0.1.1",
-		"classnames": "^2.3.1",
 		"cmd-ts": "^0.7.0",
 		"comment-json": "^4.2.2",
-		"crc": "^3.8.0",
-		"idb-keyval": "^6.1.0",
-		"json-stringify-pretty-compact": "^3.0.0",
-		"leaflet": "^1.7.1",
 		"lzma": "^2.3.2",
+		"node-fetch": "^2.6.5"
+	},
+	"peerDependencies": {
+		"canvas": ">=2.10.2",
+		"electron": "^13.6.9",
 		"lzma-native": "^8.0.1",
-		"node-fetch": "^2.6.5",
-		"react": "^18.1.0",
-		"react-dom": "^18.1.0",
-		"sharp": "^0.30.5",
-		"sql.js": "file:./src/libs/sqljsfork",
-		"sqlite3": "^5.0.8",
-		"three": "^0.146.0"
+		"sharp": ">=0.30.5",
+		"sqlite3": ">=5.0.8"
+	},
+	"peerDependenciesMeta": {
+		"sqlite3": {
+			"//reason": "Required to load NXT client caches (GameCacheLoader)",
+			"optional": true
+		},
+		"canvas": {
+			"//reason": "Required when doing image/texture related stuff inside the node process and not in electron/puppeteer.",
+			"optional": true
+		},
+		"sharp": {
+			"//reason": "Required when doing image/texture related stuff inside the node process and not in electron/puppeteer.",
+			"optional": true
+		},
+		"electron": {
+			"//reason": "Used for the desktop app, can also be used as alternative for model rendering to image.",
+			"optional": true
+		},
+		"lzma-native": {
+			"//reason": "Improves cache loading performance dramatically when loading large files.",
+			"optional": true
+		}
 	}
 }

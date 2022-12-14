@@ -1,8 +1,9 @@
 import { DirectCacheFileSource } from "./index";
-import { crc32 } from "crc";
 import { decompress } from "./compression";
 import * as net from "net";
 import fetch from "node-fetch";
+import { crc32 } from "../libs/crc32util";
+
 
 type ClientConfig = {
 	[id: string]: string | {}
