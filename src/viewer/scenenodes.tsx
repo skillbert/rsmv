@@ -22,7 +22,7 @@ import { findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView } from "./commoncontrols";
 import { items } from "../../generated/items";
-import { itemToModel, locToModel, materialToModel, modelToModel, npcToModel, playerDataToModel, playerToModel, primitiveModelInits, RSMapChunk, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
+import { itemToModel, locToModel, materialToModel, modelToModel, npcToModel, playerDataToModel, playerToModel, primitiveModelInits, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
@@ -1302,6 +1302,14 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 		let initid = (typeof this.props.initialId == "string" ? this.props.initialId : "50,50,1,1");
 
+		//find the last skybox
+		let skysettings: RSMapChunkData["sky"] | null = null;
+		for (let group of this.state.chunkgroups) {
+			if (group.chunk.loaded?.sky) {
+				skysettings = group.chunk.loaded.sky;
+			}
+		}
+
 		return (
 			<React.Fragment>
 				{this.state.chunkgroups.length == 0 && (
@@ -1309,8 +1317,6 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 						<StringInput onChange={this.onSubmit} initialid={initid} />
 						<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>
 						<p>Coordinates are in so-called mapsquare coordinates, each mapsquare is 64x64 tiles in size. The entire RuneScape map is laid out in one plane and is 100x200 mapsquares in size.</p>
-
-
 					</React.Fragment>
 				)}
 				{this.state.chunkgroups.length != 0 && (
@@ -1341,6 +1347,10 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 							</div>
 						</div>
 						<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
+						{skysettings && (<div>
+							Skybox model: <span className="mv-copy-text">{skysettings.skyboxModelid}</span>,
+							fog: <span className="mv-copy-text">{skysettings.fogColor[0]},{skysettings.fogColor[1]},{skysettings.fogColor[2]}</span>
+						</div>)}
 						<div style={{ display: "grid", gridTemplateColumns: "repeat(5,max-content)" }}>
 							{Object.entries(toggles).map(([base, subs]) => {
 								let all = true;
@@ -1379,11 +1389,12 @@ function ExtractFilesScript(p: UiScriptProps) {
 	let [files, setFiles] = React.useState("");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>("items");
 	let [batched, setbatched] = React.useState(true);
+	let [keepbuffers, setkepbuffers] = React.useState(false);
 
 	let run = () => {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
-		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched: batched, batchlimit: -1, edit: false, keepbuffers: false });
+		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers });
 		p.onRun(output);
 	}
 
@@ -1399,6 +1410,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 				<InputCommitted type="text" onChange={e => setFiles(e.currentTarget.value)} value={files} />
 			</LabeledInput>
 			<div><label><input type="checkbox" checked={batched} onChange={e => setbatched(e.currentTarget.checked)} />Concatenate group files</label></div>
+			<div><label><input type="checkbox" checked={keepbuffers} onChange={e => setkepbuffers(e.currentTarget.checked)} />Keep binary buffers (can be very large)</label></div>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)

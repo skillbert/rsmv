@@ -1006,6 +1006,7 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: ChunkData) {
 	let skybox = new Object3D();
 	let fogColor = [0, 0, 0, 0];
+	let skyboxModelid = -1;
 	if (mainchunk?.extra.unk00?.unk20) {
 		fogColor = mainchunk.extra.unk00.unk20.slice(1);
 	}
@@ -1014,10 +1015,11 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
 		let env = parseEnvironments.read(envfile.buffer);
 		if (typeof env.model == "number") {
+			skyboxModelid = env.model;
 			skybox = await ob3ModelToThree(scene, await scene.getModelData(env.model));
 		}
 	}
-	return { skybox, fogColor };
+	return { skybox, fogColor, skyboxModelid };
 }
 
 export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {

@@ -308,11 +308,11 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 }
 
 
-type RSMapChunkData = {
+export type RSMapChunkData = {
 	grid: TileGrid,
 	chunks: ChunkData[],
 	groups: Set<string>,
-	sky: { skybox: Object3D, fogColor: number[] } | null,
+	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
 	modeldata: PlacedMesh[][],
 	chunkmodels: Group[]
 }

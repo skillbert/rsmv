@@ -45,6 +45,9 @@
 	background: url("alphachecker.png");
 	background-color: #242424;
 }
+.mv-copy-text{
+	user-select: all;
+}
 .sub-btn {
 	background-repeat: no-repeat;
 	background-color: #fbcc4a;
