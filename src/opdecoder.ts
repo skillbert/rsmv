@@ -14,9 +14,13 @@ let bytesleftoverwarncount = 0;
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser<T>;
 
-	constructor(_opcodes: string) {
-		let opcodeobj = commentJson.parse(_opcodes, undefined, true);
-		this.parser = opcode_reader.buildParser(opcodeobj as any, typedef as any);
+	static fromJson<T>(jsonObject: string) {
+		let opcodeobj = commentJson.parse(jsonObject, undefined, true) as any
+		return new FileParser<T>(opcodeobj);
+	}
+
+	constructor(opcodeobj: opcode_reader.ComposedChunk) {
+		this.parser = opcode_reader.buildParser(opcodeobj, typedef as any);
 		this.parser.setReferenceParent?.(null);
 	}
 
@@ -65,35 +69,36 @@ export class FileParser<T> {
 		return r;
 	}
 }
-export const parseCacheIndex = new FileParser<import("../generated/cacheindex").cacheindex>(require("./opcodes/cacheindex.json"));
-export const parseNpc = new FileParser<import("../generated/npcs").npcs>(require("./opcodes/npcs.jsonc"));
-export const parseItem = new FileParser<import("../generated/items").items>(require("./opcodes/items.json"));
-export const parseObject = new FileParser<import("../generated/objects").objects>(require("./opcodes/objects.jsonc"));
-export const parseAchievement = new FileParser<import("../generated/achievements").achievements>(require("./opcodes/achievements.jsonc"));
-export const parseMapsquareTiles = new FileParser<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.jsonc"));
-export const parseMapsquareWaterTiles = new FileParser<import("../generated/mapsquare_watertiles").mapsquare_watertiles>(require("./opcodes/mapsquare_watertiles.json"));
-export const parseMapsquareUnderlays = new FileParser<import("../generated/mapsquare_underlays").mapsquare_underlays>(require("./opcodes/mapsquare_underlays.json"));
-export const parseMapsquareOverlays = new FileParser<import("../generated/mapsquare_overlays").mapsquare_overlays>(require("./opcodes/mapsquare_overlays.json"));
-export const parseMapsquareLocations = new FileParser<import("../generated/mapsquare_locations").mapsquare_locations>(require("./opcodes/mapsquare_locations.json"));
-export const parseMapZones = new FileParser<import("../generated/mapzones").mapzones>(require("./opcodes/mapzones.json"));
-export const parseEnums = new FileParser<import("../generated/enums").enums>(require("./opcodes/enums.json"));
-export const parseMapscenes = new FileParser<import("../generated/mapscenes").mapscenes>(require("./opcodes/mapscenes.json"));
-export const parseSequences = new FileParser<import("../generated/sequences").sequences>(require("./opcodes/sequences.json"));
-export const parseFramemaps = new FileParser<import("../generated/framemaps").framemaps>(require("./opcodes/framemaps.jsonc"));
-export const parseFrames = new FileParser<import("../generated/frames").frames>(require("./opcodes/frames.json"));
-export const parseAnimgroupConfigs = new FileParser<import("../generated/animgroupconfigs").animgroupconfigs>(require("./opcodes/animgroupconfigs.jsonc"));
-export const parseModels = new FileParser<import("../generated/models").models>(require("./opcodes/models.json"));
-export const parseSpotAnims = new FileParser<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json"));
-export const parseRootCacheIndex = new FileParser<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json"));
-export const parseSkeletalAnim = new FileParser<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc"));
-export const parseMaterials = new FileParser<import("../generated/materials").materials>(require("./opcodes/materials.jsonc"));
-export const parseQuickchatCategories = new FileParser<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc"));
-export const parseQuickchatLines = new FileParser<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc"));
-export const parseEnvironments = new FileParser<import("../generated/environments").environments>(require("./opcodes/environments.jsonc"));
-export const parseAvatars = new FileParser<import("../generated/avatars").avatars>(require("./opcodes/avatars.jsonc"));
-export const parseAvatarOverrides = new FileParser<import("../generated/avataroverrides").avataroverrides>(require("./opcodes/avataroverrides.jsonc"));
-export const parseIdentitykit = new FileParser<import("../generated/identitykit").identitykit>(require("./opcodes/identitykit.jsonc"));
-export const parseStructs = new FileParser<import("../generated/structs").structs>(require("./opcodes/structs.jsonc"));
-export const parseParams = new FileParser<import("../generated/params").params>(require("./opcodes/params.jsonc"));
+
+export const parseCacheIndex = FileParser.fromJson<import("../generated/cacheindex").cacheindex>(require("./opcodes/cacheindex.json"));
+export const parseNpc = FileParser.fromJson<import("../generated/npcs").npcs>(require("./opcodes/npcs.jsonc"));
+export const parseItem = FileParser.fromJson<import("../generated/items").items>(require("./opcodes/items.json"));
+export const parseObject = FileParser.fromJson<import("../generated/objects").objects>(require("./opcodes/objects.jsonc"));
+export const parseAchievement = FileParser.fromJson<import("../generated/achievements").achievements>(require("./opcodes/achievements.jsonc"));
+export const parseMapsquareTiles = FileParser.fromJson<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.jsonc"));
+export const parseMapsquareWaterTiles = FileParser.fromJson<import("../generated/mapsquare_watertiles").mapsquare_watertiles>(require("./opcodes/mapsquare_watertiles.json"));
+export const parseMapsquareUnderlays = FileParser.fromJson<import("../generated/mapsquare_underlays").mapsquare_underlays>(require("./opcodes/mapsquare_underlays.json"));
+export const parseMapsquareOverlays = FileParser.fromJson<import("../generated/mapsquare_overlays").mapsquare_overlays>(require("./opcodes/mapsquare_overlays.json"));
+export const parseMapsquareLocations = FileParser.fromJson<import("../generated/mapsquare_locations").mapsquare_locations>(require("./opcodes/mapsquare_locations.json"));
+export const parseMapZones = FileParser.fromJson<import("../generated/mapzones").mapzones>(require("./opcodes/mapzones.json"));
+export const parseEnums = FileParser.fromJson<import("../generated/enums").enums>(require("./opcodes/enums.json"));
+export const parseMapscenes = FileParser.fromJson<import("../generated/mapscenes").mapscenes>(require("./opcodes/mapscenes.json"));
+export const parseSequences = FileParser.fromJson<import("../generated/sequences").sequences>(require("./opcodes/sequences.json"));
+export const parseFramemaps = FileParser.fromJson<import("../generated/framemaps").framemaps>(require("./opcodes/framemaps.jsonc"));
+export const parseFrames = FileParser.fromJson<import("../generated/frames").frames>(require("./opcodes/frames.json"));
+export const parseAnimgroupConfigs = FileParser.fromJson<import("../generated/animgroupconfigs").animgroupconfigs>(require("./opcodes/animgroupconfigs.jsonc"));
+export const parseModels = FileParser.fromJson<import("../generated/models").models>(require("./opcodes/models.json"));
+export const parseSpotAnims = FileParser.fromJson<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json"));
+export const parseRootCacheIndex = FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json"));
+export const parseSkeletalAnim = FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc"));
+export const parseMaterials = FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/materials.jsonc"));
+export const parseQuickchatCategories = FileParser.fromJson<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc"));
+export const parseQuickchatLines = FileParser.fromJson<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc"));
+export const parseEnvironments = FileParser.fromJson<import("../generated/environments").environments>(require("./opcodes/environments.jsonc"));
+export const parseAvatars = FileParser.fromJson<import("../generated/avatars").avatars>(require("./opcodes/avatars.jsonc"));
+export const parseAvatarOverrides = FileParser.fromJson<import("../generated/avataroverrides").avataroverrides>(require("./opcodes/avataroverrides.jsonc"));
+export const parseIdentitykit = FileParser.fromJson<import("../generated/identitykit").identitykit>(require("./opcodes/identitykit.jsonc"));
+export const parseStructs = FileParser.fromJson<import("../generated/structs").structs>(require("./opcodes/structs.jsonc"));
+export const parseParams = FileParser.fromJson<import("../generated/params").params>(require("./opcodes/params.jsonc"));
 
 

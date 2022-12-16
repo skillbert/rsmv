@@ -48,7 +48,7 @@ export type ComposedChunk = string
 	| [type: "accum", ref: string, addvalue: ComposedChunk, mode?: "add" | "add-1" | "hold"]
 	| [type: "opt", condition: (number | [ref: string, value: number, compare: CompareMode]), value: ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
-	| [type: "struct", ...props: [name: string, value: any]]
+	| [type: "struct", ...props: [name: string, value: any][]]
 	| [type: "tuple", ...props: any[]]//ComposedChunk[] can't write type since it would be circular
 
 
