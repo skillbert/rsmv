@@ -11,7 +11,7 @@ import { pixelsToImageFile } from "../imgutils";
 //TODO remove bypass cors, since we are in a browser context and the runeapps server isn't cooperating atm
 globalThis.fetch = require("node-fetch").default;
 
-export { Downloader } from "../cache/downloader";
+export { CacheDownloader } from "../cache/downloader";
 export { GameCacheLoader } from "../cache/sqlite";
 export { CallbackCacheLoader } from "../cache";
 //export buffer since we're polyfilling it in browsers

@@ -1,4 +1,4 @@
-import { Downloader, downloadServerConfig } from "./downloader";
+import { CacheDownloader } from "./downloader";
 import * as fs from "fs";
 import * as sqlite3 from "sqlite3";//.verbose();
 import { CacheIndex, CacheFileSource, unpackBufferArchive, indexBufferToObject } from "./index";
@@ -27,7 +27,7 @@ export type SaveFileArguments = {
 }
 
 type CacheUpdateHook = {
-	callback: (downloader: Downloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) => Promise<void>;
+	callback: (downloader: CacheDownloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) => Promise<void>;
 	staticArguments: SaveFileArguments
 }
 
@@ -126,7 +126,7 @@ function findMissingIndices<T extends CacheIndex>(db_state: DatabaseState, indic
 	return pile;
 }
 
-async function updateRecords(downloader: Downloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
+async function updateRecords(downloader: CacheDownloader, index: CacheIndex & { isNew: boolean }, db: DatabaseInst, db_state: DatabaseState, staticArguments: SaveFileArguments) {
 	var singular = staticArguments.singular;
 	var plural = staticArguments.plural;
 	var folder = staticArguments.folder;
@@ -264,8 +264,7 @@ export async function run(cachedirarg: string, progressDebounceDelay?: number) {
 	var { db, db_state } = await prepareDatabase();
 
 	progress("Connecting to servers...");
-	let config = downloadServerConfig();
-	var downloader = new Downloader(config);
+	var downloader = new CacheDownloader();
 
 	progress("Downloading index...");
 	let indices = downloader.getCacheIndex(cacheMajors.index);

@@ -9,13 +9,12 @@ import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
-
 import { UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, drawTexture, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
-import { Downloader } from "../cache/downloader";
+import { CacheDownloader } from "../cache/downloader";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -431,7 +430,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 		cache = new GameCacheLoader(source.location);
 	}
 	if (source.type == "live") {
-		cache = new Downloader();
+		cache = new CacheDownloader();
 	}
 	if (remember) {
 		datastore.set("openedcache", source);
