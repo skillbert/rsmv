@@ -13,16 +13,16 @@
 	<div id="app"></div>
 	<script>
 		function loaded(rsmv) {
+			let rootel = document.getElementById("app");
 			rsmv.start(rootel, true);
 		}
 
-		let rootel = document.getElementById("app");
 		if (typeof require != "undefined") {
 			let rsmvimport = require("../electronviewer.js");
 			loaded(rsmvimport);
 		} else {
 			let viewerscript = document.createElement("script");
-			viewerscript.src = "../viewer.js";
+			viewerscript.src = "../webviewer.js";
 			document.body.appendChild(viewerscript);
 			viewerscript.onload = () => loaded(RSMV);
 		}

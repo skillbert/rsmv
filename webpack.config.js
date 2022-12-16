@@ -11,9 +11,9 @@ module.exports = {
 		main: "./src/main.ts",
 		electronviewer: "./src/viewer/",
 		cli: "./src/cli.ts",
+		api: "./src/headless/api",
 		buildfiletypes: "./src/buildfiletypes.ts",
 		maprender: "./src/map/",
-		api: "./src/headless/api",
 		runbrowser: "./src/headless/runbrowser.ts"
 	},
 	module: {
@@ -54,7 +54,9 @@ module.exports = {
 	output: {
 		libraryTarget: "commonjs",
 		filename: "[name].js",
-		chunkFilename: "[contenthash].js",
+		chunkFilename: "generated/[contenthash].js",
+		assetModuleFilename: "generated/[contenthash].js",
+		webassemblyModuleFilename: "generated/[contenthash].js",
 		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [

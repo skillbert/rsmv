@@ -5,7 +5,7 @@
 	"main": "dist/main.js",
 	"exports": {
 		".": "./dist/api.js",
-		"./web": "./dist/web/api.js",
+		"./package.json": "./package.json",
 		"./src/*": "./src/*.ts",
 		"./*": "./dist/*.js"
 	},

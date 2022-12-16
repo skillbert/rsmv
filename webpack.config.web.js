@@ -9,14 +9,14 @@ module.exports = {
 	devtool: false,
 	mode: "development",
 	entry: {
-		viewer: {
+		webviewer: {
 			import: "./src/viewer/",
 			library: {
 				type: "umd",
 				name: { root: "RSMV", amd: "rsmv", commonjs: "rsmv" }
 			}
 		},
-		api: {
+		webapi: {
 			import: "./src/headless/api.ts",
 			library: {
 				type: "umd",
@@ -68,8 +68,10 @@ module.exports = {
 	},
 	output: {
 		filename: "[name].js",
-		chunkFilename: "[contenthash].js",
-		path: path.resolve(__dirname, 'dist/web')
+		chunkFilename: "generated/[contenthash].js",
+		assetModuleFilename: "generated/[contenthash].js",
+		webassemblyModuleFilename: "generated/[contenthash].js",
+		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [
 		new CopyWebpackPlugin({

@@ -2,7 +2,7 @@ import { compressSqlite, decompressSqlite } from "./compression";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type { InitSqlJsStatic, Database } from "sql.js";
 
-require("!file-loader?name=/[name].[ext]!sql.js/dist/sql-wasm-workerfs.wasm");
+require("!file-loader?name=generated/[name].[ext]!sql.js/dist/sql-wasm-workerfs.wasm");
 
 declare global {
 	function postMessage(message: any);
