@@ -573,6 +573,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.emit("select", null);
 	}
+
+	dispose() {
+		this.renderer.dispose();
+	}
 }
 
 export function exportThreeJsGltf(node: THREE.Object3D) {

@@ -7,9 +7,46 @@ import { FileParser } from "../opdecoder";
 import { delay } from "../utils";
 import { cacheMajors } from "../constants";
 
+const maxblocksize = 102400;
 
 type ClientConfig = {
 	[id: string]: string | {}
+}
+
+//TODO get rid of this again
+const handshake1 = new FileParser<any>(["struct",
+	["type", "ubyte"],
+	["length", "ubyte"],
+	["version1", "uint"],
+	["version2", "uint"],
+	["key", "string"],
+	["lang", "ubyte"]
+]);
+
+const handshake2 = new FileParser<any>(["struct",
+	["op", "ubyte"],
+	["tribyte", "unsigned tribyte"],
+	["short1", "ushort"],
+	["version", "ushort"],
+	["short2", "ushort"]
+]);
+const filereq1 = new FileParser<any>(["struct",
+	["mode", "ubyte"],
+	["major", "ubyte"],
+	["minor", "uint"],
+	["version", "ushort"],
+	["short2", "ushort"]
+]);
+
+type PendingFile = {
+	major: number,
+	minor: number,
+	totalBytes: number,
+	result: Buffer[],
+	currentBytes: number,
+	pendingsocket: net.Socket | null,
+	done: (data: Buffer) => void,
+	err: (err: any) => void
 }
 
 export type ParsedClientconfig = ReturnType<typeof parseClientConfig>;
@@ -49,44 +86,6 @@ export async function downloadServerConfig() {
 	return config;
 }
 
-const maxblocksize = 102400;
-
-//TODO get rid of this again
-const handshake1 = new FileParser<any>(["struct",
-	["type", "ubyte"],
-	["length", "ubyte"],
-	["version1", "uint"],
-	["version2", "uint"],
-	["key", "string"],
-	["lang", "ubyte"]
-]);
-
-const handshake2 = new FileParser<any>(["struct",
-	["op", "ubyte"],
-	["tribyte", "unsigned tribyte"],
-	["short1", "ushort"],
-	["version", "ushort"],
-	["short2", "ushort"]
-]);
-const filereq1 = new FileParser<any>(["struct",
-	["mode", "ubyte"],
-	["major", "ubyte"],
-	["minor", "uint"],
-	["version", "ushort"],
-	["short2", "ushort"]
-]);
-
-type PendingFile = {
-	major: number,
-	minor: number,
-	totalBytes: number,
-	result: Buffer[],
-	currentBytes: number,
-	pendingsocket: net.Socket | null,
-	done: (data: Buffer) => void,
-	err: (err: any) => void
-}
-
 class DownloadSocket {
 	pending: PendingFile[] = [];
 	ready: Promise<void>;
@@ -101,7 +100,7 @@ class DownloadSocket {
 		this.config = config;
 		this.socket = new net.Socket();
 		this.socket.on("connect", () => {
-			console.log("connected " + this.socket.remoteAddress);
+			console.log("downloader connected " + this.socket.remoteAddress);
 		});
 		this.socket.on("data", (data) => {
 			this.packetPending.push(data);
@@ -119,7 +118,7 @@ class DownloadSocket {
 	}
 
 	async connect() {
-		this.socket.connect(this.config.port, "91.235.140.197");//TODO change back to config.endpoint
+		this.socket.connect(this.config.port, this.config.endpoint);
 
 		this.socket.write(handshake1.write({
 			type: 15,
@@ -133,8 +132,6 @@ class DownloadSocket {
 		//0=success,6=outdated,48=badkey
 		let res1 = await this.getChunk(1);
 		if (res1.readUint8(0) != 0) { throw new Error("unexpected handshake response"); }
-
-		console.log("connected");
 
 		let tribyte = 5;
 		this.socket.write(handshake2.write({ op: 6, tribyte, short1: this.config.unknownshort1, short2: this.config.unknownshort2, version: this.config.serverVersionMajor }));
@@ -278,7 +275,7 @@ export class CacheDownloader extends DirectCacheFileSource {
 					continue;
 				}
 			}
-			console.log("completed ", major, minor, crc);
+			// console.log("downloaded", major, minor, crc);
 			return decompress(file);
 		}
 		throw new Error("Failed to download matching crc after 10 attemps");

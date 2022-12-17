@@ -35,11 +35,9 @@ export async function runServer(source: CacheFileSource, endpoint: string, auth:
 }
 
 
-export function runConnection(source: CacheFileSource, endpoint: string, auth: string) {
+function runConnection(source: CacheFileSource, endpoint: string, auth: string) {
 	return new Promise<boolean>(async (done, err) => {
 		let engine = await EngineCache.create(source);
-		let scene = new ThreejsSceneCache(engine);
-
 		let ws = new WebSocket(endpoint);
 		let didopen = false;
 		ws.onopen = () => { ws.send(auth); didopen = true; };
@@ -48,6 +46,7 @@ export function runConnection(source: CacheFileSource, endpoint: string, auth: s
 		ws.onmessage = async (msg) => {
 			let packet = JSON.parse(msg.data);
 			try {
+				let scene = new ThreejsSceneCache(engine);
 				if (packet.type == "player") {
 					let ava = await renderAppearance(scene, "player", packet.data);
 					ws.send(JSON.stringify({
@@ -146,12 +145,14 @@ export async function renderAppearance(scene: ThreejsSceneCache, mode: "player" 
 
 	await model.model;
 	await delay(1);
-	render.setCameraPosition(new Vector3(0, 0.85, 2.7));
+	render.setCameraPosition(new Vector3(0, 0.85, 2.75));
 	render.setCameraLimits(new Vector3(0, 0.85, 0));
 
 	let modelfile = Buffer.from(await exportThreeJsGltf(render.getModelNode()));
 	let img = await render.takeCanvasPicture();
 	let imgfile = await pixelsToImageFile(img, "png", 1);
+
+	render.dispose();
 
 	return { imgfile, modelfile };
 }

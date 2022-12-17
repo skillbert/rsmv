@@ -2,7 +2,6 @@
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
 import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect, stringToMapArea } from "../cliparser";
-import * as cmdts from "cmd-ts";
 import { CacheFileSource } from "../cache";
 import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
@@ -18,31 +17,6 @@ import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
 import { chunkSummary } from "./chunksummary";
 import { RSMapChunk } from "../3d/modelnodes";
-
-let cmd = cmdts.command({
-	name: "download",
-	args: {
-		...filesource,
-		mapname: cmdts.option({ long: "mapname", defaultValue: () => "main" }),
-		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
-		auth: cmdts.option({ long: "auth", short: "p" }),
-		mapid: cmdts.option({ long: "mapid", type: cmdts.number })
-	},
-	handler: async (args) => {
-		let output = new CLIScriptOutput();
-		await runMapRender(output, await args.source(), args.mapname, args.endpoint, args.auth, args.mapid, false);
-	}
-});
-
-(async () => {
-	await delay(1);
-	let res = await cmdts.runSafely(cmd, cliArguments());
-	if (res._tag == "error") {
-		console.error(res.error.config.message);
-	} else {
-		console.log("cmd completed", res.value);
-	}
-})();
 
 type Mapconfig = {
 	layers: LayerConfig[],

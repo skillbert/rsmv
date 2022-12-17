@@ -12,19 +12,19 @@
 <body>
 	<div id="app"></div>
 	<script>
-		function loaded(rsmv) {
+		function loaded(rsmv, isweb) {
 			let rootel = document.getElementById("app");
-			rsmv.start(rootel, true);
+			rsmv.start(rootel, isweb);
 		}
 
 		if (typeof require != "undefined") {
 			let rsmvimport = require("../electronviewer.js");
-			loaded(rsmvimport);
+			loaded(rsmvimport, false);
 		} else {
 			let viewerscript = document.createElement("script");
 			viewerscript.src = "../webviewer.js";
 			document.body.appendChild(viewerscript);
-			viewerscript.onload = () => loaded(RSMV);
+			viewerscript.onload = () => loaded(RSMV, true);
 		}
 	</script>
 </body>

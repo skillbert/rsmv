@@ -110,7 +110,7 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: En
 			<input type="button" className="sub-btn" value="extra filter" onClick={e => editFilters(actualfilters.length, () => { })} />
 			<div>{loaded ? `${filtered.length} Matches` : "Loading..."}</div>
 			<div style={{ flex: "1", overflowY: "auto" }}>
-				{filtered.slice(0, 100).map((q, i) => (
+				{filtered.slice(0, 500).map((q, i) => (
 					<div key={q.$fileid} onClick={e => p.onSelect(q.$fileid, q)}>{q.$fileid} - {filters.map(f => getprop(q, f.path, 0).next().value + "").join(", ")}</div>
 				))}
 			</div>
