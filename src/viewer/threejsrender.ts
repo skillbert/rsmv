@@ -605,6 +605,7 @@ export function highlightModelGroup(vertexgroups: { start: number, end: number, 
 	let undos: (() => void)[] = [];
 	for (let submatch of vertexgroups) {
 		let color = submatch.mesh.geometry.getAttribute("color");
+		if (!color) { continue; }
 		let usecolor = submatch.mesh.geometry.getAttribute("_ra_floortex_usescolor");
 		let oldindices: number[] = [];
 		let oldcols: [number, number, number][] = [];

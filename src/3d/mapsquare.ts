@@ -8,9 +8,9 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { ModelMeshData, ModelData } from "./ob3togltf";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache } from "./ob3tothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial } from "./ob3tothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
-import { materialCacheKey, MaterialData } from "./jmat";
+import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
 import * as THREE from "three";
@@ -1210,7 +1210,7 @@ export type PlacedMesh = {
 
 type PlacedModel = {
 	models: PlacedMesh[],
-	material: THREE.Material,
+	material: ParsedMaterial,
 	overlayIndex: number,
 	groupid: string
 }
@@ -1254,7 +1254,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 		let wallgroup: PlacedModel = {
 			models: [],
 			groupid: "walls" + level,
-			material: mat,
+			material: { mat, matmeta: { ...defaultMaterial(), alphamode: "blend" } },
 			overlayIndex: 1
 		}
 
@@ -1303,13 +1303,13 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 			mat.needsUpdate = true;
 			group = {
 				groupid: "mapscenes" + loc.effectiveLevel,
-				material: mat,
+				material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
 				models: [],
 				overlayIndex: 2
 			};
 			floors[loc.effectiveLevel].mapscenes.set(sceneid, group);
 		}
-		let tex = (group.material as MeshBasicMaterial).map! as DataTexture;
+		let tex = (group.material.mat as MeshBasicMaterial).map! as DataTexture;
 
 		const spritescale = 128;
 		let mesh = squareMesh(tex.image.width * spritescale, tex.image.height * spritescale, [255, 255, 255]);
@@ -1849,7 +1849,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 				let matgroup = group.get(matkey);
 				if (!matgroup) {
 					matgroup = {
-						material: await scene.getMaterial(modified.materialId, modified.hasVertexAlpha),
+						material: await scene.getMaterialnopenopenope(modified.materialId, modified.hasVertexAlpha),
 						models: [],
 						groupid: obj.extras.modelgroup,
 						overlayIndex: 0
@@ -1896,7 +1896,8 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		return geo;
 	});
 	let mergedgeo = mergeBufferGeometries(geos);
-	let mesh = new THREE.Mesh(mergedgeo, meshgroup.material);
+	let mesh = new THREE.Mesh(mergedgeo);
+	applyMaterial(mesh, meshgroup.material);
 
 	let count = 0;
 	let counts: number[] = [];
@@ -1994,13 +1995,14 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		for (let i = 0; i < polyprops.length; i++) {
 			const subprop = polyprops[i];
 			let texdata: SimpleTexturePackerAlloc | undefined = undefined;
-			let vertexcolor = true;
+			let whitemix = 0;
 			if (subprop && subprop.material != -1) {
 				let mat = grid.engine.getMaterialData(subprop.material);
 				if (mat.textures.diffuse) {
 					texdata = atlas.map.get(mat.textures.diffuse)!;
 				}
-				vertexcolor = mat.vertexColors;
+				//TODO use linear scale here instead of bool
+				whitemix = mat.vertexColorWhitening;
 			}
 			if (!texdata) {
 				//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
@@ -2017,7 +2019,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + subz) / gridsize) * maxuv;
 
 			texweightbuffer[texweightpointer + i] = (i == currentmat ? 255 : 0);
-			texusescolorbuffer[texusescolorpointer + i] = (vertexcolor ? 255 : 0);
+			texusescolorbuffer[texusescolorpointer + i] = 255 - whitemix * 255;
 		}
 
 		return vertexindex++;

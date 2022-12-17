@@ -18,6 +18,13 @@ import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
+import { materials } from "../../generated/materials";
+
+export type ParsedMaterial = {
+	//TODO rename
+	mat: THREE.Material,
+	matmeta: MaterialData
+}
 
 export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 	mat.customProgramCacheKey = () => "floortex";
@@ -185,7 +192,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 export class ThreejsSceneCache {
 	private modelCache = new Map<number, CachedObject<ModelData>>();
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
-	private threejsMaterialCache = new Map<number, CachedObject<THREE.Material>>();
+	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
 	textureType: "png" | "dds" | "bmp" = "dds";//png support currently incomplete (and seemingly unused by jagex)
 
@@ -216,7 +223,8 @@ export class ThreejsSceneCache {
 		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 	}
 
-	getMaterial(matid: number, hasVertexAlpha: boolean) {
+	//TODO change name back
+	getMaterialnopenopenope(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
 		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
 		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
@@ -296,24 +304,60 @@ export class ThreejsSceneCache {
 					mat.metalness = 1;
 				}
 			}
-			mat.vertexColors = material.vertexColors || hasVertexAlpha;
+			mat.vertexColors = material.vertexColorWhitening != 1 || hasVertexAlpha;
 
-			if (!material.vertexColors && hasVertexAlpha) {
-				mat.customProgramCacheKey = () => "vertexalphaonly";
-				mat.onBeforeCompile = (shader, renderer) => {
-					//this sucks but is nessecary since three doesn't support vertex alpha without vertex color
-					//hard to rewrite the color attribute since we don't know if other meshes do use the colors
-					shader.fragmentShader = shader.fragmentShader.replace("#include <color_fragment>", "diffuseColor.a *= vColor.a;");
-				}
-			}
+			// if (!material.vertexColorWhitening && hasVertexAlpha) {
+			// 	mat.customProgramCacheKey = () => "vertexalphaonly";
+			// 	mat.onBeforeCompile = (shader, renderer) => {
+			// 		//this sucks but is nessecary since three doesn't support vertex alpha without vertex color
+			// 		//hard to rewrite the color attribute since we don't know if other meshes do use the colors
+			// 		shader.fragmentShader = shader.fragmentShader.replace("#include <color_fragment>", "diffuseColor.a *= vColor.a;");
+			// 	}
+			// }
 			mat.userData = material;
 			if (material.uvAnim) {
 				(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = {
 					uvAnim: [material.uvAnim.u, material.uvAnim.v]
 				};
 			}
-			return mat;
+
+			return { mat, matmeta: material };
 		}, mat => 256 * 256 * 4 * 2);
+	}
+}
+
+
+export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
+	let oldcol = mesh.geometry.getAttribute("color");
+	let hasVertexAlpha = !!oldcol && oldcol.count == 4;
+	mesh.material = parsedmat.mat;
+	let needsvertexcolors = parsedmat.matmeta.vertexColorWhitening != 1 || hasVertexAlpha;
+	if (needsvertexcolors) {
+		if (parsedmat.matmeta.vertexColorWhitening != 0) {
+			let vertcount = mesh.geometry.getAttribute("position").count;
+			let oldcol = mesh.geometry.getAttribute("color");
+			let oldfrac = 1 - parsedmat.matmeta.vertexColorWhitening;
+			let whitening = parsedmat.matmeta.vertexColorWhitening;
+			let stride = hasVertexAlpha ? 4 : 3;
+			let buf = new Uint8Array(stride * vertcount);
+			if (hasVertexAlpha && !oldcol) {
+				throw new Error("material has vertex alpha, but mesh doesn't have vertex colors");
+			}
+			for (let i = 0; i < vertcount; i++) {
+				let oldr = (oldcol ? oldcol.getX(i) : 1);
+				let oldg = (oldcol ? oldcol.getY(i) : 1);
+				let oldb = (oldcol ? oldcol.getZ(i) : 1);
+				buf[i * stride + 0] = (oldr * oldfrac + whitening) * 255;
+				buf[i * stride + 1] = (oldg * oldfrac + whitening) * 255;
+				buf[i * stride + 2] = (oldb * oldfrac + whitening) * 255;
+				if (hasVertexAlpha) {
+					buf[i * stride + 3] = oldcol.getW(i);
+				}
+			}
+			mesh.geometry.setAttribute("color", new BufferAttribute(buf, stride, true));
+		}
+	} else if (mesh.geometry.getAttribute("color")) {
+		mesh.geometry.deleteAttribute("color");
 	}
 }
 
@@ -406,16 +450,16 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		if (attrs.boneids) { geo.setAttribute("RA_skinIndex_bone", attrs.boneids); }
 		if (attrs.boneweights) { geo.setAttribute("RA_skinWeight_bone", attrs.boneweights); }
 		geo.index = meshdata.indices;
-		let mat = await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha);
 		//@ts-ignore
 		// mat.wireframe = true;
 		let mesh: THREE.Mesh | THREE.SkinnedMesh;
 		if (attrs.skinids || attrs.boneids) {
-			mesh = new THREE.SkinnedMesh(geo, mat);
+			mesh = new THREE.SkinnedMesh(geo);
 			// (mesh as SkinnedMesh).bind(nullskeleton);
 		} else {
-			mesh = new THREE.Mesh(geo, mat);
+			mesh = new THREE.Mesh(geo);
 		}
+		applyMaterial(mesh, await scene.getMaterialnopenopenope(meshdata.materialId, meshdata.hasVertexAlpha));
 		rootnode.add(mesh);
 	}
 	return rootnode;

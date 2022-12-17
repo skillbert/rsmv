@@ -11,7 +11,7 @@ export type MaterialData = {
 		compound?: number
 	},
 	uvAnim: { u: number, v: number } | undefined,
-	vertexColors: boolean,
+	vertexColorWhitening: number
 	reflectionColor: [number, number, number],//TODO currently unused
 	alphamode: "opaque" | "cutoff" | "blend",
 	alphacutoff: number,
@@ -23,7 +23,7 @@ export function defaultMaterial(): MaterialData {
 	return {
 		textures: {},
 		uvAnim: undefined,
-		vertexColors: true,
+		vertexColorWhitening: 0,
 		reflectionColor: [255, 255, 255],
 		alphamode: "opaque",
 		alphacutoff: 0.1,
@@ -54,8 +54,7 @@ export function convertMaterial(data: Buffer) {
 			let scale = 1 / (1 << 15);
 			mat.uvAnim = { u: (raw.animtexU ?? 0) * scale, v: (raw.animtexV ?? 0) * scale };
 		}
-		//TODO it looks like vertexColorness is non-binary!!
-		mat.vertexColors = !raw.extra || raw.extra.ignoreVertexColors != 255;
+		mat.vertexColorWhitening = (raw.extra ? raw.extra.ignoreVertexColors / 255 : 0);
 		if (raw.extra) {
 			// mat.stripDiffuseAlpha = (raw.extra.unk00_flags & 1) != 0;//TODO this is wrong, makes floor of mapsquare 22,4 black
 			mat.reflectionColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));
@@ -65,7 +64,7 @@ export function convertMaterial(data: Buffer) {
 		let raw = rawparsed.v1;
 		//this is very wrong
 		mat.alphamode = (raw.opaque_2 && !raw.hasUVanimU ? "cutoff" : "blend");
-		mat.vertexColors = false;//!flags.ignore_vertexcol_17;
+		mat.vertexColorWhitening = 1;//!flags.ignore_vertexcol_17;
 		if (raw.diffuse) { mat.textures.diffuse = raw.diffuse.texture; }
 		if (raw.normal) { mat.textures.normal = raw.normal.texture; }
 		if (raw.compound) { mat.textures.compound = raw.compound.texture; }
