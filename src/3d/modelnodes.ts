@@ -123,9 +123,9 @@ export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 export async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
-	let assetid = 93776;//"RuneTek_Asset" jagex test model
+	let assetid = 93808;//"RuneTek_Asset" jagex test model
 	let mods: ModelModifications = {
-		replaceMaterials: [[4314, modelid]]
+		replaceMaterials: [[4311, modelid]]
 	};
 	// modelids = [67768];//is a cube but has transparent vertices
 	// mods.replaceMaterials = [
