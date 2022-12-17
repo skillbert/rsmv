@@ -622,9 +622,9 @@ export function highlightModelGroup(vertexgroups: { start: number, end: number, 
 		for (let i = submatch.start; i < submatch.end; i++) {
 			let index = submatch.mesh.geometry.index?.getX(i) ?? i;
 			oldindices.push(index);
-			color.setXYZ(index, 255, 0, 0);
+			color.setXYZ(index, 1, 0, 0);
 			if (usecolor) {
-				usecolor.setXYZW(index, 255, 255, 255, 255);
+				usecolor.setXYZW(index, 1, 1, 1, 1);
 			}
 		}
 		undos.push(() => {
