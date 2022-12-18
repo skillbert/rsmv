@@ -69,8 +69,8 @@ module.exports = {
 	output: {
 		filename: "[name].js",
 		chunkFilename: "generated/[contenthash].js",
-		assetModuleFilename: "generated/[contenthash].js",
-		webassemblyModuleFilename: "generated/[contenthash].js",
+		assetModuleFilename: "generated/[contenthash][ext]",
+		webassemblyModuleFilename: "generated/[contenthash][ext]",
 		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [
