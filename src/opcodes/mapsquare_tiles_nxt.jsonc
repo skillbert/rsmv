@@ -1,0 +1,61 @@
+{"0x00":{"name":"level0","read":["array",4356,["struct",
+	["flags","ubyte"],
+	["heightcode","ubyte"],
+	["rest",["opt",["flags",0,"eqnot"],["struct",
+		["extraheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["underlay","varushort"],
+		["underlayext",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["overlay","varushort"],
+		["overlayunderwater",["opt",["flags",4,"bitflag"],"varushort"]],
+		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
+			["shape","ubyte"],
+			["shapeunderwater",["opt",["flags",4,"bitflag"],"varushort"]]
+		]]]
+	]]]
+]]},
+"0x01":{"name":"level1","read":["array",4356,["struct",
+	["flags","ubyte"],
+	["heightcode","ubyte"],
+	["rest",["opt",["flags",0,"eqnot"],["struct",
+		["extraheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["underlay","varushort"],
+		["underlayext",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["overlay","varushort"],
+		["overlayunderwater",["opt",["flags",4,"bitflag"],"varushort"]],
+		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
+			["shape","ubyte"],
+			["shapeunderwater",["opt",["flags",4,"bitflag"],"varushort"]]
+		]]]
+	]]]
+]]},
+"0x02":{"name":"level2","read":["array",4356,["struct",
+	["flags","ubyte"],
+	["heightcode","ubyte"],
+	["rest",["opt",["flags",0,"eqnot"],["struct",
+		["extraheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["underlay","varushort"],
+		["underlayext",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["overlay","varushort"],
+		["overlayunderwater",["opt",["flags",4,"bitflag"],"varushort"]],
+		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
+			["shape","ubyte"],
+			["shapeunderwater",["opt",["flags",4,"bitflag"],"varushort"]]
+		]]]
+	]]]
+]]},
+"0x03":{"name":"level3","read":["array",4356,["struct",
+	["flags","ubyte"],
+	["heightcode","ubyte"],
+	["rest",["opt",["flags",0,"eqnot"],["struct",
+		["extraheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["underlay","varushort"],
+		["underlayext",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["overlay","varushort"],
+		["overlayunderwater",["opt",["flags",4,"bitflag"],"varushort"]],
+		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
+			["shape","ubyte"],
+			["shapeunderwater",["opt",["flags",4,"bitflag"],"varushort"]]
+		]]]
+	]]]
+]]}
+}

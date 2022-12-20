@@ -76,6 +76,7 @@ export const parseItem = FileParser.fromJson<import("../generated/items").items>
 export const parseObject = FileParser.fromJson<import("../generated/objects").objects>(require("./opcodes/objects.jsonc"));
 export const parseAchievement = FileParser.fromJson<import("../generated/achievements").achievements>(require("./opcodes/achievements.jsonc"));
 export const parseMapsquareTiles = FileParser.fromJson<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.jsonc"));
+export const parseMapsquareTilesNxt = FileParser.fromJson<import("../generated/mapsquare_tiles_nxt").mapsquare_tiles_nxt>(require("./opcodes/mapsquare_tiles_nxt.jsonc"));
 export const parseMapsquareWaterTiles = FileParser.fromJson<import("../generated/mapsquare_watertiles").mapsquare_watertiles>(require("./opcodes/mapsquare_watertiles.json"));
 export const parseMapsquareUnderlays = FileParser.fromJson<import("../generated/mapsquare_underlays").mapsquare_underlays>(require("./opcodes/mapsquare_underlays.json"));
 export const parseMapsquareOverlays = FileParser.fromJson<import("../generated/mapsquare_overlays").mapsquare_overlays>(require("./opcodes/mapsquare_overlays.json"));

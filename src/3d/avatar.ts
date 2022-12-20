@@ -171,6 +171,7 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			}
 			//have to do some guessing here since the format overflowed and is corrupted
 			let itemid = (slot - 0x4000) & 0xffff;
+			//this still messes up if the wrapped id ends up being 0x00.. , the first 0 byte is parsed as empty slot
 			let file = await scene.engine.getFileById(cacheMajors.items, itemid);
 			let item = parseItem.read(file);
 

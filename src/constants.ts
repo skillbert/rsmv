@@ -31,7 +31,8 @@ export const cacheMajors = {
 export const cacheMapFiles = {
 	locations: 0,
 	squares: 3,
-	squaresWater: 4
+	squaresWater: 4,
+	square_nxt: 5
 }
 
 export const cacheConfigPages = {

@@ -1,6 +1,6 @@
 
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams } from "../opdecoder";
+import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams, parseMapsquareTilesNxt } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
@@ -11,6 +11,7 @@ import { pixelsToImageFile } from "../imgutils";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { getModelHashes } from "../3d/ob3tothree";
 import { GameCacheLoader } from "../cache/sqlite";
+import { FileRange } from "../cliparser";
 
 
 type CacheFileId = {
@@ -357,6 +358,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	animgroupconfigs: { parser: parseAnimgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 
 	maptiles: { parser: parseMapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
+	maptiles_nxt: { parser: parseMapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
 	maplocations: { parser: parseMapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
 
 	frames: { parser: parseFrames, lookup: standardIndex(cacheMajors.frames) },
@@ -401,7 +403,7 @@ export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin
 	...Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)]))
 } as any;
 
-export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: string, edit: boolean, keepbuffers: boolean }) {
+export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange, edit: boolean, keepbuffers: boolean }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
 	let flags: Record<string, string> = {};
@@ -413,16 +415,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 	let batchMaxFiles = args.batchlimit;
 	let batchSubfile = args.batched;
 
-	let parts = args.files.split(",");
-	let ranges = parts.map(q => {
-		let ends = q.split("-");
-		let start = ends[0] ? ends[0].split(".") : [];
-		let end = (ends[0] || ends[1]) ? (ends[1] ?? ends[0]).split(".") : [];
-		return {
-			start: [+(start[0] ?? 0), +(start[1] ?? 0)] as [number, number],
-			end: [+(end[0] ?? Infinity), +(end[1] ?? Infinity)] as [number, number]
-		}
-	});
+	let ranges = args.files;
 
 	let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(source, q.start, q.end))))
 		.flat()

@@ -15,13 +15,18 @@ export async function indexOverview(output: ScriptOutput, outdir: ScriptFS, sour
 		let subfilecount = index.reduce((a, v) => a + v.subindexcount, 0);
 		let maxsubfiles = index.reduce((a, v) => Math.max(a, v.subindexcount), 0);
 		let minsubfiles = index.reduce((a, v) => Math.min(a, v.subindexcount), Infinity);
+		let totalsize = 0;
+		for (let minor of index) { if (minor && minor.size) { totalsize += minor.size; } }
 		let highestindex = index[index.length - 1].minor;
 		let missingminors = highestindex + 1 - minorcount;
-		let avgsubfiles = subfilecount / minorcount;
+		let avgsubfiles = +(subfilecount / minorcount).toFixed(2);
+		let avgsize = Math.round(totalsize / minorcount);
+		let avgsubsize = Math.round(totalsize / subfilecount);
+		let totalsizemb = Math.round(totalsize / 1000) / 1000;
 
 		let name = Object.entries(cacheMajors).find(([name, id]) => id == indexfile.minor)?.[0] ?? `unknown`;
 
-		majors.push({ major: indexfile.minor, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles });
+		majors.push({ major: indexfile.minor, name, minorcount, subfilecount, highestindex, missingminors, avgsubfiles, maxsubfiles, minsubfiles, totalsizemb, avgsize, avgsubsize });
 	}
 	let configs: any[] = [];
 	let configindices = await source.getCacheIndex(cacheMajors.config);

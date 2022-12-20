@@ -1,5 +1,5 @@
 import { ThreejsSceneCache, EngineCache } from '../3d/ob3tothree';
-import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture } from '../utils';
+import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture, ModelModifications, stringToFileRange, stringToMapArea } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { MapRect, TileGrid, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
@@ -9,7 +9,6 @@ import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
-import { stringToMapArea } from "../cliparser";
 import { cacheFileJsonModes, extractCacheFiles, cacheFileDecodeModes } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View } from "./scriptsui";
@@ -24,6 +23,9 @@ import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStr
 import { items } from "../../generated/items";
 import { itemToModel, locToModel, materialToModel, modelToModel, npcToModel, playerDataToModel, playerToModel, primitiveModelInits, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
+import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
+import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
+import { FileParser } from '../opdecoder';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -899,6 +901,86 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 	return [visible, loadedModel, idref.current, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
 }
 
+async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: "mat" | "underlay" | "overlay", id: number }) {
+
+	let matid = -1;
+	let color = [255, 0, 255];
+	let overlay: mapsquare_overlays | null = null;
+	let underlay: mapsquare_underlays | null = null;
+	if (reqid.mode == "overlay") {
+		overlay = sceneCache.engine.mapOverlays[reqid.id];
+		if (overlay.material) { matid = overlay.material; }
+		if (overlay.primary_colour) { color = overlay.primary_colour; }
+	} else if (reqid.mode == "underlay") {
+		underlay = sceneCache.engine.mapUnderlays[reqid.id];
+		if (underlay.material) { matid = underlay.material; }
+		if (underlay.color) { color = underlay.color; }
+	} else if (reqid.mode == "mat") {
+		matid = reqid.id;
+	} else {
+		throw new Error("invalid materialish mode");
+	}
+
+
+	let assetid = 93808;//"RuneTek_Asset" jagex test model
+	let mods: ModelModifications = {
+		replaceMaterials: [[4311, matid]],
+		replaceColors: [[20287, HSL2packHSL(...RGB2HSL(...color as [number, number, number]))]]
+	};
+	let mat = sceneCache.engine.getMaterialData(matid);
+	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
+	let addtex = async (name: string, texid: number) => {
+		let tex = await sceneCache.getTextureFile(texid, mat.stripDiffuseAlpha && name == "diffuse");
+		let drawable = await tex.toWebgl();
+
+		texs[name] = { texid, filesize: tex.filesize, img0: drawable };
+	}
+	for (let tex in mat.textures) {
+		if (mat.textures[tex] != 0) {
+			await addtex(tex, mat.textures[tex]);
+		}
+	}
+	return {
+		models: [{ modelid: assetid, mods }],
+		anims: {},
+		info: { overlay, underlay, texs, obj: mat },
+		id: reqid
+	};
+}
+
+function SceneMaterialIsh(p: LookupModeProps) {
+	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialIshToModel);
+
+	let initid = id ?? { mode: "mat", id: 0 };
+	return (
+		<React.Fragment>
+			<IdInput onChange={v => setId({ ...initid, id: v })} initialid={initid.id} />
+			<div onChange={v => setId({ mode: (v.target as any).value, id: initid.id })}>
+				<label><input type="radio" name="mattype" value="mat" checked={initid.mode == "mat"} />Material</label>
+				<label><input type="radio" name="mattype" value="underlay" checked={initid.mode == "underlay"} />Underlay</label>
+				<label><input type="radio" name="mattype" value="overlay" checked={initid.mode == "overlay"} />Overlay</label>
+			</div>
+			{id == null && (
+				<React.Fragment>
+					<p>Enter a material id.</p>
+					<p>Materials define how a piece of geometry looks, besides the color texture they also define how the model interacts with light to create highlights and reflections.</p>
+				</React.Fragment>
+			)}
+			<div className="mv-sidebar-scroll">
+				{data && Object.entries(data.info.texs).map(([name, img]) => (
+					<div key={name}>
+						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
+						<ImageDataView img={img.img0} />
+					</div>
+				))}
+				{data?.info.overlay && <JsonDisplay obj={data?.info.overlay} />}
+				{data?.info.underlay && <JsonDisplay obj={data?.info.underlay} />}
+				<JsonDisplay obj={data?.info.obj} />
+			</div>
+		</React.Fragment>
+	)
+}
+
 function SceneMaterial(p: LookupModeProps) {
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialToModel);
 
@@ -1386,7 +1468,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 }
 
 function ExtractFilesScript(p: UiScriptProps) {
-	let [files, setFiles] = React.useState("");
+	let [filestext, setFilestext] = React.useState("");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>("items");
 	let [batched, setbatched] = React.useState(true);
 	let [keepbuffers, setkepbuffers] = React.useState(false);
@@ -1394,6 +1476,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 	let run = () => {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
+		let files = stringToFileRange(filestext);
 		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers });
 		p.onRun(output);
 	}
@@ -1407,7 +1490,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 				</select>
 			</LabeledInput>
 			<LabeledInput label="File ranges">
-				<InputCommitted type="text" onChange={e => setFiles(e.currentTarget.value)} value={files} />
+				<InputCommitted type="text" onChange={e => setFilestext(e.currentTarget.value)} value={filestext} />
 			</LabeledInput>
 			<div><label><input type="checkbox" checked={batched} onChange={e => setbatched(e.currentTarget.checked)} />Concatenate group files</label></div>
 			<div><label><input type="checkbox" checked={keepbuffers} onChange={e => setkepbuffers(e.currentTarget.checked)} />Keep binary buffers (can be very large)</label></div>
@@ -1525,6 +1608,7 @@ function CacheDiffScript(p: UiScriptProps) {
 
 function TestFilesScript(p: UiScriptProps) {
 	let [mode, setMode] = React.useState("");
+	let [range, setRange] = React.useState("");
 
 	let run = () => {
 		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
@@ -1532,7 +1616,12 @@ function TestFilesScript(p: UiScriptProps) {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("output")
 		let opts = defaultTestDecodeOpts();
-		output.run(testDecode, outdir, p.source, modeobj, opts);
+		//TODO remove or make ui
+		if (globalThis.fileparser) {
+			modeobj = { ...modeobj };
+			modeobj.parser = new FileParser(globalThis.fileparser);
+		}
+		output.run(testDecode, outdir, p.source, modeobj, stringToFileRange(range), opts);
 		p.onRun(output);
 	}
 
@@ -1543,6 +1632,9 @@ function TestFilesScript(p: UiScriptProps) {
 				<select value={mode} onChange={e => setMode(e.currentTarget.value)}>
 					{Object.keys(cacheFileJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
 				</select>
+			</LabeledInput>
+			<LabeledInput label="file range">
+				<input type="text" onChange={e => setRange(e.currentTarget.value)} value={range} />
 			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
@@ -1593,7 +1685,7 @@ const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeP
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,
-	material: SceneMaterial,
+	material: SceneMaterialIsh,
 	npc: SceneNpc,
 	object: SceneLocation,
 	spotanim: SceneSpotAnim,

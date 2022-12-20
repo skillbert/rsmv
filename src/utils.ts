@@ -23,6 +23,28 @@ export type Stream = {
 	bytesLeft(): number;
 }
 
+export function stringToMapArea(str: string) {
+	let [x, z, xsize, zsize] = str.split(/[,\.\/:;]/).map(n => +n);
+	xsize = xsize ?? 1;
+	zsize = zsize ?? xsize;
+	if (isNaN(x) || isNaN(z) || isNaN(xsize) || isNaN(zsize)) { return null; }
+	return { x, z, xsize, zsize };
+}
+
+export function stringToFileRange(str: string) {
+	let parts = str.split(",");
+	let ranges = parts.map(q => {
+		let ends = q.split("-");
+		let start = ends[0] ? ends[0].split(".") : [];
+		let end = (ends[0] || ends[1]) ? (ends[1] ?? ends[0]).split(".") : [];
+		return {
+			start: [+(start[0] ?? 0), +(start[1] ?? 0)] as [number, number],
+			end: [+(end[0] ?? Infinity), +(end[1] ?? Infinity)] as [number, number]
+		}
+	});
+	return ranges;
+}
+
 export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData  | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
 	const cnv = ctx.canvas;
 	if ("data" in img) {

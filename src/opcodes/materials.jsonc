@@ -103,6 +103,6 @@
 		["alphamode","ubyte"],//0,1,2
 		["alphacutoff",["opt",["alphamode",1],"ubyte"]],//127 most of the time
 		["unkFFFF",["buffer",2,"hex"]],
-		["endbyte","ubyte"]//always 1-4
+		["endbyte","ubyte"]//usually equal to max texture size always 0-4
 	]]]
 ]

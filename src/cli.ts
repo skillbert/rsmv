@@ -1,4 +1,4 @@
-import { filesource, cliArguments, ReadCacheSource } from "./cliparser";
+import { filesource, cliArguments, ReadCacheSource, filerange } from "./cliparser";
 import { run, command, option, flag } from "cmd-ts";
 import * as fs from "fs";
 import * as path from "path";
@@ -15,10 +15,11 @@ const testdecode = command({
 	name: "testdecode",
 	args: {
 		...filesource,
+		...filerange,
 		mode: option({ long: "mode", short: "m" })
 	},
 	handler: async (args) => {
-		const errdir = new CLIScriptFS("./cache5/errs");
+		const errdir = new CLIScriptFS("./cache9/errs");
 		let olderrfiles = await errdir.readDir(".");
 		if (olderrfiles.find(q => !q.match(/^err/))) {
 			throw new Error("file not starting with 'err' in error dir");
@@ -29,7 +30,7 @@ const testdecode = command({
 		let source = await args.source();
 		let mode = cacheFileJsonModes[args.mode];
 		if (!mode) { throw new Error(`mode ${args.mode} not found, possible modes: ${Object.keys(cacheFileJsonModes).join(", ")}`) }
-		await output.run(testDecode, errdir, source, mode, defaultTestDecodeOpts());
+		await output.run(testDecode, errdir, source, mode, args.files, defaultTestDecodeOpts());
 	}
 });
 
@@ -37,9 +38,9 @@ const extract = command({
 	name: "extract",
 	args: {
 		...filesource,
+		...filerange,
 		save: option({ long: "save", short: "s", type: cmdts.string, defaultValue: () => "extract" }),
 		mode: option({ long: "mode", short: "m", type: cmdts.string, defaultValue: () => "bin" }),
-		files: option({ long: "ids", short: "i", type: cmdts.string, defaultValue: () => "" }),
 		edit: flag({ long: "edit", short: "e" }),
 		fixhash: flag({ long: "fixhash", short: "h" }),
 		batched: flag({ long: "batched", short: "b" }),

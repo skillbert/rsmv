@@ -1,7 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
-import { runCliApplication, cliArguments, filesource, mapareasource, mapareasourceoptional, Rect, stringToMapArea } from "../cliparser";
 import { CacheFileSource } from "../cache";
 import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
@@ -12,7 +11,7 @@ import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
-import { delay } from "../utils";
+import { delay, stringToMapArea } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
 import { chunkSummary } from "./chunksummary";

@@ -3,6 +3,7 @@ import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./extractfiles";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser } from "../opdecoder";
+import { FileRange } from "../cliparser";
 
 
 export type DecodeErrorJson = {
@@ -21,24 +22,24 @@ export function defaultTestDecodeOpts() {
 		skipMinorAfterError: false,
 		skipFilesizeAfterError: false,
 		memlimit: 200e6,
+		maxerrs: 20,
 		orderBySize: false,
 		outmode: "json" as Outputmode
 	};
 }
 
-export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, opts: ReturnType<typeof defaultTestDecodeOpts>) {
+export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, ranges: FileRange, opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
 	let memuse = 0;
 	let errminors: number[] = [];
 	let errfilesizes: number[] = [];
-	let maxerrs = 20;
 	let errorcount = 0;
 	let nsuccess = 0;
 	let lastProgress = Date.now();
 
 	let fileiter: () => AsyncGenerator<DecodeEntry>;
 
-	let files = await mode.lookup.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
+	let files = (await Promise.all(ranges.map(q => mode.lookup.logicalRangeToFiles(source, q.start, q.end)))).flat();
 
 	//pre-sort to get more small file under mem limit
 	// files.sort((a, b) => (a.index.size ?? 0) - (b.index.size ?? 0));
@@ -105,7 +106,7 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 				}
 			}
 		}
-		return errorcount < maxerrs;
+		return errorcount < opts.maxerrs;
 	}
 
 	for await (let file of fileiter()) {
