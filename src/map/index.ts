@@ -1,5 +1,5 @@
 
-import { ThreeJsRenderer } from "../viewer/threejsrender";
+import { disposeThreeTree, ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import type { Material, Object3D } from "three";
@@ -379,43 +379,6 @@ export class MapRenderer {
 		}
 		return load;
 	}
-}
-
-function disposeThreeTree(node: THREE.Object3D | null) {
-	if (!node) { return; }
-
-	const cleanMaterial = (material: Material) => {
-		count++;
-		material.dispose();
-
-		// dispose textures
-		for (const key of Object.keys(material)) {
-			const value = material[key]
-			if (value && typeof value === 'object' && 'minFilter' in value) {
-				value.dispose();
-				count++;
-			}
-		}
-	}
-
-	let count = 0;
-	(node as any).traverse((object: any) => {
-		if (!object.isMesh) return
-
-		count++;
-		object.geometry.dispose();
-
-		if (object.material.isMaterial) {
-			cleanMaterial(object.material);
-		} else {
-			// an array of materials
-			for (const material of object.material) {
-				cleanMaterial(material);
-			}
-		}
-	});
-
-	console.log("disposed scene objects", count);
 }
 
 export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRenderer, engine: EngineCache, deps: DependencyGraph, rects: MapRect[], config: MapRender, progress: ProgressUI) {
