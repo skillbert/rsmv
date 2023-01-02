@@ -81,9 +81,9 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 
 	async downloadFile(major: number, minor: number) {
 		let url = `${endpoint}/caches/runescape/${this.cachename}/archives/${major}/groups/${minor}.dat`;
-		console.log(url);
+		// console.log(url);
 		const req = await fetch(url);
-		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor}, http code: ${req.status}`); }
+		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor} from openrs2 ${this.cachename}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
 		//at least make sure we are aware if we're ddossing someone....
 		if (Math.floor(this.totalbytes / 10_000_000) != Math.floor((this.totalbytes + buf.byteLength) / 10_000_000)) {

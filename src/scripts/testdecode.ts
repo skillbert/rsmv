@@ -4,6 +4,10 @@ import { JsonBasedFile } from "./extractfiles";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser } from "../opdecoder";
 import { FileRange } from "../cliparser";
+import { compareCacheMajors } from "./cachediff";
+import { GameCacheLoader } from "../cache/sqlite";
+import { Openrs2CacheSource } from "../cache/openrs2loader";
+import { cacheMajors } from "../constants";
 
 
 export type DecodeErrorJson = {
@@ -26,6 +30,63 @@ export function defaultTestDecodeOpts() {
 		orderBySize: false,
 		outmode: "json" as Outputmode
 	};
+}
+
+export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS, basecache: CacheFileSource | null, before = "") {
+	type CacheInput = { source: CacheFileSource, info: string, date: number };
+	let cachelist: CacheInput[] = [];
+	if (basecache) {
+		cachelist.push({ source: basecache, info: "base cache", date: Date.now() });
+	}
+	let allcaches = await Openrs2CacheSource.getCacheIds();
+	let checkedcaches = allcaches.filter(q => q.language == "en" && q.environment == "live" && q.game == "runescape" && q.timestamp)
+		.sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
+	cachelist.push(...checkedcaches.map(q => {
+		let date = new Date(q.timestamp ?? "");
+		return {
+			source: new Openrs2CacheSource(q.id + ""),
+			info: `historic ${date.toDateString()}`,
+			date: +date
+		};
+	}));
+
+	output.log(cachelist.map(q => `${q.source.getCacheName()} - ${q.info}`));
+
+	let checkedmajors = [cacheMajors.items, cacheMajors.mapsquares, cacheMajors.config, cacheMajors.materials, cacheMajors.npcs, cacheMajors.objects];
+
+	for (let i = 0; i < cachelist.length; i++) {
+		let prevcache = cachelist[i - 1] as CacheInput | undefined;
+		let currentcache = cachelist[i];
+
+		if (before) {
+			if (currentcache.date > +new Date(before)) { continue }
+		}
+
+		let errorcount = 0;
+
+		output.log(`starting cache check ${currentcache.source.getCacheName()} - ${currentcache.info}, diffing from: ${prevcache?.source.getCacheName() ?? "none"} ${prevcache?.info ?? ""}`)
+		for (let major of checkedmajors) {
+			let changes = await compareCacheMajors(output, prevcache?.source, currentcache.source, major);
+			for (let change of changes) {
+				if (change.type == "add" || change.type == "edit") {
+					if (!change.after) { throw new Error("after file expected"); }
+					if (change.action.parser) {
+						let res = testDecodeFile(change.action.parser, "hextext", change.after, {});
+						if (!res.success) {
+							let errlocation = change.action.getFileName(change.major, change.minor, change.subfile);
+							let filename = `${currentcache.source.getCacheName().replace(/\W/g, "_")}_${errlocation}`;
+							output.log(`error in ${change.action.name} ${errlocation}`);
+							outdir.writeFile(filename, res.errorfile);
+							errorcount++;
+						}
+					}
+				}
+			}
+		}
+		if (errorcount != 0) {
+			output.log(`${errorcount} errors in ${currentcache.source.getCacheName()}`);
+		}
+	}
 }
 
 export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, ranges: FileRange, opts: ReturnType<typeof defaultTestDecodeOpts>) {
@@ -174,8 +235,9 @@ export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, bu
 				let chunks: Buffer[] = [];
 				let outindex = 0;
 				for (let chunk of err.chunks) {
-					chunks.push(Buffer.from(chunk.bytes, "hex"));
-					outindex += chunk.bytes.length;
+					let databytes = Buffer.from(chunk.bytes, "hex");
+					chunks.push(databytes);
+					outindex += databytes.length;
 					let opstr = chunk.text.slice(0, 6).padStart(6, "\0");
 					let minfill = opstr.length + 1;
 					let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + minfill) / 16) * 16 - outindex);
@@ -195,7 +257,7 @@ export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, bu
 				chunks.push(Buffer.alloc(fillsize, 0xff));
 				chunks.push(Buffer.from(err.error, "ascii"));
 				chunks.push(Buffer.alloc(5));
-				chunks.push(Buffer.from(err.state, "ascii"));
+				chunks.push(Buffer.from(JSON.stringify(err.state), "ascii"));
 
 				errorfile = Buffer.concat(chunks);
 			}

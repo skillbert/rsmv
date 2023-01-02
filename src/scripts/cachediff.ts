@@ -1,7 +1,7 @@
 import { filesource, cliArguments, ReadCacheSource } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf, optional } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { FileParser, parseAchievement, parseEnums, parseItem, parseMaterials, parseModels, parseNpc } from "../opdecoder";
+import { FileParser, parseAchievement, parseEnums, parseItem, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseModels, parseNpc } from "../opdecoder";
 import { DepTypes } from "./dependencies";
 import { parseObject } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, fileIdToArchiveminor } from "../cache";
@@ -40,8 +40,17 @@ function worldmapFilename(major: number, minor: number, subfile: number) {
 	const worldStride = 128;
 	return `mapsquare-${minor % worldStride}_${Math.floor(minor / worldStride)}`;
 }
+function subfileFilename(major: number, minor: number, subfile: number) {
+	return subfile + "";
+}
 
-let majormap: Record<number, FileAction> = {
+let configmap: Record<number, FileAction> = {
+	[cacheConfigPages.mapoverlays]: { name: "overlays", comparesubfiles: true, parser: parseMapsquareOverlays, isTexture: false, getFileName: subfileFilename },
+	[cacheConfigPages.mapunderlays]: { name: "underlays", comparesubfiles: true, parser: parseMapsquareUnderlays, isTexture: false, getFileName: subfileFilename },
+	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parseMapscenes, isTexture: false, getFileName: subfileFilename }
+}
+
+let majormap: Record<number, FileAction | ((major: number, minor: number) => FileAction)> = {
 	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parseObject, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parseItem, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parseNpc, isTexture: false, getFileName: chunkedIndexName },
@@ -53,31 +62,45 @@ let majormap: Record<number, FileAction> = {
 	[cacheMajors.texturesBmp]: { name: "texturesBmp", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
 	[cacheMajors.texturesDds]: { name: "texturesDds", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
 	[cacheMajors.texturesPng]: { name: "texturesPng", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
-}
-function getMajorAction(major: number) {
-	let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `unk_${major}`;
-	let action = majormap[major] ?? { name: majorname, comparesubfiles: false, parser: null, isTexture: false, getFileName: standardName };
-	return action;
+	[cacheMajors.config]: (major, minor) => configmap[minor]
 }
 
-export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFileSource, sourceb: CacheFileSource, major: number) {
-	let indexa = await sourcea.getCacheIndex(major);
+function defaultAction(major: number) {
+	let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `unk_${major}`;
+	let r: FileAction = { name: majorname, comparesubfiles: false, parser: null, isTexture: false, getFileName: standardName };
+	return r;
+}
+
+export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFileSource | null | undefined, sourceb: CacheFileSource, major: number) {
+	//source a can be empty, allow diffing to nothing
+	let indexa = sourcea ? await sourcea.getCacheIndex(major) : [];
 	let indexb = await sourceb.getCacheIndex(major);
 	let len = Math.max(indexa.length, indexb.length);
 
 	let changes: FileEdit[] = [];
-	let action = getMajorAction(major);
-	output.log(`checking major ${major} ${action.name} subfiles:${action.comparesubfiles}`);
+	let actionarg = majormap[major] ?? defaultAction(major);
+	if (typeof actionarg == "function") {
+		output.log(`checking major ${major}, different settings per minor`);
+	} else {
+		output.log(`checking major ${major} ${actionarg.name} subfiles:${actionarg.comparesubfiles}`);
+	}
 
 	for (let i = 0; i < len; i++) {
 		if (output.state != "running") { break; }
+
+		var action = (typeof actionarg == "function" ? actionarg(major, i) ?? defaultAction(major) : actionarg);
+
 		let metaa = indexa[i], metab = indexb[i];
 		if (metaa || metab) {
 			if (!metaa || !metab || metaa.version != metab.version) {
 				if (action.comparesubfiles) {
-					let archa = (metaa ? await sourcea.getFileArchive(metaa) : []);
-					let archb = (metab ? await sourceb.getFileArchive(metab) : []);
-
+					try {
+						var archa = (metaa && sourcea ? await sourcea.getFileArchive(metaa) : []);
+						var archb = (metab ? await sourceb.getFileArchive(metab) : []);
+					} catch (e) {
+						output.log((e as Error).message);
+						continue;
+					}
 					for (let a = 0, b = 0; ;) {
 						let filea = archa[a], fileb = archb[b];
 						if (filea && (!fileb || filea.fileid < fileb.fileid)) {
@@ -109,27 +132,34 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 						}
 					}
 				} else {
+					try {
+						var filea = (metaa && sourcea ? await sourcea.getFile(metaa.major, metaa.minor, metaa.crc) : null);
+						var fileb = (metab ? await sourceb.getFile(metab.major, metab.minor, metab.crc) : null);
+					} catch (e) {
+						output.log((e as Error).message);
+						continue;
+					}
 					if (!metaa) {
 						changes.push({
 							type: "add", major: metab.major, minor: metab.minor,
 							subfile: -1, action,
 							before: null,
-							after: await sourceb.getFile(metab.major, metab.minor, metab.crc).catch(() => null)
+							after: fileb
 						});
-					}
-					else if (!metab) {
+					} else if (!metab) {
+						if (!sourcea) { debugger; }
 						changes.push({
 							type: "delete", major: metaa.major, minor: metaa.minor,
 							subfile: -1, action,
-							before: await sourcea.getFile(metaa.major, metaa.minor, metaa.crc).catch(() => null),
+							before: filea,
 							after: null
 						});
 					} else {
 						changes.push({
 							type: "edit", major: metaa.major, minor: metaa.minor,
 							subfile: -1, action,
-							before: await sourcea.getFile(metaa.major, metaa.minor, metaa.crc).catch(() => null),
-							after: await sourceb.getFile(metab.major, metab.minor, metab.crc).catch(() => null)
+							before: filea,
+							after: fileb
 						});
 					}
 				}

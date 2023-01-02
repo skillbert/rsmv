@@ -57,9 +57,8 @@ export class CLIScriptFS implements ScriptFS {
 export class CLIScriptOutput implements ScriptOutput {
 	state: ScriptState = "running";
 
-	log(...args: any[]) {
-		console.log(...args);
-	}
+	//bind instead of call so the original call site is retained while debugging
+	log = console.log.bind(console);
 
 	setUI(ui: HTMLElement | null) {
 		if (ui && typeof document != "undefined") {

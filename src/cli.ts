@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes, writeCacheFiles } from "./scripts/extractfiles";
 import { CLIScriptFS, CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
-import { defaultTestDecodeOpts, testDecode } from "./scripts/testdecode";
+import { defaultTestDecodeOpts, testDecode, testDecodeHistoric } from "./scripts/testdecode";
 import * as cmdts from "cmd-ts";
 import { indexOverview } from "./scripts/indexoverview";
 import { diffCaches } from "./scripts/cachediff";
@@ -33,6 +33,21 @@ const testdecode = command({
 		await output.run(testDecode, errdir, source, mode, args.files, defaultTestDecodeOpts());
 	}
 });
+
+const historicdecode = command({
+	name: "historicdecode",
+	args: {
+		...filesource,
+		skipcurrent: flag({ long: "skipcurrent", short: "p", description: "skip current cache" }),
+		before: option({ long: "before", short: "t", defaultValue: () => "" })
+	},
+	async handler(args) {
+		let startcache = await args.source();
+		let output = new CLIScriptOutput();
+		let fs = new CLIScriptFS("./cache-histerr");
+		await output.run(testDecodeHistoric, fs, startcache, args.before);
+	}
+})
 
 const extract = command({
 	name: "extract",
@@ -137,7 +152,7 @@ const scrapeavatars = command({
 
 let subcommands = cmdts.subcommands({
 	name: "cache tools cli",
-	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit }
+	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode }
 });
 
 cmdts.run(subcommands, cliArguments());

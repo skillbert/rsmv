@@ -79,8 +79,8 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 		if (!loadprom.current) {
 			loadprom.current = Openrs2CacheSource.getCacheIds().then(caches => {
 
-				let relevant = caches.filter(q => q.language == "en" && q.sources.includes("Jagex") && q.environment == "live" && q.game == "runescape")
-					.sort((a, b) => +new Date(b.timestamp ?? "") - +new Date(a.timestamp ?? ""));
+				let relevant = caches.filter(q => q.language == "en" && q.sources.includes("Jagex") && q.environment == "live" && q.game == "runescape" && q.timestamp)
+					.sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
 
 				return { caches, relevant };
 			});
