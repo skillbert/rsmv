@@ -29,7 +29,6 @@ export type Openrs2CacheMeta = {
 export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
-	majors: cache.CacheIndex[];
 	totalbytes = 0;
 
 	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
@@ -38,12 +37,11 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
-		return new Openrs2CacheSource(meta.meta, meta.majors);
+		return new Openrs2CacheSource(meta.meta);
 	}
-	private constructor(meta: Openrs2CacheMeta, majors: cache.CacheIndex[]) {
+	constructor(meta: Openrs2CacheMeta) {
 		super(false);
 		this.meta = meta;
-		this.majors = majors;
 		if (meta.builds.length != 0) {
 			this.buildnr = meta.builds[0].major;
 		} else {
@@ -155,10 +153,5 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 
 	async getFile(major: number, minor: number, crc?: number) {
 		return decompress(await this.downloadFile(major, minor));
-	}
-
-	async getCacheIndex(major: number) {
-		if (major == cacheMajors.index) { return this.majors; }
-		else { return super.getCacheIndex(major); }
 	}
 }
