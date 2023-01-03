@@ -2,7 +2,7 @@ import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./extractfiles";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
-import { FileParser } from "../opdecoder";
+import { FileParser, parse } from "../opdecoder";
 import { FileRange } from "../cliparser";
 import { compareCacheMajors } from "./cachediff";
 import { GameCacheLoader } from "../cache/sqlite";
@@ -34,50 +34,67 @@ export function defaultTestDecodeOpts() {
 
 export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS, basecache: CacheFileSource | null, before = "") {
 	type CacheInput = { source: CacheFileSource, info: string, date: number };
-	let cachelist: CacheInput[] = [];
-	if (basecache) {
-		cachelist.push({ source: basecache, info: "base cache", date: Date.now() });
-	}
+
+	//mislabeled or otherwise broken caches
+	const openrs2Blacklist = [423];
+
+	let beforeDate = new Date(before);
 	let allcaches = await Openrs2CacheSource.getCacheIds();
-	let checkedcaches = allcaches.filter(q => q.language == "en" && q.environment == "live" && q.game == "runescape" && q.timestamp)
-		.sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
-	cachelist.push(...checkedcaches.map(q => {
-		let date = new Date(q.timestamp ?? "");
-		return {
-			source: new Openrs2CacheSource(q.id + ""),
-			info: `historic ${date.toDateString()}`,
-			date: +date
-		};
-	}));
+	let checkedcaches = allcaches.filter(q =>
+		q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
+		&& q.game == "runescape" && q.timestamp && (!before || new Date(q.timestamp) < beforeDate) && q.builds.length != 0
+	).sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
 
-	output.log(cachelist.map(q => `${q.source.getCacheName()} - ${q.info}`));
+	// output.log(cachelist.map(q => `${q.source.getCacheName()} - ${q.info}`).slice(0, 20));
 
-	let checkedmajors = [cacheMajors.items, cacheMajors.mapsquares, cacheMajors.config, cacheMajors.materials, cacheMajors.npcs, cacheMajors.objects];
+	let checkedmajors = [
+		// cacheMajors.config,
+		// cacheMajors.materials,
+		cacheMajors.items,
+		// cacheMajors.npcs,
+		// cacheMajors.objects,
+		// cacheMajors.mapsquares
+	];
 
-	for (let i = 0; i < cachelist.length; i++) {
-		let prevcache = cachelist[i - 1] as CacheInput | undefined;
-		let currentcache = cachelist[i];
-
-		if (before) {
-			if (currentcache.date > +new Date(before)) { continue }
+	let caches = async function* (): AsyncGenerator<CacheInput> {
+		if (!before && basecache) {
+			yield { source: basecache, info: "base cache", date: Date.now() };
 		}
+		for (let src of checkedcaches) {
+			let cache = await Openrs2CacheSource.fromId(src.id);
+			let date = new Date(src.timestamp ?? "");
+			yield {
+				source: cache,
+				info: `historic ${date.toDateString()}`,
+				date: +date
+			};
+		}
+	}
 
-		let errorcount = 0;
+	let prevcache: CacheInput | null = null;
+	let currentcache: CacheInput | null = null;
+	for await (let nextcache of caches()) {
+		prevcache = currentcache;
+		currentcache = nextcache;
+		if (before && !prevcache) { continue; }
 
 		output.log(`starting cache check ${currentcache.source.getCacheName()} - ${currentcache.info}, diffing from: ${prevcache?.source.getCacheName() ?? "none"} ${prevcache?.info ?? ""}`)
+		let errorcount = 0;
+
 		for (let major of checkedmajors) {
 			let changes = await compareCacheMajors(output, prevcache?.source, currentcache.source, major);
 			for (let change of changes) {
 				if (change.type == "add" || change.type == "edit") {
 					if (!change.after) { throw new Error("after file expected"); }
 					if (change.action.parser) {
-						let res = testDecodeFile(change.action.parser, "hextext", change.after, {});
+						let res = testDecodeFile(change.action.parser, "hextext", change.after, currentcache.source);
 						if (!res.success) {
 							let errlocation = change.action.getFileName(change.major, change.minor, change.subfile);
 							let filename = `${currentcache.source.getCacheName().replace(/\W/g, "_")}_${errlocation}`;
 							output.log(`error in ${change.action.name} ${errlocation}`);
 							outdir.writeFile(filename, res.errorfile);
 							errorcount++;
+							if (errorcount >= 20) { break; }
 						}
 					}
 				}
@@ -149,7 +166,7 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 			output.log("progress, file ", file.major, file.minor, file.subfile);
 			lastProgress = Date.now();
 		}
-		let res = testDecodeFile(mode.parser, opts.outmode, file.file, {});
+		let res = testDecodeFile(mode.parser, opts.outmode, file.file, source);
 
 		if (output.state == "running") {
 			if (res.success) {
@@ -184,7 +201,7 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 }
 
 
-export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, buffer: Buffer, args?: Record<string, any>) {
+export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, buffer: Buffer, source: CacheFileSource, args?: Record<string, any>) {
 	getDebug(true);
 	let state: DecodeState = {
 		buffer: buffer,
@@ -194,7 +211,8 @@ export function testDecodeFile(decoder: FileParser<any>, outmode: Outputmode, bu
 		startoffset: 0,
 		endoffset: buffer.byteLength,
 		args: args ?? {},
-		keepBufferJson: false
+		keepBufferJson: false,
+		clientVersion: source.getBuildNr()
 	};
 	try {
 		let res = decoder.readInternal(state);

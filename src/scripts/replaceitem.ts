@@ -3,7 +3,7 @@ import * as path from "path";
 import { promisify } from "util";
 import * as cache from "../cache";
 import { promises as fs } from "fs";
-import { parseItem } from "../opdecoder";
+import { parse } from "../opdecoder";
 import * as opdecoder from "../opdecoder";
 
 //TODO move to new cli parser
@@ -36,7 +36,7 @@ async function run(cachedir: string, jsondir: string, replaceid: number) {
 			if (itemid == replaceid) {
 				let jsonfile = JSON.parse(await fs.readFile(path.resolve(jsondir, `${itemid}.json`), "utf-8"))
 
-				let newfile = parseItem.write(jsonfile);
+				let newfile = parse.item.write(jsonfile);
 				files[i] = newfile;
 				console.log("file built");
 			}

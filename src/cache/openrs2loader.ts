@@ -1,6 +1,6 @@
 import * as cache from "./index";
 import { decompress } from "./compression";
-import { cacheMajors } from "../constants";
+import { cacheMajors, latestBuildNumber } from "../constants";
 import { CacheIndex } from "./index";
 import fetch from "node-fetch";
 
@@ -27,33 +27,50 @@ export type Openrs2CacheMeta = {
 };
 
 export class Openrs2CacheSource extends cache.DirectCacheFileSource {
-	cachename: string;
+	meta: Openrs2CacheMeta;
+	buildnr: number;
+	majors: cache.CacheIndex[];
 	totalbytes = 0;
 
 	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
 		return fetch(`${endpoint}/caches.json`).then(q => q.json());
 	}
 
-	constructor(cachename: string) {
+	static async fromId(cacheid: number) {
+		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
+		return new Openrs2CacheSource(meta.meta, meta.majors);
+	}
+	private constructor(meta: Openrs2CacheMeta, majors: cache.CacheIndex[]) {
 		super(false);
-		this.cachename = cachename;
+		this.meta = meta;
+		this.majors = majors;
+		if (meta.builds.length != 0) {
+			this.buildnr = meta.builds[0].major;
+		} else {
+			console.warn("using historic cache for which the build number is not available, treating it as current.");
+			this.buildnr = latestBuildNumber;
+		}
 	}
 	getCacheName() {
-		return `openrs2:${this.cachename}`;
+		return `openrs2:${this.meta.id}`;
+	}
+	getBuildNr() {
+		return this.buildnr;
 	}
 
-	async generateRootIndex() {
+	static async downloadCacheMeta(cacheid: number) {
 		//yep, i used regex on html, sue me
-		console.log("using dummy cache index file meta containing dummy data for indices 1-61");
+		let rootindexhtml = await fetch(`${endpoint}/caches/runescape/${cacheid}`).then(q => q.text());
 
-		let rootindexhtml = await fetch(`${endpoint}/caches/runescape/${this.cachename}`).then(q => q.text());
-
-		let tabletextmatch = rootindexhtml.match(/Master index[\s\S]*?<table([\s\S]*)<\/table>/i);
+		let tabletextmatch = rootindexhtml.match(/<h2>Master index[\s\S]*?<table([\s\S]*?)<\/table>/i);
 		if (!tabletextmatch) { throw new Error("failed to parse root index"); }
+		let sourcetextmatch = rootindexhtml.match(/<h2>Sources[\s\S]*?<table([\s\S]*?)<\/table>/i);
+		if (!sourcetextmatch) { throw new Error("failed to parse source table"); }
+		let metatextmatch = rootindexhtml.match(/<h1>Cache[\s\S]*?<table([\s\S]*?)<\/table>/i);
+		if (!metatextmatch) { throw new Error("failed to parse meta table"); }
 
 		let majors: CacheIndex[] = [];
-		let rowmatches = tabletextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi);
-
+		let rowmatches = [...tabletextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].slice(1);
 		for (let rowmatch of rowmatches) {
 			let fields = [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)];
 			if (fields.length == 6) {
@@ -76,14 +93,57 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 			}
 		}
 
-		return majors;
+		let sourcerows = [...sourcetextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].map(rowmatch => [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)]).slice(1);
+		let metarows = [...metatextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].map(rowmatch => [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)]);
+
+		let getmetarow = (rownr: number) => {
+			let match = metarows[rownr][0][1].match(/([\d,\s]+)\/([\d,\s]+)/);
+			if (!match) { throw new Error("failed to parse cache meta html"); }
+			return {
+				min: +match[1].replace(/[,\s]/g, ""),
+				max: +match[2].replace(/[,\s]/g, "")
+			}
+		}
+
+		let cachesize = parseFloat(metarows[4][0][1]);
+		if (metarows[4][0][1].endsWith("MiB")) { cachesize *= 1024 * 1024; }
+		else if (metarows[4][0][1].endsWith("GiB")) { cachesize *= 1024 * 1024 * 1024; }
+		else { throw new Error("failed to parse cache size"); }
+
+		let meta: Openrs2CacheMeta = {
+			id: cacheid,
+			scope: "runescape",
+			game: sourcerows[0][0][1].trim(),
+			environment: sourcerows[0][1][1].trim(),
+			language: sourcerows[0][2][1].trim(),
+			builds: sourcerows.map(row => {
+				let parts = row[3][1].split(".");
+				return {
+					major: +parts[0],
+					minor: (parts[1] == undefined ? null : +parts[1])
+				}
+			}),
+			timestamp: sourcerows[0][4][1],
+			sources: sourcerows.map(row => row[5][1].trim()),
+			valid_indexes: getmetarow(1).min,
+			valid_groups: getmetarow(2).min,
+			valid_keys: getmetarow(3).min,
+			indexes: getmetarow(1).min,
+			groups: getmetarow(2).max,
+			keys: getmetarow(3).max,
+			disk_store_valid: true,
+			size: cachesize,
+			blocks: Math.round(cachesize / 512)//very bad estimate, seems to have different meaning
+		};
+
+		return { meta, majors };
 	}
 
 	async downloadFile(major: number, minor: number) {
-		let url = `${endpoint}/caches/runescape/${this.cachename}/archives/${major}/groups/${minor}.dat`;
+		let url = `${endpoint}/caches/runescape/${this.meta.id}/archives/${major}/groups/${minor}.dat`;
 		// console.log(url);
 		const req = await fetch(url);
-		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor} from openrs2 ${this.cachename}, http code: ${req.status}`); }
+		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor} from openrs2 ${this.meta.id}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
 		//at least make sure we are aware if we're ddossing someone....
 		if (Math.floor(this.totalbytes / 10_000_000) != Math.floor((this.totalbytes + buf.byteLength) / 10_000_000)) {
@@ -97,8 +157,8 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 		return decompress(await this.downloadFile(major, minor));
 	}
 
-	getCacheIndex(major: number) {
-		if (major == cacheMajors.index) { return this.generateRootIndex(); }
+	async getCacheIndex(major: number) {
+		if (major == cacheMajors.index) { return this.majors; }
 		else { return super.getCacheIndex(major); }
 	}
 }

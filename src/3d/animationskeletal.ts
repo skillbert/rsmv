@@ -1,6 +1,6 @@
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
-import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { AnimationClip, Bone, BufferGeometry, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
@@ -25,7 +25,7 @@ import { MountableAnimation } from "./animationframes";
 
 
 export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSceneCache, framebaseid: number) {
-	let base = parseFramemaps.read(await cache.getFileById(cacheMajors.framemaps, framebaseid));
+	let base = parse.framemaps.read(await cache.getFileById(cacheMajors.framemaps, framebaseid), cache.engine.rawsource);
 	if (!base.skeleton) {
 		throw new Error("framebase does not have skeleton");
 	}
@@ -77,7 +77,7 @@ export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSc
 }
 
 export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number) {
-	let anim = parseSkeletalAnim.read(await cache.getFileById(cacheMajors.skeletalAnims, animid));
+	let anim = parse.skeletalAnim.read(await cache.getFileById(cacheMajors.skeletalAnims, animid), cache.engine.rawsource);
 
 	let convertedtracks: KeyframeTrack[] = [];
 
@@ -192,7 +192,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 			convertedtracks.push(new QuaternionKeyframeTrack(`${bonename}.quaternion`, times as any, quatdata as any));
 		}
 	}
-	
+
 	let clip = new AnimationClip("anim_" + (Math.random() * 1000 | 0), undefined, convertedtracks);
 
 	return { clip, framebaseid: anim.framebase };

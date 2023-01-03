@@ -1,6 +1,6 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { quickchatcategories } from "../../generated/quickchatcategories";
-import { parseQuickchatCategories, parseQuickchatLines } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { quickchatlines } from "../../generated/quickchatlines";
 import prettyJson from "json-stringify-pretty-compact";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
@@ -13,11 +13,11 @@ export async function quickChatLookup(output: ScriptOutput, outdir: ScriptFS, so
 
 	let cats: quickchatcategories[] = [];
 	for (let file of catarch) {
-		cats[file.fileid] = parseQuickchatCategories.read(file.buffer);
+		cats[file.fileid] = parse.quickchatCategories.read(file.buffer, source);
 	}
 	let lines: quickchatcategories[] = [];
 	for (let file of linesarch) {
-		lines[file.fileid] = parseQuickchatLines.read(file.buffer);
+		lines[file.fileid] = parse.quickchatLines.read(file.buffer, source);
 	}
 
 	let hotkeys: Record<string, quickchatlines> = {};

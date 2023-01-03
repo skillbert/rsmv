@@ -1,7 +1,7 @@
 import { Stream, packedHSL2HSL, HSL2RGB } from "../utils";
 import { cacheMajors } from "../constants";
 import { CacheFileSource, SubFile } from "../cache";
-import { parseFrames, parseFramemaps, parseSequences, parseSkeletalAnim } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { AnimationClip, AnimationMixer, Bone, BufferGeometry, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
@@ -153,7 +153,7 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 
 	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
-	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parseFrames.read(q.buffer)]));
+	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parse.frames.read(q.buffer, loader.engine.rawsource)]));
 
 	let orderedframes: frames[] = [];
 	for (let seqframe of sequenceframes) {
@@ -164,7 +164,7 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 		}
 	}
 
-	let framebase = parseFramemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id));
+	let framebase = parse.framemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
 
 	let { actions, rootboneinits } = buildFramebaseSkeleton(framebase);
 	let clips = getFrameClips(framebase, orderedframes);
@@ -236,7 +236,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 
 	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
-	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parseFrames.read(q.buffer)]));
+	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parse.frames.read(q.buffer, loader.engine.rawsource)]));
 
 	//three.js doesn't interpolate from end frame to start, so insert the start frame at the end
 	const insertLoopFrame = true;
@@ -261,7 +261,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		keyframetimes[keyframetimes.length - 1] = endtime;
 	}
 
-	let framebase = parseFramemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id));
+	let framebase = parse.framemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
 
 	// let { bones } = buildFramebaseSkeleton(framebase);
 	let clips = getFrameClips(framebase, orderedframes);

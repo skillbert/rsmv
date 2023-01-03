@@ -1,6 +1,6 @@
 
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseMapsquareTiles, FileParser, parseMapsquareUnderlays, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseAnimgroupConfigs, parseMapsquareLocations, parseSequences, parseFramemaps, parseModels, parseRootCacheIndex, parseSpotAnims, parseCacheIndex, parseSkeletalAnim, parseMaterials, parseQuickchatCategories, parseQuickchatLines, parseEnvironments, parseAvatars, parseIdentitykit, parseStructs, parseParams, parseMapsquareTilesNxt } from "../opdecoder";
+import { parse, FileParser } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
@@ -194,8 +194,8 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 					singleschemaurl = relurl;
 				}
 			},
-			read(b, id) {
-				let obj = parser.read(b, undefined, args.keepbuffers == "true");
+			read(b, id, source) {
+				let obj = parser.read(b, source, undefined, args.keepbuffers == "true");
 				if (args.batched) {
 					obj.$fileid = (id.length == 1 ? id[0] : id);
 				} else {
@@ -230,7 +230,7 @@ type DecodeLookup = {
 export type DecodeMode<T = Buffer | string> = {
 	ext: string,
 	parser?: FileParser<any>,
-	read(buf: Buffer, fileid: LogicalIndex): T | Promise<T>,
+	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource): T | Promise<T>,
 	prepareDump(output: ScriptFS): void,
 	write(file: Buffer): Buffer,
 	combineSubs(files: T[]): T
@@ -319,8 +319,8 @@ const decodeMeshHash: DecodeModeFactory = () => {
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 		},
 		prepareDump() { },
-		read(b, id) {
-			let model = parseModels.read(b);
+		read(b, id, source) {
+			let model = parse.models.read(b, source);
 			let meshhashes = getModelHashes(model, id[0]);
 			return JSON.stringify(meshhashes);
 		},
@@ -336,37 +336,37 @@ export type JsonBasedFile = {
 }
 
 export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
-	framemaps: { parser: parseFramemaps, lookup: chunkedIndex(cacheMajors.framemaps) },
-	items: { parser: parseItem, lookup: chunkedIndex(cacheMajors.items) },
-	enums: { parser: parseEnums, lookup: chunkedIndex(cacheMajors.enums) },
-	npcs: { parser: parseNpc, lookup: chunkedIndex(cacheMajors.npcs) },
-	objects: { parser: parseObject, lookup: chunkedIndex(cacheMajors.objects) },
-	achievements: { parser: parseAchievement, lookup: chunkedIndex(cacheMajors.achievements) },
-	structs: { parser: parseStructs, lookup: chunkedIndex(cacheMajors.structs) },
-	sequences: { parser: parseSequences, lookup: chunkedIndex(cacheMajors.sequences) },
-	spotanims: { parser: parseSpotAnims, lookup: chunkedIndex(cacheMajors.spotanims) },
-	materials: { parser: parseMaterials, lookup: chunkedIndex(cacheMajors.materials) },
-	quickchatcats: { parser: parseQuickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
-	quickchatlines: { parser: parseQuickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
+	framemaps: { parser: parse.framemaps, lookup: chunkedIndex(cacheMajors.framemaps) },
+	items: { parser: parse.item, lookup: chunkedIndex(cacheMajors.items) },
+	enums: { parser: parse.enums, lookup: chunkedIndex(cacheMajors.enums) },
+	npcs: { parser: parse.npc, lookup: chunkedIndex(cacheMajors.npcs) },
+	objects: { parser: parse.object, lookup: chunkedIndex(cacheMajors.objects) },
+	achievements: { parser: parse.achievement, lookup: chunkedIndex(cacheMajors.achievements) },
+	structs: { parser: parse.structs, lookup: chunkedIndex(cacheMajors.structs) },
+	sequences: { parser: parse.sequences, lookup: chunkedIndex(cacheMajors.sequences) },
+	spotanims: { parser: parse.spotAnims, lookup: chunkedIndex(cacheMajors.spotanims) },
+	materials: { parser: parse.materials, lookup: chunkedIndex(cacheMajors.materials) },
+	quickchatcats: { parser: parse.quickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
+	quickchatlines: { parser: parse.quickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
 
-	overlays: { parser: parseMapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
-	identitykit: { parser: parseIdentitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },
-	params: { parser: parseParams, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.params) },
-	underlays: { parser: parseMapsquareUnderlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays) },
-	mapscenes: { parser: parseMapscenes, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes) },
-	environments: { parser: parseEnvironments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
-	animgroupconfigs: { parser: parseAnimgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
+	overlays: { parser: parse.mapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
+	identitykit: { parser: parse.identitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },
+	params: { parser: parse.params, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.params) },
+	underlays: { parser: parse.mapsquareUnderlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays) },
+	mapscenes: { parser: parse.mapscenes, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes) },
+	environments: { parser: parse.environments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
+	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 
-	maptiles: { parser: parseMapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
-	maptiles_nxt: { parser: parseMapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
-	maplocations: { parser: parseMapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
+	maptiles: { parser: parse.mapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
+	maptiles_nxt: { parser: parse.mapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
+	maplocations: { parser: parse.mapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
 
-	frames: { parser: parseFrames, lookup: standardIndex(cacheMajors.frames) },
-	models: { parser: parseModels, lookup: noArchiveIndex(cacheMajors.models) },
-	skeletons: { parser: parseSkeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
+	frames: { parser: parse.frames, lookup: standardIndex(cacheMajors.frames) },
+	models: { parser: parse.models, lookup: noArchiveIndex(cacheMajors.models) },
+	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
 
-	indices: { parser: parseCacheIndex, lookup: indexfileIndex() },
-	rootindex: { parser: parseRootCacheIndex, lookup: rootindexfileIndex() }
+	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
+	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() }
 });
 
 const npcmodels: DecodeModeFactory = function (flags) {
@@ -374,8 +374,8 @@ const npcmodels: DecodeModeFactory = function (flags) {
 		...chunkedIndex(cacheMajors.npcs),
 		ext: "json",
 		prepareDump(output) { },
-		read(b, id) {
-			let obj = parseNpc.read(b);
+		read(b, id, source) {
+			let obj = parse.npc.read(b, source);
 			return prettyJson({
 				id: id[0],
 				size: obj.boundSize ?? 1,
@@ -447,7 +447,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 		}
 		let file = arch[fileid.subindex];
 		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
-		let res = mode.read(file.buffer, logicalid);
+		let res = mode.read(file.buffer, logicalid, source);
 		if (res instanceof Promise) { res = await res; }
 		if (batchSubfile || batchMaxFiles != -1) {
 			let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;

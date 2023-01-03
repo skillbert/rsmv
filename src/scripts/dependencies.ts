@@ -1,7 +1,7 @@
 // import { filesource, cliArguments } from "../cliparser";
 // import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim, parseMaterials } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { defaultMorphId, squareSize } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
@@ -24,7 +24,7 @@ const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 		addHash("mapsquare", square.minor, square.crc, square.version);
 		if (locsconfig != -1) {
 			let arch = await cache.getFileArchive(square);
-			let locs = parseMapsquareLocations.read(arch[locsconfig].buffer);
+			let locs = parse.mapsquareLocations.read(arch[locsconfig].buffer, cache);
 			for (let loc of locs.locations) {
 				addDep("loc", loc.id, "mapsquare", square.minor);
 			}
@@ -41,7 +41,7 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 		for (let file of arch) {
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
 			addHash("sequence", id, crc32(file.buffer), index.version);
-			let seq = parseSequences.read(file.buffer);
+			let seq = parse.sequences.read(file.buffer, cache);
 			if (seq.skeletal_animation) {
 				addDep("skeleton", seq.skeletal_animation, "sequence", id);
 			}
@@ -60,7 +60,7 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 		for (let file of arch) {
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
 			addHash("loc", id, crc32(file.buffer), index.version);
-			let loc = parseObject.read(file.buffer);
+			let loc = parse.object.read(file.buffer, cache);
 			if (loc.probably_animation) {
 				addDep("sequence", loc.probably_animation, "loc", id);
 			}
@@ -89,7 +89,7 @@ const itemDeps: DepCollector = async (cache, addDep, addHash) => {
 		for (let file of arch) {
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
 			addHash("item", id, crc32(file.buffer), index.version);
-			let item = parseItem.read(file.buffer);
+			let item = parse.item.read(file.buffer, cache);
 			let models: number[] = ([] as (number | undefined | null)[]).concat(
 				item.baseModel,
 				item.maleModels_0, item.maleModels_1, item.maleModels_2,
@@ -109,7 +109,7 @@ const animgroupDeps: DepCollector = async (cache, addDep, addHash) => {
 	let animgroupfiles = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	for (let file of animgroupfiles) {
 		addHash("animgroup", file.fileid, crc32(file.buffer), 0);
-		let animgroup = parseAnimgroupConfigs.read(file.buffer);
+		let animgroup = parse.animgroupConfigs.read(file.buffer, cache);
 		let anim = animgroup.unknown_26 ?? animgroup.baseAnims?.idle;
 		if (anim) {
 			addDep("sequence", anim, "animgroup", file.fileid);
@@ -124,7 +124,7 @@ const materialDeps: DepCollector = async (cache, addDep, addHash) => {
 
 		for (let file of arch) {
 			addHash("material", file.fileid, crc32(file.buffer), index.version);
-			let mat = convertMaterial(file.buffer);
+			let mat = convertMaterial(file.buffer, cache);
 			for (let tex of Object.values(mat.textures)) {
 				if (typeof tex == "number") {
 					addDep("texture", tex, "material", file.fileid)
@@ -142,7 +142,7 @@ const npcDeps: DepCollector = async (cache, addDep, addHash) => {
 		for (let file of arch) {
 			let id = archiveToFileId(index.major, index.minor, file.fileid);
 			addHash("npc", id, crc32(file.buffer), index.version);
-			let npc = parseNpc.read(file.buffer)
+			let npc = parse.npc.read(file.buffer, cache);
 			if (npc.animation_group) {
 				addDep("animgroup", npc.animation_group, "npc", id);
 			}
@@ -165,7 +165,7 @@ const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
 		if (!skelindex) { continue; }
 		addHash("skeleton", skelindex.minor, skelindex.crc, skelindex.version);
 		let file = await cache.getFile(skelindex.major, skelindex.minor, skelindex.crc);
-		let skel = parseSkeletalAnim.read(file);
+		let skel = parse.skeletalAnim.read(file, cache);
 		addDep("framebase", skel.framebase, "skeleton", skelindex.minor);
 	}
 }
@@ -177,7 +177,7 @@ const framesetDeps: DepCollector = async (cache, addDep, addHash) => {
 		addHash("frameset", index.minor, index.crc, index.version);
 		let arch = await cache.getFileArchive(index);
 		if (arch.length != 0) {
-			let frame0 = parseFrames.read(arch[0].buffer);
+			let frame0 = parse.frames.read(arch[0].buffer, cache);
 			addDep("framebase", frame0.probably_framemap_id, "frameset", index.minor);
 		}
 	}
@@ -189,7 +189,7 @@ const modelDeps: DepCollector = async (cache, addDep, addHash) => {
 		if (!modelindex) { continue; }
 		addHash("model", modelindex.minor, modelindex.crc, modelindex.version);
 		let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
-		let model = parseModels.read(file);
+		let model = parse.models.read(file, cache);
 		for (let mesh of model.meshes) {
 			if (mesh.materialArgument != 0) {
 				addDep("material", mesh.materialArgument - 1, "model", modelindex.minor);

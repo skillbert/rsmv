@@ -80,12 +80,14 @@ export type DecodeState = {
 	startoffset: number,
 	buffer: Buffer,
 	args: Record<string, any>,
-	keepBufferJson: boolean
+	keepBufferJson: boolean,
+	clientVersion: number
 }
 
-type EncodeState = {
+export type EncodeState = {
 	scan: number
-	buffer: Buffer
+	buffer: Buffer,
+	clientVersion: number
 }
 
 export type ResolvedReference = {
@@ -117,7 +119,7 @@ function resolveAlias(typename: string, typedef: TypeDef) {
 		if (typeof newtype != "string") {
 			if ("primitive" in newtype) {
 				//TODO this break when aliased types have a key "primitive"
-				return primitiveParser(newtype as any);
+				return primitiveParser(newtype as any, typedef);
 			} else {
 				//TODO this recursion is unchecked
 				return buildParser(newtype, typedef);
@@ -212,7 +214,7 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					}
 					default: {
 						if (hardcodes[chunkdef[0]]) {
-							return hardcodes[chunkdef[0]](chunkdef.slice(1));
+							return hardcodes[chunkdef[0]](chunkdef.slice(1), typedef);
 						}
 					}
 				}
@@ -1197,7 +1199,7 @@ function booleanParser(): ChunkParser<boolean> {
 }
 
 
-let hardcodes: Record<string, (args: unknown[]) => ChunkParser> = {
+let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser> = {
 	playeritem: function () {
 		return {
 			read(state) {
@@ -1242,11 +1244,50 @@ let hardcodes: Record<string, (args: unknown[]) => ChunkParser> = {
 			getTypescriptType() { return (type == "ref" ? "any" : "number"); },
 			getJsonSchema() { return { type: (type == "ref" ? "any" : "integer") } }
 		}
+	},
+	versioned: function (args, typedef) {
+		if (args.length % 2 != 1) { throw new Error("versioned chunk requires 2n+1 arguments"); }
+		let types: ChunkParser[] = [];
+		let versions: number[] = [];
+		types.push(buildParser(args[0] as ComposedChunk, typedef));
+		for (let i = 1; i + 1 < args.length; i += 2) {
+			let v = args[i];
+			if (typeof v != "number") { throw new Error("build number expected at odd argument indices"); }
+			versions.push(v);
+			types.push(buildParser(args[i + 1] as ComposedChunk, typedef));
+		}
+		return {
+			read(state) {
+				for (let i = 0; i < versions.length; i++) {
+					if (state.clientVersion > versions[i]) {
+						return types[i].read(state);
+					}
+				}
+				return types.at(-1)!.read(state);
+			},
+			write(state, v) {
+				for (let i = 0; i < versions.length; i++) {
+					if (state.clientVersion > versions[i]) {
+						return types[i].write(state, v);
+					}
+				}
+				return types.at(-1)!.write(state, v);
+			},
+			setReferenceParent(parent) {
+				types.forEach(t => t.setReferenceParent?.(parent));
+			},
+			getTypescriptType(indent) {
+				return types[0].getTypescriptType(indent);
+			},
+			getJsonSchema() {
+				return types[0].getJsonSchema();
+			},
+		}
 	}
 }
 
 
-function primitiveParser(primitive: Primitive<any>): ChunkParser {
+function primitiveParser(primitive: Primitive<any>, typedef: TypeDef): ChunkParser {
 	if (!("primitive" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`);
 	switch (primitive.primitive) {
 		case "bool":
@@ -1262,7 +1303,7 @@ function primitiveParser(primitive: Primitive<any>): ChunkParser {
 		case "hardcode":
 			let parser = hardcodes[primitive.name];
 			if (!parser) { throw new Error(`hardcode parser ${primitive.name} does not exist`); }
-			return parser([]);
+			return parser([], typedef);
 		default:
 			//@ts-ignore
 			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);

@@ -1,5 +1,7 @@
 import { HSL2RGB, packedHSL2HSL } from "../utils";
-import { parseMaterials } from "../opdecoder";
+import { parse } from "../opdecoder";
+import type { materials } from "../../generated/materials";
+import type { CacheFileSource } from "cache";
 
 export type MaterialData = {
 	textures: {
@@ -16,7 +18,7 @@ export type MaterialData = {
 	alphamode: "opaque" | "cutoff" | "blend",
 	alphacutoff: number,
 	stripDiffuseAlpha: boolean,
-	raw: ReturnType<typeof parseMaterials["read"]> | null
+	raw: materials | null
 }
 
 export function defaultMaterial(): MaterialData {
@@ -36,8 +38,8 @@ export function materialCacheKey(matid: number, hasVertexAlpha: boolean) {
 	return matid | (hasVertexAlpha ? 0x800000 : 0);
 }
 
-export function convertMaterial(data: Buffer) {
-	let rawparsed = parseMaterials.read(data);
+export function convertMaterial(data: Buffer, source: CacheFileSource) {
+	let rawparsed = parse.materials.read(data, source);
 
 	let mat = defaultMaterial();
 	mat.raw = rawparsed;

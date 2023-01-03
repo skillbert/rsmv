@@ -5,7 +5,7 @@ import { CacheFileSource } from "../cache";
 import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
-import { parseEnums, parseMapZones } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, isImageEqual, pixelsToImageFile } from "../imgutils";
 import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
@@ -216,11 +216,11 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 
 			//enums 708 seems to be the map select dropdown in-game
 			let file = await filesource.getFileById(cacheMajors.enums, 708);
-			let mapenum = parseEnums.read(file);
+			let mapenum = parse.enums.read(file, filesource);
 
 			let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
 			mask = mapenum.intArrayValue2!.values
-				.map(q => parseMapZones.read(files[q[1]].buffer))
+				.map(q => parse.mapZones.read(files[q[1]].buffer, filesource))
 				// .filter(q => q.show && q.name)
 				.flatMap(q => q.bounds)
 				.map(q => {

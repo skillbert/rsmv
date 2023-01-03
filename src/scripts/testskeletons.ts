@@ -1,5 +1,5 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseAchievement, parseItem, parseObject, parseNpc, parseCacheIndex, parseMapsquareTiles, FileParser, parseModels, parseMapsquareUnderlays, parseSequences, parseMapsquareOverlays, parseMapZones, parseFrames, parseEnums, parseMapscenes, parseMapsquareLocations, parseFramemaps, parseAnimgroupConfigs, parseSpotAnims, parseRootCacheIndex, parseSkeletalAnim } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
 
@@ -17,7 +17,7 @@ async function start() {
 		if (!index) { continue; }
 		let arch = await cache.getFileArchive(index);
 		for (let file of arch) {
-			let seq = parseSequences.read(file.buffer)
+			let seq = parse.sequences.read(file.buffer, cache);
 			if (seq.skeletal_animation) {
 				let seqarr = skeltoseqs.get(seq.skeletal_animation) ?? [];
 				seqarr.push(archiveToFileId(index.major, index.minor, file.fileid));
@@ -32,7 +32,7 @@ async function start() {
 		let arch = await cache.getFileArchive(index);
 
 		for (let file of arch) {
-			let seq = parseObject.read(file.buffer)
+			let seq = parse.object.read(file.buffer, cache);
 			if (seq.probably_animation) {
 				let loc = seqtolocs.get(seq.probably_animation) ?? [];
 				loc.push(archiveToFileId(index.major, index.minor, file.fileid));
@@ -43,7 +43,7 @@ async function start() {
 	let animgroupfiles = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let seqtogroups = new Map<number, number[]>();
 	for (let file of animgroupfiles) {
-		let animgroup = parseAnimgroupConfigs.read(file.buffer);
+		let animgroup = parse.animgroupConfigs.read(file.buffer, cache);
 		let anim = animgroup.unknown_26 ?? animgroup.baseAnims?.idle;
 		if (anim) {
 			let animarr = seqtogroups.get(anim) ?? [];
@@ -59,7 +59,7 @@ async function start() {
 		let arch = await cache.getFileArchive(index);
 
 		for (let file of arch) {
-			let seq = parseNpc.read(file.buffer)
+			let seq = parse.npc.read(file.buffer, cache);
 			if (seq.animation_group) {
 				let npc = groupstonpcs.get(seq.animation_group) ?? [];
 				npc.push(archiveToFileId(index.major, index.minor, file.fileid));
@@ -98,7 +98,7 @@ async function loadSkeletons() {
 
 	return function* () {
 		for (let file of files) {
-			yield parseSkeletalAnim.read(file);
+			yield parse.skeletalAnim.read(file, source);
 		}
 	}
 };

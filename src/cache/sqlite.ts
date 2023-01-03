@@ -95,7 +95,8 @@ export class GameCacheLoader extends cache.CacheFileSource {
 				getFile = (minor) => dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
 				getIndexFile = () => dbget(`SELECT DATA FROM cache_index`, []);
 				indices = getIndexFile().then(row => {
-					return cache.indexBufferToObject(major, decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength)));
+					let file = decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
+					return cache.indexBufferToObject(major, file, this);
 				});
 			}
 			this.opentables.set(major, { db, readFile: getFile, updateFile: writeFile, readIndexFile: getIndexFile, indices });

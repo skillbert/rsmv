@@ -30,7 +30,9 @@ const testdecode = command({
 		let source = await args.source();
 		let mode = cacheFileJsonModes[args.mode];
 		if (!mode) { throw new Error(`mode ${args.mode} not found, possible modes: ${Object.keys(cacheFileJsonModes).join(", ")}`) }
-		await output.run(testDecode, errdir, source, mode, args.files, defaultTestDecodeOpts());
+		let opts = defaultTestDecodeOpts();
+		opts.outmode = "hextext";
+		await output.run(testDecode, errdir, source, mode, args.files, opts);
 	}
 });
 

@@ -2,7 +2,7 @@ import { filesource, cliArguments } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import prettyJson from "json-stringify-pretty-compact";
-import { parseMapsquareLocations } from "../opdecoder";
+import { parse } from "../opdecoder";
 
 
 var worldStride = 128;
@@ -26,7 +26,7 @@ let cmd = command({
 			let chunkarch = await source.getFileArchive(sq);
 			let locsconfig = sq.subindices.indexOf(cacheMapFiles.locations);
 			if (locsconfig != -1) {
-				let locs = parseMapsquareLocations.read(chunkarch[locsconfig].buffer);
+				let locs = parse.mapsquareLocations.read(chunkarch[locsconfig].buffer, source);
 
 				for (let loc of locs.locations) {
 					if (loc.id == args.locid) {

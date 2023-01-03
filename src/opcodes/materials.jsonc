@@ -26,8 +26,8 @@
 		["alphacutoff",["opt",["alphamode",1],"ubyte"]],//128 most of the time
 
 		["animtex","ubyte"],//0123
-		["animtexU",["opt",["animtex",0,"bitflag"],"short"]],
-		["animtexV",["opt",["animtex",1,"bitflag"],"short"]],
+		["animtexU",["opt",["animtex",0,"bitflag"],["versioned","short",897,"byte"]]],
+		["animtexV",["opt",["animtex",1,"bitflag"],["versioned","short",897,"byte"]]],
 
 		["flagextra","bool"],
 		["extra",["opt",["flagextra",1],["struct",

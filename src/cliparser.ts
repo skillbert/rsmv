@@ -49,7 +49,7 @@ function cacheSourceFromString(str: string) {
 			case "files":
 				return new RawFileLoader(arg, 0);
 			case "openrs2":
-				return new Openrs2CacheSource(arg);
+				return Openrs2CacheSource.fromId(+arg);
 			default:
 				throw new Error("unknown mode");
 		}

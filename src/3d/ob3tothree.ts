@@ -9,7 +9,7 @@ import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSe
 import { parseSkeletalAnimation } from "./animationskeletal";
 import { archiveToFileId, CachedObject, CacheFileSource, CacheIndex, CachingFileSource, SubFile } from "../cache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh, Texture } from "three";
-import { parseFramemaps, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseSequences } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
@@ -104,13 +104,13 @@ export class EngineCache extends CachingFileSource {
 
 		this.mapUnderlays = [];
 		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
-			.forEach(q => this.mapUnderlays[q.fileid] = parseMapsquareUnderlays.read(q.buffer));
+			.forEach(q => this.mapUnderlays[q.fileid] = parse.mapsquareUnderlays.read(q.buffer, this.rawsource));
 		this.mapOverlays = [];
 		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
-			.forEach(q => this.mapOverlays[q.fileid] = parseMapsquareOverlays.read(q.buffer));
+			.forEach(q => this.mapOverlays[q.fileid] = parse.mapsquareOverlays.read(q.buffer, this.rawsource));
 		this.mapMapscenes = [];
 		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
-			.forEach(q => this.mapMapscenes[q.fileid] = parseMapscenes.read(q.buffer));
+			.forEach(q => this.mapMapscenes[q.fileid] = parse.mapscenes.read(q.buffer, this.rawsource));
 
 		return this;
 	}
@@ -123,7 +123,7 @@ export class EngineCache extends CachingFileSource {
 			} else {
 				let file = this.materialArchive.get(id);
 				if (!file) { throw new Error("material " + id + " not found"); }
-				cached = convertMaterial(file);
+				cached = convertMaterial(file, this.rawsource);
 			}
 			this.materialCache.set(id, cached);
 		}
@@ -152,7 +152,7 @@ export class EngineCache extends CachingFileSource {
 					}
 					let file = arch[fileid.subindex];
 					let logicalid = mode.lookup.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
-					let res = mode.parser.read(file.buffer);
+					let res = mode.parser.read(file.buffer, this.rawsource);
 					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
 					files.push(res);
 				}

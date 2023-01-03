@@ -424,7 +424,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 		(cache as WasmGameCacheLoader).giveBlobs(files);
 	}
 	if (source.type == "openrs2") {
-		cache = new Openrs2CacheSource(source.cachename);
+		cache = await Openrs2CacheSource.fromId(+source.cachename);
 	}
 	if (hasElectrion && source.type == "sqlitenodejs") {
 		cache = new GameCacheLoader(source.location);

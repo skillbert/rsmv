@@ -1,6 +1,6 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
-import { cacheMajors } from "../constants";
-import { parseCacheIndex, parseRootCacheIndex } from "../opdecoder";
+import { cacheMajors, latestBuildNumber } from "../constants";
+import { parse } from "../opdecoder";
 
 export type SubFile = {
 	offset: number,
@@ -164,8 +164,8 @@ export function unpackBufferArchive(buffer: Buffer, subids: number[]) {
 	return subbufs;
 }
 
-export function rootIndexBufferToObject(metaindex: Buffer) {
-	let index = parseRootCacheIndex.read(metaindex);
+export function rootIndexBufferToObject(metaindex: Buffer, source: CacheFileSource) {
+	let index = parse.rootCacheIndex.read(metaindex, source);
 	return index.cachemajors
 		.map(q => {
 			if (q.crc == 0) { return undefined!; }
@@ -184,11 +184,11 @@ export function rootIndexBufferToObject(metaindex: Buffer) {
 		});
 }
 
-export function indexBufferToObject(major: number, buffer: Buffer): CacheIndex[] {
+export function indexBufferToObject(major: number, buffer: Buffer, source: CacheFileSource): CacheIndex[] {
 	if (major == cacheMajors.index) {
-		return rootIndexBufferToObject(buffer);
+		return rootIndexBufferToObject(buffer, source);
 	}
-	let readres = parseCacheIndex.read(buffer);
+	let readres = parse.cacheIndex.read(buffer, source);
 	let indices = readres.indices;
 	let linear: CacheIndex[] = [];
 	for (let entry of indices) {
@@ -233,6 +233,9 @@ export abstract class CacheFileSource {
 	}
 	getCacheIndex(major: number): Promise<CacheIndexFile> {
 		throw new Error("not implemented");
+	}
+	getBuildNr(): number {
+		return latestBuildNumber;
 	}
 
 	writeFile(major: number, minor: number, file: Buffer): Promise<void> {
@@ -292,7 +295,7 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 					crc = index[major].crc;
 				}
 				let indexfile = await this.getFile(cacheMajors.index, major, crc);
-				let decoded = indexBufferToObject(major, indexfile);
+				let decoded = indexBufferToObject(major, indexfile, this);
 				return decoded;
 			})();
 			this.indexMap.set(major, index);
@@ -302,7 +305,7 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 }
 
 export class CallbackCacheLoader extends DirectCacheFileSource {
-	constructor(fn: (major: number, minor: number, crc?: number) => Promise<Buffer>,needsCrc:boolean) {
+	constructor(fn: (major: number, minor: number, crc?: number) => Promise<Buffer>, needsCrc: boolean) {
 		super(needsCrc);
 		this.getFile = fn;
 	}

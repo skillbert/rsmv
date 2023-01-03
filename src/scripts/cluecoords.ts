@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf } from
 import * as fs from "fs";
 import * as path from "path";
 import { cacheMajors } from "../constants";
-import { parseItem, parseEnums } from "../opdecoder";
+import { parse } from "../opdecoder";
 
 type Coord = { x: number, z: number, level: number };
 
@@ -23,7 +23,7 @@ let cmd = command({
 		for (let index of itemindex) {
 			let files = await filesource.getFileArchive(index);
 			for (let file of files) {
-				let item = parseItem.read(file.buffer);
+				let item = parse.item.read(file.buffer, filesource);
 				let prop = item.extra?.find(q => q.prop == 235);
 				if (prop) { enums.push(prop.intvalue!); }
 			}
@@ -33,7 +33,7 @@ let cmd = command({
 
 		for (let enumid of enums) {
 			let file = await filesource.getFileById(cacheMajors.enums, enumid);
-			let parsed = parseEnums.read(file);
+			let parsed = parse.enums.read(file, filesource);
 			let coords: Coord[] = parsed.intArrayValue2!.values.map(v => ({
 				x: (v[1] >> 14) & 16383,
 				z: (v[1] >> 0) & 16383,

@@ -1,7 +1,7 @@
 import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { parseEnvironments, parseMapscenes, parseMapsquareLocations, parseMapsquareOverlays, parseMapsquareTiles, parseMapsquareUnderlays, parseMapsquareWaterTiles, parseObject } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
@@ -977,8 +977,8 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 			}
 			let tilefile = selfarchive[tileindex].buffer;
 			//let watertilefile = selfarchive[tileindexwater]?.buffer;
-			//let watertiles = parseMapsquareWaterTiles.read(watertilefile);
-			let tiledata = parseMapsquareTiles.read(tilefile);
+			//let watertiles = parse.mapsquareWaterTiles.read(watertilefile);
+			let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
 			let chunk: ChunkData = {
 				xoffset: (rect.x + x) * squareSize,
 				zoffset: (rect.z + z) * squareSize,
@@ -1013,7 +1013,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 	if (mainchunk?.extra.unk80) {
 		let envarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
 		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
-		let env = parseEnvironments.read(envfile.buffer);
+		let env = parse.environments.read(envfile.buffer, scene.engine.rawsource);
 		if (typeof env.model == "number") {
 			skyboxModelid = env.model;
 			skybox = await ob3ModelToThree(scene, await scene.getModelData(env.model));
@@ -1232,14 +1232,14 @@ export function defaultMorphId(locmeta: objects) {
 //TODO move this to a more logical location
 export async function resolveMorphedObject(source: CacheFileSource, id: number) {
 	let objectfile = await source.getFileById(cacheMajors.objects, id);
-	let objectmeta = parseObject.read(objectfile);
+	let objectmeta = parse.object.read(objectfile, source);
 	if (objectmeta.morphs_1 || objectmeta.morphs_2) {
 		let newid = defaultMorphId(objectmeta);
 		if (newid != -1) {
 			objectfile = await source.getFileById(cacheMajors.objects, newid);
 			objectmeta = {
 				...objectmeta,
-				...parseObject.read(objectfile)
+				...parse.object.read(objectfile, source)
 			};
 		}
 	}
@@ -1578,7 +1578,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 
 	let locationindex = chunk.cacheIndex.subindices.indexOf(cacheMapFiles.locations);
 	if (locationindex == -1) { return locs; }
-	let locations = parseMapsquareLocations.read(chunk.archive[locationindex].buffer).locations;
+	let locations = parse.mapsquareLocations.read(chunk.archive[locationindex].buffer, engine.rawsource).locations;
 
 
 	for (let loc of locations) {

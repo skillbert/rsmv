@@ -89,7 +89,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		if (major == cacheMajors.index) { return this.generateRootIndex(); }
 		let index = this.indices.get(major);
 		if (!index) {
-			index = this.getIndexFile(major).then(file => cache.indexBufferToObject(major, file));
+			index = this.getIndexFile(major).then(file => cache.indexBufferToObject(major, file, this));
 			this.indices.set(major, index);
 		}
 		return index;

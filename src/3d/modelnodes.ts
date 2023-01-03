@@ -1,4 +1,4 @@
-import { parseAnimgroupConfigs, parseItem, parseModels, parseNpc, parseSequences, parseSpotAnims } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids } from '../3d/ob3tothree';
@@ -41,7 +41,7 @@ export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	let modeldata = await cache.getModelData(id);
 	//getting the same file a 2nd time to get the full json
 	let modelfile = await cache.engine.getFileById(cacheMajors.models, id);
-	let info = parseModels.read(modelfile);
+	let info = parse.models.read(modelfile, cache.engine.rawsource);
 	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info }, id };
 }
 
@@ -63,12 +63,12 @@ export async function npcBodyToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, head: boolean }) {
-	let npc = parseNpc.read(await cache.getFileById(cacheMajors.npcs, id.id));
+	let npc = parse.npc.read(await cache.getFileById(cacheMajors.npcs, id.id), cache.engine.rawsource);
 	let anims: Record<string, number> = {};
 	let modelids = (id.head ? npc.headModels : npc.models) ?? [];
 	if (!id.head && npc.animation_group) {
 		let arch = await cache.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
-		let animgroup = parseAnimgroupConfigs.read(arch[npc.animation_group].buffer);
+		let animgroup = parse.animgroupConfigs.read(arch[npc.animation_group].buffer, cache.engine.rawsource);
 		anims = serializeAnimset(animgroup);
 	}
 	let mods: ModelModifications = {};
@@ -84,7 +84,7 @@ export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, hea
 }
 
 export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
-	let animdata = parseSpotAnims.read(await cache.getFileById(cacheMajors.spotanims, id));
+	let animdata = parse.spotAnims.read(await cache.getFileById(cacheMajors.spotanims, id), cache.engine.rawsource);
 	let mods: ModelModifications = {};
 	if (animdata.replace_colors) { mods.replaceColors = animdata.replace_colors; }
 	if (animdata.replace_materials) { mods.replaceMaterials = animdata.replace_materials; }
@@ -110,9 +110,9 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	return { models, anims, info: obj, id };
 }
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
-	let item = parseItem.read(await cache.getFileById(cacheMajors.items, id));
+	let item = parse.item.read(await cache.getFileById(cacheMajors.items, id), cache.engine.rawsource);
 	if (!item.baseModel && item.noteTemplate) {
-		item = parseItem.read(await cache.getFileById(cacheMajors.items, item.noteTemplate));
+		item = parse.item.read(await cache.getFileById(cacheMajors.items, item.noteTemplate), cache.engine.rawsource);
 	}
 	let mods: ModelModifications = {};
 	if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
@@ -266,7 +266,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 			prom: (async () => {
 				let seqfile = await this.cache.getFileById(cacheMajors.sequences, animid);
 
-				let seq = parseSequences.read(seqfile);
+				let seq = parse.sequences.read(seqfile, this.cache.engine.rawsource);
 
 				let clip: AnimationClip;
 				if (seq.skeletal_animation) {

@@ -1,9 +1,8 @@
 import { filesource, cliArguments, ReadCacheSource } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf, optional } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
-import { FileParser, parseAchievement, parseEnums, parseItem, parseMapscenes, parseMapsquareOverlays, parseMapsquareUnderlays, parseMaterials, parseModels, parseNpc } from "../opdecoder";
+import { parse, FileParser } from "../opdecoder";
 import { DepTypes } from "./dependencies";
-import { parseObject } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, fileIdToArchiveminor } from "../cache";
 import * as fs from "fs";
 import prettyJson from "json-stringify-pretty-compact";
@@ -45,20 +44,20 @@ function subfileFilename(major: number, minor: number, subfile: number) {
 }
 
 let configmap: Record<number, FileAction> = {
-	[cacheConfigPages.mapoverlays]: { name: "overlays", comparesubfiles: true, parser: parseMapsquareOverlays, isTexture: false, getFileName: subfileFilename },
-	[cacheConfigPages.mapunderlays]: { name: "underlays", comparesubfiles: true, parser: parseMapsquareUnderlays, isTexture: false, getFileName: subfileFilename },
-	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parseMapscenes, isTexture: false, getFileName: subfileFilename }
+	[cacheConfigPages.mapoverlays]: { name: "overlays", comparesubfiles: true, parser: parse.mapsquareOverlays, isTexture: false, getFileName: subfileFilename },
+	[cacheConfigPages.mapunderlays]: { name: "underlays", comparesubfiles: true, parser: parse.mapsquareUnderlays, isTexture: false, getFileName: subfileFilename },
+	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parse.mapscenes, isTexture: false, getFileName: subfileFilename }
 }
 
 let majormap: Record<number, FileAction | ((major: number, minor: number) => FileAction)> = {
-	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parseObject, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parseItem, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parseNpc, isTexture: false, getFileName: chunkedIndexName },
+	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parse.object, isTexture: false, getFileName: chunkedIndexName },
+	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parse.item, isTexture: false, getFileName: chunkedIndexName },
+	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parse.npc, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: null, isTexture: false, getFileName: standardName },
 	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, isTexture: false, getFileName: worldmapFilename },
-	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parseEnums, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parseAchievement, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parseMaterials, isTexture: false, getFileName: chunkedIndexName },
+	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parse.enums, isTexture: false, getFileName: chunkedIndexName },
+	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parse.achievement, isTexture: false, getFileName: chunkedIndexName },
+	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parse.materials, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.texturesBmp]: { name: "texturesBmp", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
 	[cacheMajors.texturesDds]: { name: "texturesDds", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
 	[cacheMajors.texturesPng]: { name: "texturesPng", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
@@ -194,11 +193,11 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 			await outdir.mkDir(dir);
 			if (change.action.parser) {
 				if (change.before) {
-					let parsedbefore = change.action.parser.read(change.before);
+					let parsedbefore = change.action.parser.read(change.before, sourcea);
 					await outdir.writeFile(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
 				}
 				if (change.after) {
-					let parsedafter = change.action.parser.read(change.after);
+					let parsedafter = change.action.parser.read(change.after, sourceb);
 					await outdir.writeFile(`${dir}/${name}-after.json`, prettyJson(parsedafter));
 				}
 			} else {

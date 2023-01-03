@@ -136,7 +136,8 @@ async function updateRecords(downloader: CacheDownloader, index: CacheIndex & { 
 
 	prepareFolder(folder);
 
-	var allRecordIndices = indexBufferToObject(index.minor, await downloader.getFile(index.major, index.minor, index.crc));
+	var file = await downloader.getFile(index.major, index.minor, index.crc);
+	var allRecordIndices = indexBufferToObject(index.minor, file, downloader);
 	var recordIndices = findMissingIndices(db_state, allRecordIndices);
 
 	var newRecords = 0;

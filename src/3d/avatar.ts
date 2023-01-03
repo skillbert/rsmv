@@ -1,6 +1,6 @@
 import { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
-import { parseAnimgroupConfigs, parseAvatarOverrides, parseAvatars, parseEnums, parseIdentitykit, parseItem, parseNpc, parseStructs } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { ThreejsSceneCache } from "./ob3tothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../utils";
 import { items } from "../../generated/items";
@@ -85,9 +85,9 @@ async function loadKitData(source: CacheFileSource) {
 	if (!kitcolors) {
 		let mapcolorenum = async (enumid: number, mappingid: number) => {
 			let colorfile = await source.getFileById(cacheMajors.enums, enumid);
-			let colordata = parseEnums.read(colorfile);
+			let colordata = parse.enums.read(colorfile, source);
 			let orderfile = await source.getFileById(cacheMajors.enums, mappingid);
-			let orderdata = parseEnums.read(orderfile);
+			let orderdata = parse.enums.read(orderfile, source);
 			return Object.fromEntries(orderdata.intArrayValue2!.values.map(q => {
 				let col = colordata.intArrayValue2!.values.find(w => w[0] == q[0])![1];
 				return [
@@ -132,11 +132,11 @@ export type EquipSlot = {
 //TODO remove output and name args
 export async function avatarToModel(output: ScriptFS | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
 	let kitdata = await loadKitData(scene.engine);
-	let avabase = parseAvatars.read(avadata);
+	let avabase = parse.avatars.read(avadata, scene.engine.rawsource);
 	let models: SimpleModelDef = [];
 
 	let playerkitarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
-	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parseIdentitykit.read(q.buffer)]));
+	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parse.identitykit.read(q.buffer, scene.engine.rawsource)]));
 
 	let slots: (EquipSlot | null)[] = [];
 	let avatar: avataroverrides | null = null;
@@ -173,7 +173,7 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			let itemid = (slot - 0x4000) & 0xffff;
 			//this still messes up if the wrapped id ends up being 0x00.. , the first 0 byte is parsed as empty slot
 			let file = await scene.engine.getFileById(cacheMajors.items, itemid);
-			let item = parseItem.read(file);
+			let item = parse.item.read(file, scene.engine.rawsource);
 
 			let animprop = item.extra?.find(q => q.prop == 686);
 			if (animprop) { animstruct = animprop.intvalue!; }
@@ -210,12 +210,12 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			};
 		}
 
-		let res = testDecodeFile(parseAvatarOverrides, "json", Buffer.from(avabase.player.rest), { slots });
+		let res = testDecodeFile(parse.avatarOverrides, "json", Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
 		if (!res.success) {
 			if (!output) { throw new Error(); }
 			output.writeFile(name + ".hexerr.json", res.errorfile)
 		}
-		avatar = parseAvatarOverrides.read(Buffer.from(avabase.player.rest), { slots });
+		avatar = parse.avatarOverrides.read(Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
 
 		let globalrecolors: [number, number][] = [
 			[defaultcols.hair0, kitdata.hair[avatar.haircol0]],
@@ -268,7 +268,7 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			let animgroup = 2699;
 			if (animstruct != -1) {
 				let file = await scene.engine.getFileById(cacheMajors.structs, animstruct);
-				let animfile = parseStructs.read(file);
+				let animfile = parse.structs.read(file, scene.engine.rawsource);
 				//2954 for combat stance
 				let noncombatset = animfile.extra?.find(q => q.prop == 2954);
 				if (noncombatset) { animgroup = noncombatset.intvalue!; }
@@ -277,7 +277,7 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 		}
 	} else if (avabase.npc) {
 		let file = await scene.engine.getFileById(cacheMajors.npcs, avabase.npc.id);
-		let npc = parseNpc.read(file);
+		let npc = parse.npc.read(file, scene.engine.rawsource);
 		let mods: ModelModifications = {
 			replaceColors: npc.color_replacements ?? [],
 			replaceMaterials: npc.color_replacements ?? []
@@ -301,7 +301,7 @@ export function writeAvatar(avatar: avataroverrides | null, gender: number, npc:
 	}
 
 	if (avatar) {
-		let overrides = parseAvatarOverrides.write(avatar);
+		let overrides = parse.avatarOverrides.write(avatar);
 		base.player = {
 			slots: avatar.slots.map(q => {
 				const slot = q.slot as EquipSlot | null;
@@ -310,13 +310,13 @@ export function writeAvatar(avatar: avataroverrides | null, gender: number, npc:
 			rest: overrides
 		}
 	}
-	return parseAvatars.write(base);
+	return parse.avatars.write(base);
 }
 
 async function animGroupToAnims(scene: ThreejsSceneCache, groupid: number) {
 	let animsetarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let animsetfile = animsetarch[groupid];
-	let animset = parseAnimgroupConfigs.read(animsetfile.buffer);
+	let animset = parse.animgroupConfigs.read(animsetfile.buffer, scene.engine.rawsource);
 
 	return serializeAnimset(animset);
 }

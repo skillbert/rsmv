@@ -1,4 +1,4 @@
-import { parseObject } from "../opdecoder";
+import { parse } from "../opdecoder";
 import { BufferAttribute, Vector3 } from "three";
 import { objects } from "../../generated/objects";
 import { MapRect, PlacedMesh, TileGrid, transformVertexPositions } from "../3d/mapsquare";
@@ -29,7 +29,7 @@ export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: 
 		let loc = locids.get(info.locationid);
 		if (!loc) {
 			let buf = await engine.getFileById(cacheMajors.objects, info.locationid)
-			loc = parseObject.read(buf);
+			loc = parse.object.read(buf, engine.rawsource);
 			locids.set(info.locationid, loc);
 		}
 		if (!loc.name) { continue; }
