@@ -11,7 +11,7 @@ async function buildFileTypes() {
 	if (files.some(f => !path.basename(f).match(/\.jsonc?$/))) {
 		console.error("non-json files matched, is path wrong?");
 	}
-	const typedef = commentjson.parse(fs.readFileSync(path.resolve(basedir, "typedef.json"), "utf-8"), undefined, true);
+	const typedef = commentjson.parse(fs.readFileSync(path.resolve(basedir, "typedef.jsonc"), "utf-8"), undefined, true);
 	for (let file of files) {
 		let srcfile = path.resolve(basedir, file);
 		let objname = path.parse(srcfile).name;

@@ -14,15 +14,17 @@ let bytesleftoverwarncount = 0;
 
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser<T>;
+	originalSource: string;
 
 	static fromJson<T>(jsonObject: string) {
 		let opcodeobj = commentJson.parse(jsonObject, undefined, true) as any
-		return new FileParser<T>(opcodeobj);
+		return new FileParser<T>(opcodeobj, jsonObject);
 	}
 
-	constructor(opcodeobj: opcode_reader.ComposedChunk) {
+	constructor(opcodeobj: opcode_reader.ComposedChunk, originalSource?: string) {
 		this.parser = opcode_reader.buildParser(opcodeobj, typedef as any);
 		this.parser.setReferenceParent?.(null);
+		this.originalSource = originalSource ?? JSON.stringify(opcodeobj, undefined, "\t");
 	}
 
 	readInternal(state: opcode_reader.DecodeState) {
@@ -97,7 +99,7 @@ function allParsers() {
 		framemaps: FileParser.fromJson<import("../generated/framemaps").framemaps>(require("./opcodes/framemaps.jsonc")),
 		frames: FileParser.fromJson<import("../generated/frames").frames>(require("./opcodes/frames.json")),
 		animgroupConfigs: FileParser.fromJson<import("../generated/animgroupconfigs").animgroupconfigs>(require("./opcodes/animgroupconfigs.jsonc")),
-		models: FileParser.fromJson<import("../generated/models").models>(require("./opcodes/models.json")),
+		models: FileParser.fromJson<import("../generated/models").models>(require("./opcodes/models.jsonc")),
 		spotAnims: FileParser.fromJson<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json")),
 		rootCacheIndex: FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json")),
 		skeletalAnim: FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc")),
@@ -110,5 +112,7 @@ function allParsers() {
 		identitykit: FileParser.fromJson<import("../generated/identitykit").identitykit>(require("./opcodes/identitykit.jsonc")),
 		structs: FileParser.fromJson<import("../generated/structs").structs>(require("./opcodes/structs.jsonc")),
 		params: FileParser.fromJson<import("../generated/params").params>(require("./opcodes/params.jsonc")),
+		particles_0: FileParser.fromJson<import("../generated/particles_0").particles_0>(require("./opcodes/particles_0.jsonc")),
+		particles_1: FileParser.fromJson<import("../generated/particles_1").particles_1>(require("./opcodes/particles_1.jsonc"))
 	}
 }

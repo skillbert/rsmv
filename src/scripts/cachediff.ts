@@ -78,11 +78,11 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 
 	let changes: FileEdit[] = [];
 	let actionarg = majormap[major] ?? defaultAction(major);
-	if (typeof actionarg == "function") {
-		output.log(`checking major ${major}, different settings per minor`);
-	} else {
-		output.log(`checking major ${major} ${actionarg.name} subfiles:${actionarg.comparesubfiles}`);
-	}
+	// if (typeof actionarg == "function") {
+	// 	output.log(`checking major ${major}, different settings per minor`);
+	// } else {
+	// 	output.log(`checking major ${major} ${actionarg.name} subfiles:${actionarg.comparesubfiles}`);
+	// }
 
 	for (let i = 0; i < len; i++) {
 		if (output.state != "running") { break; }

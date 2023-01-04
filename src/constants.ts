@@ -14,6 +14,7 @@ export const cacheMajors = {
 	structs: 22,
 	quickchat: 24,
 	materials: 26,
+	particles: 27,
 	worldmap: 23,
 	models: 47,
 	frames: 48,

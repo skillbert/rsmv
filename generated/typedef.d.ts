@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\typedef.json'
+// This source data is located at '..\src\opcodes\typedef.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type typedef = any;

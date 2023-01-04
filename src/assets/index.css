@@ -95,6 +95,10 @@
 .mv-style select:focus {
 	outline-color: #1e96e0;
 }
+.mv-style textarea{
+	background:#232323;
+	color:white;
+}
 
 .mv-canvas {
 	width: 100%;

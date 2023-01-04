@@ -1,0 +1,57 @@
+{
+	"0x01": { "name":                           "unk01", "read": ["array",4,"ushort"] },
+	"0x02": { "name":                           "unk02", "read": ["array",1,"ushort"] },
+	"0x03": { "name":                           "unk03", "read": ["array",4,"ushort"] },
+	"0x04": { "name":                           "unk04", "read": ["array",1,"ushort"] },
+	"0x05": { "name":                           "unk05", "read": ["array",1,"ushort"] },
+	"0x06": { "name":                           "unk06", "read": ["buffer",8,"hex"] },
+	"0x07": { "name":                           "unk07", "read": ["array",2,"ushort"] },
+	"0x08": { "name":                           "unk08", "read": ["array",2,"ushort"] },
+	"0x09": { "name":                           "unk09", "read": ["array","ubyte","ushort"] },
+	"0x0A": { "name":                           "unk0A", "read": ["array","ubyte","ushort"] },
+
+	"0x0C": { "name":                           "unk0C", "read": "ubyte" },
+	"0x0D": { "name":                           "unk0D", "read": "ubyte" },
+	"0x0E": { "name":                           "unk0E", "read": "ushort" },
+	"0x0F": { "name":                           "unk0F", "read": "ushort" },
+	"0x10": { "name":                           "unk10", "read": ["tuple","ubyte","short","short","ubyte"] },
+
+	"0x12": { "name":                           "unk12", "read": ["buffer",4,"hex"] },
+	"0x13": { "name":                           "unk13", "read": "ubyte" },
+	"0x14": { "name":                           "unk14", "read": "ubyte" },
+	"0x15": { "name":                           "unk15", "read": "ubyte" },
+	"0x16": { "name":                           "unk16", "read": ["array",2,"ushort"] },
+	"0x17": { "name":                           "unk17", "read": "ubyte" },
+	"0x18": { "name":                           "unk18", "read": "ubyte" },
+	"0x19": { "name":                           "unk19", "read": ["array","ubyte","ushort"] },
+	"0x1A": { "name":                           "unk1A", "read": "true" },
+	"0x1B": { "name":                           "unk1B", "read": "ushort" },
+	"0x1C": { "name":                           "unk1C", "read": ["struct",
+		["unk0","ubyte"],
+		["flags","ubyte"],
+		["unkmain",["buffer",4,"hex"]],
+		["opt2",["opt",["flags",1,"bitflag"],"ubyte"]],
+		["opt4",["opt",["flags",2,"bitflag"],"ushort"]],
+		["opt8",["opt",["flags",3,"bitflag"],"ushort"]],
+		["opt16",["opt",["flags",4,"bitflag"],["tuple","ushort","ubyte"]]],
+		["unk2","ushort"]
+	] },
+	"0x1D": { "name":                           "unk1D", "read": ["struct",
+		["unk1",["array","ubyte","ushort"]],
+		["unk2","ushort"]
+	] },
+	"0x1E": { "name":                           "unk1E", "read": "true" },
+	"0x1F": { "name":                           "unk1F", "read": ["array",2,"ushort"] },
+	"0x20": { "name":                           "unk20", "read": "true" },
+	"0x21": { "name":                           "unk21", "read": "true" },//always followed by 0x1a
+	"0x22": { "name":                           "unk22", "read": "true" },
+	"0x23": { "name":                           "unk23", "read": ["struct",
+		["unk1",["array","ubyte",["tuple","short","ubyte"]]],
+		["unk2","ushort"]
+	] },
+	"0x24": { "name":                           "unk24", "read": "true" },
+
+	// "0x24": { "name":                           "unk24", "read": "true" },
+
+	// "0x22": { "name":                           "unk22", "read": "true" }
+}

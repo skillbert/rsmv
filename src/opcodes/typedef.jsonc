@@ -74,5 +74,7 @@
 		["prop","unsigned tribyte"],
 		["intvalue",["opt",["$type",0],"int"]],
 		["stringvalue",["opt",["$type",1],"string"]]
-	]]
+	]],
+
+	"item_modelid":     ["versioned","varuint",670,"ushort"]
 }

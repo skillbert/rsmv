@@ -196,6 +196,11 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 			},
 			read(b, id, source) {
 				let obj = parser.read(b, source, undefined, args.keepbuffers == "true");
+				// //TODO remove
+				// obj = obj.unk1Buffer;
+				// if (obj.length == 0) { return ""; }
+
+
 				if (args.batched) {
 					obj.$fileid = (id.length == 1 ? id[0] : id);
 				} else {
@@ -357,6 +362,9 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	environments: { parser: parse.environments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
 	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 
+	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
+	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },
+
 	maptiles: { parser: parse.mapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
 	maptiles_nxt: { parser: parse.mapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
 	maplocations: { parser: parse.mapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
@@ -448,6 +456,8 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 		let file = arch[fileid.subindex];
 		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
 		let res = mode.read(file.buffer, logicalid, source);
+		// //@ts-ignore //TODO remove
+		// if (res.length == 0) { continue; }
 		if (res instanceof Promise) { res = await res; }
 		if (batchSubfile || batchMaxFiles != -1) {
 			let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;

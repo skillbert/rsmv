@@ -315,7 +315,7 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, onSelect: (file: UISc
 		return <div />;
 	}
 	else {
-		const maxlist = 1000;
+		const maxlist = 4000;
 		return (
 			<div>
 				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.files.length} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}

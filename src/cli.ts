@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes, writeCacheFiles } from "./scripts/extractfiles";
 import { CLIScriptFS, CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
-import { defaultTestDecodeOpts, testDecode, testDecodeHistoric } from "./scripts/testdecode";
+import { defaultTestDecodeOpts, testDecode, testDecodeHistoric, validOpenrs2Caches } from "./scripts/testdecode";
 import * as cmdts from "cmd-ts";
 import { indexOverview } from "./scripts/indexoverview";
 import { diffCaches } from "./scripts/cachediff";
@@ -16,10 +16,11 @@ const testdecode = command({
 	args: {
 		...filesource,
 		...filerange,
+		save: option({ long: "save", short: "s", type: cmdts.string, defaultValue: () => "cache-errors" }),
 		mode: option({ long: "mode", short: "m" })
 	},
 	handler: async (args) => {
-		const errdir = new CLIScriptFS("./cache9/errs");
+		let errdir = new CLIScriptFS(args.save);
 		let olderrfiles = await errdir.readDir(".");
 		if (olderrfiles.find(q => !q.match(/^err/))) {
 			throw new Error("file not starting with 'err' in error dir");
@@ -32,6 +33,7 @@ const testdecode = command({
 		if (!mode) { throw new Error(`mode ${args.mode} not found, possible modes: ${Object.keys(cacheFileJsonModes).join(", ")}`) }
 		let opts = defaultTestDecodeOpts();
 		opts.outmode = "hextext";
+		opts.maxerrs = 500;
 		await output.run(testDecode, errdir, source, mode, args.files, opts);
 	}
 });
@@ -152,9 +154,41 @@ const scrapeavatars = command({
 	}
 });
 
+const openrs2ids = command({
+	name: "openrs2ids",
+	args: {
+		date: option({ long: "year", short: "d", defaultValue: () => "" }),
+		near: option({ long: "near", short: "n", defaultValue: () => "" })
+	},
+	async handler(args) {
+		let allids = await validOpenrs2Caches();
+		if (args.date) {
+			let m = args.date.match(/20\d\d/);
+			if (!m) { throw new Error("4 digit year expected"); }
+			let year = +m[0];
+			let enddate = new Date((year + 1) + "");
+			let startdate = new Date(year + "");
+			allids = allids.filter(q => q.timestamp && new Date(q.timestamp) >= startdate && new Date(q.timestamp) <= enddate);
+		}
+		if (args.near) {
+			let index = allids.findIndex(q => q.id == +args.near);
+			if (index == -1) { throw new Error("cache id not found"); }
+			let amount = 10;
+			let beforeamount = Math.min(index, amount);
+			allids = allids.slice(index - beforeamount, index + 1 + amount);
+		}
+		for (let cache of allids) {
+			let line = `id ${cache.id.toString().padStart(4)}, build ${cache.builds[0]?.major ?? "???"}`;
+			line += ` - ${cache.timestamp ? new Date(cache.timestamp).toDateString() : "unknown date"}`;
+			if (args.near && +args.near == cache.id) { line += " <--"; }
+			console.log(line);
+		}
+	}
+})
+
 let subcommands = cmdts.subcommands({
 	name: "cache tools cli",
-	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode }
+	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids }
 });
 
 cmdts.run(subcommands, cliArguments());

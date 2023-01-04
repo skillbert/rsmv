@@ -139,6 +139,7 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 				for (let key in chunkdef) {
 					if (key.startsWith("$")) { continue; }
 					let op = chunkdef[key];
+					if (mappedobj[op.name]) { throw new Error("duplicate opcode key " + op.name); }
 					mappedobj[op.name] = { op: parseInt(key), parser: buildParser(op.read, typedef) };
 				}
 				return opcodesParser(buildParser(chunkdef.$opcode ?? "unsigned byte", typedef), mappedobj);
@@ -1263,7 +1264,7 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 						return types[i].read(state);
 					}
 				}
-				return types.at(-1)!.read(state);
+				return types[types.length - 1].read(state);
 			},
 			write(state, v) {
 				for (let i = 0; i < versions.length; i++) {
@@ -1271,7 +1272,7 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 						return types[i].write(state, v);
 					}
 				}
-				return types.at(-1)!.write(state, v);
+				return types[types.length - 1].write(state, v);
 			},
 			setReferenceParent(parent) {
 				types.forEach(t => t.setReferenceParent?.(parent));

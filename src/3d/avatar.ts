@@ -210,10 +210,10 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			};
 		}
 
-		let res = testDecodeFile(parse.avatarOverrides, "json", Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
+		let res = testDecodeFile(parse.avatarOverrides, Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
 		if (!res.success) {
 			if (!output) { throw new Error(); }
-			output.writeFile(name + ".hexerr.json", res.errorfile)
+			output.writeFile(name + ".hexerr.json", res.getDebugFile("json"));
 		}
 		avatar = parse.avatarOverrides.read(Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
 

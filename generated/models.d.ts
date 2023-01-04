@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\models.json'
+// This source data is located at '..\src\opcodes\models.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type models = {

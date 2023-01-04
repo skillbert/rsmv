@@ -1,13 +1,13 @@
 ["struct",
-	["version","ubyte"],
+	["version",["versioned","ubyte",887,"0"]],
 	["v0",["opt",["version",0],["struct",
 		["unk0","ubyte"],//always 0-4
 		["texsize","ushort"],//256,512,0, but doesn't always correspond to actualtex
 		["unk2","ushort"],//always 0
 
 		["textureflags","ubyte"],//always 1,3,9,16
-		["diffuse",["opt",["textureflags",17,"bitor"],"uint"]],
-		["normal",["opt",["textureflags",10,"bitor"],"uint"]],
+		["diffuse",["opt",["textureflags",17,"bitor"],["versioned","uint",887,"ushort"]]],
+		["normal",["opt",["textureflags",10,"bitor"],["versioned","uint",887,"ushort"]]],
 
 		["unk3_skybox",["buffer",4,"hex"]],//looks like a bitflag thing, bit weird
 
@@ -18,9 +18,9 @@
 		["unk7","ubyte"],//0,1,62,63,64,255
 		["weirdshit",["opt",["unk7",255],["buffer",19,"hex"]]],//only one single material that has this
 
-		["diffuse_related1",["opt",["textureflags",4,"bitflag"],"ubyte"]],//always 1 or null
+		["diffuse_related1",["opt",["textureflags",4,"bitflag"],["versioned","ubyte",887,"0"]]],//always 1 or null
 		["normal_related",["opt",["textureflags",1,"bitflag"],["buffer",4,"hex"]]],//0x80000000 most of the time
-		["diffuse_related2",["opt",["textureflags",0,"bitflag"],"ubyte"]],//always 1,0 or null
+		["diffuse_related2",["opt",["textureflags",0,"bitflag"],["versioned","ubyte",887,"0"]]],//always 1,0 or null
 
 		["alphamode","ubyte"],//0,1 or 2
 		["alphacutoff",["opt",["alphamode",1],"ubyte"]],//128 most of the time

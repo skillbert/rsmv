@@ -1468,17 +1468,18 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 }
 
 function ExtractFilesScript(p: UiScriptProps) {
+	let [initmode, initbatched, initkeepbuffs] = p.initialArgs.split(":");
 	let [filestext, setFilestext] = React.useState("");
-	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>("items");
-	let [batched, setbatched] = React.useState(true);
-	let [keepbuffers, setkepbuffers] = React.useState(false);
+	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
+	let [batched, setbatched] = React.useState(initbatched != "false");
+	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
 
 	let run = () => {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
 		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers });
-		p.onRun(output);
+		p.onRun(output, `${mode}:${batched}:${keepbuffers}`);
 	}
 
 	return (
@@ -1508,7 +1509,7 @@ function MaprenderScript(p: UiScriptProps) {
 		let output = new UIScriptOutput();
 		localStorage.rsmv_script_map_endpoint = endpoint;
 		output.run(runMapRender, p.source, "main", endpoint, auth, mapid, false);
-		p.onRun(output);
+		p.onRun(output, "");
 	}
 
 	return (
@@ -1544,7 +1545,7 @@ function CacheDiffScript(p: UiScriptProps) {
 		if (!cache2) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("diff");
-		p.onRun(output);
+		p.onRun(output, "");
 		let res = output.run(diffCaches, outdir, cache2, p.source);
 		res.then(setResult);
 	}
@@ -1607,8 +1608,12 @@ function CacheDiffScript(p: UiScriptProps) {
 }
 
 function TestFilesScript(p: UiScriptProps) {
-	let [mode, setMode] = React.useState("");
-	let [range, setRange] = React.useState("");
+	let [initmode, initrange, initdumpall, initordersize] = p.initialArgs.split(":");
+	let [mode, setMode] = React.useState(initmode || "");
+	let [range, setRange] = React.useState(initrange || "");
+	let [dumpall, setDumpall] = React.useState(initdumpall == "true");
+	let [ordersize, setOrdersize] = React.useState(initordersize == "true");
+	let [customparser, setCustomparser] = React.useState("");
 
 	let run = () => {
 		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
@@ -1616,14 +1621,27 @@ function TestFilesScript(p: UiScriptProps) {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("output")
 		let opts = defaultTestDecodeOpts();
-		//TODO remove or make ui
-		if (globalThis.fileparser) {
+		opts.maxerrs = 50000;
+		opts.orderBySize = ordersize;
+		opts.dumpall = dumpall;
+		if (customparser) {
 			modeobj = { ...modeobj };
-			modeobj.parser = new FileParser(globalThis.fileparser);
+			modeobj.parser = FileParser.fromJson(customparser);
 		}
 		output.run(testDecode, outdir, p.source, modeobj, stringToFileRange(range), opts);
-		p.onRun(output);
+		p.onRun(output, `${mode}:${range}:${dumpall}:${ordersize}`);
 	}
+
+	let customparserUi = React.useCallback(() => {
+		let srctext = customparser || cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes].parser.originalSource;
+		let modal = showModal({ title: "Edit parser" }, (
+			<form style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+				<textarea name="parsertext" defaultValue={srctext} style={{ flex: "1000px 1 1", resize: "none", whiteSpace: "nowrap" }} />
+				<input type="button" className="sub-btn" value="Confirm" onClick={e => { setCustomparser(e.currentTarget.form!.parsertext.value); modal.close(); }} />
+			</form>
+		))
+		// txtarea.style.cssText = "position:absolute;top:0px;left:0px;right:0px;bottom:20px;";
+	}, []);
 
 	return (
 		<React.Fragment>
@@ -1636,11 +1654,17 @@ function TestFilesScript(p: UiScriptProps) {
 			<LabeledInput label="file range">
 				<input type="text" onChange={e => setRange(e.currentTarget.value)} value={range} />
 			</LabeledInput>
+			<label><input type="checkbox" checked={ordersize} onChange={e => setOrdersize(e.currentTarget.checked)} />Order by size (puts everything in mem)</label>
+			<label><input type="checkbox" checked={dumpall} onChange={e => setDumpall(e.currentTarget.checked)} />Output successes as well</label>
+			<br />
+			<input type="button" className="sub-btn" value="Edit parser" onClick={customparserUi} />
+			{customparser && <input type="button" className="sub-btn" value="Reset" onClick={() => setCustomparser("")} />}
+			<br />
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }
-type UiScriptProps = { onRun: (output: UIScriptOutput) => void, source: CacheFileSource, ctx: UIContext };
+type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, initialArgs: string, source: CacheFileSource, ctx: UIContext };
 const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	test: TestFilesScript,
 	extract: ExtractFilesScript,
@@ -1649,11 +1673,16 @@ const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 }
 
 function ScriptsUI(p: LookupModeProps) {
-	let [script, setScript] = React.useState<string>(p.initialId as any);
+	let initialscript = "test";
+	let initialargs = "";
+	if (typeof p.initialId == "string") {
+		[initialscript, initialargs] = p.initialId.split(/(?<=^[^:]*):/);
+	}
+	let [script, setScript] = React.useState<string>(initialscript);
 	let [running, setRunning] = React.useState<UIScriptOutput | null>(null);
 
-	let onRun = React.useCallback((output: UIScriptOutput) => {
-		localStorage.rsmv_lastsearch = JSON.stringify(script);
+	let onRun = React.useCallback((output: UIScriptOutput, savedargs: string) => {
+		localStorage.rsmv_lastsearch = JSON.stringify(script + ":" + savedargs);
 		setRunning(output);
 	}, [script]);
 
@@ -1671,7 +1700,7 @@ function ScriptsUI(p: LookupModeProps) {
 						<p>The script runner allows you to run some of the CLI scripts directly from the browser.</p>
 					</React.Fragment>
 				)}
-				{SelectedScript && <SelectedScript source={source} onRun={onRun} ctx={p.partial} />}
+				{SelectedScript && <SelectedScript source={source} onRun={onRun} initialArgs={initialargs ?? ""} ctx={p.partial} />}
 				<h2>Script output</h2>
 				<OutputUI output={running} ctx={p.partial} />
 			</div>
