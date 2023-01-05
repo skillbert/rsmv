@@ -62,9 +62,9 @@
 
     "true":             { "primitive": "value", "value": true },
     "false":            { "primitive": "value", "value": false },
-    "0":                { "primitive": "value", "value": 0 },
-    "1":                { "primitive": "value", "value": 1 },
-    "-1":               { "primitive": "value", "value": -1 },
+    "0":                0,//obsolete backward compat
+    "1":                1,
+    "-1":               -1,
 
     "string":           { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[] },
     "paddedstring":     { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[0] },

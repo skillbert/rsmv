@@ -36,7 +36,7 @@ type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand
 export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveHardcode | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
 
-export type ComposedChunk = string
+export type ComposedChunk = string | number
 	| [type: "array", props: ComposedChunk]
 	| [type: "chunkedarray", length: ComposedChunk | number, ...chunks: [name: string, value: any][]]
 	| [type: "array", length: ComposedChunk | number, valueType: ComposedChunk]
@@ -49,7 +49,7 @@ export type ComposedChunk = string
 	| [type: "opt", condition: (number | [ref: string, value: number, compare: CompareMode]), value: ComposedChunk]
 	| { $opcode: string } & Record<string, { name: string, read: ComposedChunk }>
 	| [type: "struct", ...props: [name: string, value: any][]]
-	| [type: "tuple", ...props: any[]]//ComposedChunk[] can't write type since it would be circular
+	| [type: "tuple", ...props: any[]]
 
 
 type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
@@ -64,7 +64,7 @@ const BufferTypes = {
 	uint: { constr: Uint32Array },
 };
 
-var debugdata: null | { structstack: object[], opcodes: { op: number | string, index: number, stacksize: number }[] } = null;
+var debugdata: null | { structstack: object[], opcodes: { op: number | string, index: number, stacksize: number, external?: { start: number, len: number } }[] } = null;
 export function getDebug(trigger: boolean) {
 	let ret = debugdata;
 	//TODO structstack is obsolete because of the stack in state
@@ -117,7 +117,7 @@ function resolveAlias(typename: string, typedef: TypeDef) {
 		}
 		newtype = typedef[newtype];
 		if (typeof newtype != "string") {
-			if ("primitive" in newtype) {
+			if (typeof newtype != "number" && "primitive" in newtype) {
 				//TODO this break when aliased types have a key "primitive"
 				return primitiveParser(newtype as any, typedef);
 			} else {
@@ -131,6 +131,8 @@ function resolveAlias(typename: string, typedef: TypeDef) {
 
 export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkParser {
 	switch (typeof chunkdef) {
+		case "number":
+			return literalValueParser({ primitive: "value", value: chunkdef });
 		case "string":
 			return resolveAlias(chunkdef, typedef);
 		case "object":
@@ -180,7 +182,7 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
 						let rawchunks = chunkdef.slice(chunkdef.length >= 3 ? 2 : 1) as [name: string, value: ComposedChunk][][];
-						let lentype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						let lentype = buildParser(sizearg, typedef);
 						return chunkedArrayParser(lentype, rawchunks.map(chunk => Object.fromEntries(chunk.map(q => [q[0], buildParser(q[1], typedef)]))));
 					}
 					case "bytesleft":
@@ -188,13 +190,13 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					case "buffer":
 						if (chunkdef.length < 3) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = chunkdef[1];
-						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef))
+						let sizetype = buildParser(sizearg, typedef);
 						return bufferParser(sizetype, chunkdef[2], chunkdef[3] ?? 1);
 					case "nullarray":
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
 						let sizearg = (chunkdef.length >= 3 ? chunkdef[1] : "variable unsigned short");
-						let sizetype = (typeof sizearg == "number" ? literalValueParser({ primitive: "value", value: sizearg }) : buildParser(sizearg, typedef));
+						let sizetype = buildParser(sizearg, typedef);
 						let valuetype = buildParser(chunkdef[chunkdef.length >= 3 ? 2 : 1] as ComposedChunk, typedef);
 						if (chunkdef[0] == "array") {
 							return arrayParser(sizetype, valuetype);
@@ -1260,7 +1262,7 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 		return {
 			read(state) {
 				for (let i = 0; i < versions.length; i++) {
-					if (state.clientVersion > versions[i]) {
+					if (state.clientVersion >= versions[i]) {
 						return types[i].read(state);
 					}
 				}
@@ -1282,6 +1284,40 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 			},
 			getJsonSchema() {
 				return types[0].getJsonSchema();
+			},
+		}
+	},
+	footer: function (args, typedef) {
+		if (args.length != 2) { throw new Error("footer requires length and subtype arguments"); }
+		let lentype = buildParser(args[0] as any, typedef);
+		let subtype = buildParser(args[1] as any, typedef);
+		return {
+			read(state) {
+				let len = lentype.read(state);
+				let oldscan = state.scan;
+				let footstart = state.endoffset - len;
+				state.scan = footstart;
+				let res = subtype.read(state);
+				if (debugdata) {
+					debugdata.opcodes.push({ op: `footer`, index: oldscan, stacksize: state.stack.length + 1, external: { start: footstart, len: state.scan - footstart } });
+				}
+				if (state.scan != state.endoffset) { console.log(`didn't read full footer, ${state.endoffset - state.scan} bytes left`); }
+				state.scan = oldscan;
+				state.endoffset = state.endoffset - len;
+
+				return res;
+			},
+			write(state, v) {
+				throw new Error("not implemented");
+			},
+			setReferenceParent(parent) {
+				subtype.setReferenceParent?.(parent);
+			},
+			getTypescriptType(indent) {
+				return subtype.getTypescriptType(indent);
+			},
+			getJsonSchema() {
+				return subtype.getJsonSchema();
 			},
 		}
 	}

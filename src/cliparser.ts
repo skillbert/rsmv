@@ -48,6 +48,7 @@ function cacheSourceFromString(str: string) {
 				return new GameCacheLoader(arg, !!opts?.writable);
 			case "files":
 				return new RawFileLoader(arg, 0);
+			case "openrs":
 			case "openrs2":
 				return Openrs2CacheSource.fromId(+arg);
 			default:
