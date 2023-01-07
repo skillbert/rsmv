@@ -208,6 +208,7 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as a struct must contain items: ${JSON.stringify(chunkdef)}`);
 						let props = {};
 						for (let prop of chunkdef.slice(1) as [string, ComposedChunk][]) {
+							if (props[prop[0]]) { throw new Error("duplicate struct prop " + prop[0]); }
 							props[prop[0]] = buildParser(prop[1], typedef);
 						}
 						return structParser(props);
@@ -1320,6 +1321,60 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 				return subtype.getJsonSchema();
 			},
 		}
+	},
+	modelflagsize: function (args, typedef) {
+		if (args.length != 1) { throw new Error("length expected"); }
+		let lentype = buildParser(args[0] as any, typedef);
+		let refparent: ChunkParserContainer | null = null;
+		let versionref: ReturnType<typeof refgetter>;
+
+		let r: ChunkParserContainer<number> = {
+			read(state) {
+				let len = lentype.read(state);
+				let version = versionref.read(state);
+				let sizes: number[];
+				if (version <= 7) {
+					sizes = [6, 15, 17, 18];
+				} else if (version <= 0xe) {
+					sizes = [6, 18, 18, 18];
+				} else {
+					sizes = [6, 18, 20, 18];
+				}
+				let count = 0;
+				for (let i = 0; i < len; i++) {
+					let flag = state.buffer.readUint8(state.scan + i);
+					let size = sizes[flag];
+					if (typeof size == "undefined") {
+						throw new Error("unexpected flag value " + flag);
+					}
+					count += size;
+				}
+				return count;
+			},
+			write(state, v) {
+				throw new Error("not implemented");
+			},
+			setReferenceParent(parent) {
+				refparent = parent;
+				lentype.setReferenceParent?.(r);
+				versionref = refgetter(r, parent, "modelversion", (v, old) => {
+					throw new Error("write not implemented");
+				});
+			},
+			resolveReference(name, childresolve) {
+				if (childresolve.owner == lentype) {
+					return buildReference(name, refparent, { owner: r, stackdepth: childresolve.stackdepth, resolve: childresolve.resolve });
+				}
+				throw new Error("unknown prop");
+			},
+			getTypescriptType(indent) {
+				return "number";
+			},
+			getJsonSchema() {
+				return { type: "number" };
+			},
+		}
+		return r;
 	}
 }
 

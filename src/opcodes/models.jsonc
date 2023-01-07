@@ -47,7 +47,7 @@
 	// 	["flags","ubyte"],//00-0a
 	// 	[]
 	// ]]],
-	["unk1Buffer",["array",["ref","unkCount1"],["buffer",39,"hex"]]],
-	["unk2Buffer",["array",["ref","unkCount2"],["buffer",50,"hex"]]],
+	["unk1Buffer",["array",["ref","unkCount1"],["buffer",["versioned",39,923,37],"hex"]]],
+	["unk2Buffer",["array",["ref","unkCount2"],["buffer",["versioned",50,923,44],"hex"]]],
 	["unk3Buffer",["array",["ref","unkCount3"],["buffer",18,"hex"]]]
 ]

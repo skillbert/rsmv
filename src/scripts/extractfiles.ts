@@ -371,6 +371,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	frames: { parser: parse.frames, lookup: standardIndex(cacheMajors.frames) },
 	models: { parser: parse.models, lookup: noArchiveIndex(cacheMajors.models) },
+	oldmodels: { parser: parse.oldmodels, lookup: noArchiveIndex(cacheMajors.oldmodels) },
 	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
 
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },

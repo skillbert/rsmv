@@ -70,7 +70,8 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 		// cacheMajors.items,
 		cacheMajors.npcs,
 		// cacheMajors.objects,
-		// cacheMajors.mapsquares
+		// cacheMajors.mapsquares,
+		// cacheMajors.models
 	];
 
 	let caches = function* (): Generator<CacheInput> {
@@ -211,7 +212,7 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 				errorcount++;
 			}
 			if (opts.dumpall || !res.success) {
-				let filename = (file.name ? `err-${file.name}` : `err-${file.major}_${file.minor}_${file.subfile}`);
+				let filename = `${res.success ? "pass" : "fail"}-${file.name ? `${file.name}` : `${file.major}_${file.minor}_${file.subfile}`}`;
 				if (opts.outmode == "json") {
 					outdir.writeFile(filename + ".hexerr.json", res.getDebugFile(opts.outmode));
 				}
@@ -282,12 +283,17 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 			for (let i = 0; i < debugdata.opcodes.length; i++) {
 				let op = debugdata.opcodes[i];
 				let endindex = (i + 1 < debugdata.opcodes.length ? debugdata.opcodes[i + 1].index : state.scan);
-				let bytes = buffer.slice(index, endindex).toString("hex");
+				let sliceend = endindex;
+				if (op.external) {
+					index = op.external.start;
+					sliceend = op.external.start + op.external.len;
+				}
+				let bytes = buffer.slice(index, sliceend).toString("hex");
 				let opstr = " ".repeat(op.stacksize - 1) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
 				err.chunks.push({ offset: index, bytes, text: opstr });
 				index = endindex;
 			}
-			err.remainder = buffer.slice(index).toString("hex");
+			err.remainder = buffer.slice(index, state.endoffset).toString("hex");
 			// err.state = state.stack[state.stack.length - 1] ?? null;
 			err.state = debugdata.structstack[debugdata.structstack.length - 1] ?? null;
 

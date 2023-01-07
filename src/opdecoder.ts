@@ -100,6 +100,7 @@ function allParsers() {
 		frames: FileParser.fromJson<import("../generated/frames").frames>(require("./opcodes/frames.json")),
 		animgroupConfigs: FileParser.fromJson<import("../generated/animgroupconfigs").animgroupconfigs>(require("./opcodes/animgroupconfigs.jsonc")),
 		models: FileParser.fromJson<import("../generated/models").models>(require("./opcodes/models.jsonc")),
+		oldmodels: FileParser.fromJson<import("../generated/oldmodels").oldmodels>(require("./opcodes/oldmodels.jsonc")),
 		spotAnims: FileParser.fromJson<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json")),
 		rootCacheIndex: FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json")),
 		skeletalAnim: FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc")),
