@@ -7,7 +7,7 @@
 		//seems to correlate to action type 
 		//1=standard bone(1-9) 2=unknown(7x 3, 14x 7, 14x 8), 3=unknown(10-15), 3=unknown(16)
 		["unk_1to4","ubyte"],
-		//boneid+0x40, or boneid+0x4040 if 2 byte
+		//boneid+0x40, or boneid+0x4040 if 2 byte//TODO is this smartShortBias?
 		["boneid","varushort"],
 		//animation type 1-3=rotatexyz, 4-6=translatexyz 7-9=scalexyz
 		["type_0to9","ubyte"],

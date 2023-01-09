@@ -1,18 +1,18 @@
 ["struct",
 	["colanimcount",["footer",2,"ushort"]],
 	["unkcount0",["footer",2,"ushort"]],
-	["unkcount1",["footer",2,"ushort"]],
-	["unkcount2",["footer",2,"ushort"]],
-	["xsize",["footer",2,"ushort"]],
-	["ysize",["footer",2,"ushort"]],
+	["uvcount",["footer",2,"ushort"]],
+	["indexbufsize",["footer",2,"ushort"]],
 	["zsize",["footer",2,"ushort"]],
+	["ysize",["footer",2,"ushort"]],
+	["xsize",["footer",2,"ushort"]],
 	["flag1",["footer",1,"bool"]],
-	["flag2",["footer",1,"bool"]],
+	["hascolors",["footer",1,"bool"]],
 	["flag3",["footer",1,"bool"]],
-	["flag4",["footer",1,"bool"]],
-	["byte1",["footer",1,"ubyte"]],
-	["byte2",["footer",1,"ubyte"]],
-	["byte3",["footer",1,"ubyte"]],
+	["hasalpha",["footer",1,"bool"]],
+	["bonebyte",["footer",1,"ubyte"]],
+	["extraflags",["footer",1,"ubyte"]],
+	["texmapcount",["footer",1,"ubyte"]],
 	["byte4",["footer",1,"ubyte"]],
 	["facecount",["footer",2,"ushort"]],
 	["vertcount",["footer",2,"ushort"]],
@@ -21,51 +21,93 @@
 	["header2","ubyte"],
 	["modelversion","ubyte"],
 
-	["textrianglelen",["modelflagsize",["ref","byte3"]]],
-	["textriangles",["buffer",["ref","byte3"],"ubyte"]],//in the old tex system the uvs are projected and extended from base tri's
+	["texmap_vertcount",0],
+	["texmap_normalcount",0],
+	["texmap_scalecount",0],
+	["texmap_rotationcount",0],
+	["texmap_directioncount",0],
+	["texmap_transsize",0],
+	["texflags",["array",["ref","texmapcount"],["match","ubyte",{
+		"0":["struct",
+			["type",0],
+			["vertindex",["accum","texmap_vertcount",1,"postadd"]]
+		],
+		"1":["struct",
+			["type",1],
+			["normal",["accum","texmap_normalcount",1,"postadd"]],
+			["scale",["accum","texmap_scalecount",1,"postadd"]],
+			["rotation",["accum","texmap_rotationcount",1,"postadd"]],
+			["direction",["accum","texmap_directioncount",1,"postadd"]],
+			["speed",["accum","texmap_transsize",1,"postadd"]]
+		],
+		"2":["struct",
+			["type",2],
+			["normal",["accum","texmap_normalcount",1,"postadd"]],
+			["scale",["accum","texmap_scalecount",1,"postadd"]],
+			["rotation",["accum","texmap_rotationcount",1,"postadd"]],
+			["direction",["accum","texmap_directioncount",1,"postadd"]],
+			["speed",["accum","texmap_transsize",3,"postadd"]]
+		],
+		"3":["struct",
+			["type",3],
+			["normal",["accum","texmap_normalcount",1,"postadd"]],
+			["scale",["accum","texmap_scalecount",1,"postadd"]],
+			["rotation",["accum","texmap_rotationcount",1,"postadd"]],
+			["direction",["accum","texmap_directioncount",1,"postadd"]],
+			["speed",["accum","texmap_transsize",1,"postadd"]]
+		]
+	}]]],
 	["vertflags",["buffer",["ref","vertcount"],"ubyte"]],//0-7 flags, whether xyz are different from previous vertex
-	["tritype",["buffer",["ref","facecount"],"ubyte"]],//0-4 are types, flag 8 grabs a uv pair from the texuvs struct
-	["face2",["opt",["byte2",0,"bitflag"],["buffer",["ref","facecount"],"ubyte"]]],
-	["boneids",["opt",["byte1",255],["buffer",["ref","facecount"],"ubyte"]]],
-	["alpha",["opt",["flag1",1],["buffer",["ref","colanimcount"],"ubyte"]]],
-	["tridata",["buffer",["ref","unkcount0"],"ubyte"]],
-	["faceunk",["opt",["flag4",1],["buffer",["ref","facecount"],"ubyte"]]],
-	["unk2",["buffer",["ref","unkcount2"],"ubyte"]],
+	["face2",["opt",["extraflags",0,"bitflag"],["buffer",["ref","facecount"]]]],
+	["tritype",["buffer",["ref","facecount"],"ubyte"]],//1-4 are types, flag 8 grabs a uv pair from the texuvs struct
+	["boneids",["opt",["bonebyte",255],["buffer",["ref","facecount"],"ubyte"]]],
+	["unk1",["opt",["flag1",1],["buffer",["ref","colanimcount"]]]],
+	["tridata",["buffer",["ref","unkcount0"]]],
+	["alpha",["opt",["hasalpha",1],["buffer",["ref","facecount"]]]],
+	["indexbuffer",["buffer",["ref","indexbufsize"]]],
 	["material",["buffer",["ref","facecount"],"ushort"]],
-	["uvs",["buffer",["ref","unkcount1"],"ubyte"]],
-	["colors",["opt",["flag2",1],["buffer",["ref","facecount"],"ushort"]]],
-	["posx",["buffer",["ref","xsize"],"ubyte"]],
-	["posy",["buffer",["ref","ysize"],"ubyte"]],
-	["posz",["buffer",["ref","zsize"],"ubyte"]],
-	["unk3",["buffer",["ref","textrianglelen"],"ubyte"]],
-
-	["particles",["opt",["byte2",1,"bitflag"],["array","ubyte",["struct",
+	["uvs",["buffer",["ref","uvcount"]]],
+	["colors",["opt",["hascolors",1],["buffer",["ref","facecount"],"ushort"]]],
+	["posx",["buffer",["ref","xsize"]]],
+	["posy",["buffer",["ref","ysize"]]],
+	["posz",["buffer",["ref","zsize"]]],
+	["texmap_verts",["array",["ref","texmap_vertcount"],["tuple","ushort","ushort","ushort"]]],
+	["texmap_normals",["array",["ref","texmap_normalcount"],["tuple","ushort","ushort","ushort"]]],
+	["texmap_scales",["array",["ref","texmap_scalecount"],["tuple",
+		["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}],
+		["match",["ref","modelversion"],{">=14":"unsigned tribyte",">=0":"ushort"}],//14 is not a typo
+		["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}]
+	]]],
+	["texmap_rotations",["array",["ref","texmap_rotationcount"],"ubyte"]],
+	["texmap_directions",["array",["ref","texmap_directioncount"],"ubyte"]],
+	["texmap_translates",["array",["ref","texmap_transsize"],"ubyte"]],
+	["particles",["opt",["extraflags",1,"bitflag"],["array","ubyte",["struct",
 		["texture","ushort"],
 		["faceid","ushort"]
 	]]]],
-	["effectors",["opt",["byte2",1,"bitflag"],["array","ubyte",["struct",
+	["effectors",["opt",["extraflags",1,"bitflag"],["array","ubyte",["struct",
 		["effector","ushort"],
 		["vertex","ushort"]
 	]]]],
-	["billboards",["opt",["byte2",2,"bitflag"],["array","ubyte",["struct",
+	["billboards",["opt",["extraflags",2,"bitflag"],["array","ubyte",["struct",
 		["unk1","ushort"],
 		["unk2","ushort"],
 		["unk3","ubyte"],
 		["unk4","ubyte"]
 	]]]],
-	["texuvs",["opt",["byte2",7,"bitflag"],["struct",
+	["texuvs",["opt",["extraflags",7,"bitflag"],["struct",
 		["headoffset",["footer",1,"ubyte"]],//always 7?
 		["indexsize",["footer",2,"ushort"]],
 		["datasize",["footer",2,"ushort"]],
 		["coordcount",["footer",2,"ushort"]],
-		["skipped",["buffer",["ref","indexsize"],"ubyte"]],
-		["offsets",["buffer",["ref","vertcount"],"ubyte"]],
+		["skipped",["buffer",["ref","indexsize"]]],
+		["offsets",["buffer",["ref","vertcount"]]],
 		// ["vertexu",["buffer",["ref","vertcount"],"short"]],
 		// ["vertexv",["buffer",["ref","vertcount"],"short"]]
-		["uvdata",["buffer",["bytesleft"],"ubyte"]]
+		["uvdata",["buffer",["bytesleft"]]]
 	]]]
 
 	//TODO no clue what these are about, their length doesn't make any sense at all
-	// ["weirdshit1",["opt",["byte2",2,"bitflag"],["buffer",["bytesleft"],"hex"]]],
-	// ["weirdshit2",["opt",["byte2",7,"bitflag"],["buffer",["bytesleft"],"hex"]]]
+	// ["weirdshit1",["opt",["extraflags",2,"bitflag"],["buffer",["bytesleft"],"hex"]]],
+	// ["weirdshit2",["opt",["extraflags",7,"bitflag"],["buffer",["bytesleft"],"hex"]]]
 ]

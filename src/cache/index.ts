@@ -339,7 +339,7 @@ export class CachingFileSource extends CacheFileSource {
 
 	fetchCachedObject<T>(map: Map<number, CachedObject<T>>, id: number, create: () => Promise<T>, getSize: (obj: T) => number) {
 		let bucket = map.get(id);
-		if (!bucket) {
+		if (!bucket || true) {//TODO enable again
 			let data = create();
 			bucket = {
 				data: data,

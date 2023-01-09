@@ -13,10 +13,12 @@ export type Stream = {
 	readUByte(): number;
 	readUShortSmart(): number;
 	readShortSmart(): number;
+	readShortSmartBias(): number;
 	readShort(flip?: boolean): number;
 	readUShort(flip?: boolean): number;
 	readUInt(flip?: boolean): number;
 	readUIntSmart(): number;
+	readTribyte(): number;
 	readFloat(flip?: boolean, signage?: boolean): number;
 	readHalf(flip?: boolean): number;
 	eof(): boolean;
@@ -45,7 +47,7 @@ export function stringToFileRange(str: string) {
 	return ranges;
 }
 
-export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData  | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
 	const cnv = ctx.canvas;
 	if ("data" in img) {
 		cnv.width = img.width;
@@ -96,7 +98,7 @@ export function constrainedMap<Q>() {
 	}
 }
 
-export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function Stream(this: Stream, data: Buffer) {
+export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function Stream(this: Stream, data: Buffer, scan = 0) {
 	// Double check the mime type
 	/*if (data[data.length - 4] != 0x4F) // O
 		return null;
@@ -106,8 +108,6 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 		return null;
 	else if (data[data.length - 1] != 0x33) // 3
 		return null;*/
-
-	var scan = 0;
 
 	this.getData = function () {
 		return data;
@@ -150,6 +150,14 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 		let byte1 = this.readUByte();
 		return (byte0val << 8) | byte1;
 	}
+	this.readShortSmartBias = function () {
+		let byte0 = this.readUByte();
+		if ((byte0 & 0x80) == 0) {
+			return byte0 - 0x40;
+		}
+		let byte1 = this.readUByte();
+		return (((byte0 & 0x7f) << 8) | byte1) - 0x4000;
+	}
 
 	this.readUIntSmart = function () {
 		let byte0 = this.readUByte();
@@ -170,6 +178,11 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 		var val = this.readUShort(bigendian);
 		if (val > 32767)
 			return val - 65536;
+		return val;
+	}
+	this.readTribyte = function () {
+		let val = data.readIntBE(scan, 3);
+		scan += 3;
 		return val;
 	}
 
@@ -234,7 +247,7 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 } as any
 
 // https://stackoverflow.com/a/9493060
-export function HSL2RGB(hsl: number[]): [number, number, number] {
+export function HSL2RGBfloat(hsl: number[]): [number, number, number] {
 	var h = hsl[0];
 	var s = hsl[1];
 	var l = hsl[2];
@@ -260,7 +273,13 @@ export function HSL2RGB(hsl: number[]): [number, number, number] {
 		b = hue2rgb(p, q, h - 1 / 3);
 	}
 
-	return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+	return [r, g, b];
+}
+
+// https://stackoverflow.com/a/9493060
+export function HSL2RGB(hsl: number[]): [number, number, number] {
+	let rgb = HSL2RGBfloat(hsl);
+	return [Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)];
 }
 
 export function RGB2HSL(r: number, g: number, b: number): [number, number, number] {

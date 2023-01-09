@@ -31,7 +31,7 @@ type PrimitiveString = {
 }
 export type ScanBuffer = Buffer & { scan: number };
 
-type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand";
+type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand" | "gteq" | "lteq";
 
 export type Primitive<T> = PrimitiveInt | PrimitiveFloat | PrimitiveBool | PrimitiveString | PrimitiveHardcode | PrimitiveValue<T>;
 export type ChunkType<T> = Primitive<T> | string;
@@ -55,6 +55,7 @@ export type ComposedChunk = string | number
 type TypeDef = { [name: string]: ChunkType<any> | ComposedChunk };
 
 const BufferTypes = {
+	buffer: { constr: Buffer as any as Uint8ArrayConstructor },//Buffer typings doesn't have BYTES_PER_ELEMENT
 	hex: { constr: Uint8Array },//used to debug into json file
 	byte: { constr: Int8Array },
 	ubyte: { constr: Uint8Array },
@@ -188,10 +189,9 @@ export function buildParser(chunkdef: ComposedChunk, typedef: TypeDef): ChunkPar
 					case "bytesleft":
 						return bytesRemainingParser();
 					case "buffer":
-						if (chunkdef.length < 3) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
-						let sizearg = chunkdef[1];
-						let sizetype = buildParser(sizearg, typedef);
-						return bufferParser(sizetype, chunkdef[2], chunkdef[3] ?? 1);
+						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
+						let sizetype = buildParser(chunkdef[1], typedef);
+						return bufferParser(sizetype, chunkdef[2] ?? "buffer", chunkdef[3] ?? 1);
 					case "nullarray":
 					case "array": {
 						if (chunkdef.length < 2) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(chunkdef)}`);
@@ -581,6 +581,10 @@ function forceCondition(condMode: CompareMode, compValue: number, oldvalue: numb
 			return (state ? oldvalue | compValue : oldvalue & ~compValue);
 		case "bitflagnot":
 			return (state ? oldvalue & ~(1 << compValue) : oldvalue | (1 << compValue));
+		case "gteq":
+			return state ? Math.max(compValue, oldvalue) : oldvalue;
+		case "lteq":
+			return state ? Math.min(compValue, oldvalue) : oldvalue;
 		default:
 			throw new Error("unknown condition " + condMode);
 	}
@@ -589,7 +593,7 @@ function forceCondition(condMode: CompareMode, compValue: number, oldvalue: numb
 function checkCondition(condmode: CompareMode, compValue: number, v: number) {
 	switch (condmode) {
 		case "eq":
-			return v == compValue!;
+			return v == compValue;
 		case "eqnot":
 			return v != compValue;
 		case "bitflag":
@@ -600,6 +604,10 @@ function checkCondition(condmode: CompareMode, compValue: number, v: number) {
 			return (v & compValue) == compValue;
 		case "bitflagnot":
 			return (v & (1 << compValue)) == 0;
+		case "gteq":
+			return v >= compValue;
+		case "lteq":
+			return v <= compValue;
 		default:
 			throw new Error("unkown condition " + condmode);
 	}
@@ -740,7 +748,7 @@ function bufferParser(lengthtype: ChunkParser<number>, scalartype: keyof typeof 
 			let bytes = Buffer.from(backing);
 			bytes.set(state.buffer.subarray(state.scan, state.scan + bytelen));
 			state.scan += bytelen;
-			let array = new type.constr(backing);
+			let array = (scalartype == "buffer" ? bytes : new type.constr(backing));
 			if (scalartype == "hex") { (array as any).toJSON = () => bytes.toString("hex"); }
 			else if (!state.keepBufferJson) { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
 			else { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[]{${[...array].join(",")}}` }
@@ -818,7 +826,7 @@ function arrayParser<T>(lengthtype: ChunkParser<number>, subtype: ChunkParser<T>
 					//possibly do this for all elements in the array if needed and allowed by performance
 					return child.resolve(v[0], old);
 				}
-			})
+			});
 		},
 		getTypescriptType(indent) {
 			return `${subtype.getTypescriptType(indent)}[]`;
@@ -1098,7 +1106,7 @@ function bytesRemainingParser(): ChunkParser<number> {
 	}
 }
 
-function intAccumlatorParser(refname: string, value: ChunkParser<number | undefined>, mode: "add" | "add-1" | "hold"): ChunkParser<number> {
+function intAccumlatorParser(refname: string, value: ChunkParser<number | undefined>, mode: "add" | "add-1" | "hold" | "postadd"): ChunkParser<number> {
 	let ref: ReturnType<typeof refgetter>;
 	let refparent: ChunkParserContainer | null = null;
 	let r: ChunkParserContainer<number> = {
@@ -1106,16 +1114,16 @@ function intAccumlatorParser(refname: string, value: ChunkParser<number | undefi
 			//TODO fix the context situation
 			let increment = value.read(state);
 			let newvalue: number;
-			let refvalue = ref.read(state);
-			if (mode == "add" || mode == "add-1") {
+			let refvalue = ref.read(state) ?? 0;
+			if (mode == "add" || mode == "add-1" || mode == "postadd") {
 				newvalue = refvalue + (increment ?? 0) + (mode == "add-1" ? -1 : 0);
 			} else if (mode == "hold") {
-				newvalue = increment ?? refvalue ?? 0;
+				newvalue = increment ?? refvalue;
 			} else {
 				throw new Error("unknown accumolator mode");
 			}
 			ref.write(state, newvalue);
-			return newvalue;
+			return (mode == "postadd" ? refvalue : newvalue);
 		},
 		setReferenceParent(parent) {
 			ref = refgetter(r, parent, refname, (v, old) => {
@@ -1249,44 +1257,86 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 			getJsonSchema() { return { type: (type == "ref" ? "any" : "integer") } }
 		}
 	},
-	versioned: function (args, typedef) {
-		if (args.length % 2 != 1) { throw new Error("versioned chunk requires 2n+1 arguments"); }
-		let types: ChunkParser[] = [];
-		let versions: number[] = [];
-		types.push(buildParser(args[0] as ComposedChunk, typedef));
-		for (let i = 1; i + 1 < args.length; i += 2) {
-			let v = args[i];
-			if (typeof v != "number") { throw new Error("build number expected at odd argument indices"); }
-			versions.push(v);
-			types.push(buildParser(args[i + 1] as ComposedChunk, typedef));
-		}
+	buildnr: function (args, typedef) {
 		return {
+			read(state) { return state.clientVersion },
+			write(state, v) {/*noop*/ },
+			getTypescriptType(indent) { return "number"; },
+			getJsonSchema() { return { type: "number" } }
+		}
+	},
+	match: function (args, typedef) {
+		if (args.length != 2) { throw new Error("match chunks needs 2 arguments") }
+		if (typeof args[1] != "object") { throw new Error("match chunk requires 2n+2 arguments"); }
+
+		let refparent: ChunkParserContainer | null = null;
+
+		let options: { geq: number, lt: number, parser: ChunkParser }[] = [];
+		let optparser = buildParser(args[0] as ComposedChunk, typedef);
+		for (let opt in args[1]) {
+			let m = opt.match(/(?<op><|<=|>|>=)?(?<version>(0x)?\d+)/);
+			if (!m) { throw new Error("invalid match value, expected <op><version>. For example '>10'"); }
+			let v = parseInt(m.groups!.version);
+			let op = m.groups!.op ?? "=";
+			let geq = -Infinity;
+			let lt = Infinity;
+			if (op == "=") { geq = v; lt = v + 1; }
+			else if (op == "<") { lt = v; }
+			else if (op == "<=") { lt = v + 1; }
+			else if (op == ">") { geq = v - 1; }
+			else if (op == ">=") { geq = v; }
+			options.push({ geq, lt, parser: buildParser(args[1][opt], typedef) });
+		}
+		let r: ChunkParserContainer<any> = {
 			read(state) {
-				for (let i = 0; i < versions.length; i++) {
-					if (state.clientVersion >= versions[i]) {
-						return types[i].read(state);
+				let opcodeprop = { $opcode: 0 };
+				state.stack.push({});
+				state.hiddenstack.push(opcodeprop);
+				let op = optparser.read(state);
+				opcodeprop.$opcode = op;
+				let res: any;
+				let matched = false;
+				for (let option of options) {
+					if (op >= option.geq && op < option.lt) {
+						res = option.parser.read(state);
+						matched = true;
+						break;
 					}
 				}
-				return types[types.length - 1].read(state);
+				state.stack.pop();
+				state.hiddenstack.pop();
+				if (!matched) { throw new Error("no opcode matched"); }
+				return res;
 			},
 			write(state, v) {
-				for (let i = 0; i < versions.length; i++) {
-					if (state.clientVersion > versions[i]) {
-						return types[i].write(state, v);
-					}
-				}
-				return types[types.length - 1].write(state, v);
+				//no way to retrieve the opcode, so this only works for refs/constants
+				optparser.write(state, null);
 			},
 			setReferenceParent(parent) {
-				types.forEach(t => t.setReferenceParent?.(parent));
+				refparent = parent;
+				optparser.setReferenceParent?.(r);
+				options.forEach(q => q.parser.setReferenceParent?.(r));
+			},
+			resolveReference(name, child) {
+				let res: ResolvedReference = {
+					owner: r,
+					stackdepth: child.stackdepth + 1,
+					resolve(v, old) {
+						//this info is lost
+						return old;
+					}
+				}
+				if (name == "$opcode") { return res; }
+				return buildReference(name, refparent, res);
 			},
 			getTypescriptType(indent) {
-				return types[0].getTypescriptType(indent);
+				return "("+options.map(opt => opt.parser.getTypescriptType(indent + "\t")).join("|")+")";
 			},
 			getJsonSchema() {
-				return types[0].getJsonSchema();
+				return { oneOf: options.map(opt => opt.parser.getJsonSchema()) };
 			},
 		}
+		return r;
 	},
 	footer: function (args, typedef) {
 		if (args.length != 2) { throw new Error("footer requires length and subtype arguments"); }
@@ -1321,60 +1371,6 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 				return subtype.getJsonSchema();
 			},
 		}
-	},
-	modelflagsize: function (args, typedef) {
-		if (args.length != 1) { throw new Error("length expected"); }
-		let lentype = buildParser(args[0] as any, typedef);
-		let refparent: ChunkParserContainer | null = null;
-		let versionref: ReturnType<typeof refgetter>;
-
-		let r: ChunkParserContainer<number> = {
-			read(state) {
-				let len = lentype.read(state);
-				let version = versionref.read(state);
-				let sizes: number[];
-				if (version <= 7) {
-					sizes = [6, 15, 17, 18];
-				} else if (version <= 0xe) {
-					sizes = [6, 18, 18, 18];
-				} else {
-					sizes = [6, 18, 20, 18];
-				}
-				let count = 0;
-				for (let i = 0; i < len; i++) {
-					let flag = state.buffer.readUint8(state.scan + i);
-					let size = sizes[flag];
-					if (typeof size == "undefined") {
-						throw new Error("unexpected flag value " + flag);
-					}
-					count += size;
-				}
-				return count;
-			},
-			write(state, v) {
-				throw new Error("not implemented");
-			},
-			setReferenceParent(parent) {
-				refparent = parent;
-				lentype.setReferenceParent?.(r);
-				versionref = refgetter(r, parent, "modelversion", (v, old) => {
-					throw new Error("write not implemented");
-				});
-			},
-			resolveReference(name, childresolve) {
-				if (childresolve.owner == lentype) {
-					return buildReference(name, refparent, { owner: r, stackdepth: childresolve.stackdepth, resolve: childresolve.resolve });
-				}
-				throw new Error("unknown prop");
-			},
-			getTypescriptType(indent) {
-				return "number";
-			},
-			getJsonSchema() {
-				return { type: "number" };
-			},
-		}
-		return r;
 	}
 }
 

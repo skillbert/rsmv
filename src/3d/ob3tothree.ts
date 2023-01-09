@@ -1,12 +1,8 @@
-import { packedHSL2HSL, HSL2RGB, ModelModifications } from "../utils";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
-import { ModelData, parseOb3Model } from '../3d/ob3togltf';
+import { ModelData, parseOb3Model, parseOldModel } from '../3d/ob3togltf';
 import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
-import { modifyMesh } from "./mapsquare";
 import * as THREE from "three";
-import { BoneInit, MountableAnimation, parseAnimationSequence3, parseAnimationSequence4, ParsedAnimation } from "./animationframes";
-import { parseSkeletalAnimation } from "./animationskeletal";
 import { archiveToFileId, CachedObject, CacheFileSource, CacheIndex, CachingFileSource, SubFile } from "../cache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh, Texture } from "three";
 import { parse } from "../opdecoder";
@@ -195,6 +191,7 @@ export class ThreejsSceneCache {
 	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
 	textureType: "png" | "dds" | "bmp" = "dds";//png support currently incomplete (and seemingly unused by jagex)
+	useOldModels: boolean;
 
 	static textureIndices = {
 		png: cacheMajors.texturesPng,
@@ -204,6 +201,8 @@ export class ThreejsSceneCache {
 
 	constructor(scenecache: EngineCache) {
 		this.engine = scenecache;
+		this.useOldModels = !globalThis.newmodels;
+		//TODO set useOldModels depending on cache build nr
 	}
 	getFileById(major: number, id: number) {
 		return this.engine.getFileById(major, id);
@@ -219,7 +218,13 @@ export class ThreejsSceneCache {
 
 	getModelData(id: number) {
 		return this.engine.fetchCachedObject(this.modelCache, id, () => {
-			return this.engine.getFileById(cacheMajors.models, id).then(f => parseOb3Model(f));
+			if (/*this.useOldModels*/ !globalThis.newmodels) {
+				return this.engine.getFileById(cacheMajors.oldmodels, id)
+					.then(f => parseOldModel(f, this.engine.rawsource));
+			} else {
+				return this.engine.getFileById(cacheMajors.models, id)
+					.then(f => parseOb3Model(f));
+			}
 		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 	}
 
@@ -367,18 +372,18 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
  * vertex will be merged and its bone id is lost. This bug is so entrenched in
  * the game that player models will have detached arms and waist if not replicated
  */
-export function mergeNaiveBoneids(model: ModelData) {
+export function mergeNaiveBoneids(model: ModelData, blendnormals: boolean) {
 	let mergecount = 0;
 	for (let meshid1 = 0; meshid1 < model.meshes.length; meshid1++) {
 		let mesh1 = model.meshes[meshid1];
 		//TODO figure out what the engine does here on skeletal animations when they finally get added to the player
-		if (!mesh1.attributes.color || !mesh1.attributes.boneids || !mesh1.attributes.boneweights) { continue; }
+		if (!mesh1.attributes.color || !blendnormals && (!mesh1.attributes.boneids || !mesh1.attributes.boneweights)) { continue; }
 		for (let i1 = 0; i1 < mesh1.attributes.pos.count; i1++) {
 			let x = mesh1.attributes.pos.getX(i1); let y = mesh1.attributes.pos.getY(i1); let z = mesh1.attributes.pos.getZ(i1);
-			let r = mesh1.attributes.color.getX(i1); let g = mesh1.attributes.color.getY(i1); let b = mesh1.attributes.color.getZ(i1);
+			// let r = mesh1.attributes.color.getX(i1); let g = mesh1.attributes.color.getY(i1); let b = mesh1.attributes.color.getZ(i1);
 			for (let meshidb = 0; meshidb <= meshid1; meshidb++) {
 				let mesh2 = model.meshes[meshidb];
-				if (!mesh2.attributes.color || !mesh2.attributes.boneids || !mesh2.attributes.boneweights) { continue; }
+				if (!mesh2.attributes.color || !blendnormals && (!mesh2.attributes.boneids || !mesh2.attributes.boneweights)) { continue; }
 				// if (mesh2.materialId != mesh1.materialId) { continue; }
 
 				let i2end = (meshidb == meshid1 ? i1 - 1 : mesh2.attributes.pos.count);
@@ -386,16 +391,49 @@ export function mergeNaiveBoneids(model: ModelData) {
 					let posmatch = x == mesh2.attributes.pos.getX(i2) && y == mesh2.attributes.pos.getY(i2) && z == mesh2.attributes.pos.getZ(i2);
 					// let colmatch = r == mesh2.attributes.color.getX(i2) && g == mesh2.attributes.color.getY(i2) && b == mesh2.attributes.color.getZ(i2);
 					if (posmatch) {
-						if (mesh1.attributes.boneids.getX(i1) != mesh2.attributes.boneids.getX(i2)) {
-							mergecount++;
+						if (mesh1.attributes.boneids && mesh1.attributes.boneweights && mesh2.attributes.boneids && mesh2.attributes.boneweights) {
+							if (mesh1.attributes.boneids.getX(i1) != mesh2.attributes.boneids.getX(i2)) {
+								mergecount++;
+							}
+							mesh1.attributes.boneids.copyAt(i1, mesh2.attributes.boneids, i2);
+							mesh1.attributes.boneweights.copyAt(i1, mesh2.attributes.boneweights, i2);
 						}
-						mesh1.attributes.boneids.copyAt(i1, mesh2.attributes.boneids, i2);
-						mesh1.attributes.boneweights.copyAt(i1, mesh2.attributes.boneweights, i2);
+
+						//blend the two normals
+						//!! current implementation causes bias !!
+						if (blendnormals && mesh1.attributes.normals && mesh2.attributes.normals) {
+							let x = mesh1.attributes.normals.getX(i1) + mesh2.attributes.normals.getX(i2);
+							let y = mesh1.attributes.normals.getY(i1) + mesh2.attributes.normals.getY(i2);
+							let z = mesh1.attributes.normals.getZ(i1) + mesh2.attributes.normals.getZ(i2);
+							//just sum, doing normalization later
+							mesh1.attributes.normals.setXYZ(i1, x, y, z);
+							mesh2.attributes.normals.setXYZ(i2, x, y, z);
+						}
 					}
 				}
 			}
 		}
 	}
+
+	if (blendnormals) {
+		//normalize normals again
+		for (let mesh of model.meshes) {
+			if (mesh.attributes.normals) {
+				let normals = mesh.attributes.normals;
+				for (let i = 0; i < normals.count; i++) {
+					let x = normals.getX(i);
+					let y = normals.getY(i);
+					let z = normals.getZ(i);
+					let len = Math.hypot(x, y, z);
+					if (len > 0) {
+						let scale = 1 / len;
+						normals.setXYZ(i, x * scale, y * scale, z * scale);
+					}
+				}
+			}
+		}
+	}
+
 	console.log("merged", mergecount);
 }
 

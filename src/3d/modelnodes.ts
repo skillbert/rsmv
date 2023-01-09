@@ -40,8 +40,12 @@ export const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id:
 export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	let modeldata = await cache.getModelData(id);
 	//getting the same file a 2nd time to get the full json
-	let modelfile = await cache.engine.getFileById(cacheMajors.models, id);
-	let info = parse.models.read(modelfile, cache.engine.rawsource);
+	let info: any;
+	if (cache.useOldModels) {
+		info = parse.oldmodels.read(await cache.engine.getFileById(cacheMajors.oldmodels, id), cache.engine.rawsource);
+	} else {
+		info = parse.models.read(await cache.engine.getFileById(cacheMajors.models, id), cache.engine.rawsource);
+	}
 	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info }, id };
 }
 
@@ -211,7 +215,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				return modified;
 			}));
 			let modeldata = mergeModelDatas(meshdatas);
-			mergeNaiveBoneids(modeldata);
+			mergeNaiveBoneids(modeldata, true);//TODO make this flag depend on model type
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
 
 			let nullbones: Object3D[] = [];

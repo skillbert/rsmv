@@ -7,7 +7,7 @@ import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, Texture, Vector3 } from "three";
+import { AnimationClip, AnimationMixer, BufferGeometry, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
@@ -521,12 +521,35 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		raycaster.setFromCamera(mousepos, this.camera);
 
 		let intersects = raycaster.intersectObjects(this.scene.children);
+		let firstloggable = true;
 		for (let isct of intersects) {
 			let obj: THREE.Object3D | null = isct.object;
 			if (!obj.visible) { continue; }
-			if (!(obj instanceof THREE.Mesh) || !obj.userData.isclickable) { continue; }
 			let meshdata = obj.userData as ModelExtras;
-			if (!meshdata.isclickable) { continue; }
+
+			if (globalThis.logclicks && firstloggable) {
+				firstloggable = false;
+				if (isct.object instanceof Mesh && isct.object.geometry instanceof BufferGeometry) {
+
+					let indices = [isct.face!.a, isct.face!.b, isct.face!.c];
+
+					console.log("Click intersect");
+					for (let [id, attr] of Object.entries(isct.object.geometry.attributes)) {
+						let vals: number[][] = [];
+						for (let index of indices) {
+							let val: number[] = [];
+							vals.push(val);
+							if (attr.itemSize >= 1) { val.push(attr.getX(index)); }
+							if (attr.itemSize >= 2) { val.push(attr.getY(index)); }
+							if (attr.itemSize >= 3) { val.push(attr.getZ(index)); }
+							if (attr.itemSize >= 4) { val.push(attr.getW(index)); }
+						}
+						console.log(`${id} = ${vals.map(q => `[${q.map(q => q.toFixed(2)).join(",")}]`)}`);
+					}
+				}
+			}
+
+			if (!(obj instanceof THREE.Mesh) || !meshdata.isclickable) { continue; }
 
 			//find out what we clicked
 			let match: unknown = undefined;

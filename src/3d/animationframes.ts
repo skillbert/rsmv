@@ -721,45 +721,45 @@ export function getFrameClips(framebase: framemaps, framesparsed: frames[]) {
 			}
 			//there seems to actually be data here
 			if (base.type == 0) {
-				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame?.stream) : 0);
-				rawclip[clipindex++] = (flag & 2 ? readAnimFraction(frame?.stream) : 0);
-				rawclip[clipindex++] = (flag & 4 ? readAnimFraction(frame?.stream) : 0);
+				rawclip[clipindex++] = (flag & 1 ? frame.stream.readShortSmartBias() : 0);
+				rawclip[clipindex++] = (flag & 2 ? frame.stream.readShortSmartBias() : 0);
+				rawclip[clipindex++] = (flag & 4 ? frame.stream.readShortSmartBias() : 0);
 				if (flag & 7) {
 					console.log("type 0 data", flag, [...rawclip.slice(clipindex - 3, clipindex)]);
 				}
 			}
 			//translate
 			if (base.type == 1) {
-				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame?.stream) : 0);
-				rawclip[clipindex++] = -(flag & 2 ? readAnimFraction(frame?.stream) : 0);
-				rawclip[clipindex++] = (flag & 4 ? readAnimFraction(frame?.stream) : 0);
+				rawclip[clipindex++] = (flag & 1 ? frame.stream.readShortSmartBias() : 0);
+				rawclip[clipindex++] = -(flag & 2 ? frame.stream.readShortSmartBias() : 0);
+				rawclip[clipindex++] = (flag & 4 ? frame.stream.readShortSmartBias() : 0);
 			}
 			//rotate
 			if (base.type == 2) {
 				let rotx = 0;
 				if (flag & 1) {
-					let comp1 = readAnimFraction(frame.stream);
-					let comp2 = readAnimFraction(frame.stream);
+					let comp1 = frame.stream.readShortSmartBias();
+					let comp2 = frame.stream.readShortSmartBias();
 					rotx = Math.atan2(comp1, comp2);
 					// console.log(rotx);
 				}
 				let roty = 0;
 				if (flag & 2) {
-					let comp1 = readAnimFraction(frame.stream);
-					let comp2 = readAnimFraction(frame.stream);
+					let comp1 = frame.stream.readShortSmartBias();
+					let comp2 = frame.stream.readShortSmartBias();
 					roty = Math.atan2(comp1, comp2);
 					// console.log(rotx);
 				}
 				let rotz = 0;
 				if (flag & 4) {
-					let comp1 = readAnimFraction(frame.stream);
-					let comp2 = readAnimFraction(frame.stream);
+					let comp1 = frame.stream.readShortSmartBias();
+					let comp2 = frame.stream.readShortSmartBias();
 					rotz = Math.atan2(comp1, comp2);
 					// console.log(rotx);
 				}
-				// let rotx = (flag & 1 ? Math.atan2(readAnimFraction(frame.stream), readAnimFraction(frame.stream)) : 0);
-				// let roty = (flag & 2 ? Math.atan2(readAnimFraction(frame.stream), readAnimFraction(frame.stream)) : 0);
-				// let rotz = (flag & 4 ? Math.atan2(readAnimFraction(frame.stream), readAnimFraction(frame.stream)) : 0);
+				// let rotx = (flag & 1 ? Math.atan2(frame.stream.readShortSmartBias(),frame.stream.readShortSmartBias()) : 0);
+				// let roty = (flag & 2 ? Math.atan2(frame.stream.readShortSmartBias(),frame.stream.readShortSmartBias()) : 0);
+				// let rotz = (flag & 4 ? Math.atan2(frame.stream.readShortSmartBias(),frame.stream.readShortSmartBias()) : 0);
 				tempEuler.set(rotx, roty, rotz, "YXZ");
 				tempquat.setFromEuler(tempEuler);
 				tempquat.toArray(rawclip, clipindex);
@@ -767,9 +767,9 @@ export function getFrameClips(framebase: framemaps, framesparsed: frames[]) {
 			}
 			//scale?
 			if (base.type == 3) {
-				rawclip[clipindex++] = (flag & 1 ? readAnimFraction(frame.stream) : 128) / 128;
-				rawclip[clipindex++] = (flag & 2 ? readAnimFraction(frame.stream) : 128) / 128;
-				rawclip[clipindex++] = (flag & 4 ? readAnimFraction(frame.stream) : 128) / 128;
+				rawclip[clipindex++] = (flag & 1 ? frame.stream.readShortSmartBias() : 128) / 128;
+				rawclip[clipindex++] = (flag & 2 ? frame.stream.readShortSmartBias() : 128) / 128;
+				rawclip[clipindex++] = (flag & 4 ? frame.stream.readShortSmartBias() : 128) / 128;
 			}
 			//others todo
 			if (base.type == 5) {
@@ -1004,13 +1004,4 @@ export function buildFramebaseSkeleton(framebase: framemaps) {
 	rootboneinits.forEach(q => logboneinit(q, 0));
 	console.log(framebase.data.map(q => [q.type, "", ...q.data.map(q => q + 1)]));
 	return { rootboneinits, actions, bones };
-}
-
-function readAnimFraction(str: Stream) {
-	let byte0 = str.readUByte();
-	if ((byte0 & 0x80) == 0) {
-		return byte0 - 0x40;
-	}
-	let byte1 = str.readUByte();
-	return (((byte0 & 0x7f) << 8) | byte1) - 0x4000;
 }

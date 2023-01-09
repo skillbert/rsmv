@@ -26,6 +26,7 @@ import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
 import { FileParser } from '../opdecoder';
+import { ModelData } from '3d/ob3togltf';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -901,10 +902,20 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 	return [visible, loadedModel, idref.current, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
 }
 
-async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: "mat" | "underlay" | "overlay", id: number }) {
+async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: "mat" | "underlay" | "overlay" | "texture", id: number }) {
 
 	let matid = -1;
 	let color = [255, 0, 255];
+	let json: any = null;
+	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
+	let models: SimpleModelDef = [];
+	let addtex = async (name: string, texid: number, stripalpha: boolean) => {
+		let tex = await sceneCache.getTextureFile(texid, stripalpha);
+		let drawable = await tex.toWebgl();
+
+		texs[name] = { texid, filesize: tex.filesize, img0: drawable };
+	}
+
 	let overlay: mapsquare_overlays | null = null;
 	let underlay: mapsquare_underlays | null = null;
 	if (reqid.mode == "overlay") {
@@ -917,33 +928,33 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 		if (underlay.color) { color = underlay.color; }
 	} else if (reqid.mode == "mat") {
 		matid = reqid.id;
+	} else if (reqid.mode == "texture") {
+		await addtex("original", reqid.id, false);
+		await addtex("opaque", reqid.id, true);
 	} else {
 		throw new Error("invalid materialish mode");
 	}
 
 
-	let assetid = 93808;//"RuneTek_Asset" jagex test model
-	let mods: ModelModifications = {
-		replaceMaterials: [[4311, matid]],
-		replaceColors: [[20287, HSL2packHSL(...RGB2HSL(...color as [number, number, number]))]]
-	};
-	let mat = sceneCache.engine.getMaterialData(matid);
-	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
-	let addtex = async (name: string, texid: number) => {
-		let tex = await sceneCache.getTextureFile(texid, mat.stripDiffuseAlpha && name == "diffuse");
-		let drawable = await tex.toWebgl();
-
-		texs[name] = { texid, filesize: tex.filesize, img0: drawable };
-	}
-	for (let tex in mat.textures) {
-		if (mat.textures[tex] != 0) {
-			await addtex(tex, mat.textures[tex]);
+	if (matid != -1) {
+		let assetid = 93808;//"RuneTek_Asset" jagex test model
+		let mods: ModelModifications = {
+			replaceMaterials: [[4311, matid]],
+			replaceColors: [[20287, HSL2packHSL(...RGB2HSL(...color as [number, number, number]))]]
+		};
+		let mat = sceneCache.engine.getMaterialData(matid);
+		for (let tex in mat.textures) {
+			if (mat.textures[tex] != 0) {
+				await addtex(tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
+			}
 		}
+		json = mat;
+		models.push({ modelid: assetid, mods });
 	}
 	return {
-		models: [{ modelid: assetid, mods }],
+		models: models,
 		anims: {},
-		info: { overlay, underlay, texs, obj: mat },
+		info: { overlay, underlay, texs, obj: json },
 		id: reqid
 	};
 }
@@ -959,6 +970,7 @@ function SceneMaterialIsh(p: LookupModeProps) {
 				<label><input type="radio" name="mattype" value="mat" checked={initid.mode == "mat"} />Material</label>
 				<label><input type="radio" name="mattype" value="underlay" checked={initid.mode == "underlay"} />Underlay</label>
 				<label><input type="radio" name="mattype" value="overlay" checked={initid.mode == "overlay"} />Overlay</label>
+				<label><input type="radio" name="mattype" value="texture" checked={initid.mode == "texture"} />Texture</label>
 			</div>
 			{id == null && (
 				<React.Fragment>

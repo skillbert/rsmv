@@ -76,5 +76,7 @@
 		["stringvalue",["opt",["$type",1],"string"]]
 	]],
 
-	"item_modelid":     ["versioned","varuint",670,"ushort"]
+	"buildnr":          ["buildnr"],//needs to be in array to get invoked as function
+
+	"item_modelid":     ["match","buildnr",{">=67":"varuint",">=0":"ushort"}]
 }
