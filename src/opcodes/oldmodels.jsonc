@@ -22,10 +22,7 @@
 	["modelversion","ubyte"],
 
 	["texmap_vertcount",0],
-	["texmap_normalcount",0],
-	["texmap_scalecount",0],
-	["texmap_rotationcount",0],
-	["texmap_directioncount",0],
+	["texmap_projectioncount",0],
 	["texmap_transsize",0],
 	["texflags",["array",["ref","texmapcount"],["match","ubyte",{
 		"0":["struct",
@@ -34,26 +31,17 @@
 		],
 		"1":["struct",
 			["type",1],
-			["normal",["accum","texmap_normalcount",1,"postadd"]],
-			["scale",["accum","texmap_scalecount",1,"postadd"]],
-			["rotation",["accum","texmap_rotationcount",1,"postadd"]],
-			["direction",["accum","texmap_directioncount",1,"postadd"]],
+			["projection",["accum","texmap_projectioncount",1,"postadd"]],
 			["speed",["accum","texmap_transsize",1,"postadd"]]
 		],
 		"2":["struct",
 			["type",2],
-			["normal",["accum","texmap_normalcount",1,"postadd"]],
-			["scale",["accum","texmap_scalecount",1,"postadd"]],
-			["rotation",["accum","texmap_rotationcount",1,"postadd"]],
-			["direction",["accum","texmap_directioncount",1,"postadd"]],
+			["projection",["accum","texmap_projectioncount",1,"postadd"]],
 			["speed",["accum","texmap_transsize",3,"postadd"]]
 		],
 		"3":["struct",
 			["type",3],
-			["normal",["accum","texmap_normalcount",1,"postadd"]],
-			["scale",["accum","texmap_scalecount",1,"postadd"]],
-			["rotation",["accum","texmap_rotationcount",1,"postadd"]],
-			["direction",["accum","texmap_directioncount",1,"postadd"]],
+			["projection",["accum","texmap_projectioncount",1,"postadd"]],
 			["speed",["accum","texmap_transsize",1,"postadd"]]
 		]
 	}]]],
@@ -72,14 +60,16 @@
 	["posy",["buffer",["ref","ysize"]]],
 	["posz",["buffer",["ref","zsize"]]],
 	["texmap_verts",["array",["ref","texmap_vertcount"],["tuple","ushort","ushort","ushort"]]],
-	["texmap_normals",["array",["ref","texmap_normalcount"],["tuple","ushort","ushort","ushort"]]],
-	["texmap_scales",["array",["ref","texmap_scalecount"],["tuple",
-		["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}],
-		["match",["ref","modelversion"],{">=14":"unsigned tribyte",">=0":"ushort"}],//14 is not a typo
-		["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}]
+	["texmap_projections",["chunkedarray",["ref","texmap_projectioncount"],[
+		["normal",["tuple","ushort","ushort","ushort"]],
+		["scale",["tuple",
+			["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}],
+			["match",["ref","modelversion"],{">=14":"unsigned tribyte",">=0":"ushort"}],//14 is not a typo
+			["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}]
+		]],
+		["rotation","ubyte"],
+		["direction","ubyte"]
 	]]],
-	["texmap_rotations",["array",["ref","texmap_rotationcount"],"ubyte"]],
-	["texmap_directions",["array",["ref","texmap_directioncount"],"ubyte"]],
 	["texmap_translates",["array",["ref","texmap_transsize"],"ubyte"]],
 	["particles",["opt",["extraflags",1,"bitflag"],["array","ubyte",["struct",
 		["texture","ushort"],

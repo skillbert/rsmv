@@ -74,6 +74,8 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 //basically stores all the config of the game engine
 export class EngineCache extends CachingFileSource {
 	ready: Promise<EngineCache>;
+	hasOldModels: boolean;
+	hasNewModels: boolean;
 
 	materialArchive = new Map<number, Buffer>();
 	materialCache = new Map<number, MaterialData>();
@@ -107,6 +109,19 @@ export class EngineCache extends CachingFileSource {
 		this.mapMapscenes = [];
 		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
 			.forEach(q => this.mapMapscenes[q.fileid] = parse.mapscenes.read(q.buffer, this.rawsource));
+
+		try {
+			await this.getCacheIndex(cacheMajors.oldmodels);
+			this.hasOldModels = true;
+		} catch {
+			this.hasOldModels = false;
+		}
+		try {
+			await this.getCacheIndex(cacheMajors.models);
+			this.hasNewModels = true;
+		} catch {
+			this.hasNewModels = false;
+		}
 
 		return this;
 	}
@@ -187,6 +202,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 
 export class ThreejsSceneCache {
 	private modelCache = new Map<number, CachedObject<ModelData>>();
+	private oldModelCache = new Map<number, CachedObject<ModelData>>();
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
 	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
@@ -202,6 +218,7 @@ export class ThreejsSceneCache {
 	constructor(scenecache: EngineCache) {
 		this.engine = scenecache;
 		this.useOldModels = !globalThis.newmodels;
+		this.useOldModels = scenecache.hasOldModels && !scenecache.hasNewModels;
 		//TODO set useOldModels depending on cache build nr
 	}
 	getFileById(major: number, id: number) {
@@ -216,16 +233,18 @@ export class ThreejsSceneCache {
 		}, obj => obj.filesize * 2);
 	}
 
-	getModelData(id: number) {
-		return this.engine.fetchCachedObject(this.modelCache, id, () => {
-			if (/*this.useOldModels*/ !globalThis.newmodels) {
+	getModelData(id: number, type: "auto" | "old" | "new" = "auto") {
+		if (type == "old" || (type == "auto" && this.useOldModels)) {
+			return this.engine.fetchCachedObject(this.oldModelCache, id, () => {
 				return this.engine.getFileById(cacheMajors.oldmodels, id)
 					.then(f => parseOldModel(f, this.engine.rawsource));
-			} else {
+			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
+		} else {
+			return this.engine.fetchCachedObject(this.modelCache, id, () => {
 				return this.engine.getFileById(cacheMajors.models, id)
 					.then(f => parseOb3Model(f));
-			}
-		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
+			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
+		}
 	}
 
 	//TODO change name back
@@ -443,7 +462,8 @@ export function mergeModelDatas(models: ModelData[]) {
 		skincount: Math.max(...models.map(q => q.skincount)),
 		maxy: Math.max(...models.map(q => q.maxy)),
 		miny: Math.max(...models.map(q => q.miny)),
-		meshes: models.flatMap(q => q.meshes)
+		meshes: models.flatMap(q => q.meshes),
+		debugmeshes: models.flatMap(q => q.debugmeshes ?? [])
 	}
 	return r;
 }
@@ -499,6 +519,9 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		}
 		applyMaterial(mesh, await scene.getMaterialnopenopenope(meshdata.materialId, meshdata.hasVertexAlpha));
 		rootnode.add(mesh);
+	}
+	if (model.debugmeshes && model.debugmeshes.length != 0) {
+		rootnode.add(...model.debugmeshes);
 	}
 	return rootnode;
 }

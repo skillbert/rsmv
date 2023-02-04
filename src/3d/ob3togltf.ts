@@ -3,7 +3,8 @@ import * as THREE from "three";
 import { alignedRefOrCopy, ArrayBufferConstructor } from "./gltfutil";
 import { parse } from "../opdecoder";
 import type { CacheFileSource } from "../cache";
-import { BufferAttribute, Matrix3, Vector3 } from "three";
+import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, Euler, Matrix3, Matrix4, Mesh, PlaneGeometry, Quaternion, SphereGeometry, Vector3 } from "three";
+import { oldmodels } from "../../generated/oldmodels";
 
 export type BoneCenter = {
 	xsum: number,
@@ -17,7 +18,8 @@ export type ModelData = {
 	miny: number,
 	skincount: number,
 	bonecount: number,
-	meshes: ModelMeshData[]
+	meshes: ModelMeshData[],
+	debugmeshes?: THREE.Mesh[]
 }
 
 export type ModelMeshData = {
@@ -386,15 +388,17 @@ export function parseOb3Model(modelfile: Buffer) {
 }
 
 type OldTextureMapping = {
-	ux: number,
-	uy: number,
-	uz: number,
-	vx: number,
-	vy: number,
-	vz: number,
-	scalex: number,
-	scaley: number,
-	scalez: number
+	// mode: "flat" | "cylinder" | "cube" | "sphere",
+	//projects 3d coords into texmap unit space
+	//flat -> xy=uv
+	//cylinder -> cylinder along y lon[-pi,pi]->[0,1] u, y=v, 
+	//cube -> 1x1x1 cube centered at 0,0,0, each face is covered by a texture
+	//sphere -> lonlat [-pi,pi]->[0,1] uv
+	texspace: Matrix4,
+	//determine center of painted vertices
+	vertexsum: Vector3,
+	vertexcount: number,
+	args: oldmodels["texflags"][number]
 }
 
 type WorkingSubmesh = {
@@ -403,6 +407,7 @@ type WorkingSubmesh = {
 	color: BufferAttribute,
 	normals: BufferAttribute,
 	index: Uint16Array,
+	originalface: Uint16Array,
 	currentface: number,
 	matid: number
 }
@@ -414,6 +419,10 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 	let miny = 0;
 	let bonecount = 0;
 	let skincount = 0;
+
+	let debugmeshes: THREE.Mesh[] = [];
+	let debugmat = new THREE.MeshBasicMaterial();
+	debugmat.wireframe = true;
 
 	//position attribute
 	let decodedx = new Int16Array(modeldata.vertcount);
@@ -441,55 +450,15 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 
 	//texture mappings
 	let textureMappings: OldTextureMapping[] = [];
-	if (modeldata.texflags) {
-		let m = new Matrix3();
-		let v0 = new Vector3();
-		let v1 = new Vector3();
-		let v2 = new Vector3();
-		for (let texmap of modeldata.texflags) {
-			if (texmap.type == 0) {
-				let [i0, i1, i2] = modeldata.texmap_verts[texmap.vertindex];
-
-				v0.set(decodedx[i0], decodedy[i0], decodedz[i0]);
-				v1.set(decodedx[i1], decodedy[i1], decodedz[i1]);
-				v2.set(decodedx[i2], decodedy[i2], decodedz[i2]);
-
-				v1.sub(v0);
-				v2.sub(v0);
-				v0.copy(v1).cross(v2);//null space
-				m.set(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v0.x, v0.y, v0.z);
-				m.invert();
-			} else if (texmap.type >= 1) {
-				let scales = modeldata.texmap_scales[texmap.scale];
-				//texture normal, null space
-				v2.set(...modeldata.texmap_normals[texmap.normal]);
-				//u vector, perpendicular to vertical and normal
-				v0.set(0, 1, 0).cross(v2);
-				//v vector, perpendicular to u and normal
-				v1.copy(v0).cross(v1);
-				v0.normalize()//.multiplyScalar(scales[0]);
-				v1.normalize()//.multiplyScalar(scales[1]);
-				v2.normalize()//.multiplyScalar(scales[2]);
-				m.set(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v0.x, v0.y, v0.z);
-				m.invert();
-				//TODO rotation, uvanim
-				if (texmap.type == 2) {
-					//TODO uv offset
-				}
-			}
-			let mapping: OldTextureMapping = {
-				ux: m.elements[0],
-				uy: m.elements[1],
-				uz: m.elements[2],
-				vx: m.elements[3],
-				vy: m.elements[4],
-				vz: m.elements[5],
-				scalex: 1,
-				scaley: 1,
-				scalez: 1
-			}
-			textureMappings.push(mapping);
-		}
+	for (let i = 0; i < modeldata.texmapcount; i++) {
+		let flag = modeldata.texflags[i];
+		textureMappings.push({
+			// mode: texttypemap[flag.type],
+			texspace: new Matrix4(),
+			vertexsum: new Vector3(),
+			vertexcount: 0,
+			args: flag
+		});
 	}
 
 	// modeldata.material.forEach((q, i, arr) => arr[i] = 0);
@@ -510,17 +479,28 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 				color: new BufferAttribute(new Uint8Array(finalvertcount * colstride), colstride, true),
 				texuvs: new BufferAttribute(new Float32Array(finalvertcount * 2), 2),
 				index: new Uint16Array(facecount * 3),
+				originalface: new Uint16Array(facecount),
 				currentface: 0,
 				matid: ((matid & 0xff) << 8 | (matid & 0xff00) >> 8) - 1//TODO fix endianness elsewhere
 			};
 			matmesh.set(matid, mesh);
 		}
 	}
+
+	let uvids: number[] = [];
+	let uvstream = new Stream(modeldata.uvs);
+	while (!uvstream.eof()) {
+		uvids.push(uvstream.readUShortSmart());
+		if (uvids[uvids.length - 1] < 0) { debugger; }
+	}
+
+
+	let vertexindex = new Uint16Array(modeldata.facecount * 3);
+
 	let srcindex0 = 0, srcindex1 = 0, srcindex2 = 0, srcindexlast = 0;
 	//TODO can probably get rid of ths completely if merged vertices result in problems with colors
 	// let dstindex0 = 0, dstindex1 = 0, dstindex2 = 0, dstnextindex = 0, dstwriteindex = 0;
 	let stream = new Stream(modeldata.indexbuffer);
-	let uvstream = new Stream(modeldata.uvs);
 	for (let i = 0; i < modeldata.facecount; i++) {
 		let typedata = modeldata.tritype[i];
 		let type = typedata & 0x7;
@@ -546,57 +526,137 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 		} else {
 			throw new Error("unkown face type");
 		}
-		let x0 = decodedx[srcindex0], y0 = decodedy[srcindex0], z0 = decodedz[srcindex0];
-		let x1 = decodedx[srcindex1], y1 = decodedy[srcindex1], z1 = decodedz[srcindex1];
-		let x2 = decodedx[srcindex2], y2 = decodedy[srcindex2], z2 = decodedz[srcindex2];
+		vertexindex[i * 3 + 0] = srcindex0;
+		vertexindex[i * 3 + 1] = srcindex1;
+		vertexindex[i * 3 + 2] = srcindex2;
+	}
 
-		let nx = (y1 - y0) * (z2 - z0) - (z1 - z0) * (y2 - y0);
-		let ny = (z1 - z0) * (x2 - x0) - (x1 - x0) * (z2 - z0);
-		let nz = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-		if (Math.hypot(nx, ny, nz) == 0 || isNaN(Math.hypot(nx, ny, nz))) {
-			console.warn("degenerate triangle");
+	//calculate centers of material maps
+	let texindex = 0;
+	for (let i = 0; i < modeldata.facecount; i++) {
+		let matarg = modeldata.material[i];
+		if (matarg == 0) { continue; }
+		let mapid = uvids[texindex++];
+		if (mapid != 0 && mapid != 0x7fff) {
+			let mapping = textureMappings[mapid - 1];
+			srcindex0 = vertexindex[i * 3 + 0];
+			srcindex1 = vertexindex[i * 3 + 1];
+			srcindex2 = vertexindex[i * 3 + 2];
+			mapping.vertexsum.x += decodedx[srcindex0] + decodedx[srcindex1] + decodedx[srcindex2];
+			mapping.vertexsum.y += decodedy[srcindex0] + decodedy[srcindex1] + decodedy[srcindex2];
+			mapping.vertexsum.z += decodedz[srcindex0] + decodedz[srcindex1] + decodedz[srcindex2];
+			mapping.vertexcount += 3;
 		}
-		let nscale = 1 / Math.hypot(nx, ny, nz);
-		nx *= nscale; ny *= nscale; nz *= nscale;
+	}
+
+	//build material maps
+	if (modeldata.texflags) {
+		let mtmp = new Matrix4();
+		let v0 = new Vector3();
+		let v1 = new Vector3();
+		let v2 = new Vector3();
+		let vtmp = new Vector3();
+		let texscale = new Vector3(512, 512, 512);
+		//parse texmaps
+		for (let i = 0; i < modeldata.texflags.length; i++) {
+			let mapping = textureMappings[i];
+			if (mapping.args.type == 0) {
+				let [i0, i1, i2] = modeldata.texmap_verts[mapping.args.vertindex];
+
+				v0.set(decodedx[i0], decodedy[i0], decodedz[i0]);
+				v1.set(decodedx[i1], decodedy[i1], decodedz[i1]);
+				v2.set(decodedx[i2], decodedy[i2], decodedz[i2]);
+
+				v1.sub(v0);
+				v2.sub(v0);
+				vtmp.copy(v1).cross(v2);//null space
+
+				mapping.texspace.set(
+					v1.x, v2.x, vtmp.x, v0.x,
+					v1.y, v2.y, vtmp.y, v0.y,
+					v1.z, v2.z, vtmp.z, v0.z,
+					0, 0, 0, 1
+				);
+				mapping.texspace.invert();
+			} else if (mapping.args.type >= 1) {
+				let proj = modeldata.texmap_projections[mapping.args.projection];
+				v1.set(...proj.normal).normalize();
+				if (v1.x == 0 && v1.z == 0) {
+					v0.set(1, 0, 0);
+				} else {
+					v0.set(0, 1, 0).cross(v1).normalize();
+				}
+				v2.copy(v1).cross(v0).normalize();
+
+				mapping.texspace.set(
+					v0.x, v1.x, v2.x, mapping.vertexsum.x / mapping.vertexcount,
+					v0.y, v1.y, v2.y, mapping.vertexsum.y / mapping.vertexcount,
+					v0.z, v1.z, v2.z, mapping.vertexsum.z / mapping.vertexcount,
+					0, 0, 0, 1
+				).scale(texscale);
+
+				mtmp.makeRotationY(proj.rotation / 255 * Math.PI * 2);
+				mapping.texspace.multiply(mtmp);
+
+				mapping.texspace.invert();
+			}
+
+			let geo: BufferGeometry;
+			if (mapping.args.type == 0) {
+				geo = new PlaneGeometry(1, 1);
+			} else if (mapping.args.type == 1) {
+				geo = new CylinderGeometry(0.5, 0.5, 1, 32);
+			} else if (mapping.args.type == 2) {
+				geo = new BoxGeometry(1, 1, 1);
+			} else if (mapping.args.type == 3) {
+				geo = new SphereGeometry(1);
+			}
+			let mesh = new Mesh(geo!, debugmat);
+			mesh.matrixAutoUpdate = false;
+			mesh.matrix.copy(mapping.texspace).invert();
+			if (globalThis.testmat >= 0 && globalThis.testmat == i) {
+				debugmeshes.push(mesh);
+			}
+		}
+	}
+
+	let texmapindex = 0;
+	let v0 = new Vector3();
+	let v1 = new Vector3();
+	let v2 = new Vector3();
+	let vnormal = new Vector3();
+	let vtmp0 = new Vector3();
+	let vtmp1 = new Vector3();
+	let vtmp2 = new Vector3();
+	let m3tmp = new Matrix3();
+	for (let i = 0; i < modeldata.facecount; i++) {
+		srcindex0 = vertexindex[i * 3 + 0];
+		srcindex1 = vertexindex[i * 3 + 1];
+		srcindex2 = vertexindex[i * 3 + 2];
+		v0.set(decodedx[srcindex0], decodedy[srcindex0], decodedz[srcindex0]);
+		v1.set(decodedx[srcindex1], decodedy[srcindex1], decodedz[srcindex1]);
+		v2.set(decodedx[srcindex2], decodedy[srcindex2], decodedz[srcindex2]);
+
+		vtmp0.copy(v1).sub(v0);
+		vnormal.copy(v2).sub(v0).cross(vtmp0).normalize();
 
 		let matargument = modeldata.material[i];
 		let submesh = matmesh.get(matargument)!;
 		let dstfaceindex = submesh.currentface++;
 		let vertbase = dstfaceindex * 3;
 		let posattr = submesh.pos;
-		let normalattr = submesh.normals;
 		let uvattr = submesh.texuvs;
+		let normalattr = submesh.normals;
 		let indexbuf = submesh.index;
-		if (isNaN(nx) || isNaN(ny) || isNaN(nz)) { debugger; }
-		posattr.setXYZ(vertbase + 0, x0, y0, z0);
-		posattr.setXYZ(vertbase + 1, x1, y1, z1);
-		posattr.setXYZ(vertbase + 2, x2, y2, z2);
-		normalattr.setXYZ(vertbase + 0, nx, ny, nz);
-		normalattr.setXYZ(vertbase + 1, nx, ny, nz);
-		normalattr.setXYZ(vertbase + 2, nx, ny, nz);
-
-		if (matargument != 0) {
-			let uvbase = uvstream.readUByte();
-			if (uvbase == 0) {
-				//default topdown mapping? idk
-				uvattr.setXY(vertbase + 0, x0 / 512, y0 / 512);
-				uvattr.setXY(vertbase + 1, x1 / 512, y1 / 512);
-				uvattr.setXY(vertbase + 2, x2 / 512, y2 / 512);
-			} else if (uvbase == 255) {
-				//uv from other buffer
-			} else {
-				let mapping = textureMappings[uvbase - 1];
-				// let ux=mapping.
-				// mapping.
-				uvattr.setXY(vertbase + 0, x0 * mapping.ux + y0 * mapping.uy + z0 * mapping.uz, x0 * mapping.vx + y0 * mapping.vy + z0 * mapping.vz);
-				uvattr.setXY(vertbase + 1, x1 * mapping.ux + y1 * mapping.uy + z1 * mapping.uz, x1 * mapping.vx + y1 * mapping.vy + z1 * mapping.vz);
-				uvattr.setXY(vertbase + 2, x2 * mapping.ux + y2 * mapping.uy + z2 * mapping.uz, x2 * mapping.vx + y2 * mapping.vy + z2 * mapping.vz);
-
-				if (!isFinite(uvattr.getX(vertbase + 0))) {
-					debugger;
-				}
-			}
+		if (isNaN(vnormal.x) || isNaN(vnormal.y) || isNaN(vnormal.x)) {
+			debugger;
 		}
+		posattr.setXYZ(vertbase + 0, v0.x, v0.y, v0.z);
+		posattr.setXYZ(vertbase + 1, v1.x, v1.y, v1.z);
+		posattr.setXYZ(vertbase + 2, v2.x, v2.y, v2.z);
+		normalattr.setXYZ(vertbase + 0, vnormal.x, vnormal.y, vnormal.x);
+		normalattr.setXYZ(vertbase + 1, vnormal.x, vnormal.y, vnormal.x);
+		normalattr.setXYZ(vertbase + 2, vnormal.x, vnormal.y, vnormal.x);
 
 		if (modeldata.colors) {
 			let colorattr = submesh.color;
@@ -616,12 +676,95 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 			}
 		}
 
+		if (matargument) {
+			//calculate the center of each mapping
+			let mapid = uvids[texmapindex++];
+			if (mapid == 0) {
+				//TODO just default [0,1] uvs?
+			} else if (mapid == 0x7fff) {
+				//TODO direct uv value chunk
+			} else {
+				let mapping = textureMappings[mapid - 1];
+				v0.applyMatrix4(mapping.texspace);
+				v1.applyMatrix4(mapping.texspace);
+				v2.applyMatrix4(mapping.texspace);
+				if (mapping.args.type == 0) {
+					uvattr.setXY(vertbase + 0, v0.x, v0.y);
+					uvattr.setXY(vertbase + 1, v1.x, v1.y);
+					uvattr.setXY(vertbase + 2, v2.x, v2.y);
+				} else if (mapping.args.type == 1) {
+					let u0 = Math.atan2(v0.z, v0.x) / Math.PI / 2 * 3;
+					let u1 = Math.atan2(v1.z, v1.x) / Math.PI / 2 * 3;
+					let u2 = Math.atan2(v2.z, v2.x) / Math.PI / 2 * 3;
+					//TODO fix wrapping
+					uvattr.setXY(vertbase + 0, u0, v0.y);
+					uvattr.setXY(vertbase + 1, u1, v1.y);
+					uvattr.setXY(vertbase + 2, u2, v2.y);
+				} else if (mapping.args.type == 2) {
+
+					vtmp0.copy(v1).sub(v0);
+					//face normal
+					vtmp1.copy(v2).sub(v0).cross(vtmp0);
+					m3tmp.setFromMatrix4(mapping.texspace);
+					//face normal in texture space
+					vtmp1.applyMatrix3(m3tmp);
+					let max = Math.max(vtmp1.x, -vtmp1.x, vtmp1.y, -vtmp1.y, vtmp1.z, -vtmp1.z);
+					//find texture cube face most close to face normal
+					//and project from texture space into face space
+					if (vtmp1.x == max) {
+						m3tmp.set(0, 0, -1, 0, 1, 0, 0, 0, 0);
+					} else if (vtmp1.x == -max) {
+						m3tmp.set(0, 0, 1, 0, 1, 0, 0, 0, 0);
+					} else if (vtmp1.z == max) {
+						m3tmp.set(-1, 0, 0, 0, 1, 0, 0, 0, 0);
+					} else if (vtmp1.z == -max) {
+						m3tmp.set(1, 0, 0, 0, 1, 0, 0, 0, 0);
+					} else if (vtmp1.y == max) {
+						m3tmp.set(1, 0, 0, 0, 0, 1, 0, 0, 0);
+					} else if (vtmp1.y == -max) {
+						m3tmp.set(1, 0, 0, 0, 0, 1, 0, 0, 0);
+					} else {
+						throw new Error("unexpected");
+					}
+
+					vtmp0.copy(v0).applyMatrix3(m3tmp);
+					vtmp1.copy(v1).applyMatrix3(m3tmp);
+					vtmp2.copy(v2).applyMatrix3(m3tmp);
+					uvattr.setXY(vertbase + 0, vtmp0.x, vtmp0.y);
+					uvattr.setXY(vertbase + 1, vtmp1.x, vtmp1.y);
+					uvattr.setXY(vertbase + 2, vtmp2.x, vtmp2.y);
+				} else if (mapping.args.type == 3) {
+					let u0 = Math.atan2(v0.z, v0.x) / Math.PI / 2;
+					let u1 = Math.atan2(v1.z, v1.x) / Math.PI / 2;
+					let u2 = Math.atan2(v2.z, v2.x) / Math.PI / 2;
+					let vv0 = Math.atan2(v0.y, Math.sqrt(v0.x * v0.x + v0.z * v0.z)) / Math.PI / 2;
+					let vv1 = Math.atan2(v1.y, Math.sqrt(v1.x * v1.x + v1.z * v1.z)) / Math.PI / 2;
+					let vv2 = Math.atan2(v2.y, Math.sqrt(v2.x * v2.x + v2.z * v2.z)) / Math.PI / 2;
+					//TODO fix wrapping
+					uvattr.setXY(vertbase + 0, u0, vv0);
+					uvattr.setXY(vertbase + 1, u1, vv1);
+					uvattr.setXY(vertbase + 2, u2, vv2);
+				}
+			}
+			if (globalThis.testmat >= 0 && globalThis.testmat != mapid - 1) {
+				uvattr.setXY(vertbase + 0, 0, 0);
+				uvattr.setXY(vertbase + 1, 0, 0);
+				uvattr.setXY(vertbase + 2, 0, 0);
+				let colorattr = submesh.color;
+				colorattr.setXYZ(vertbase + 0, 0, 0, 0);
+				colorattr.setXYZ(vertbase + 1, 0, 0, 0);
+				colorattr.setXYZ(vertbase + 2, 0, 0, 0);
+			}
+		}
 
 		//could use non-indexed in this case but it doesn't really matter
 		indexbuf[dstfaceindex * 3 + 0] = vertbase + 0;
 		indexbuf[dstfaceindex * 3 + 1] = vertbase + 2;//flip 1 and 2, opengl uses oposite notation
 		indexbuf[dstfaceindex * 3 + 2] = vertbase + 1;
+		submesh[dstfaceindex] = i;
 	}
+
+
 
 	let meshes = [...matmesh.values()].map<ModelMeshData>(m => ({
 		attributes: {
@@ -634,7 +777,7 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 		indices: new BufferAttribute(m.index, 1),
 		materialId: m.matid
 	}));
-	let r: ModelData = { maxy, miny, meshes, bonecount: bonecount, skincount: skincount };
+	let r: ModelData = { maxy, miny, meshes, bonecount: bonecount, skincount: skincount, debugmeshes };
 
 	return r;
 }

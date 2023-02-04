@@ -26,9 +26,20 @@ import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
 import { FileParser } from '../opdecoder';
-import { ModelData } from '3d/ob3togltf';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
+
+function propOrDefault<T extends { [key: string]: number | string | boolean }>(v: unknown, defaults: T) {
+	let r = Object.assign({}, defaults);
+	if (typeof v == "object" && v) {
+		for (let prop in defaults) {
+			if (typeof v[prop as any] == typeof defaults[prop]) {
+				r[prop] = v[prop as any];
+			}
+		}
+	}
+	return r;
+}
 
 export function ModelBrowser(p: { ctx: UIContext }) {
 
@@ -1020,11 +1031,27 @@ function SceneMaterial(p: LookupModeProps) {
 }
 
 function SceneRawModel(p: LookupModeProps) {
+	let initid = (typeof p.initialId == "number" ? p.initialId : 0);
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, modelToModel);
-	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
+	let [preferOld, setPreferOld] = React.useState(false);
+	let hasbothmodels = !p.ctx || (p.ctx.sceneCache.engine.hasNewModels && p.ctx.sceneCache.engine.hasOldModels);
+	let oldcheckbox = (hasbothmodels ? preferOld : !!p.ctx && !p.ctx.sceneCache.engine.hasNewModels);
+	React.useEffect(() => {
+		if (!p.ctx) { return; }
+		let prevmode = p.ctx.sceneCache.useOldModels;
+		p.ctx.sceneCache.useOldModels = oldcheckbox;
+		if (typeof id == "number") { setId(id); }
+		return () => {
+			p.ctx!.sceneCache.useOldModels = prevmode;
+		}
+	}, [oldcheckbox, p.ctx?.sceneCache])
 	return (
 		<React.Fragment>
-			<IdInput onChange={setId} initialid={initid} />
+			<IdInput onChange={setId} initialid={id ?? initid} />
+			<label>
+				<input type="checkbox" disabled={!hasbothmodels} checked={oldcheckbox} onChange={e => setPreferOld(e.currentTarget.checked)} />
+				Use old model format
+			</label>
 			{id == null && (
 				<React.Fragment>
 					<p>Enter a model id.</p>
