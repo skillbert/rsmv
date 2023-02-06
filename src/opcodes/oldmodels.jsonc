@@ -61,13 +61,16 @@
 	["posz",["buffer",["ref","zsize"]]],
 	["texmap_verts",["array",["ref","texmap_vertcount"],["tuple","ushort","ushort","ushort"]]],
 	["texmap_projections",["chunkedarray",["ref","texmap_projectioncount"],[
-		["normal",["tuple","ushort","ushort","ushort"]],
+		["normal",["tuple","short","short","short"]]
+	],[
 		["scale",["tuple",
 			["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}],
 			["match",["ref","modelversion"],{">=14":"unsigned tribyte",">=0":"ushort"}],//14 is not a typo
 			["match",["ref","modelversion"],{">=15":"unsigned tribyte",">=0":"ushort"}]
-		]],
-		["rotation","ubyte"],
+		]]
+	],[
+		["rotation","ubyte"]
+	],[
 		["direction","ubyte"]
 	]]],
 	["texmap_translates",["array",["ref","texmap_transsize"],"ubyte"]],

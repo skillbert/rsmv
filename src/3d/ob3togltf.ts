@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { alignedRefOrCopy, ArrayBufferConstructor } from "./gltfutil";
 import { parse } from "../opdecoder";
 import type { CacheFileSource } from "../cache";
-import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, Euler, Matrix3, Matrix4, Mesh, PlaneGeometry, Quaternion, SphereGeometry, Vector3 } from "three";
+import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, Euler, LatheGeometry, Matrix3, Matrix4, Mesh, PlaneGeometry, Quaternion, SphereGeometry, Vector2, Vector3 } from "three";
 import { oldmodels } from "../../generated/oldmodels";
 
 export type BoneCenter = {
@@ -398,6 +398,8 @@ type OldTextureMapping = {
 	//determine center of painted vertices
 	vertexsum: Vector3,
 	vertexcount: number,
+	vertexmin: Vector3,
+	vertexmax: Vector3,
 	args: oldmodels["texflags"][number]
 }
 
@@ -412,6 +414,79 @@ type WorkingSubmesh = {
 	matid: number
 }
 
+
+let tmp_rot = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+let tmp_normspace = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+/**
+ * Taken from decompiled java client, there is no way to refactor it further as it's full of math errors.
+ * This is a case of implementation defines spec and i'm not touching it
+ * 
+ * It creates a matrix that somewhat transforms into a space defined by the normal y vector
+ */
+function jagexOldNormalSpace(normal_x: number, normal_y: number, normal_z: number, rot_int: number, scale_x: number, scale_y: number, scale_z: number) {
+	let tex_space = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+	let tmp_rot = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+	let tmp_normspace = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+	let rot_cos = Math.cos(rot_int * 0.024543693);
+	let rot_sin = Math.sin(rot_int * 0.024543693);
+	tmp_rot[0] = rot_cos;
+	tmp_rot[1] = 0.0;
+	tmp_rot[2] = rot_sin;
+	tmp_rot[3] = 0.0;
+	tmp_rot[4] = 1.0;
+	tmp_rot[5] = 0.0;
+	tmp_rot[6] = -rot_sin;
+	tmp_rot[7] = 0.0;
+	tmp_rot[8] = rot_cos;
+
+	let map_n_norm_neg = 1.0;
+	let map_p_norm = 0.0;
+	let map_m_norm = normal_y / 32767.0;
+	let map_pn_norm_neg = -(Math.sqrt(1.0 - Math.min(1, map_m_norm * map_m_norm)));
+	let map_1_m = 1.0 - map_m_norm;
+	let map_pn = Math.sqrt(normal_x * normal_x + normal_z * normal_z);
+	if (map_pn == 0.0 && map_m_norm == 0.0) {
+		//normal of 0,0,0 means identity transform
+		tex_space = tmp_rot;
+	} else {
+		if (map_pn != 0.0) {
+			map_n_norm_neg = -normal_z / map_pn;
+			map_p_norm = normal_x / map_pn;
+		}
+		tmp_normspace[0] = map_m_norm + map_n_norm_neg * map_n_norm_neg * map_1_m;
+		tmp_normspace[1] = map_p_norm * map_pn_norm_neg;
+		tmp_normspace[2] = map_p_norm * map_n_norm_neg * map_1_m;
+		tmp_normspace[3] = -map_p_norm * map_pn_norm_neg;
+		tmp_normspace[4] = map_m_norm;
+		tmp_normspace[5] = map_n_norm_neg * map_pn_norm_neg;
+		tmp_normspace[6] = map_n_norm_neg * map_p_norm * map_1_m;
+		tmp_normspace[7] = -map_n_norm_neg * map_pn_norm_neg;
+		tmp_normspace[8] = map_m_norm + map_p_norm * map_p_norm * map_1_m;
+
+		tex_space[0] = tmp_rot[0] * tmp_normspace[0] + tmp_rot[1] * tmp_normspace[3] + tmp_rot[2] * tmp_normspace[6];
+		tex_space[1] = tmp_rot[0] * tmp_normspace[1] + tmp_rot[1] * tmp_normspace[4] + tmp_rot[2] * tmp_normspace[7];
+		tex_space[2] = tmp_rot[0] * tmp_normspace[2] + tmp_rot[1] * tmp_normspace[5] + tmp_rot[2] * tmp_normspace[8];
+		tex_space[3] = tmp_rot[3] * tmp_normspace[0] + tmp_rot[4] * tmp_normspace[3] + tmp_rot[5] * tmp_normspace[6];
+		tex_space[4] = tmp_rot[3] * tmp_normspace[1] + tmp_rot[4] * tmp_normspace[4] + tmp_rot[5] * tmp_normspace[7];
+		tex_space[5] = tmp_rot[3] * tmp_normspace[2] + tmp_rot[4] * tmp_normspace[5] + tmp_rot[5] * tmp_normspace[8];
+		tex_space[6] = tmp_rot[6] * tmp_normspace[0] + tmp_rot[7] * tmp_normspace[3] + tmp_rot[8] * tmp_normspace[6];
+		tex_space[7] = tmp_rot[6] * tmp_normspace[1] + tmp_rot[7] * tmp_normspace[4] + tmp_rot[8] * tmp_normspace[7];
+		tex_space[8] = tmp_rot[6] * tmp_normspace[2] + tmp_rot[7] * tmp_normspace[5] + tmp_rot[8] * tmp_normspace[8];
+	}
+
+	tex_space[0] *= scale_x;
+	tex_space[1] *= scale_x;
+	tex_space[2] *= scale_x;
+	tex_space[3] *= scale_y;
+	tex_space[4] *= scale_y;
+	tex_space[5] *= scale_y;
+	tex_space[6] *= scale_z;
+	tex_space[7] *= scale_z;
+	tex_space[8] *= scale_z;
+	return tex_space;
+}
+
 export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 	let modeldata = parse.oldmodels.read(modelfile, source);
 
@@ -421,8 +496,8 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 	let skincount = 0;
 
 	let debugmeshes: THREE.Mesh[] = [];
-	let debugmat = new THREE.MeshBasicMaterial();
-	debugmat.wireframe = true;
+	let debugmat = new THREE.MeshBasicMaterial({ wireframe: true });
+	let debugmat2 = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 
 	//position attribute
 	let decodedx = new Int16Array(modeldata.vertcount);
@@ -446,6 +521,9 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 		if (yvalue > maxy) { maxy = yvalue; }
 		if (yvalue < miny) { miny = yvalue; }
 	}
+	if (!xstream.eof()) { throw new Error("stream not used to completion"); }
+	if (!ystream.eof()) { throw new Error("stream not used to completion"); }
+	if (!zstream.eof()) { throw new Error("stream not used to completion"); }
 
 
 	//texture mappings
@@ -457,6 +535,8 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 			texspace: new Matrix4(),
 			vertexsum: new Vector3(),
 			vertexcount: 0,
+			vertexmin: new Vector3(10e6, 10e6, 10e6),
+			vertexmax: new Vector3(-10e6, -10e6, -10e6),
 			args: flag
 		});
 	}
@@ -493,7 +573,7 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 		uvids.push(uvstream.readUShortSmart());
 		if (uvids[uvids.length - 1] < 0) { debugger; }
 	}
-
+	if (!uvstream.eof()) { throw new Error("stream not used to completion"); }
 
 	let vertexindex = new Uint16Array(modeldata.facecount * 3);
 
@@ -530,8 +610,12 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 		vertexindex[i * 3 + 1] = srcindex1;
 		vertexindex[i * 3 + 2] = srcindex2;
 	}
+	if (!stream.eof()) { throw new Error("stream not used to completion"); }
 
 	//calculate centers of material maps
+	let posa = new Vector3();
+	let posb = new Vector3();
+	let posc = new Vector3();
 	let texindex = 0;
 	for (let i = 0; i < modeldata.facecount; i++) {
 		let matarg = modeldata.material[i];
@@ -542,9 +626,13 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 			srcindex0 = vertexindex[i * 3 + 0];
 			srcindex1 = vertexindex[i * 3 + 1];
 			srcindex2 = vertexindex[i * 3 + 2];
-			mapping.vertexsum.x += decodedx[srcindex0] + decodedx[srcindex1] + decodedx[srcindex2];
-			mapping.vertexsum.y += decodedy[srcindex0] + decodedy[srcindex1] + decodedy[srcindex2];
-			mapping.vertexsum.z += decodedz[srcindex0] + decodedz[srcindex1] + decodedz[srcindex2];
+			posa.set(decodedx[srcindex0], decodedy[srcindex0], decodedz[srcindex0]);
+			posb.set(decodedx[srcindex1], decodedy[srcindex1], decodedz[srcindex1]);
+			posc.set(decodedx[srcindex2], decodedy[srcindex2], decodedz[srcindex2]);
+
+			mapping.vertexsum.add(posa).add(posb).add(posc);
+			mapping.vertexmin.min(posa).min(posb).min(posc);
+			mapping.vertexmax.max(posa).max(posb).max(posc);
 			mapping.vertexcount += 3;
 		}
 	}
@@ -556,7 +644,6 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 		let v1 = new Vector3();
 		let v2 = new Vector3();
 		let vtmp = new Vector3();
-		let texscale = new Vector3(512, 512, 512);
 		//parse texmaps
 		for (let i = 0; i < modeldata.texflags.length; i++) {
 			let mapping = textureMappings[i];
@@ -580,42 +667,62 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 				mapping.texspace.invert();
 			} else if (mapping.args.type >= 1) {
 				let proj = modeldata.texmap_projections[mapping.args.projection];
-				v1.set(...proj.normal).normalize();
-				if (v1.x == 0 && v1.z == 0) {
-					v0.set(1, 0, 0);
+
+				let scalex = 1, scaley = 1, scalez = 1;
+				if (mapping.args.type == 1) {
+					//no clue why this works this way
+					let scale = proj.scale[0];
+					if (scale > 0) {
+						scalex = 1;
+						scalez = scale / 1024;
+					} else if (scale < 0) {
+						scalex = -scale / 1024;
+						scalez = 1;
+					}
+					scalex *= 512;
+					scalez *= 512;
+					scaley = 64 / (proj.scale[1] & 0xffff);
+				} else if (mapping.args.type == 2) {
+					scalex = 64 / (proj.scale[0] & 0xffff);
+					scaley = 64 / (proj.scale[1] & 0xffff);
+					scalez = 64 / (proj.scale[2] & 0xffff);
 				} else {
-					v0.set(0, 1, 0).cross(v1).normalize();
+					scalex = proj.scale[0] / 1024;
+					scaley = proj.scale[1] / 1024;
+					scalez = proj.scale[2] / 1024;
 				}
-				v2.copy(v1).cross(v0).normalize();
 
+				let space = jagexOldNormalSpace(proj.normal[0], proj.normal[1], proj.normal[2], proj.rotation, scalex, scaley, scalez);
 				mapping.texspace.set(
-					v0.x, v1.x, v2.x, mapping.vertexsum.x / mapping.vertexcount,
-					v0.y, v1.y, v2.y, mapping.vertexsum.y / mapping.vertexcount,
-					v0.z, v1.z, v2.z, mapping.vertexsum.z / mapping.vertexcount,
+					space[0], -space[1], space[2], 0,
+					space[3], -space[4], space[5], 0,
+					space[6], -space[7], space[8], 0,
 					0, 0, 0, 1
-				).scale(texscale);
-
-				mtmp.makeRotationY(proj.rotation / 255 * Math.PI * 2);
+				);
+				v0.copy(mapping.vertexmax).add(mapping.vertexmin).divideScalar(-2);
+				mtmp.makeTranslation(v0.x, v0.y, v0.z);
 				mapping.texspace.multiply(mtmp);
-
-				mapping.texspace.invert();
 			}
 
-			let geo: BufferGeometry;
-			if (mapping.args.type == 0) {
-				geo = new PlaneGeometry(1, 1);
-			} else if (mapping.args.type == 1) {
-				geo = new CylinderGeometry(0.5, 0.5, 1, 32);
-			} else if (mapping.args.type == 2) {
-				geo = new BoxGeometry(1, 1, 1);
-			} else if (mapping.args.type == 3) {
-				geo = new SphereGeometry(1);
-			}
-			let mesh = new Mesh(geo!, debugmat);
-			mesh.matrixAutoUpdate = false;
-			mesh.matrix.copy(mapping.texspace).invert();
 			if (globalThis.testmat >= 0 && globalThis.testmat == i) {
-				debugmeshes.push(mesh);
+				let geo2 = new LatheGeometry([new Vector2(0.05, 0), new Vector2(0.05, 1), new Vector2(0.15, 1), new Vector2(0, 1.15)]);
+				let geo: BufferGeometry;
+				if (mapping.args.type == 0) {
+					geo = new PlaneGeometry(1, 1);
+				} else if (mapping.args.type == 1) {
+					geo = new CylinderGeometry(0.5, 0.5, 1, 10);
+				} else if (mapping.args.type == 2) {
+					geo = new BoxGeometry(1, 1, 1);
+				} else if (mapping.args.type == 3) {
+					geo = new SphereGeometry(1);
+				}
+				let mesh = new Mesh(geo!, debugmat);
+				let arrowmesh = new Mesh(geo2, debugmat2);
+				mesh.matrixAutoUpdate = false;
+				mesh.matrix.copy(mapping.texspace).invert();
+				arrowmesh.matrixAutoUpdate = false;
+				arrowmesh.matrix.copy(mapping.texspace).invert();
+				debugmeshes.push(mesh, arrowmesh);
 			}
 		}
 	}
@@ -697,9 +804,9 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 					let u1 = Math.atan2(v1.z, v1.x) / Math.PI / 2 * 3;
 					let u2 = Math.atan2(v2.z, v2.x) / Math.PI / 2 * 3;
 					//TODO fix wrapping
-					uvattr.setXY(vertbase + 0, u0, v0.y);
-					uvattr.setXY(vertbase + 1, u1, v1.y);
-					uvattr.setXY(vertbase + 2, u2, v2.y);
+					uvattr.setXY(vertbase + 0, u0 - 0.5, v0.y - 0.5);
+					uvattr.setXY(vertbase + 1, u1 - 0.5, v1.y - 0.5);
+					uvattr.setXY(vertbase + 2, u2 - 0.5, v2.y - 0.5);
 				} else if (mapping.args.type == 2) {
 
 					vtmp0.copy(v1).sub(v0);
@@ -712,13 +819,13 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 					//find texture cube face most close to face normal
 					//and project from texture space into face space
 					if (vtmp1.x == max) {
-						m3tmp.set(0, 0, -1, 0, 1, 0, 0, 0, 0);
+						m3tmp.set(0, 0, 1, 0, -1, 0, 0, 0, 0);
 					} else if (vtmp1.x == -max) {
-						m3tmp.set(0, 0, 1, 0, 1, 0, 0, 0, 0);
+						m3tmp.set(0, 0, -1, 0, -1, 0, 0, 0, 0);
 					} else if (vtmp1.z == max) {
-						m3tmp.set(-1, 0, 0, 0, 1, 0, 0, 0, 0);
+						m3tmp.set(1, 0, 0, 0, -1, 0, 0, 0, 0);
 					} else if (vtmp1.z == -max) {
-						m3tmp.set(1, 0, 0, 0, 1, 0, 0, 0, 0);
+						m3tmp.set(-1, 0, 0, 0, -1, 0, 0, 0, 0);
 					} else if (vtmp1.y == max) {
 						m3tmp.set(1, 0, 0, 0, 0, 1, 0, 0, 0);
 					} else if (vtmp1.y == -max) {
@@ -727,9 +834,9 @@ export function parseOldModel(modelfile: Buffer, source: CacheFileSource) {
 						throw new Error("unexpected");
 					}
 
-					vtmp0.copy(v0).applyMatrix3(m3tmp);
-					vtmp1.copy(v1).applyMatrix3(m3tmp);
-					vtmp2.copy(v2).applyMatrix3(m3tmp);
+					vtmp0.copy(v0).applyMatrix3(m3tmp).subScalar(0.5);
+					vtmp1.copy(v1).applyMatrix3(m3tmp).subScalar(0.5);
+					vtmp2.copy(v2).applyMatrix3(m3tmp).subScalar(0.5);
 					uvattr.setXY(vertbase + 0, vtmp0.x, vtmp0.y);
 					uvattr.setXY(vertbase + 1, vtmp1.x, vtmp1.y);
 					uvattr.setXY(vertbase + 2, vtmp2.x, vtmp2.y);
