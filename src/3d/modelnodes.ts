@@ -215,7 +215,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				return modified;
 			}));
 			let modeldata = mergeModelDatas(meshdatas);
-			mergeNaiveBoneids(modeldata, true);//TODO make this flag depend on model type
+			mergeNaiveBoneids(modeldata);
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
 
 			let nullbones: Object3D[] = [];

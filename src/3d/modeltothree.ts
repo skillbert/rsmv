@@ -247,8 +247,7 @@ export class ThreejsSceneCache {
 		}
 	}
 
-	//TODO change name back
-	getMaterialnopenopenope(matid: number, hasVertexAlpha: boolean) {
+	getMaterial(matid: number, hasVertexAlpha: boolean) {
 		//TODO the material should have this data, not the mesh
 		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
 		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
@@ -391,17 +390,18 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
  * vertex will be merged and its bone id is lost. This bug is so entrenched in
  * the game that player models will have detached arms and waist if not replicated
  */
-export function mergeNaiveBoneids(model: ModelData, blendnormals: boolean) {
+export function mergeNaiveBoneids(model: ModelData) {
 	let mergecount = 0;
 	for (let meshid1 = 0; meshid1 < model.meshes.length; meshid1++) {
 		let mesh1 = model.meshes[meshid1];
 		//TODO figure out what the engine does here on skeletal animations when they finally get added to the player
-		if (!mesh1.attributes.color || !blendnormals && (!mesh1.attributes.boneids || !mesh1.attributes.boneweights)) { continue; }
+		if (!mesh1.attributes.color || !mesh1.needsNormalBlending && (!mesh1.attributes.boneids || !mesh1.attributes.boneweights)) { continue; }
 		for (let i1 = 0; i1 < mesh1.attributes.pos.count; i1++) {
 			let x = mesh1.attributes.pos.getX(i1); let y = mesh1.attributes.pos.getY(i1); let z = mesh1.attributes.pos.getZ(i1);
 			// let r = mesh1.attributes.color.getX(i1); let g = mesh1.attributes.color.getY(i1); let b = mesh1.attributes.color.getZ(i1);
 			for (let meshidb = 0; meshidb <= meshid1; meshidb++) {
 				let mesh2 = model.meshes[meshidb];
+				let blendnormals = mesh1.needsNormalBlending && mesh2.needsNormalBlending;
 				if (!mesh2.attributes.color || !blendnormals && (!mesh2.attributes.boneids || !mesh2.attributes.boneweights)) { continue; }
 				// if (mesh2.materialId != mesh1.materialId) { continue; }
 
@@ -419,14 +419,16 @@ export function mergeNaiveBoneids(model: ModelData, blendnormals: boolean) {
 						}
 
 						//blend the two normals
-						//!! current implementation causes bias !!
 						if (blendnormals && mesh1.attributes.normals && mesh2.attributes.normals) {
 							let x = mesh1.attributes.normals.getX(i1) + mesh2.attributes.normals.getX(i2);
 							let y = mesh1.attributes.normals.getY(i1) + mesh2.attributes.normals.getY(i2);
 							let z = mesh1.attributes.normals.getZ(i1) + mesh2.attributes.normals.getZ(i2);
-							//just sum, doing normalization later
-							mesh1.attributes.normals.setXYZ(i1, x, y, z);
-							mesh2.attributes.normals.setXYZ(i2, x, y, z);
+							//ignore faces with oposite normals
+							if (Math.hypot(x, y, z) > 0.01) {
+								//just sum, doing normalization later
+								mesh1.attributes.normals.setXYZ(i1, x, y, z);
+								mesh2.attributes.normals.setXYZ(i2, x, y, z);
+							}
 						}
 					}
 				}
@@ -434,20 +436,18 @@ export function mergeNaiveBoneids(model: ModelData, blendnormals: boolean) {
 		}
 	}
 
-	if (blendnormals) {
-		//normalize normals again
-		for (let mesh of model.meshes) {
-			if (mesh.attributes.normals) {
-				let normals = mesh.attributes.normals;
-				for (let i = 0; i < normals.count; i++) {
-					let x = normals.getX(i);
-					let y = normals.getY(i);
-					let z = normals.getZ(i);
-					let len = Math.hypot(x, y, z);
-					if (len > 0) {
-						let scale = 1 / len;
-						normals.setXYZ(i, x * scale, y * scale, z * scale);
-					}
+	//normalize normals again
+	for (let mesh of model.meshes) {
+		if (mesh.needsNormalBlending && mesh.attributes.normals) {
+			let normals = mesh.attributes.normals;
+			for (let i = 0; i < normals.count; i++) {
+				let x = normals.getX(i);
+				let y = normals.getY(i);
+				let z = normals.getZ(i);
+				let len = Math.hypot(x, y, z);
+				if (len > 0) {
+					let scale = 1 / len;
+					normals.setXYZ(i, x * scale, y * scale, z * scale);
 				}
 			}
 		}
@@ -517,7 +517,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		} else {
 			mesh = new THREE.Mesh(geo);
 		}
-		applyMaterial(mesh, await scene.getMaterialnopenopenope(meshdata.materialId, meshdata.hasVertexAlpha));
+		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha));
 		rootnode.add(mesh);
 	}
 	if (model.debugmeshes && model.debugmeshes.length != 0) {

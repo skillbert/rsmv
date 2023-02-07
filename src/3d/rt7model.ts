@@ -22,6 +22,7 @@ export type ModelMeshData = {
 	indices: THREE.BufferAttribute,
 	materialId: number,
 	hasVertexAlpha: boolean,
+	needsNormalBlending: boolean,
 	attributes: {
 		pos: THREE.BufferAttribute,
 		normals?: THREE.BufferAttribute,
@@ -246,6 +247,7 @@ export function parseOb3Model(modelfile: Buffer) {
 			indices: new THREE.BufferAttribute(indexbuf, 1),
 			materialId,
 			hasVertexAlpha,
+			needsNormalBlending: false,
 			attributes: {
 				pos: new THREE.BufferAttribute(new Float32Array(positionBuffer), 3)
 			}

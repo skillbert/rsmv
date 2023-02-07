@@ -198,6 +198,7 @@ function squareMesh(sizex: number, sizez: number, color: number[]): ModelMeshDat
 			color: new THREE.BufferAttribute(col, 3, true),
 			texuvs: new THREE.BufferAttribute(uvs, 2, false)
 		},
+		needsNormalBlending: false,
 		indices: new THREE.BufferAttribute(indexbuffer, 1, false),
 		hasVertexAlpha: false,
 		materialId: -1
@@ -266,6 +267,7 @@ function extrudedPolygonMesh(points: { x: number, z: number }[], height: number,
 			pos: new THREE.BufferAttribute(pos, 3, false),
 			color: new THREE.BufferAttribute(col, 3, true)
 		},
+		needsNormalBlending: false,
 		indices: new THREE.BufferAttribute(indexbuffer, 1, false),
 		hasVertexAlpha: false,
 		materialId: -1
@@ -475,6 +477,7 @@ function boxMesh(width: number, length: number, height: number) {
 			pos: new THREE.BufferAttribute(pos, 3),
 			color: new THREE.BufferAttribute(col, 3)
 		},
+		needsNormalBlending: false,
 		indices: new THREE.BufferAttribute(index, 1),
 		hasVertexAlpha: false,
 		materialId: -1
@@ -595,6 +598,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 	let r: ModelMeshData = {
 		materialId: mesh.materialId,
 		hasVertexAlpha: mesh.hasVertexAlpha,
+		needsNormalBlending: mesh.needsNormalBlending,
 		indices,
 		attributes: {
 			...mesh.attributes,
@@ -1846,7 +1850,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 				let matgroup = group.get(matkey);
 				if (!matgroup) {
 					matgroup = {
-						material: await scene.getMaterialnopenopenope(modified.materialId, modified.hasVertexAlpha),
+						material: await scene.getMaterial(modified.materialId, modified.hasVertexAlpha),
 						models: [],
 						groupid: obj.extras.modelgroup,
 						overlayIndex: 0

@@ -157,7 +157,6 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         });
     }
 
-    // modeldata.material.forEach((q, i, arr) => arr[i] = 0);
     let matusecount = new Map<number, number>();
     for (let matid of modeldata.material) {
         matusecount.set(matid, (matusecount.get(matid) ?? 0) + 1);
@@ -194,8 +193,6 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     let vertexindex = new Uint16Array(modeldata.facecount * 3);
 
     let srcindex0 = 0, srcindex1 = 0, srcindex2 = 0, srcindexlast = 0;
-    //TODO can probably get rid of ths completely if merged vertices result in problems with colors
-    // let dstindex0 = 0, dstindex1 = 0, dstindex2 = 0, dstnextindex = 0, dstwriteindex = 0;
     let stream = new Stream(modeldata.indexbuffer);
     for (let i = 0; i < modeldata.facecount; i++) {
         let typedata = modeldata.tritype[i];
@@ -371,15 +368,15 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         let uvattr = submesh.texuvs;
         let normalattr = submesh.normals;
         let indexbuf = submesh.index;
-        if (isNaN(vnormal.x) || isNaN(vnormal.y) || isNaN(vnormal.x)) {
+        if (!(Math.abs(1 - vnormal.length()) < 0.01)) {
             debugger;
         }
         posattr.setXYZ(vertbase + 0, v0.x, v0.y, v0.z);
         posattr.setXYZ(vertbase + 1, v1.x, v1.y, v1.z);
         posattr.setXYZ(vertbase + 2, v2.x, v2.y, v2.z);
-        normalattr.setXYZ(vertbase + 0, vnormal.x, vnormal.y, vnormal.x);
-        normalattr.setXYZ(vertbase + 1, vnormal.x, vnormal.y, vnormal.x);
-        normalattr.setXYZ(vertbase + 2, vnormal.x, vnormal.y, vnormal.x);
+        normalattr.setXYZ(vertbase + 0, vnormal.x, vnormal.y, vnormal.z);
+        normalattr.setXYZ(vertbase + 1, vnormal.x, vnormal.y, vnormal.z);
+        normalattr.setXYZ(vertbase + 2, vnormal.x, vnormal.y, vnormal.z);
 
         if (modeldata.colors) {
             let colorattr = submesh.color;
@@ -484,19 +481,19 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         indexbuf[dstfaceindex * 3 + 0] = vertbase + 0;
         indexbuf[dstfaceindex * 3 + 1] = vertbase + 2;//flip 1 and 2, opengl uses oposite notation
         indexbuf[dstfaceindex * 3 + 2] = vertbase + 1;
-        submesh[dstfaceindex] = i;
     }
 
     let meshes = [...matmesh.values()].map<ModelMeshData>(m => ({
+        indices: new BufferAttribute(m.index, 1),
+        materialId: m.matid,
+        hasVertexAlpha: !!modeldata.alpha,
+        needsNormalBlending: true,
         attributes: {
             pos: m.pos,
             color: m.color,
             texuvs: m.texuvs,
             normals: m.normals
         },
-        hasVertexAlpha: !!modeldata.alpha,
-        indices: new BufferAttribute(m.index, 1),
-        materialId: m.matid
     }));
     let r: ModelData = { maxy, miny, meshes, bonecount: bonecount, skincount: skincount, debugmeshes };
 
