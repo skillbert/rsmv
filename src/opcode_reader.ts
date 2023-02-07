@@ -1043,6 +1043,8 @@ function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
 		getTypescriptType() {
 			if (typeof primitive.value == "number" || typeof primitive.value == "boolean") {
 				return JSON.stringify(primitive.value);
+			} else if (primitive.value == null) {
+				return "null";
 			} else {
 				return typeof primitive.value;
 			}
@@ -1330,7 +1332,7 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 				return buildReference(name, refparent, res);
 			},
 			getTypescriptType(indent) {
-				return "("+options.map(opt => opt.parser.getTypescriptType(indent + "\t")).join("|")+")";
+				return "(" + options.map(opt => opt.parser.getTypescriptType(indent + "\t")).join("|") + ")";
 			},
 			getJsonSchema() {
 				return { oneOf: options.map(opt => opt.parser.getJsonSchema()) };

@@ -29,17 +29,20 @@
 
 		["indexBuffers",["array","ubyte",["buffer","ushort le","ushort"]]],
 
-		["vertexCount",["opt",["hasVertices",1],"ushort le"]],
+		["vertexCount",["match",["ref","hasVertices"],{"=1":"ushort le","=0":0}]],
 		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
 		["normalBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"byte",3]]],
-		["tagentBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",2]]],
+		["tagentBuffer",["opt",["hasVertices",1],
+			//TODO exact buildnr unknown
+			["match","buildnr",{">=906":["buffer",["ref","vertexCount"],"short",2],">=0":"null"}]
+		]],
 		["uvBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],
 		["boneidBuffer",["opt",["hasBoneIds",1],["buffer",["ref","vertexCount"],"ushort"]]],
 		
 		["skin",["opt",["hasSkin",1],["struct",
-			["skinVertexCount","uint le"],
-			["skinBoneBuffer",["buffer",["ref","skinVertexCount"],"ushort",1]],
-			["skinWeightBuffer",["buffer",["ref","skinVertexCount"],"ubyte",1]]
+			["skinWeightCount","uint le"],
+			["skinBoneBuffer",["buffer",["ref","skinWeightCount"],"ushort",1]],
+			["skinWeightBuffer",["buffer",["ref","skinWeightCount"],"ubyte",1]]
 		]]]
 	]]],
 

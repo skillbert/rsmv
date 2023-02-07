@@ -60,7 +60,7 @@ function cacheSourceFromString(str: string) {
 export const ReadCacheSource: cmdts.Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
 	async from(str) { return cacheSourceFromString(str); },
 	defaultValue: () => cacheSourceFromString("cache"),
-	description: "Where to get game files from, can be 'live', 'local[:filedir]' or 'cache[:rscachedir]'"
+	description: "Where to get game files from, can be 'live', 'cache[:rscachedir]' or openrs2[:ors2cacheid]"
 };
 
 export type FileRange = { start: [number, number], end: [number, number] }[];

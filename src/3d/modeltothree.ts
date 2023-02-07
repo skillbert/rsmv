@@ -217,7 +217,6 @@ export class ThreejsSceneCache {
 
 	constructor(scenecache: EngineCache) {
 		this.engine = scenecache;
-		this.useOldModels = !globalThis.newmodels;
 		this.useOldModels = scenecache.hasOldModels && !scenecache.hasNewModels;
 		//TODO set useOldModels depending on cache build nr
 	}
@@ -242,7 +241,7 @@ export class ThreejsSceneCache {
 		} else {
 			return this.engine.fetchCachedObject(this.modelCache, id, () => {
 				return this.engine.getFileById(cacheMajors.models, id)
-					.then(f => parseOb3Model(f));
+					.then(f => parseOb3Model(f, this.engine));
 			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 		}
 	}

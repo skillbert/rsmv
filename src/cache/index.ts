@@ -406,4 +406,7 @@ export class CachingFileSource extends CacheFileSource {
 			return this.fetchCachedObject(this.archieveCache, cachekey, get, obj => obj.reduce((a, v) => a + v.size, 0));
 		}
 	}
+	getBuildNr() {
+		return this.rawsource.getBuildNr();
+	}
 }

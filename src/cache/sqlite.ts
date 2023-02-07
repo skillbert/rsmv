@@ -71,7 +71,10 @@ export class GameCacheLoader extends cache.CacheFileSource {
 				getIndexFile = () => { throw new Error("root index file no accesible for sqlite cache"); }
 				writeFile = (minor, data) => { throw new Error("writing index files not supported"); }
 			} else {
-				db = new sqlite.Database(path.resolve(this.cachedir, `js5-${major}.jcache`), this.writable ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY);
+				let dbfile = path.resolve(this.cachedir, `js5-${major}.jcache`);
+				//need separate throw here since sqlite just crashes instead of throwing
+				if (!fs.existsSync(dbfile)) { throw new Error(`cache index ${major} doesn't exist`); }
+				db = new sqlite.Database(dbfile, this.writable ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY);
 				let ready = new Promise<void>(done => db!.once("open", done));
 				let dbget = async (query: string, args: any[]) => {
 					await ready;

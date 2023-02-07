@@ -246,6 +246,25 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 	scan = modelScan;*/
 } as any
 
+export function flipEndian16(u16: number) {
+	return ((u16 & 0xff) << 8) | ((u16 & 0xff00) >> 8);
+}
+
+//2 bytes interpreted as u16 BE to float16 LE
+export function ushortToHalf(bytes: number) {
+	bytes = flipEndian16(bytes);
+	let negative = (bytes & 0x8000) == 0;
+	let exponent = (bytes & 0x7c00) >> 10;
+	let mantissa = (bytes & 0x03ff);
+
+	let res = mantissa * Math.pow(2.0, -10.0) + (exponent == 0 ? 0.0 : 1.0);
+	res *= Math.pow(2.0, exponent - 15.0);
+	if (negative) {
+		return -res;
+	}
+	return res;
+}
+
 // https://stackoverflow.com/a/9493060
 export function HSL2RGBfloat(hsl: number[]): [number, number, number] {
 	var h = hsl[0];

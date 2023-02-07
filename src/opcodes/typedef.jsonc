@@ -65,6 +65,7 @@
     "0":                0,//obsolete backward compat
     "1":                1,
     "-1":               -1,
+    "null":            { "primitive": "value", "value": null },
 
     "string":           { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[] },
     "paddedstring":     { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[0] },
