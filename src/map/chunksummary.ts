@@ -2,7 +2,7 @@ import { parse } from "../opdecoder";
 import { BufferAttribute, Vector3 } from "three";
 import { objects } from "../../generated/objects";
 import { MapRect, PlacedMesh, TileGrid, transformVertexPositions } from "../3d/mapsquare";
-import { EngineCache } from "../3d/ob3tothree";
+import { EngineCache } from "../3d/modeltothree";
 import { cacheMajors } from "../constants";
 
 

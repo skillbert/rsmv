@@ -4,7 +4,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom/client";
 import { boundMethod } from "autobind-decorator";
 import * as datastore from "idb-keyval";
-import { detectTextureMode, EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { detectTextureMode, EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
 
 import { UIScriptFile } from "./scriptsui";
@@ -12,10 +12,6 @@ import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache 
 import classNames from "classnames";
 
 // export * as api from "../headless/api";
-
-if (module.hot) {
-	module.hot.accept(["../3d/ob3togltf", "../3d/ob3tothree"]);
-}
 
 export function unload(root: ReactDOM.Root) {
 	root.unmount();

@@ -1,7 +1,7 @@
 import { TileGridSource, ChunkData, squareLevels, squareSize, TileVertex, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
-import { EngineCache } from "../3d/ob3tothree";
+import { EngineCache } from "../3d/modeltothree";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 
 let similarangle = (a1: number, a2: number) => {

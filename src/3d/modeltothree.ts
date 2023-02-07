@@ -1,6 +1,7 @@
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { ParsedTexture } from "./textures";
-import { ModelData, parseOb3Model, parseOldModel } from '../3d/ob3togltf';
+import { ModelData, parseOb3Model } from '../3d/rt7model';
+import { parseRT5Model } from "../3d/rt5model";
 import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import * as THREE from "three";
 import { archiveToFileId, CachedObject, CacheFileSource, CacheIndex, CachingFileSource, SubFile } from "../cache";
@@ -14,7 +15,6 @@ import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
-import { materials } from "../../generated/materials";
 
 export type ParsedMaterial = {
 	//TODO rename
@@ -237,7 +237,7 @@ export class ThreejsSceneCache {
 		if (type == "old" || (type == "auto" && this.useOldModels)) {
 			return this.engine.fetchCachedObject(this.oldModelCache, id, () => {
 				return this.engine.getFileById(cacheMajors.oldmodels, id)
-					.then(f => parseOldModel(f, this.engine.rawsource));
+					.then(f => parseRT5Model(f, this.engine.rawsource));
 			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 		} else {
 			return this.engine.fetchCachedObject(this.modelCache, id, () => {

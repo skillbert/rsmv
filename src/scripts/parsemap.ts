@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { parse } from "../opdecoder";
 import { ParsemapOpts, parseMapsquare } from "../3d/mapsquare";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
-import { EngineCache } from "../3d/ob3tothree";
+import { EngineCache } from "../3d/modeltothree";
 import { makeImageData, pixelsToImageFile } from "../imgutils";
 
 let cmd = command({

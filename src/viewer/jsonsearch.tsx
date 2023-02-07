@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput } from "./commoncontrols";
 import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-schema";
 import { cacheFileJsonModes } from "../scripts/extractfiles";

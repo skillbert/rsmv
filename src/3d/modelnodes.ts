@@ -1,14 +1,14 @@
 import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids } from '../3d/ob3tothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors } from "../constants";
-import { ModelData } from "../3d/ob3togltf";
+import { ModelData } from "../3d/rt7model";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { svgfloor } from "../map/svgrender";
 import { ThreeJsRenderer, ThreeJsSceneElement, ThreeJsSceneElementSource } from "../viewer/threejsrender";

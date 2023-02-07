@@ -1,4 +1,4 @@
-import { ThreejsSceneCache, EngineCache } from '../3d/ob3tothree';
+import { ThreejsSceneCache, EngineCache } from '../3d/modeltothree';
 import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture, ModelModifications, stringToFileRange, stringToMapArea } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
@@ -1042,7 +1042,7 @@ function SceneRawModel(p: LookupModeProps) {
 		p.ctx.sceneCache.useOldModels = oldcheckbox;
 		if (typeof id == "number") { setId(id); }
 		return () => {
-			p.ctx!.sceneCache.useOldModels = prevmode;
+			if (p.ctx?.sceneCache) { p.ctx!.sceneCache.useOldModels = prevmode; }
 		}
 	}, [oldcheckbox, p.ctx?.sceneCache])
 	return (

@@ -1,7 +1,7 @@
 
 import { exportThreeJsGltf, ThreeJsRenderer } from "../viewer/threejsrender";
 import { CacheFileSource } from "../cache";
-import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { itemToModel, npcToModel, RSModel, SimpleModelInfo } from "../3d/modelnodes";
 import { delay } from "../utils";
 import { Vector3, WebGLRendererParameters } from "three";

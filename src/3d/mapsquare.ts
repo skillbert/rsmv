@@ -5,19 +5,16 @@ import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
-import { ModelMeshData, ModelData } from "./ob3togltf";
+import { ModelMeshData, ModelData } from "./rt7model";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial } from "./ob3tothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
-
-
-module.hot?.accept(["../3d/ob3tothree", "../3d/ob3togltf"]);
 
 const upvector = new THREE.Vector3(0, 1, 0);
 

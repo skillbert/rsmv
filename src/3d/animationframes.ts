@@ -5,10 +5,10 @@ import { parse } from "../opdecoder";
 import { AnimationClip, AnimationMixer, Bone, BufferGeometry, Euler, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../generated/skeletalanim";
 import { framemaps } from "../../generated/framemaps";
-import { ThreejsSceneCache } from "./ob3tothree";
+import { ThreejsSceneCache } from "./modeltothree";
 import { sequences } from "../../generated/sequences";
 import { frames } from "../../generated/frames";
-import { BoneCenter, getBoneCenters, ModelData } from "./ob3togltf";
+import { BoneCenter, getBoneCenters, ModelData } from "./rt7model";
 
 //test    anim ids
 //3577    falling plank

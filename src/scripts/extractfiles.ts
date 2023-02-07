@@ -9,7 +9,7 @@ import { JSONSchema6Definition } from "json-schema";
 import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { crc32, CrcBuilder } from "../libs/crc32util";
-import { getModelHashes } from "../3d/ob3tothree";
+import { getModelHashes } from "../3d/modeltothree";
 import { GameCacheLoader } from "../cache/sqlite";
 import { FileRange } from "../cliparser";
 

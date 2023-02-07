@@ -1,4 +1,4 @@
-import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import fetch from "node-fetch";
 import { avatarStringToBytes, avatarToModel, lowname } from "../3d/avatar";
 import { CLIScriptFS, ScriptFS, ScriptOutput } from "../viewer/scriptsui";

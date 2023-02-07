@@ -25,20 +25,6 @@ function compatCancelAnimationFrame(id: number) {
 	else { return +clearTimeout(id); }
 }
 
-
-let lastob3modelcall: { args: any[], inst: ThreeJsRenderer } | null = null;
-if (module.hot) {
-	module.hot.accept("../3d/ob3tothree", () => {
-		console.log("accept module")
-		setTimeout(() => {
-			if (lastob3modelcall) {
-				//@ts-ignore
-				lastob3modelcall.inst.setOb3Models(...lastob3modelcall.args);
-			}
-		}, 1);
-	});
-}
-
 export type ThreeJsRendererEvents = {
 	select: null | { obj: Mesh, meshdata: Extract<ModelExtras, ClickableMesh<any>>, match: unknown, vertexgroups: { start: number, end: number, mesh: THREE.Mesh }[] }
 }

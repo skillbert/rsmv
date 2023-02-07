@@ -1,7 +1,7 @@
 import { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
-import { ThreejsSceneCache } from "./ob3tothree";
+import { ThreejsSceneCache } from "./modeltothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../utils";
 import { items } from "../../generated/items";
 import { avataroverrides } from "../../generated/avataroverrides";

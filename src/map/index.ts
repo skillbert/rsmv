@@ -8,7 +8,7 @@ import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, isImageEqual, pixelsToImageFile } from "../imgutils";
 import * as THREE from "three";
-import { EngineCache, ThreejsSceneCache } from "../3d/ob3tothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
 import { delay, stringToMapArea } from "../utils";

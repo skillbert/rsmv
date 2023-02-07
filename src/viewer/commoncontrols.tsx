@@ -3,7 +3,7 @@ import { UIContext, UIContextReady } from "./maincomponents";
 import { boundMethod } from "autobind-decorator";
 import prettyJson from "json-stringify-pretty-compact";
 import classNames from "classnames";
-import { EngineCache } from "3d/ob3tothree";
+import { EngineCache } from "3d/modeltothree";
 import { cacheFileJsonModes } from "scripts/extractfiles";
 import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
