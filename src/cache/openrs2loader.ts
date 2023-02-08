@@ -5,6 +5,7 @@ import { CacheIndex } from "./index";
 import fetch from "node-fetch";
 
 const endpoint = `https://archive.openrs2.org`;
+var downloadedBytes = 0;
 
 export type Openrs2CacheMeta = {
 	id: number,
@@ -29,7 +30,6 @@ export type Openrs2CacheMeta = {
 export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
-	totalbytes = 0;
 
 	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
 		return fetch(`${endpoint}/caches.json`).then(q => q.json());
@@ -149,10 +149,10 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor} from openrs2 ${this.meta.id}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
 		//at least make sure we are aware if we're ddossing someone....
-		if (Math.floor(this.totalbytes / 10_000_000) != Math.floor((this.totalbytes + buf.byteLength) / 10_000_000)) {
-			console.info(`loaded ${(this.totalbytes + buf.byteLength) / 1000_000 | 0} mb from openrs2`);
+		if (Math.floor(downloadedBytes / 10_000_000) != Math.floor((downloadedBytes + buf.byteLength) / 10_000_000)) {
+			console.info(`loaded ${(downloadedBytes + buf.byteLength) / 1000_000 | 0} mb from openrs2`);
 		}
-		this.totalbytes += buf.byteLength;
+		downloadedBytes += buf.byteLength;
 		return Buffer.from(buf);
 	}
 
