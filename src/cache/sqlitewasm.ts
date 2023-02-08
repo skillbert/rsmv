@@ -35,8 +35,11 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 			this.callbacks.delete(e.data.id);
 		}
 	}
-	getCacheName() {
-		return `sqlitewasm`;
+	getCacheMeta() {
+		return {
+			name: `sqlitewasm`,
+			descr: "Direclty loads NXT cache files from the disk, in browser compatible environment."
+		}
 	}
 
 	async generateRootIndex() {

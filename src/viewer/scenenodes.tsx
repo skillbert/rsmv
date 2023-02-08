@@ -1639,7 +1639,7 @@ function CacheDiffScript(p: UiScriptProps) {
 					<CacheSelector onOpen={openCache} />
 				</div>
 			)}
-			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheName()}`} onClick={e => setCache2(null)} />}
+			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheMeta().name}`} onClick={e => setCache2(null)} />}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 			{result && <label><input checked={showmodels} onChange={e => setshowmodels(e.currentTarget.checked)} type="checkbox" />View changed models</label>}
 		</React.Fragment>

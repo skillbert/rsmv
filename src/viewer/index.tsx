@@ -109,6 +109,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 		let width = this.props.ctx.rootElement.clientWidth;
 		let vertical = width < 550;
 
+		let cachemeta = this.props.ctx.source?.getCacheMeta();
 		return (
 			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
 				<canvas className="mv-canvas" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
@@ -123,9 +124,9 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 							</div>
 						</React.Fragment>
 					)}
-					{this.props.ctx.source && (
+					{cachemeta && (
 						<React.Fragment>
-							<input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${this.props.ctx.source.getCacheName()}`} />
+							<input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${cachemeta.name}`} title={cachemeta.descr} />
 							<RendererControls ctx={this.props.ctx} />
 							<ModelBrowser ctx={this.props.ctx} />
 						</React.Fragment>

@@ -27,8 +27,11 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		this.writable = !!writable;
 	}
 
-	getCacheName() {
-		return `sqlite:${this.cachedir}`;
+	getCacheMeta() {
+		return {
+			name: `sqlite:${this.cachedir}`,
+			descr: "Directly reads NXT cache files."
+		}
 	}
 
 	async generateRootIndex() {

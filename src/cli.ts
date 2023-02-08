@@ -43,13 +43,14 @@ const historicdecode = command({
 	args: {
 		...filesource,
 		skipcurrent: flag({ long: "skipcurrent", short: "p", description: "skip current cache" }),
-		before: option({ long: "before", short: "t", defaultValue: () => "" })
+		before: option({ long: "before", short: "t", defaultValue: () => "" }),
+		maxchecks: option({ long: "maxchecks", short: "n", type: cmdts.number, defaultValue: () => 0 })
 	},
 	async handler(args) {
 		let startcache = await args.source();
 		let output = new CLIScriptOutput();
 		let fs = new CLIScriptFS("./cache-histerr");
-		await output.run(testDecodeHistoric, fs, startcache, args.before);
+		await output.run(testDecodeHistoric, fs, startcache, args.before, args.maxchecks);
 	}
 })
 

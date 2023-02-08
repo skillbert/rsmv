@@ -221,8 +221,8 @@ export function archiveToFileId(major: number, minor: number, subfile: number) {
 
 
 export abstract class CacheFileSource {
-	getCacheName() {
-		return "unkown";
+	getCacheMeta(): { name: string, descr: string, otherCaches?: Record<string, string> } {
+		return { name: "unkown", descr: "" };
 	}
 	//could use abstract here but typings get weird
 	getFile(major: number, minor: number, crc?: number): Promise<Buffer> {
@@ -310,8 +310,8 @@ export class CallbackCacheLoader extends DirectCacheFileSource {
 		this.getFile = fn;
 	}
 
-	getCacheName() {
-		return "callback";
+	getCacheMeta() {
+		return { name: "callback", descr: "Cache source based on external getter" };
 	}
 }
 

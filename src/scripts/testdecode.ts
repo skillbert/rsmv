@@ -52,7 +52,7 @@ export async function validOpenrs2Caches() {
 	return checkedcaches;
 }
 
-export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS, basecache: CacheFileSource | null, before = "") {
+export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS, basecache: CacheFileSource | null, before = "", maxchecks = 0) {
 	type CacheInput = { source: CacheFileSource, buildnr: number, info: string, date: number };
 
 	const maxerrs = 50;
@@ -62,16 +62,17 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 	let checkedcaches = await validOpenrs2Caches();
 	checkedcaches = checkedcaches.filter(q => q.timestamp && (!before || new Date(q.timestamp) < beforeDate));
 
-	// output.log(cachelist.map(q => `${q.source.getCacheName()} - ${q.info}`).slice(0, 20));
+	// output.log(cachelist.map(q => `${q.source.getCacheMeta().name} - ${q.info}`).slice(0, 20));
 
 	let checkedmajors = [
-		// cacheMajors.config,
-		// cacheMajors.materials,
-		// cacheMajors.items,
+		cacheMajors.config,
+		cacheMajors.materials,
+		cacheMajors.items,
 		cacheMajors.npcs,
-		// cacheMajors.objects,
-		// cacheMajors.mapsquares,
-		// cacheMajors.models
+		cacheMajors.objects,
+		cacheMajors.mapsquares,
+		cacheMajors.models,
+		cacheMajors.oldmodels
 	];
 
 	let caches = function* (): Generator<CacheInput> {
@@ -98,9 +99,9 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 		if (before && !prevcache) { continue; }
 
 		if (prevcache) {
-			output.log(`starting cache diff check ${currentcache.buildnr}->${prevcache.buildnr} - ${currentcache.source.getCacheName()}->${prevcache.source.getCacheName()} - ${currentcache.info}->${prevcache.info})`);
+			output.log(`starting cache diff check ${currentcache.buildnr}->${prevcache.buildnr} - ${currentcache.source.getCacheMeta().name}->${prevcache.source.getCacheMeta().name} - ${currentcache.info}->${prevcache.info})`);
 		} else {
-			output.log(`starting cache check ${currentcache.buildnr} (${currentcache.source.getCacheName()} - ${currentcache.info})`);
+			output.log(`starting cache check ${currentcache.buildnr} (${currentcache.source.getCacheMeta().name} - ${currentcache.info})`);
 		}
 
 		for (let major of checkedmajors) {
@@ -109,21 +110,27 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 			let changes = await compareCacheMajors(output, prevcache?.source, currentcache.source, major);
 			for (let change of changes) {
 				if (change.type == "add" || change.type == "edit") {
-					if (!change.after) { throw new Error("after file expected"); }
+					let after = await change.getAfter();
+					if (!after) {
+						// throw new Error("after file expected"); 
+						console.error(`After file expected, ${change.major}.${change.minor}`);
+						continue;
+					}
 					if (change.action.parser) {
-						let res = testDecodeFile(change.action.parser, change.after, currentcache.source);
+						let res = testDecodeFile(change.action.parser, after, currentcache.source);
 						totalcount++;
 						if (!res.success) {
 							errorcount++;
 							if (errorcount < maxerrs) {
 								let errlocation = change.action.getFileName(change.major, change.minor, change.subfile);
-								let filename = `${currentcache.source.getCacheName().replace(/\W/g, "_")}_${errlocation}`;
+								let filename = `${currentcache.source.getCacheMeta().name.replace(/\W/g, "_")}_${errlocation}`;
 								output.log(`error in ${change.action.name} ${errlocation}`);
 
 								let debugfile = res.getDebugFile("hextext");
 								let errfilechunks = [debugfile as Buffer];
-								if (prevcache && change.before) {
-									let prevres = testDecodeFile(change.action.parser, change.before, prevcache.source);
+								let before = await change.getBefore();
+								if (prevcache && before) {
+									let prevres = testDecodeFile(change.action.parser, before, prevcache.source);
 									errfilechunks.push(Buffer.alloc(64 + 16 - (debugfile.length % 16)));
 									errfilechunks.push(prevres.getDebugFile("hextext") as Buffer);
 								}
@@ -132,6 +139,9 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 							}
 						}
 					}
+				}
+				if (maxchecks != 0 && totalcount >= maxchecks) {
+					break;
 				}
 			}
 

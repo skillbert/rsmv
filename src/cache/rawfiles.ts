@@ -30,8 +30,11 @@ export class RawFileLoader extends CacheFileSource {
 			};
 		})
 	}
-	getCacheName() {
-		return `files:${this.cachedir}`;
+	getCacheMeta() {
+		return {
+			name: `files:${this.cachedir}`,
+			descr: `Only index ${this.virtualMajor}, loaded from unpacked cache files in ${this.cachedir}.`
+		}
 	}
 
 	getFile(major: number, minor: number, crc?: number) {

@@ -233,8 +233,8 @@ export class CacheDownloader extends DirectCacheFileSource {
 		this.configPromise = downloadServerConfig().then(parseClientConfig);
 	}
 
-	getCacheName() {
-		return "live";
+	getCacheMeta() {
+		return { name: "live", descr: "Download live data from jagex server" };
 	}
 
 	async getSocket(): Promise<DownloadSocket> {

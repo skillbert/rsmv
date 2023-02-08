@@ -3,7 +3,7 @@ import { run, command, number, option, string, boolean, Type, flag, oneOf, optio
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parse, FileParser } from "../opdecoder";
 import { DepTypes } from "./dependencies";
-import { archiveToFileId, CacheFileSource, fileIdToArchiveminor } from "../cache";
+import { archiveToFileId, CacheFileSource, CacheIndexFile, fileIdToArchiveminor } from "../cache";
 import * as fs from "fs";
 import prettyJson from "json-stringify-pretty-compact";
 import { crc32 } from "../libs/crc32util";
@@ -16,14 +16,6 @@ type FileAction = {
 	parser: FileParser<any> | null,
 	isTexture: boolean,
 	getFileName: (major: number, minor: number, subfile: number) => string
-}
-
-export type FileEdit = {
-	type: "add" | "delete" | "edit",
-	major: number, minor: number, subfile: number,
-	before: Buffer | null,
-	after: Buffer | null,
-	action: FileAction
 }
 
 //TODO merge all this with defs in extract
@@ -53,7 +45,8 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parse.object, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parse.item, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parse.npc, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: null, isTexture: false, getFileName: standardName },
+	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: parse.models, isTexture: false, getFileName: standardName },
+	[cacheMajors.oldmodels]: { name: "oldmodel", comparesubfiles: false, parser: parse.oldmodels, isTexture: false, getFileName: standardName },
 	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, isTexture: false, getFileName: worldmapFilename },
 	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parse.enums, isTexture: false, getFileName: chunkedIndexName },
 	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parse.achievement, isTexture: false, getFileName: chunkedIndexName },
@@ -70,10 +63,77 @@ function defaultAction(major: number) {
 	return r;
 }
 
+type CacheEditType = "add" | "delete" | "edit";
+
+class Loadable {
+	source: CacheFileSource;
+	major: number;
+	minor: number;
+	crc: number;
+	constructor(source: CacheFileSource, major: number, minor: number, crc: number) {
+		this.source = source;
+		this.major = major;
+		this.minor = minor;
+		this.crc = crc;
+	}
+	load() {
+		return this.source.getFile(this.major, this.minor, this.crc);
+	}
+}
+
+export class FileEdit {
+	type: CacheEditType;
+	major: number;
+	minor: number;
+	subfile: number;
+	action: FileAction;
+	source: CacheFileSource;
+	before: Buffer | Loadable | null;
+	after: Buffer | Loadable | null;
+	constructor(action: FileAction, type: CacheEditType, major: number, minor: number, subfile: number, before: Buffer | Loadable | null, after: Buffer | Loadable | null) {
+		this.action = action;
+		this.type = type;
+		this.major = major;
+		this.minor = minor;
+		this.subfile = subfile;
+		this.before = before;
+		this.after = after;
+	}
+
+	async getBefore() {
+		try {
+			if (this.before == null) { throw new Error("no after file"); }
+			if (Buffer.isBuffer(this.before)) { return this.before; }
+			return await this.before.load();
+		} catch (e) {
+			return null;
+		}
+	}
+
+	async getAfter() {
+		try {
+			if (this.after == null) { throw new Error("no after file"); }
+			if (Buffer.isBuffer(this.after)) { return this.after; }
+			return await this.after.load();
+		} catch (e) {
+			return null;
+		}
+	}
+}
+
 export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFileSource | null | undefined, sourceb: CacheFileSource, major: number) {
 	//source a can be empty, allow diffing to nothing
-	let indexa = sourcea ? await sourcea.getCacheIndex(major) : [];
-	let indexb = await sourceb.getCacheIndex(major);
+	let indexa: CacheIndexFile = [];
+	let indexb: CacheIndexFile = [];
+	try {
+		if (sourcea) {
+			indexa = await sourcea.getCacheIndex(major);
+		}
+	} catch (e) { }
+	try {
+		indexb = await sourceb.getCacheIndex(major);
+	} catch (e) { }
+
 	let len = Math.max(indexa.length, indexb.length);
 
 	let changes: FileEdit[] = [];
@@ -104,22 +164,13 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 						let filea = archa[a], fileb = archb[b];
 						if (filea && (!fileb || filea.fileid < fileb.fileid)) {
 							a++;
-							changes.push({
-								type: "delete", major: metaa.major, minor: metaa.minor, subfile: filea.fileid,
-								action, before: filea.buffer, after: null
-							});
+							changes.push(new FileEdit(action, "delete", metaa.major, metaa.minor, filea.fileid, filea.buffer, null));
 						} else if (fileb && (!filea || fileb.fileid < filea.fileid)) {
 							b++;
-							changes.push({
-								type: "add", major: metab.major, minor: metab.minor, subfile: fileb.fileid,
-								action, before: null, after: fileb.buffer
-							});
+							changes.push(new FileEdit(action, "add", metab.major, metab.minor, fileb.fileid, null, fileb.buffer));
 						} else if (filea && fileb && filea.fileid == fileb.fileid) {
 							if (Buffer.compare(filea.buffer, fileb.buffer) != 0) {
-								changes.push({
-									type: "edit", major: metaa.major, minor: metaa.minor, subfile: filea.fileid,
-									action, before: filea.buffer, after: fileb.buffer
-								});
+								changes.push(new FileEdit(action, "edit", metaa.major, metaa.minor, filea.fileid, filea.buffer, fileb.buffer));
 							}
 							a++;
 							b++;
@@ -131,35 +182,16 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 						}
 					}
 				} else {
-					try {
-						var filea = (metaa && sourcea ? await sourcea.getFile(metaa.major, metaa.minor, metaa.crc) : null);
-						var fileb = (metab ? await sourceb.getFile(metab.major, metab.minor, metab.crc) : null);
-					} catch (e) {
-						output.log((e as Error).message);
-						continue;
-					}
 					if (!metaa) {
-						changes.push({
-							type: "add", major: metab.major, minor: metab.minor,
-							subfile: -1, action,
-							before: null,
-							after: fileb
-						});
+						let file = new Loadable(sourceb, metab.major, metab.minor, metab.crc);
+						changes.push(new FileEdit(action, "add", metab.major, metab.minor, -1, null, file));
 					} else if (!metab) {
-						if (!sourcea) { debugger; }
-						changes.push({
-							type: "delete", major: metaa.major, minor: metaa.minor,
-							subfile: -1, action,
-							before: filea,
-							after: null
-						});
+						let file = (!sourcea ? null : new Loadable(sourcea, metaa.major, metaa.minor, metaa.crc));
+						changes.push(new FileEdit(action, "delete", metaa.major, metaa.minor, -1, file, null));
 					} else {
-						changes.push({
-							type: "edit", major: metaa.major, minor: metaa.minor,
-							subfile: -1, action,
-							before: filea,
-							after: fileb
-						});
+						let before = (!sourcea ? null : new Loadable(sourcea, metaa.major, metaa.minor, metaa.crc));
+						let after = new Loadable(sourceb, metab.major, metab.minor, metab.crc);
+						changes.push(new FileEdit(action, "add", metaa.major, metaa.minor, -1, before, after));
 					}
 				}
 			}
@@ -191,22 +223,24 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 			let dir = `${change.action.name}`;
 
 			await outdir.mkDir(dir);
+			let before = await change.getBefore();
+			let after = await change.getAfter();
 			if (change.action.parser) {
-				if (change.before) {
-					let parsedbefore = change.action.parser.read(change.before, sourcea);
+				if (before) {
+					let parsedbefore = change.action.parser.read(before, sourcea);
 					await outdir.writeFile(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
 				}
-				if (change.after) {
-					let parsedafter = change.action.parser.read(change.after, sourceb);
+				if (after) {
+					let parsedafter = change.action.parser.read(after, sourceb);
 					await outdir.writeFile(`${dir}/${name}-after.json`, prettyJson(parsedafter));
 				}
 			} else {
 				let ext = (change.action.isTexture ? "rstex" : "bin");
-				if (change.before) {
-					await outdir.writeFile(`${dir}/${name}-before.${ext}`, change.before);
+				if (before) {
+					await outdir.writeFile(`${dir}/${name}-before.${ext}`, before);
 				}
-				if (change.after) {
-					await outdir.writeFile(`${dir}/${name}-after.${ext}`, change.after);
+				if (after) {
+					await outdir.writeFile(`${dir}/${name}-after.${ext}`, after);
 				}
 			}
 		}

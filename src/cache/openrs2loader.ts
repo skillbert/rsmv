@@ -49,8 +49,13 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 			this.buildnr = latestBuildNumber;
 		}
 	}
-	getCacheName() {
-		return `openrs2:${this.meta.id}`;
+	getCacheMeta() {
+		return {
+			name: `openrs2:${this.meta.id}`,
+			descr: `build: ${this.meta.builds[0].major}`
+				+ `\ndate: ${new Date(this.meta.timestamp ?? "").toDateString()}`
+				+ `\nHistoric cache loaded from openrs2 cache repository.`
+		};
 	}
 	getBuildNr() {
 		return this.buildnr;
