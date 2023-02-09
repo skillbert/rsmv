@@ -31,6 +31,8 @@
 
 		["vertexCount",["match",["ref","hasVertices"],{"=1":"ushort le","=0":0}]],
 		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
+		//currently wrong, but makes it parse
+		["unkoldbuffer",["match","buildnr",{">=887":"null",">=0":["buffer",["ref","vertexCount"],"ubyte",7]}]],
 		["normalBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"byte",3]]],
 		["tagentBuffer",["opt",["hasVertices",1],
 			//TODO exact buildnr unknown

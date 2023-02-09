@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\mapsquare_overlays.json'
+// This source data is located at '..\src\opcodes\mapsquare_overlays.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type mapsquare_overlays = {
@@ -14,5 +14,6 @@ export type mapsquare_overlays = {
 	bleedToUnderlay?: true | null
 	tertiary_colour?: number[] | null
 	unknown_0x0E?: number | null
+	unknown_0x0F?: number | null
 	unknown_0x10?: number | null
 };

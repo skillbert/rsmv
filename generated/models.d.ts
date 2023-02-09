@@ -27,6 +27,7 @@ export type models = {
 		indexBuffers: Uint16Array[],
 		vertexCount: (number|0),
 		positionBuffer: Int16Array | null,
+		unkoldbuffer: (null|Uint8Array),
 		normalBuffer: Int8Array | null,
 		tagentBuffer: (Int16Array|null) | null,
 		uvBuffer: Uint16Array | null,

@@ -4,12 +4,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes, writeCacheFiles } from "./scripts/extractfiles";
 import { CLIScriptFS, CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
-import { defaultTestDecodeOpts, testDecode, testDecodeHistoric, validOpenrs2Caches } from "./scripts/testdecode";
+import { defaultTestDecodeOpts, testDecode, testDecodeHistoric } from "./scripts/testdecode";
 import * as cmdts from "cmd-ts";
 import { indexOverview } from "./scripts/indexoverview";
 import { diffCaches } from "./scripts/cachediff";
 import { quickChatLookup } from "./scripts/quickchatlookup";
 import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
+import { validOpenrs2Caches } from "./cache/openrs2loader";
 
 const testdecode = command({
 	name: "testdecode",

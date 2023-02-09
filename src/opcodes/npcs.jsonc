@@ -1,6 +1,7 @@
 {
-	"0x01": { "name":                              "models", "read": [ "array", "unsigned variable int" ] },
+	"0x01": { "name":                              "models", "read": [ "array", ["match","buildnr",{">=669":"varuint",">=0":"ushort" }]]},
 	"0x02": { "name":                                "name", "read": "string" },
+	"0x08": { "name":                          "unknown_08", "read": "unsigned byte" },//might be wrong and part of other op
 	"0x0C": { "name":                           "boundSize", "read": "unsigned byte" },
 	"0x1E": { "name":                           "actions_0", "read": "string" },
 	"0x1F": { "name":                           "actions_1", "read": "string" },
@@ -12,7 +13,7 @@
 	"0x2A": { "name":                     "recolourPalette", "read": [ "array", "byte" ] },
 	"0x2C": { "name":                     "recolor_indices", "read": "unsigned short" },
 	"0x2D": { "name":                   "retexture_indices", "read": "unsigned short" },
-	"0x3C": { "name":                          "headModels", "read": [ "array", "varuint" ] },
+	"0x3C": { "name":                          "headModels", "read": [ "array", ["match","buildnr",{">=669":"varuint",">=0":"ushort" }] ] },
 	"0x5D": { "name":                          "drawMapDot", "read": "false" },
 	"0x5F": { "name":                              "combat", "read": "unsigned short" },
 	"0x61": { "name":                             "scaleXZ", "read": "unsigned short" },
@@ -20,7 +21,7 @@
 	"0x63": { "name":                          "unknown_63", "read": "true" },
 	"0x64": { "name":                            "ambience", "read": "byte" },
 	"0x65": { "name":                       "modelContract", "read": "byte" },
-	"0x66": { "name":                      "head_icon_data", "read": "unsigned int" },
+	"0x66": { "name":                      "head_icon_data", "read": "unsigned short" },
 	"0x67": { "name":                          "unknown_67", "read": "unsigned short" },
 	"0x6A": { "name":                            "morphs_1", "read": [ "struct", 
 																		["unk1", "unsigned int"],
@@ -31,6 +32,7 @@
 	"0x6F": { "name":                         "animateIdle", "read": "false" },
 	"0x71": { "name":                              "shadow", "read": [ "struct", ["SrcColor", "unsigned short"], ["DstColor", "unsigned short"] ] },
 	"0x72": { "name":                "shadowAlphaIntensity", "read": [ "struct", ["Src", "byte"], ["Dst", "byte"] ] },
+	"0x73": { "name":                          "unknown_73", "read": ["tuple","ubyte","ubyte"] },//removed in 2010
 	"0x76": { "name":                            "morphs_2", "read": [ "struct",
 																		["unk1", "unsigned int"],
 																		["unk2", "unsigned short"],
@@ -38,6 +40,7 @@
 																		["unk4", "unsigned int"] ] },
 	"0x77": { "name":                "movementCapabilities", "read": "byte" },
 	"0x79": { "name":                        "translations", "read": [ "array", ["buffer",4,"hex"] ] },
+	"0x7A": { "name":                              "unk_7A", "read": "unsigned short" },//removed in 2013
 	"0x7B": { "name":                          "iconHeight", "read": "unsigned short" },
 	"0x7D": { "name":                    "respawnDirection", "read": "byte" },
 	"0x7F": { "name":                     "animation_group", "read": "unsigned short" },
@@ -77,6 +80,8 @@
 	"0xB4": { "name":                          "unknown_B4", "read": "unsigned byte" },
 	"0xB5": { "name":                          "unknown_B5", "read": [ "struct", ["unknown_1", "unsigned short"], ["unknown_2", "unsigned byte"] ] },
 	"0xB6": { "name":                          "unknown_B6", "read": "true" },
+	"0xB7": { "name":                          "unknown_B7", "read": "unsigned byte" },//might be wrong and part of other op
 	"0xB8": { "name":                          "unknown_B8", "read": "unsigned byte" },
+	"0xDB": { "name":                          "unknown_DB", "read": "ubyte" },//might be wrong and part of other op
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

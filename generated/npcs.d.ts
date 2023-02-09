@@ -3,8 +3,9 @@
 // run `npm run filetypes` to rebuild
 
 export type npcs = {
-	models?: number[] | null
+	models?: (number|number)[] | null
 	name?: string | null
+	unknown_08?: number | null
 	boundSize?: number | null
 	actions_0?: string | null
 	actions_1?: string | null
@@ -22,7 +23,7 @@ export type npcs = {
 	recolourPalette?: number[] | null
 	recolor_indices?: number | null
 	retexture_indices?: number | null
-	headModels?: number[] | null
+	headModels?: (number|number)[] | null
 	drawMapDot?: false | null
 	combat?: number | null
 	scaleXZ?: number | null
@@ -48,6 +49,10 @@ export type npcs = {
 		Src: number,
 		Dst: number,
 	} | null
+	unknown_73?: [
+		number,
+		number,
+	] | null
 	morphs_2?: {
 		unk1: number,
 		unk2: number,
@@ -56,6 +61,7 @@ export type npcs = {
 	} | null
 	movementCapabilities?: number | null
 	translations?: Uint8Array[] | null
+	unk_7A?: number | null
 	iconHeight?: number | null
 	respawnDirection?: number | null
 	animation_group?: number | null
@@ -125,7 +131,9 @@ export type npcs = {
 		unknown_2: number,
 	} | null
 	unknown_B6?: true | null
+	unknown_B7?: number | null
 	unknown_B8?: number | null
+	unknown_DB?: number | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,

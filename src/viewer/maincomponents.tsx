@@ -7,7 +7,7 @@ import { CacheFileSource } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView } from "./commoncontrols";
-import { Openrs2CacheMeta, Openrs2CacheSource } from "../cache/openrs2loader";
+import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 import { UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
@@ -66,40 +66,22 @@ export async function downloadStream(name: string, stream: ReadableStream) {
 }
 
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
-	let [caches, setCaches] = React.useState<Openrs2CacheMeta[] | null>(null);
 	let [relevantcaches, setrelevantcaches] = React.useState<Openrs2CacheMeta[] | null>(null);
 	let [loading, setLoading] = React.useState(false);
 	let [relevantonly, setrelevantonly] = React.useState(true);
 	let [gameFilter, setGameFilter] = React.useState("runescape");
 	let [yearFilter, setYearfilter] = React.useState("");
 	let [langFilter, setLangfilter] = React.useState("en");
-	let loadprom = React.useRef<Promise<{ caches: Openrs2CacheMeta[], relevant: Openrs2CacheMeta[] }> | null>(null);
-
-	let loadcaches = React.useCallback(() => {
-		if (!loadprom.current) {
-			loadprom.current = Openrs2CacheSource.getCacheIds().then(caches => {
-
-				let relevant = caches.filter(q => q.language == "en" && q.sources.includes("Jagex") && q.environment == "live" && q.game == "runescape" && q.timestamp)
-					.sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
-
-				return { caches, relevant };
-			});
-		}
-		return loadprom.current;
-	}, []);
 
 	let openselector = React.useCallback(async () => {
 		setLoading(true);
-		let { caches, relevant } = await loadcaches();
-		setCaches(caches);
-		setrelevantcaches(relevant);
-	}, [])
-
+		setrelevantcaches(await validOpenrs2Caches());
+	}, []);
 
 	let games: string[] = [];
 	let years: string[] = [];
 	let langs: string[] = [];
-	for (let cache of caches ?? []) {
+	for (let cache of relevantcaches ?? []) {
 		if (cache.timestamp) {
 			let year = "" + new Date(cache.timestamp ?? 0).getUTCFullYear();
 			if (years.indexOf(year) == -1) { years.push(year); }
@@ -110,7 +92,7 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 
 	years.sort((a, b) => (+b) - (+a));
 
-	let showncaches = ((relevantonly ? relevantcaches : caches) ?? []).filter(cache => {
+	let showncaches = (relevantcaches ?? []).filter(cache => {
 		if (gameFilter && cache.game != gameFilter) { return false; }
 		if (langFilter && cache.language != langFilter) { return false; }
 		if (yearFilter && new Date(cache.timestamp ?? 0).getUTCFullYear() != +yearFilter) { return false; }
@@ -123,16 +105,16 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 		if (id > 0) {
 			p.onSelect(id);
 		} else {
-			let { relevant } = await loadcaches();
-			p.onSelect(relevant[-id].id);
+			let relevantcaches = await validOpenrs2Caches();
+			p.onSelect(relevantcaches[-id].id);
 		}
 	}
 
 	return (
 		<React.Fragment>
 			<StringInput initialid={p.initialid + ""} onChange={enterCacheId} />
-			{!loading && !caches && <input type="button" className="sub-btn" onClick={openselector} value="More options..." />}
-			{caches && (
+			{!loading && !relevantcaches && <input type="button" className="sub-btn" onClick={openselector} value="More options..." />}
+			{relevantcaches && (
 				<React.Fragment>
 					<div style={{ overflowY: "auto" }}>
 						<table>
@@ -165,7 +147,7 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 							<tbody>
 								{showncaches.map(cache => (
 									<tr key={cache.language + cache.id}>
-										<td><input type="button" value="-" className="sub-btn" onClick={p.onSelect.bind(null, cache.id)} /></td>
+										<td><input type="button" value={cache.id} className="sub-btn" onClick={p.onSelect.bind(null, cache.id)} /></td>
 										{/* <td>{cache.game}</td> */}
 										{/* <td>{cache.language}</td> */}
 										<td>{cache.timestamp ? new Date(cache.timestamp).toDateString() : ""}</td>

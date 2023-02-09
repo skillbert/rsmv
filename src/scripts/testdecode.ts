@@ -6,7 +6,7 @@ import { FileParser, parse } from "../opdecoder";
 import { FileRange } from "../cliparser";
 import { compareCacheMajors } from "./cachediff";
 import { GameCacheLoader } from "../cache/sqlite";
-import { Openrs2CacheSource } from "../cache/openrs2loader";
+import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
 
 
@@ -33,25 +33,6 @@ export function defaultTestDecodeOpts() {
 	};
 }
 
-//TODO move this somewhere
-export async function validOpenrs2Caches() {
-
-	const openrs2Blacklist = [
-		423,//osrs cache wrongly labeled as rs3
-		623,//seems to have different builds in it
-		840,//multiple builds
-		734, 736, 733,//don't have items index
-		20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
-	];
-	let allcaches = await Openrs2CacheSource.getCacheIds();
-	let checkedcaches = allcaches.filter(q =>
-		q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
-		&& q.game == "runescape" && q.timestamp && q.builds.length != 0
-	).sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
-
-	return checkedcaches;
-}
-
 export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS, basecache: CacheFileSource | null, before = "", maxchecks = 0) {
 	type CacheInput = { source: CacheFileSource, buildnr: number, info: string, date: number };
 
@@ -65,14 +46,14 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 	// output.log(cachelist.map(q => `${q.source.getCacheMeta().name} - ${q.info}`).slice(0, 20));
 
 	let checkedmajors = [
-		cacheMajors.config,
-		cacheMajors.materials,
-		cacheMajors.items,
-		cacheMajors.npcs,
-		cacheMajors.objects,
+		cacheMajors.config,//~2007
+		cacheMajors.materials,//~2014
+		cacheMajors.items,//~2012
+		cacheMajors.npcs,//2008
+		cacheMajors.objects,//~2016, breaks on morphs
 		cacheMajors.mapsquares,
-		cacheMajors.models,
-		cacheMajors.oldmodels
+		cacheMajors.models,//not used before 2018
+		cacheMajors.oldmodels//~2015
 	];
 
 	let caches = function* (): Generator<CacheInput> {

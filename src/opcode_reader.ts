@@ -852,6 +852,9 @@ function arrayNullTerminatedParser<T>(lengthtype: ChunkParser<number>, proptype:
 			state.stack.push({});
 			while (true) {
 				let header = lengthtype.read(state);
+				if (debugdata) {
+					debugdata.opcodes.push({ op: "opcode", index: state.scan - 1, stacksize: state.stack.length });
+				}
 				if (header == 0) { break; }
 				ctx.$opcode = header;
 				r.push(proptype.read(state));

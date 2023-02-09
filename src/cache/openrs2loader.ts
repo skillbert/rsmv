@@ -27,13 +27,33 @@ export type Openrs2CacheMeta = {
 	disk_store_valid: boolean
 };
 
+var cachelist: Promise<Openrs2CacheMeta[]> | null = null;
+export function validOpenrs2Caches() {
+	if (!cachelist) {
+		cachelist = (async () => {
+			const openrs2Blacklist = [
+				423,//osrs cache wrongly labeled as rs3
+				623,//seems to have different builds in it
+				693,//wrong timestamp?
+				840,//multiple builds
+				734, 736, 733,//don't have items index
+				20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
+			];
+			let allcaches = await fetch(`${endpoint}/caches.json`).then(q => q.json());
+			let checkedcaches = allcaches.filter(q =>
+				q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
+				&& q.game == "runescape" && q.timestamp && q.builds.length != 0
+			).sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
+
+			return checkedcaches;
+		})();
+	}
+	return cachelist;
+}
+
 export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
-
-	static getCacheIds(): Promise<Openrs2CacheMeta[]> {
-		return fetch(`${endpoint}/caches.json`).then(q => q.json());
-	}
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);

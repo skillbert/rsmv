@@ -1,5 +1,5 @@
 ["struct",
-	["version",["match","buildnr",{">=887":"ubyte",">=0":0}]],
+	["version",["match","buildnr",{">=887":"ubyte",">=876":0,">=0":2}]],
 	["v0",["opt",["version",0],["struct",
 		["unk0","ubyte"],//always 0-4
 		["texsize","ushort"],//256,512,0, but doesn't always correspond to actualtex
@@ -104,5 +104,47 @@
 		["alphacutoff",["opt",["alphamode",1],"ubyte"]],//127 most of the time
 		["unkFFFF",["buffer",2,"hex"]],
 		["endbyte","ubyte"]//usually equal to max texture size always 0-4
+	]]],
+	["veryold",["opt",["version",2],["struct",
+		//used until 2016, pretty similar to v0, but some large differences as well
+		["unk0","ubyte"],
+		["texsize","ushort"],
+		["opt0","ubyte"],
+		["opt0data",["opt",["opt0",16],["tuple","ubyte","ubyte","ubyte"]]],
+		["arr",["nullarray","ubyte","ushort"]],
+
+		["unk7","ubyte"],
+		["weirdshit",["opt",["unk7",255],["buffer",19,"hex"]]],
+
+		["flags2","ubyte"],
+		["unkfloat1",["opt",["flags2",4,"bitflag"],"float"]],
+		["unkfloat2",["opt",["flags2",4,"bitflag"],"float"]],
+
+		["diffuse_related1","ubyte"],
+		["diffuse_related2","ubyte"],
+		["diffuse_ralated2_data",["opt",["diffuse_related2",2],"ubyte"]],
+
+		["alphamode","ubyte"],
+		["alphacutoff",["opt",["alphamode",1],"ubyte"]],
+
+		["animtex","ubyte"],
+		["animtexU",["opt",["animtex",0,"bitflag"],["match","buildnr",{">=897":"short",">=0":"byte"}]]],
+		["animtexV",["opt",["animtex",1,"bitflag"],["match","buildnr",{">=897":"short",">=0":"byte"}]]],
+
+		["flagextra","bool"],
+		["extra",["opt",["flagextra",1],["struct",
+			//same as v0
+			["unk00_flags","ubyte"],//flags 1=alpha channel reuse,2=water/lava/bloom?,4=water/dg water,8=water, all skyboxes have 6
+			["unk01_flagsornumber","ubyte"],//0123 OR a high number (only 20 uses)
+			["unk02","ubyte"],//0 if unk01=0123 or number (only 4 uses)
+			["unknown",["buffer",4,"hex"]],//mostly 0 except for some ~15 water materials
+			["unk07_bool","bool"],
+			["unk08_flags","ubyte"],//0=5k,1=1,2=5k
+			["unk09_bool","bool"],//true=7
+			["unk0a_bool","bool"],
+			["specular","ubyte"],
+			["ignoreVertexColors","ubyte"],//probably indicates the mix ratio with colorint and vertex colors
+			["colorint","ushort"]
+		]]]
 	]]]
 ]
