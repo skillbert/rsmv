@@ -1680,7 +1680,7 @@ function TestFilesScript(p: UiScriptProps) {
 			</form>
 		))
 		// txtarea.style.cssText = "position:absolute;top:0px;left:0px;right:0px;bottom:20px;";
-	}, [customparser]);
+	}, [customparser, mode]);
 
 	return (
 		<React.Fragment>
