@@ -253,16 +253,16 @@ export function flipEndian16(u16: number) {
 //2 bytes interpreted as u16 BE to float16 LE
 export function ushortToHalf(bytes: number) {
 	bytes = flipEndian16(bytes);
-	let negative = (bytes & 0x8000) == 0;
+	let positive = (bytes & 0x8000) == 0;
 	let exponent = (bytes & 0x7c00) >> 10;
 	let mantissa = (bytes & 0x03ff);
 
 	let res = mantissa * Math.pow(2.0, -10.0) + (exponent == 0 ? 0.0 : 1.0);
 	res *= Math.pow(2.0, exponent - 15.0);
-	if (negative) {
-		return -res;
+	if (positive) {
+		return res;
 	}
-	return res;
+	return -res;
 }
 
 // https://stackoverflow.com/a/9493060
