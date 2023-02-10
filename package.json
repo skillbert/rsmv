@@ -43,7 +43,7 @@
 		"canvas": "^2.10.2",
 		"classnames": "^2.3.1",
 		"copy-webpack-plugin": "^10.2.4",
-		"electron": "^13.6.9",
+		"electron": "^23.0.0",
 		"electron-rebuild": "^3.2.7",
 		"file-loader": "^6.2.0",
 		"idb-keyval": "^6.1.0",
@@ -73,7 +73,7 @@
 	},
 	"peerDependencies": {
 		"canvas": ">=2.10.2",
-		"electron": "^13.6.9",
+		"electron": "^23.0.0",
 		"lzma-native": "^8.0.1",
 		"sharp": ">=0.30.5",
 		"sqlite3": ">=5.0.8"
