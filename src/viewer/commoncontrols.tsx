@@ -48,7 +48,7 @@ export function IdInput({ initialid, onChange }: { initialid?: number, onChange:
 		<form className="mv-searchbar" onSubmit={submit}>
 			<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
 			<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
-			<input type="text" className="mv-searchbar-input" value={id} onChange={e => { setId(+e.currentTarget.value); stale.current = true; }} />
+			<input type="text" className="mv-searchbar-input" spellCheck="false" value={id} onChange={e => { setId(+e.currentTarget.value); stale.current = true; }} />
 			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
 	)
@@ -82,7 +82,7 @@ export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheF
 			<form className="mv-searchbar" onSubmit={submit}>
 				<input type="button" style={{ width: "25px", height: "25px" }} onClick={decr} value="" className="sub-btn sub-btn-minus" />
 				<input type="button" style={{ width: "25px", height: "25px" }} onClick={incr} value="" className="sub-btn sub-btn-plus" />
-				<input type="text" className="mv-searchbar-input" value={search} onChange={e => setSearchText(e.currentTarget.value)} />
+				<input type="text" className="mv-searchbar-input" spellCheck="false" value={search} onChange={e => setSearchText(e.currentTarget.value)} />
 				<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 			</form>
 			{searchopen && !loaded && (
@@ -108,7 +108,7 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); stale.current = false; };
 	return (
 		<form className="mv-searchbar" onSubmit={submit}>
-			<input type="text" className="mv-searchbar-input" value={id} onChange={e => { setId(e.currentTarget.value); stale.current = true; }} />
+			<input type="text" className="mv-searchbar-input" spellCheck="false" value={id} onChange={e => { setId(e.currentTarget.value); stale.current = true; }} />
 			<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 		</form>
 	)

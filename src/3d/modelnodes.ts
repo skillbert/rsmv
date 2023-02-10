@@ -28,15 +28,6 @@ export type SimpleModelInfo<T = object, ID = string> = {
 	id: ID
 }
 
-export const primitiveModelInits = constrainedMap<(cache: ThreejsSceneCache, id: number | string) => Promise<SimpleModelInfo<any, any>>>()({
-	npc: npcBodyToModel,
-	player: playerToModel,
-	spotanim: spotAnimToModel,
-	model: modelToModel,
-	loc: locToModel,
-	item: itemToModel
-});
-
 export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	let modeldata = await cache.getModelData(id);
 	//getting the same file a 2nd time to get the full json

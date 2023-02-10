@@ -284,3 +284,14 @@
 	background-color: #438ab5;
 	color: #ffffff;
 }
+
+.mv-overridegroup {
+	border-radius: 5px;
+	clear: both;
+	display: grid;
+	grid-template-columns: 1fr 1fr min-content;
+	border: 1px solid #5e5e5e;
+	padding: 5px;
+	margin: 5px 0px;
+	align-items: center;
+}
