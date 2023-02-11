@@ -8,5 +8,6 @@
 		["integer_10","uint"],
 		["maybe_checksum1",["buffer",64,"hex"]]
 	]]],
-	["maybe_proper_checksum",["buffer",512,"hex"]]
+	//512bytes of data but variable length encoding that makes is 511-513
+	["maybe_proper_checksum",["buffer",["bytesleft"],"hex"]]
 ]
