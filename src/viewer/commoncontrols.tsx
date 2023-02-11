@@ -8,7 +8,7 @@ import { cacheFileJsonModes } from "scripts/extractfiles";
 import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
 
-export function CanvasView(p: { canvas: HTMLCanvasElement }) {
+export function CanvasView(p: { canvas: HTMLCanvasElement, fillHeight?: boolean }) {
 	let ref = React.useCallback((el: HTMLDivElement | null) => {
 		p.canvas.classList.add("mv-image-preview-canvas");
 		if (el) { el.appendChild(p.canvas); }
@@ -16,7 +16,28 @@ export function CanvasView(p: { canvas: HTMLCanvasElement }) {
 	}, [p.canvas]);
 
 	return (
-		<div ref={ref} className="mv-image-preview" />
+		<div ref={ref} className="mv-image-preview" style={p.fillHeight ? { height: "100%" } : {}} />
+	)
+}
+
+export function BlobImage(p: { file: Uint8Array, ext: string, fillHeight?: boolean }) {
+	let img = React.useMemo(() => {
+		let img = new Image();
+		img.classList.add("mv-image-preview-canvas");
+		let blob = new Blob([p.file], { type: `image/${p.ext}` });
+		let url = URL.createObjectURL(blob);
+		img.src = url;
+		img.decode().then(q => URL.revokeObjectURL(url));
+		return img;
+	}, [p.file, p.ext]);
+
+	let ref = React.useCallback((el: HTMLDivElement | null) => {
+		if (el) { el.appendChild(img); }
+		else { img.remove(); }
+	}, [img]);
+
+	return (
+		<div ref={ref} className="mv-image-preview" style={p.fillHeight ? { height: "100%" } : {}} />
 	)
 }
 
@@ -90,7 +111,7 @@ export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheF
 			)}
 			{searchopen && loaded && (
 				<div className="mv-sidebar-scroll">
-					{ filtered.slice(0, 100).map((q, i) => (
+					{filtered.slice(0, 100).map((q, i) => (
 						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {getprop(q, ["name"], 0).next().value}</div>
 					))}
 				</div>

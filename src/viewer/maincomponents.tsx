@@ -6,7 +6,7 @@ import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 import { UIScriptFile } from "./scriptsui";
@@ -335,9 +335,10 @@ export type UIContextReady = UIContext & { source: CacheFileSource, sceneCache: 
 
 //i should figure out this redux thing...
 export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, statechange: undefined }>{
-	source: CacheFileSource | null;
-	sceneCache: ThreejsSceneCache | null;
-	renderer: ThreeJsRenderer | null;
+	source: CacheFileSource | null = null;
+	sceneCache: ThreejsSceneCache | null = null;
+	renderer: ThreeJsRenderer | null = null;
+	openedfile: UIScriptFile | null = null;
 	rootElement: HTMLElement;
 	useServiceWorker: boolean;
 
@@ -375,6 +376,7 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, sta
 
 	@boundMethod
 	openFile(file: UIScriptFile | null) {
+		this.openedfile = file;
 		this.emit("openfile", file);
 	}
 }
@@ -511,19 +513,22 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 	let el: React.ReactNode = null;
 	let filedata = p.file.data;
 	let cnvref = React.useRef<HTMLCanvasElement | null>(null);
+	let ext = (p.file.name.match(/\.([\w\.]+)$/i)?.[1] ?? "").toLowerCase();
 	if (typeof filedata == "string") {
-		if (p.file.name.endsWith(".hexerr.json")) {
+		if (ext == "hexerr.json") {
 			el = <FileDecodeErrorViewer file={filedata} />;
 		} else {
 			el = <SimpleTextViewer file={filedata} />;
 		}
 	} else {
-		if (p.file.name.match(/\.rstex$/)) {
+		if (ext == "rstex") {
 			let tex = new ParsedTexture(filedata, false, false);
 			cnvref.current ??= document.createElement("canvas");
 			const cnv = cnvref.current;
 			tex.toWebgl().then(img => drawTexture(cnv.getContext("2d")!, img));
-			el = <CanvasView canvas={cnvref.current} />;
+			el = <CanvasView canvas={cnvref.current} fillHeight={true} />;
+		} else if (["png", "jpg", "jpeg", "webp", "cnv"].includes(ext)) {
+			el = <BlobImage file={filedata} ext={ext} fillHeight={true} />
 		} else {
 			el = <TrivialHexViewer data={filedata} />
 		}

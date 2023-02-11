@@ -12,6 +12,7 @@ import { crc32, CrcBuilder } from "../libs/crc32util";
 import { getModelHashes } from "../3d/modeltothree";
 import { GameCacheLoader } from "../cache/sqlite";
 import { FileRange } from "../cliparser";
+import { ParsedTexture } from "../3d/textures";
 
 
 type CacheFileId = {
@@ -283,6 +284,28 @@ const decodeSprite: DecodeModeFactory = () => {
 	}
 }
 
+const decodeTexture: DecodeModeFactory = () => {
+	return {
+		ext: "png",
+		major: cacheMajors.texturesDds,
+		logicalDimensions: 1,
+		multiIndexArchives: false,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let major = cacheMajors.texturesDds;
+			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
+		},
+		prepareDump() { },
+		read(b, id) {
+			let p = new ParsedTexture(b, false, true);
+			return p.toImageData().then(q => pixelsToImageFile(q, "png", 1));
+		},
+		write(b) { throw new Error("write not supported"); },
+		combineSubs(b: Buffer[]) { throw new Error("not supported"); }
+	}
+}
+
 const decodeSpriteHash: DecodeModeFactory = () => {
 	return {
 		ext: "json",
@@ -406,6 +429,7 @@ export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin
 	sprites: decodeSprite,
 	spritehash: decodeSpriteHash,
 	modelhash: decodeMeshHash,
+	textures: decodeTexture,
 
 	npcmodels: npcmodels,
 

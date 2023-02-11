@@ -34,7 +34,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 	constructor(p) {
 		super(p);
 		this.state = {
-			openedFile: null
+			openedFile: this.props.ctx.openedfile
 		};
 		datastore.get<SavedCacheSource>("openedcache").then(c => c && this.openCache(c));
 	}

@@ -294,13 +294,13 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 			{p.output.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
 			<TabStrip value={tab} onChange={setTab as any} tabs={tabs} />
 			{tab == "console" && <UIScriptConsole output={p.output} />}
-			{selectedfs && <UIScriptFiles fs={selectedfs} onSelect={p.ctx.openFile} />}
+			{selectedfs && <UIScriptFiles fs={selectedfs} ctx={p.ctx} />}
 		</div>
 	)
 
 }
 
-export function UIScriptFiles(p: { fs?: UIScriptFS | null, onSelect: (file: UIScriptFile | null) => void }) {
+export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 	let [files, setFiles] = React.useState(p.fs?.files);
 
 	useEffect(() => {
@@ -321,7 +321,9 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, onSelect: (file: UISc
 				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.files.length} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
 				{p.fs?.rootdirhandle && <div>Saved files to disk: {p.fs.files.length}</div>}
 				{files.length > maxlist && <div>Only showing first {maxlist} files</div>}
-				{files.slice(0, maxlist).map(q => (<div key={q.name} onClick={e => p.onSelect(q)}>{q.name}</div>))}
+				{files.slice(0, maxlist).map(q => (
+					<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>)
+				)}
 			</div>
 		);
 	}
