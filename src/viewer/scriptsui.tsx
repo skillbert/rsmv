@@ -127,7 +127,8 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 
 	async setSaveDirHandle(dir: FileSystemDirectoryHandle) {
 		if (await dir.requestPermission() != "granted") { throw new Error("no permission"); }
-		let retroactive = !this.outdirhandles;
+		let retroactive = !this.rootdirhandle;
+		this.rootdirhandle = dir;
 		this.outdirhandles = new Map();
 		this.outdirhandles.set("", dir);
 		if (retroactive) {
@@ -153,7 +154,7 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 	}
 
 	async saveLocalFile(filename: string, file: Buffer | string) {
-		if (!this.outdirhandles) { throw new Error("tried to save without dir handle"); }
+		if (!this.rootdirhandle) { throw new Error("tried to save without dir handle"); }
 		let parts = filename.split("/");
 		let name = parts.splice(-1, 1)[0];
 		let dir = await this.mkdirLocal(parts);
@@ -311,6 +312,20 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 		}
 	}, [p.fs]);
 
+	let listkeydown = (e: React.KeyboardEvent) => {
+		if (p.fs && p.ctx.openedfile && e.key == "ArrowDown" || e.key == "ArrowUp") {
+			e.preventDefault();
+			let oldindex = p.fs!.files.indexOf(p.ctx.openedfile!);
+			if (oldindex != -1) {
+				let newindex = oldindex + (e.key == "ArrowDown" ? 1 : -1);
+				let newfile = p.fs?.files[newindex];
+				if (newfile) {
+					p.ctx.openFile(newfile);
+				}
+			}
+		}
+	}
+
 	if (!files) {
 		return <div />;
 	}
@@ -321,9 +336,11 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.files.length} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
 				{p.fs?.rootdirhandle && <div>Saved files to disk: {p.fs.files.length}</div>}
 				{files.length > maxlist && <div>Only showing first {maxlist} files</div>}
-				{files.slice(0, maxlist).map(q => (
-					<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>)
-				)}
+				<div tabIndex={0} onKeyDownCapture={listkeydown}>
+					{files.slice(0, maxlist).map(q => (
+						<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>)
+					)}
+				</div>
 			</div>
 		);
 	}

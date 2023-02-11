@@ -35,6 +35,29 @@ export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "web
 	}
 }
 
+export async function fileToImageData(file: Uint8Array) {
+	if (typeof HTMLCanvasElement != "undefined") {
+		let img = new Image();
+		let blob = new Blob([file], { type: "image/png" });//mime doesn't actually matter as long as it's img/*
+		let url = URL.createObjectURL(blob);
+		img.src = url;
+		await img.decode();
+		let cnv = document.createElement("canvas");
+		cnv.width = img.naturalWidth;
+		cnv.height = img.naturalHeight;
+		let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
+		ctx.drawImage(img, 0, 0);
+		URL.revokeObjectURL(url);
+		return ctx.getImageData(0, 0, cnv.width, cnv.height);
+	} else {
+		const sharp = require("sharp") as typeof import("sharp");
+		let img = sharp(file);
+		let decoded = await img.raw().toBuffer({ resolveWithObject: true });
+		let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
+		return makeImageData(pixbuf, decoded.info.width, decoded.info.height);
+	}
+}
+
 export async function pixelsToDataUrl(imgdata: ImageData) {
 	if (typeof HTMLCanvasElement != "undefined") {
 		let cnv = document.createElement("canvas");

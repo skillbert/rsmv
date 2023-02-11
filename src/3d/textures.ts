@@ -1,5 +1,4 @@
-import { makeImageData } from "../imgutils";
-import sharp from "sharp";
+import { fileToImageData, makeImageData } from "../imgutils";
 import { loadDds } from "./ddsimage";
 
 export class ParsedTexture {
@@ -18,30 +17,47 @@ export class ParsedTexture {
 	constructor(texture: Buffer, stripAlpha: boolean, isMaterialTexture?: boolean) {
 		this.isMaterialTexture = isMaterialTexture;
 		this.stripAlpha = stripAlpha;
-		this.mipmaps = texture.readUInt8(0x0);
 		this.fullfile = texture;
 		this.imagefiles = [];
 		this.cachedDrawables = [];
 		this.cachedImageDatas = [];
 		this.filesize = texture.byteLength;
 
-		//first bytes of first file
-		let byte0 = texture.readUInt8(0x5);
-		let byte1 = texture.readUInt8(0x6);
-		if (byte0 == 0 && byte1 == 0) {
-			//has no header magic, but starts by writing the width in uint32 BE, any widths under 65k have 0x0000xxxx
-			this.type = "bmpmips";
-		} else if (byte0 == 0x44 && byte1 == 0x44) {
-			//0x44445320 "DDS "
-			this.type = "dds";
-		} else if (byte0 == 0x89 && byte1 == 0x50) {
-			//0x89504e47 ".PNG"
-			this.type = "png";
-		} else {
-			throw new Error(`unknown texture format bytes ${byte0.toString(16).padStart(2, "0")} ${byte1.toString(16).padStart(2, "0")}`);
-		}
+		//this should be first byte of uint32BE file size, which would always be 0 if filesize<16.7mb, but it appears that this byte repr can also change into a png file
 
-		let offset = 1;
+		let offset = 0;
+
+		//peek first bytes of first image file
+		let foundtype = false;
+		for (let extraoffset = 0; extraoffset <= 1; extraoffset++) {
+			let byte0 = texture.readUInt8(extraoffset + offset + 4 + 0);
+			let byte1 = texture.readUInt8(extraoffset + offset + 4 + 1);
+			if (byte0 == 0 && byte1 == 0) {
+				//has no header magic, but starts by writing the width in uint32 BE, any widths under 65k have 0x0000xxxx
+				this.type = "bmpmips";
+			} else if (byte0 == 0x44 && byte1 == 0x44) {
+				//0x44445320 "DDS "
+				this.type = "dds";
+			} else if (byte0 == 0x89 && byte1 == 0x50) {
+				//0x89504e47 ".PNG"
+				this.type = "png";
+			} else if (byte0 == 0xab && byte1 == 0x4b) {
+				//0xab4b5458 "«KTX"
+				throw new Error("KTX11 texture format currently not supported");
+			} else {
+				continue;
+			}
+			foundtype = true;
+			if (extraoffset == 1) {
+				let numtexs = texture.readUint8(offset++);
+				//TODO figure this out further
+			}
+			break;
+		} if (!foundtype) {
+			throw new Error(`failed to detect texture`);
+		}
+		this.mipmaps = texture.readUInt8(offset++);
+
 		if (this.type == "bmpmips") {
 			this.bmpWidth = texture.readUInt32BE(offset); offset += 4;
 			this.bmpHeight = texture.readUInt32BE(offset); offset += 4;
@@ -74,60 +90,22 @@ export class ParsedTexture {
 		return new ParsedTexture(fullfile, false);//TODO still get alpha somehow
 	}
 
-	async convertFile(type: "png" | "webp", subimg = 0) {
-		if (this.type == type) { return this.imagefiles[subimg]; }
-
-		let img: sharp.Sharp;
-		if (this.type == "bmpmips") {
-			img = sharp(this.imagefiles[subimg], {
-				raw: {
-					width: this.bmpWidth >> subimg,
-					height: this.bmpHeight >> subimg,
-					channels: 4
-				}
-			})
-		}
-		else if (this.type == "dds") {
-			let imgdata = loadDds(this.imagefiles[subimg], undefined, this.stripAlpha);
-			img = sharp(imgdata.data, {
-				raw: {
-					width: imgdata.width,
-					height: imgdata.height,
-					channels: 4
-				}
-			});
-		} else {
-			img = sharp(this.imagefiles[subimg]);
-		}
-
-		if (type == "png") img.png();
-		else if (type == "webp") img.webp();
-		else throw new Error("unknown format " + type);
-		return img.toBuffer();
-	}
-
 	toImageData(subimg = 0) {
 		if (this.cachedImageDatas[subimg]) {
 			return this.cachedImageDatas[subimg]!;
 		}
-		//TODO polyfill imagedata in nodejs, just need {width,height,data}
 		let res = (async () => {
 			const padsize = (this.isMaterialTexture ? 32 : undefined);
 			if (this.type == "bmpmips") {
 				let width = this.bmpWidth >> subimg;
 				let height = this.bmpHeight >> subimg;
 				let imgdata = loadBmp(this.imagefiles[subimg], width, height, padsize, this.stripAlpha);
-				let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-				return makeImageData(pixbuf, imgdata.width, imgdata.height);
+				return makeImageData(imgdata.data, imgdata.width, imgdata.height);
 			} else if (this.type == "png") {
-				let img = sharp(this.imagefiles[subimg]);
-				let decoded = await img.raw().toBuffer({ resolveWithObject: true });
-				let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
-				return makeImageData(pixbuf, decoded.info.width, decoded.info.height);
+				return fileToImageData(this.imagefiles[subimg]);
 			} else if (this.type == "dds") {
 				let imgdata = loadDds(this.imagefiles[subimg], padsize, this.stripAlpha);
-				let pixbuf = new Uint8ClampedArray(imgdata.data.buffer, imgdata.data.byteOffset, imgdata.data.byteLength);
-				return makeImageData(pixbuf, imgdata.width, imgdata.height);
+				return makeImageData(imgdata.data, imgdata.width, imgdata.height);
 			} else {
 				throw new Error("unknown format");
 			}

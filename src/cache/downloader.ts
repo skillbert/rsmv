@@ -265,7 +265,7 @@ export class CacheDownloader extends DirectCacheFileSource {
 				}
 				continue;
 			}
-			if (typeof crc == "number") {
+			if (typeof crc == "number" && (major != 255 || minor != 255)) {
 				let filecrc = crc32(file);
 				if (filecrc != crc) {
 					console.log(`crc fail expected ${crc}, got ${filecrc}`);

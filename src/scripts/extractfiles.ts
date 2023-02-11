@@ -284,16 +284,15 @@ const decodeSprite: DecodeModeFactory = () => {
 	}
 }
 
-const decodeTexture: DecodeModeFactory = () => {
+const decodeTexture = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "png",
-		major: cacheMajors.texturesDds,
+		major: major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
 		fileToLogical(major, minor, subfile) { return [minor]; },
 		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let major = cacheMajors.texturesDds;
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 		},
 		prepareDump() { },
@@ -302,7 +301,10 @@ const decodeTexture: DecodeModeFactory = () => {
 			return p.toImageData().then(q => pixelsToImageFile(q, "png", 1));
 		},
 		write(b) { throw new Error("write not supported"); },
-		combineSubs(b: Buffer[]) { throw new Error("not supported"); }
+		combineSubs(b: Buffer[]) {
+			if (b.length != 1) { throw new Error("not supported"); }
+			return b[0];
+		}
 	}
 }
 
@@ -424,17 +426,19 @@ const npcmodels: DecodeModeFactory = function (flags) {
 	}
 }
 
-export const cacheFileDecodeModes: Record<keyof typeof cacheFileJsonModes | "bin", DecodeModeFactory> = {
+export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	bin: decodeBinary,
 	sprites: decodeSprite,
 	spritehash: decodeSpriteHash,
 	modelhash: decodeMeshHash,
-	textures: decodeTexture,
+	textures_dds: decodeTexture(cacheMajors.texturesDds),
+	textures_png: decodeTexture(cacheMajors.texturesPng),
+	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
 
 	npcmodels: npcmodels,
 
-	...Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)]))
-} as any;
+	...(Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+});
 
 export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange, edit: boolean, keepbuffers: boolean }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];

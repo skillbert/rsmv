@@ -1,22 +1,25 @@
-import { filesource, cliArguments, ReadCacheSource } from "../cliparser";
-import { run, command, number, option, string, boolean, Type, flag, oneOf, optional } from "cmd-ts";
-import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
+import { cacheConfigPages, cacheMajors } from "../constants";
 import { parse, FileParser } from "../opdecoder";
-import { DepTypes } from "./dependencies";
-import { archiveToFileId, CacheFileSource, CacheIndexFile, fileIdToArchiveminor } from "../cache";
-import * as fs from "fs";
+import { archiveToFileId, CacheFileSource, CacheIndexFile } from "../cache";
 import prettyJson from "json-stringify-pretty-compact";
-import { crc32 } from "../libs/crc32util";
-import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { ParsedTexture } from "../3d/textures";
+import { parseSprite } from "../3d/sprite";
+import { pixelsToImageFile } from "../imgutils";
 
 
 type FileAction = {
 	name: string,
 	comparesubfiles: boolean,
 	parser: FileParser<any> | null,
-	isTexture: boolean,
+	outputType: string,
 	getFileName: (major: number, minor: number, subfile: number) => string
-}
+} & ({
+	outputType: "rstex" | "png" | "bin",
+} | {
+	outputType: "json",
+	parser: FileParser<any>
+})
 
 //TODO merge all this with defs in extract
 function chunkedIndexName(major: number, minor: number, subfile: number) {
@@ -36,30 +39,31 @@ function subfileFilename(major: number, minor: number, subfile: number) {
 }
 
 let configmap: Record<number, FileAction> = {
-	[cacheConfigPages.mapoverlays]: { name: "overlays", comparesubfiles: true, parser: parse.mapsquareOverlays, isTexture: false, getFileName: subfileFilename },
-	[cacheConfigPages.mapunderlays]: { name: "underlays", comparesubfiles: true, parser: parse.mapsquareUnderlays, isTexture: false, getFileName: subfileFilename },
-	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parse.mapscenes, isTexture: false, getFileName: subfileFilename }
+	[cacheConfigPages.mapoverlays]: { name: "overlays", comparesubfiles: true, parser: parse.mapsquareOverlays, outputType: "json", getFileName: subfileFilename },
+	[cacheConfigPages.mapunderlays]: { name: "underlays", comparesubfiles: true, parser: parse.mapsquareUnderlays, outputType: "json", getFileName: subfileFilename },
+	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parse.mapscenes, outputType: "json", getFileName: subfileFilename }
 }
 
 let majormap: Record<number, FileAction | ((major: number, minor: number) => FileAction)> = {
-	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parse.object, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parse.item, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parse.npc, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: parse.models, isTexture: false, getFileName: standardName },
-	[cacheMajors.oldmodels]: { name: "oldmodel", comparesubfiles: false, parser: parse.oldmodels, isTexture: false, getFileName: standardName },
-	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, isTexture: false, getFileName: worldmapFilename },
-	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parse.enums, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parse.achievement, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parse.materials, isTexture: false, getFileName: chunkedIndexName },
-	[cacheMajors.texturesBmp]: { name: "texturesBmp", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
-	[cacheMajors.texturesDds]: { name: "texturesDds", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
-	[cacheMajors.texturesPng]: { name: "texturesPng", comparesubfiles: false, parser: null, isTexture: true, getFileName: standardName },
+	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parse.object, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parse.item, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parse.npc, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: parse.models, outputType: "json", getFileName: standardName },
+	[cacheMajors.oldmodels]: { name: "oldmodel", comparesubfiles: false, parser: parse.oldmodels, outputType: "json", getFileName: standardName },
+	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, outputType: "bin", getFileName: worldmapFilename },
+	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parse.enums, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parse.achievement, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parse.materials, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.texturesBmp]: { name: "texturesBmp", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
+	[cacheMajors.texturesDds]: { name: "texturesDds", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
+	[cacheMajors.texturesPng]: { name: "texturesPng", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
+	[cacheMajors.sprites]: { name: "sprites", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.config]: (major, minor) => configmap[minor]
 }
 
 function defaultAction(major: number) {
 	let majorname = Object.entries(cacheMajors).find(q => q[1] == major)?.[0] ?? `unk_${major}`;
-	let r: FileAction = { name: majorname, comparesubfiles: false, parser: null, isTexture: false, getFileName: standardName };
+	let r: FileAction = { name: majorname, comparesubfiles: false, parser: null, outputType: "bin", getFileName: standardName };
 	return r;
 }
 
@@ -102,7 +106,7 @@ export class FileEdit {
 
 	async getBefore() {
 		try {
-			if (this.before == null) { throw new Error("no after file"); }
+			if (this.before == null) { throw new Error("no before file"); }
 			if (Buffer.isBuffer(this.before)) { return this.before; }
 			return await this.before.load();
 		} catch (e) {
@@ -225,22 +229,31 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 			await outdir.mkDir(dir);
 			let before = await change.getBefore();
 			let after = await change.getAfter();
-			if (change.action.parser) {
+			let addfile = async (ext: string, isafter: boolean, data: string | Buffer) => {
+				await outdir.writeFile(`${dir}/${name}-${isafter ? "after" : "before"}.${ext}`, data);
+			}
+			if (change.action.outputType == "json") {
 				if (before) {
-					let parsedbefore = change.action.parser.read(before, sourcea);
-					await outdir.writeFile(`${dir}/${name}-before.json`, prettyJson(parsedbefore));
+					await addfile("json", false, prettyJson(change.action.parser.read(before, sourcea)));
 				}
 				if (after) {
-					let parsedafter = change.action.parser.read(after, sourceb);
-					await outdir.writeFile(`${dir}/${name}-after.json`, prettyJson(parsedafter));
+					await addfile("json", true, prettyJson(change.action.parser.read(after, sourceb)));
 				}
-			} else {
-				let ext = (change.action.isTexture ? "rstex" : "bin");
+			} else if (change.action.outputType == "bin" || change.action.outputType == "rstex") {
 				if (before) {
-					await outdir.writeFile(`${dir}/${name}-before.${ext}`, before);
+					await addfile(change.action.outputType, false, before);
 				}
 				if (after) {
-					await outdir.writeFile(`${dir}/${name}-after.${ext}`, after);
+					await addfile(change.action.outputType, true, after);
+				}
+			} else if (change.action.outputType == "png") {
+				if (before) {
+					let tex = (change.major == cacheMajors.sprites ? parseSprite(before)[0].img : await new ParsedTexture(before, false, false).toImageData(0));
+					await addfile("png", false, await pixelsToImageFile(tex, "png", 1));
+				}
+				if (after) {
+					let tex = (change.major == cacheMajors.sprites ? parseSprite(after)[0].img : await new ParsedTexture(after, false, false).toImageData(0));
+					await addfile("png", true, await pixelsToImageFile(tex, "png", 1));
 				}
 			}
 		}
