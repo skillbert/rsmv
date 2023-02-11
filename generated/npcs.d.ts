@@ -6,6 +6,7 @@ export type npcs = {
 	models?: (number|number)[] | null
 	name?: string | null
 	unknown_08?: number | null
+	unknown_0B?: number | null
 	boundSize?: number | null
 	actions_0?: string | null
 	actions_1?: string | null
