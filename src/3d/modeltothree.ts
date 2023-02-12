@@ -206,13 +206,14 @@ export class ThreejsSceneCache {
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
 	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
-	textureType: "png" | "dds" | "bmp" = "dds";//png support currently incomplete (and seemingly unused by jagex)
+	textureType: "png" | "dds" | "bmp" | "ktx" = "dds";//png support currently incomplete (and seemingly unused by jagex)
 	useOldModels: boolean;
 
 	static textureIndices = {
 		png: cacheMajors.texturesPng,
 		dds: cacheMajors.texturesDds,
-		bmp: cacheMajors.texturesBmp
+		bmp: cacheMajors.texturesBmp,
+		ktx: cacheMajors.texturesKtx
 	}
 
 	constructor(scenecache: EngineCache) {

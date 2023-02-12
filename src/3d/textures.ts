@@ -1,12 +1,12 @@
 import { fileToImageData, makeImageData } from "../imgutils";
-import { loadDds } from "./ddsimage";
+import { loadDds, loadKtx } from "./ddsimage";
 
 export class ParsedTexture {
 	fullfile: Buffer;
 	imagefiles: Buffer[];
 	stripAlpha: boolean;
 	isMaterialTexture: boolean | undefined;
-	type: "png" | "dds" | "bmpmips";
+	type: "png" | "dds" | "bmpmips" | "ktx";
 	mipmaps: number;
 	cachedDrawables: (Promise<HTMLImageElement | ImageBitmap> | null)[];
 	cachedImageDatas: (Promise<ImageData> | null)[];
@@ -30,8 +30,8 @@ export class ParsedTexture {
 		//peek first bytes of first image file
 		let foundtype = false;
 		for (let extraoffset = 0; extraoffset <= 1; extraoffset++) {
-			let byte0 = texture.readUInt8(extraoffset + offset + 4 + 0);
-			let byte1 = texture.readUInt8(extraoffset + offset + 4 + 1);
+			let byte0 = texture.readUInt8(extraoffset + offset + 1 + 4 + 0);
+			let byte1 = texture.readUInt8(extraoffset + offset + 1 + 4 + 1);
 			if (byte0 == 0 && byte1 == 0) {
 				//has no header magic, but starts by writing the width in uint32 BE, any widths under 65k have 0x0000xxxx
 				this.type = "bmpmips";
@@ -43,7 +43,7 @@ export class ParsedTexture {
 				this.type = "png";
 			} else if (byte0 == 0xab && byte1 == 0x4b) {
 				//0xab4b5458 "«KTX"
-				throw new Error("KTX11 texture format currently not supported");
+				this.type == "ktx";
 			} else {
 				continue;
 			}
@@ -105,6 +105,9 @@ export class ParsedTexture {
 				return fileToImageData(this.imagefiles[subimg]);
 			} else if (this.type == "dds") {
 				let imgdata = loadDds(this.imagefiles[subimg], padsize, this.stripAlpha);
+				return makeImageData(imgdata.data, imgdata.width, imgdata.height);
+			} else if (this.type == "ktx") {
+				let imgdata = loadKtx(this.imagefiles[subimg], padsize, this.stripAlpha);
 				return makeImageData(imgdata.data, imgdata.width, imgdata.height);
 			} else {
 				throw new Error("unknown format");

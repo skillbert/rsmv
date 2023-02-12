@@ -626,6 +626,9 @@ function chunkedArrayParser<T extends object>(lengthtype: ChunkParser<number>, c
 			let hiddenprops: object[] = [];
 			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
 				let proptype = chunktypes[chunkindex];
+				if (debugdata) {
+					debugdata.opcodes.push({ op: Object.keys(proptype).join(), index: state.scan, stacksize: state.stack.length });
+				}
 				for (let i = 0; i < len; i++) {
 					let hidden: object;
 					let obj: object;

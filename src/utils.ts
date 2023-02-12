@@ -247,7 +247,7 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 } as any
 
 export function flipEndian16(u16: number) {
-	return ((u16 & 0xff) << 8) | ((u16 & 0xff00) >> 8);
+	return ((u16 & 0xff) << 8) | ((u16 & 0xff00) >>> 8);
 }
 
 //2 bytes interpreted as u16 BE to float16 LE

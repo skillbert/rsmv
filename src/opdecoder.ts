@@ -102,7 +102,7 @@ function allParsers() {
 		models: FileParser.fromJson<import("../generated/models").models>(require("./opcodes/models.jsonc")),
 		oldmodels: FileParser.fromJson<import("../generated/oldmodels").oldmodels>(require("./opcodes/oldmodels.jsonc")),
 		spotAnims: FileParser.fromJson<import("../generated/spotanims").spotanims>(require("./opcodes/spotanims.json")),
-		rootCacheIndex: FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.json")),
+		rootCacheIndex: FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.jsonc")),
 		skeletalAnim: FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc")),
 		materials: FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/materials.jsonc")),
 		quickchatCategories: FileParser.fromJson<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc")),

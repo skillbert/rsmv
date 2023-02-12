@@ -145,7 +145,7 @@ function indexfileIndex(): DecodeLookup {
 		async logicalRangeToFiles(source, start, end) {
 			let indices = await source.getCacheIndex(cacheMajors.index);
 			return indices
-				.filter(index => index.minor >= start[0] && index.minor <= end[0])
+				.filter(index => index && index.minor >= start[0] && index.minor <= end[0])
 				.map(index => ({ index, subindex: 0 }));
 		}
 	}
@@ -434,6 +434,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	textures_dds: decodeTexture(cacheMajors.texturesDds),
 	textures_png: decodeTexture(cacheMajors.texturesPng),
 	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
+	textures_ktx: decodeTexture(cacheMajors.texturesKtx),
 
 	npcmodels: npcmodels,
 
