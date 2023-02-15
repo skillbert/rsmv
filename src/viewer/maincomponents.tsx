@@ -3,10 +3,10 @@ import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
 import { boundMethod } from "autobind-decorator";
 import { WasmGameCacheLoader } from "../cache/sqlitewasm";
-import { CacheFileSource } from "../cache";
+import { CacheFileSource, CallbackCacheLoader } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
 import { UIScriptFile } from "./scriptsui";
@@ -15,6 +15,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { delay, drawTexture, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
 import { CacheDownloader } from "../cache/downloader";
+import { parse } from "../opdecoder";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -529,6 +530,20 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 			el = <CanvasView canvas={cnvref.current} fillHeight={true} />;
 		} else if (["png", "jpg", "jpeg", "webp", "cnv"].includes(ext)) {
 			el = <BlobImage file={filedata} ext={ext} fillHeight={true} />
+		} else if (ext == "jaga" || ext == "ogg") {
+			let header = filedata.readUint32BE(0);
+			if (header == 0x4a414741) {//"JAGA"
+				let parts = parse.audio.read(filedata, new CallbackCacheLoader(() => { throw new Error("dummy cache") }, false));
+				el = (
+					<React.Fragment>
+						{parts.chunks.map((q, i) => (q.data ? <BlobAudio key={i} file={q.data} autoplay={i == 0} /> : <div key={i}>{q.fileid}</div>))}
+					</React.Fragment>
+				)
+			} else if (header == 0x4f676753) {//"OggS"
+				el = <BlobAudio file={filedata} autoplay={true} />
+			} else {
+				console.log("unexpected header", header, header.toString(16));
+			}
 		} else {
 			el = <TrivialHexViewer data={filedata} />
 		}

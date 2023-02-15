@@ -1,0 +1,15 @@
+["struct",
+    ["magic",["buffer",4,"hex"]],//always "JAGA"
+    ["unk_1","uint"],
+    ["unk_2","uint"],//uncompressed size?
+    ["samplefreq","uint"],
+    ["unk_3","uint"],
+    ["chunks",["chunkedarray","uint",
+        [
+            ["len","uint"],
+            ["fileid","uint"]
+        ],[
+            ["data",["opt",["fileid",0],["buffer",["ref","len"],"buffer"]]]
+        ]
+    ]]
+]

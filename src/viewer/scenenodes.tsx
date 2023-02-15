@@ -1749,8 +1749,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 }
 
 function ExtractFilesScript(p: UiScriptProps) {
-	let [initmode, initbatched, initkeepbuffs] = p.initialArgs.split(":");
-	let [filestext, setFilestext] = React.useState("");
+	let [initmode, initbatched, initkeepbuffs, initfilestext] = p.initialArgs.split(":");
+	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
 	let [batched, setbatched] = React.useState(initbatched != "false");
 	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
@@ -1760,7 +1760,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
 		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers });
-		p.onRun(output, `${mode}:${batched}:${keepbuffers}`);
+		p.onRun(output, `${mode}:${batched}:${keepbuffers}:${filestext}`);
 	}
 
 	return (

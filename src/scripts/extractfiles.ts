@@ -13,6 +13,7 @@ import { getModelHashes } from "../3d/modeltothree";
 import { GameCacheLoader } from "../cache/sqlite";
 import { FileRange } from "../cliparser";
 import { ParsedTexture } from "../3d/textures";
+import { parseMusic } from "./musictrack";
 
 
 type CacheFileId = {
@@ -133,6 +134,15 @@ function standardIndex(major: number): DecodeLookup {
 		async logicalRangeToFiles(source, start, end) {
 			return filerange(source, { major, minor: start[0], subid: start[1] }, { major, minor: end[0], subid: end[1] });
 		}
+	}
+}
+function blacklistIndex(parent: DecodeLookup, blacklist: { major: number, minor: number }[]): DecodeLookup {
+	return {
+		...parent,
+		async logicalRangeToFiles(source, start, end) {
+			let res = await parent.logicalRangeToFiles(source, start, end);
+			return res.filter(q => !blacklist.some(w => w.major == q.index.major && w.minor == q.index.minor));
+		},
 	}
 }
 function indexfileIndex(): DecodeLookup {
@@ -262,6 +272,25 @@ const decodeBinary: DecodeModeFactory = () => {
 	}
 }
 
+const decodeMusic = (major: number): DecodeModeFactory => () => {
+	return {
+		ext: "ogg",
+		major: major,
+		logicalDimensions: 1,
+		multiIndexArchives: false,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let res = await filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
+			return res.filter(q => q.index.minor != 0);
+		},
+		prepareDump(output) { },
+		read(buf, fileid, source) { return parseMusic(source, major, fileid[0], buf); },
+		write(file) { throw new Error("music write not supported"); },
+		combineSubs(files) { throw new Error("not supported"); },
+	}
+}
+
 const decodeSprite: DecodeModeFactory = () => {
 	return {
 		ext: "png",
@@ -370,6 +399,8 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	items: { parser: parse.item, lookup: chunkedIndex(cacheMajors.items) },
 	enums: { parser: parse.enums, lookup: chunkedIndex(cacheMajors.enums) },
 	npcs: { parser: parse.npc, lookup: chunkedIndex(cacheMajors.npcs) },
+	soundjson: { parser: parse.audio, lookup: blacklistIndex(standardIndex(cacheMajors.sounds), [{ major: cacheMajors.sounds, minor: 0 }]) },
+	musicjson: { parser: parse.audio, lookup: blacklistIndex(standardIndex(cacheMajors.music), [{ major: cacheMajors.music, minor: 0 }]) },
 	objects: { parser: parse.object, lookup: chunkedIndex(cacheMajors.objects) },
 	achievements: { parser: parse.achievement, lookup: chunkedIndex(cacheMajors.achievements) },
 	structs: { parser: parse.structs, lookup: chunkedIndex(cacheMajors.structs) },
@@ -435,6 +466,8 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	textures_png: decodeTexture(cacheMajors.texturesPng),
 	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
 	textures_ktx: decodeTexture(cacheMajors.texturesKtx),
+	sounds: decodeMusic(cacheMajors.sounds),
+	music: decodeMusic(cacheMajors.music),
 
 	npcmodels: npcmodels,
 

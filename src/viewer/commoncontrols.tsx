@@ -21,23 +21,44 @@ export function CanvasView(p: { canvas: HTMLCanvasElement, fillHeight?: boolean 
 }
 
 export function BlobImage(p: { file: Uint8Array, ext: string, fillHeight?: boolean }) {
-	let img = React.useMemo(() => {
-		let img = new Image();
-		img.classList.add("mv-image-preview-canvas");
-		let blob = new Blob([p.file], { type: `image/${p.ext}` });
-		let url = URL.createObjectURL(blob);
-		img.src = url;
-		img.decode().then(q => URL.revokeObjectURL(url));
-		return img;
-	}, [p.file, p.ext]);
-
-	let ref = React.useCallback((el: HTMLDivElement | null) => {
-		if (el) { el.appendChild(img); }
-		else { img.remove(); }
-	}, [img]);
+	let urlref = React.useRef("");
+	let ref = React.useCallback((el: HTMLImageElement | null) => {
+		if (el) {
+			let blob = new Blob([p.file], { type: `image/${p.ext}` });
+			let url = URL.createObjectURL(blob);
+			urlref.current = url;
+			el.src = url;
+			el.decode().finally(() => URL.revokeObjectURL(url));
+		} else {
+			URL.revokeObjectURL(urlref.current);
+		}
+	}, [p.file]);
 
 	return (
-		<div ref={ref} className="mv-image-preview" style={p.fillHeight ? { height: "100%" } : {}} />
+		<div className="mv-image-preview" style={p.fillHeight ? { height: "100%" } : {}}>
+			<img ref={ref} className="mv-image-preview-canvas" />
+		</div>
+	)
+}
+
+export function BlobAudio(p: { file: Uint8Array, autoplay: boolean }) {
+	let urlref = React.useRef("");
+
+	let ref = React.useCallback((el: HTMLAudioElement | null) => {
+		if (el) {
+			let blob = new Blob([p.file], { type: `audio/ogg` });
+			let url = URL.createObjectURL(blob);
+			urlref.current = url;
+			el.src = url;
+		} else {
+			URL.revokeObjectURL(urlref.current);
+		}
+	}, [p.file]);
+
+	return (
+		<div className="mv-image-preview">
+			<audio ref={ref} controls autoPlay={p.autoplay} />
+		</div>
 	)
 }
 

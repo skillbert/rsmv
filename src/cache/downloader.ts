@@ -69,7 +69,7 @@ export function parseClientConfig(cnf: ClientConfig) {
 }
 
 export async function downloadServerConfig() {
-	let body: string = await fetch("http://world3.runescape.com/jav_config.ws?binaryType=4").then(r => r.text());
+	let body: string = await fetch("http://world3.runescape.com/jav_config.ws?binaryType=2").then(r => r.text());
 	let chunks = body.split(/(?:\r\n|\r|\n)/g);
 
 	var config: ClientConfig = {};
@@ -255,6 +255,18 @@ export class CacheDownloader extends DirectCacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number | undefined): Promise<Buffer> {
+		//music can only be downloaded over http
+		if (major == cacheMajors.music) {
+			let config = await this.configPromise;
+			let indexfiles = await this.getCacheIndex(major);
+			let index = indexfiles.find(q => q && q.major == major && q.minor == minor);
+			if (!index) { throw new Error("requested file not found"); }
+			let res = await fetch(`https://${config.endpoint}/ms?m=0&a=${major}&k=${config.serverVersionMajor}&g=${minor}&c=${index.crc >> 0}&v=${index.version}`);
+			if (!res.ok) { throw new Error(`http cache request failed with code ${res.status}`); }
+			let data = await res.arrayBuffer();
+			return decompress(Buffer.from(data));
+		}
+
 		let socket = this.socket ?? await this.getSocket();
 		for (let attempt = 0; attempt < 10; attempt++) {
 			try {
@@ -284,14 +296,4 @@ export class CacheDownloader extends DirectCacheFileSource {
 	close() {
 		this.socket?.socket.end();
 	}
-}
-
-
-//TODO remove
-async function test() {
-	let downloader = new CacheDownloader();
-
-	let model = await downloader.getFileById(cacheMajors.models, 0);
-	console.log(model.byteLength);
-	downloader.close();
 }

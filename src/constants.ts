@@ -5,6 +5,7 @@ export const cacheMajors = {
 
 	oldmodels: 7,
 	sprites: 8,
+	sounds: 14,
 	objects: 16,
 	enums: 17,
 	npcs: 18,
@@ -16,6 +17,7 @@ export const cacheMajors = {
 	materials: 26,
 	particles: 27,
 	worldmap: 23,
+	music: 40,
 	models: 47,
 	frames: 48,
 
