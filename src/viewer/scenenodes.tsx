@@ -1119,22 +1119,29 @@ function ImageDataView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVide
 }
 
 function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T, ID>>) {
-	let idref = React.useRef<ID | null>(null);
+	let pendingId = React.useRef<ID | null>(null);
 	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
 	let [visible, setVisible] = React.useState<SimpleModelInfo<T, ID> | null>(null);
-	let ctxref = React.useRef(ctx);
-	ctxref.current = ctx;
-	let setter = React.useCallback((id: ID) => {
-		if (!ctxref.current) { return; }
-		idref.current = id;
-		let prom = getter(ctxref.current.sceneCache, id);
-		prom.then(res => {
-			if (idref.current == id) {
+	let [loadedId, setLoadedId] = React.useState<ID | null>(null);
+	let setter = React.useCallback(async (id: ID) => {
+		if (!ctx) { return; }
+		pendingId.current = id;
+		try {
+			let res = await getter(ctx.sceneCache, id);
+			if (pendingId.current == id) {
 				localStorage.rsmv_lastsearch = JSON.stringify(id);
 				setVisible(res);
+				setLoadedId(id);
 			}
-		})
-	}, []);
+		} catch (err) {
+			if (pendingId.current == id) {
+				localStorage.rsmv_lastsearch = JSON.stringify(id);
+				setVisible(null);
+				setLoadedId(id);
+				console.error(err);//TODO make ui
+			}
+		}
+	}, [ctx]);
 	React.useLayoutEffect(() => {
 		if (visible && ctx) {
 			let model = new RSModel(visible.models, ctx.sceneCache);
@@ -1143,7 +1150,7 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 			}
 			model.addToScene(ctx.renderer);
 			model.model.then(m => {
-				if (visible && idref.current == visible.id) {
+				if (visible && pendingId.current == visible.id) {
 					setLoadedModel(model);
 				}
 			});
@@ -1152,7 +1159,7 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 			}
 		}
 	}, [visible, ctx]);
-	return [visible, loadedModel, idref.current, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
+	return [visible, loadedModel, loadedId, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
 }
 
 async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: "mat" | "underlay" | "overlay" | "texture", id: number }) {
@@ -1216,14 +1223,15 @@ function SceneMaterialIsh(p: LookupModeProps) {
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialIshToModel);
 
 	let initid = id ?? { mode: "mat", id: 0 };
+	let modechange = (v: React.FormEvent<HTMLInputElement>) => setId({ mode: v.currentTarget.value as any, id: initid.id });
 	return (
 		<React.Fragment>
 			<IdInput onChange={v => setId({ ...initid, id: v })} initialid={initid.id} />
-			<div onChange={v => setId({ mode: (v.target as any).value, id: initid.id })}>
-				<label><input type="radio" name="mattype" value="mat" checked={initid.mode == "mat"} />Material</label>
-				<label><input type="radio" name="mattype" value="underlay" checked={initid.mode == "underlay"} />Underlay</label>
-				<label><input type="radio" name="mattype" value="overlay" checked={initid.mode == "overlay"} />Overlay</label>
-				<label><input type="radio" name="mattype" value="texture" checked={initid.mode == "texture"} />Texture</label>
+			<div >
+				<label><input type="radio" name="mattype" value="mat" checked={initid.mode == "mat"} onChange={modechange} />Material</label>
+				<label><input type="radio" name="mattype" value="underlay" checked={initid.mode == "underlay"} onChange={modechange} />Underlay</label>
+				<label><input type="radio" name="mattype" value="overlay" checked={initid.mode == "overlay"} onChange={modechange} />Overlay</label>
+				<label><input type="radio" name="mattype" value="texture" checked={initid.mode == "texture"} onChange={modechange} />Texture</label>
 			</div>
 			{id == null && (
 				<React.Fragment>
