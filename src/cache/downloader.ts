@@ -86,6 +86,14 @@ export async function downloadServerConfig() {
 	return config;
 }
 
+var downloadedBytes = 0;
+function trackDataUsage(len: number) {
+	if (Math.floor(downloadedBytes / 100e6) != Math.floor((downloadedBytes + len) / 100e6)) {
+		console.info(`loaded ${(downloadedBytes + len) / 1e6 | 0} mb from jagex server`);
+	}
+	downloadedBytes += len;
+}
+
 class DownloadSocket {
 	pending: PendingFile[] = [];
 	ready: Promise<void>;
@@ -105,6 +113,7 @@ class DownloadSocket {
 		this.socket.on("data", (data) => {
 			this.packetPending.push(data);
 			this.packetCallback?.();
+			trackDataUsage(data.byteLength);
 		});
 		this.socket.on("close", () => {
 			console.log("closed");
@@ -264,6 +273,7 @@ export class CacheDownloader extends DirectCacheFileSource {
 			let res = await fetch(`https://${config.endpoint}/ms?m=0&a=${major}&k=${config.serverVersionMajor}&g=${minor}&c=${index.crc >> 0}&v=${index.version}`);
 			if (!res.ok) { throw new Error(`http cache request failed with code ${res.status}`); }
 			let data = await res.arrayBuffer();
+			trackDataUsage(data.byteLength);
 			return decompress(Buffer.from(data));
 		}
 

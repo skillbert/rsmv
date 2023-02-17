@@ -6,7 +6,7 @@ export async function parseMusic(source: CacheFileSource, major: number, id: num
     let indexfile = firstchunk ?? await source.getFileById(major, id);
 
     let header = indexfile.readUint32BE();
-    if (header != 0x4a414741) {
+    if (header != 0x4a414741) {//"JAGA"
         //probably non-start chunk
         //TODO improve this
         return indexfile;
@@ -14,7 +14,19 @@ export async function parseMusic(source: CacheFileSource, major: number, id: num
 
     let index = parse.audio.read(indexfile, source);
 
-    let chunkdatas = await Promise.all(index.chunks.map(q => q.data ?? source.getFileById(major, q.fileid)));
+    // let chunkdatas = await Promise.all(index.chunks.map(q => q.data ?? source.getFileById(major, q.fileid)));
+    //dont do parallel download, server will disconnect
+    // let chunkdatas: Buffer[] = [];
+    // const concurrency = 4;
+    // for (let i = 0; i < index.chunks.length; i += concurrency) {
+    //     chunkdatas.push(...await Promise.all(index.chunks.slice(i, i + concurrency).map(q => q.data ?? source.getFileById(major, q.fileid))));
+    // }
+    // }
+    // for (let q of index.chunks) {
+    //     chunkdatas.push(q.data ?? await source.getFileById(major, q.fileid));
+    // }
+    let chunkdatas = await asyncMap(index.chunks, q => q.data ?? source.getFileById(major, q.fileid), 8);
+
     let output: Buffer[] = [];
 
     let granuleoffset = 0n;
@@ -60,6 +72,26 @@ export async function parseMusic(source: CacheFileSource, major: number, id: num
     }
 
     return Buffer.concat(output);
+}
+
+async function asyncMap<T, Q>(iter: Iterable<T>, mapper: (v: T, i: number) => (Q | Promise<Q>), maxParallel = 4) {
+    let pending: (Q | Promise<Q>)[] = [];
+    let writeindex = 0;
+    let readindex = 0;
+    let res: Q[] = [];
+    for (let item of iter) {
+        if (writeindex >= readindex + maxParallel) {
+            res.push(await pending[readindex % maxParallel]);
+            readindex++;
+        }
+        pending[writeindex % maxParallel] = mapper(item, writeindex);
+        writeindex++;
+    }
+    while (readindex < writeindex) {
+        res.push(await pending[readindex % maxParallel]);
+        readindex++;
+    }
+    return res;
 }
 
 //very very different crc from the other crc in this codebase, not quite sure why

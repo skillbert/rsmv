@@ -272,7 +272,31 @@ const decodeBinary: DecodeModeFactory = () => {
 	}
 }
 
-const decodeMusic = (major: number): DecodeModeFactory => () => {
+const decodeMusic: DecodeModeFactory = () => {
+	return {
+		ext: "ogg",
+		major: cacheMajors.music,
+		logicalDimensions: 1,
+		multiIndexArchives: false,
+		fileToLogical(major, minor, subfile) { return [minor]; },
+		logicalToFile(id) { return { major: cacheMajors.music, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let enumfile = await source.getFileById(cacheMajors.enums, 1351);
+			let enumdata = parse.enums.read(enumfile, source);
+			let indexfile = await source.getCacheIndex(cacheMajors.music);
+			return enumdata.intArrayValue2!.values
+				.filter(q => q[1] >= start[0] && q[1] <= end[0])
+				.sort((a, b) => a[1] - b[1])
+				.filter((q, i, arr) => i == 0 || arr[i - 1][1] != q[1])//filter duplicates
+				.map<CacheFileId>(q => ({ index: indexfile[q[1]], subindex: 0 }))
+		},
+		prepareDump(output) { },
+		read(buf, fileid, source) { return parseMusic(source, cacheMajors.music, fileid[0], buf); },
+		write(file) { throw new Error("music write not supported"); },
+		combineSubs(files) { throw new Error("not supported"); },
+	}
+}
+const decodeSound = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "ogg",
 		major: major,
@@ -466,8 +490,9 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	textures_png: decodeTexture(cacheMajors.texturesPng),
 	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
 	textures_ktx: decodeTexture(cacheMajors.texturesKtx),
-	sounds: decodeMusic(cacheMajors.sounds),
-	music: decodeMusic(cacheMajors.music),
+	sounds: decodeSound(cacheMajors.sounds),
+	musicfragments: decodeSound(cacheMajors.music),
+	music: decodeMusic,
 
 	npcmodels: npcmodels,
 
