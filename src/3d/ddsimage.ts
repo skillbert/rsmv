@@ -270,7 +270,7 @@ function dxtdata(targetdata: Uint8Array, targetstride: number, source: Uint8Arra
 }
 
 //takes weird signedness of index bits of the spec into account
-const etc2offsets = new Int8Array([
+const etc2offsets = new Int16Array([
 	2, 8, -2, -8,
 	5, 17, -5, -17,
 	9, 29, -9, -29,
@@ -404,12 +404,12 @@ function etc2data(targetdata: Uint8Array, targetstride: number, source: Uint8Arr
 						colorlut[10] = extend4to8(selectbits(dataupper, 4, 4));
 						let distindex = (selectbits(dataupper, 2, 2) << 1) | selectbits(dataupper, 0, 1);
 						let dist = etc2dists[distindex];
-						colorlut[4] = clamp(colorlut[0] + dist);
-						colorlut[5] = clamp(colorlut[1] + dist);
-						colorlut[6] = clamp(colorlut[2] + dist);
-						colorlut[12] = clamp(colorlut[8] - dist);
-						colorlut[13] = clamp(colorlut[9] - dist);
-						colorlut[14] = clamp(colorlut[10] - dist);
+						colorlut[4] = clamp(colorlut[8] + dist);
+						colorlut[5] = clamp(colorlut[9] + dist);
+						colorlut[6] = clamp(colorlut[10] + dist);
+						colorlut[12] = clamp(colorlut[4] - dist);
+						colorlut[13] = clamp(colorlut[5] - dist);
+						colorlut[14] = clamp(colorlut[6] - dist);
 					} else {
 						//mode H
 						base_r1 = extend4to8(selectbits(dataupper, 27, 4));
@@ -450,7 +450,7 @@ function etc2data(targetdata: Uint8Array, targetstride: number, source: Uint8Arr
 					//mode planar
 					base_r1 = extend6to8(selectbits(dataupper, 25, 6));
 					base_g1 = extend7to8((selectbits(dataupper, 24, 1) << 6) | selectbits(dataupper, 17, 6));
-					base_b1 = extend6to8((selectbits(dataupper, 16, 1) << 5) | (selectbits(dataupper, 11, 2) << 3) | selectbits(dataupper, 7, 1));
+					base_b1 = extend6to8((selectbits(dataupper, 16, 1) << 5) | (selectbits(dataupper, 11, 2) << 3) | selectbits(dataupper, 7, 3));
 					base_r2 = extend6to8((selectbits(dataupper, 2, 5) << 1) | selectbits(dataupper, 0, 1));
 
 					base_g2 = extend7to8(selectbits(datalower, 25, 7));
@@ -487,7 +487,7 @@ function etc2data(targetdata: Uint8Array, targetstride: number, source: Uint8Arr
 				targetdata[basepxoffset + 0 + 2 * targetstride] = ect2alphalookup(base, table, mult, selectbits(alphaupper, 7, 3));
 				targetdata[basepxoffset + 0 + 3 * targetstride] = ect2alphalookup(base, table, mult, selectbits(alphaupper, 4, 3));
 				targetdata[basepxoffset + 4 + 0 * targetstride] = ect2alphalookup(base, table, mult, selectbits(alphaupper, 1, 3));
-				targetdata[basepxoffset + 4 + 1 * targetstride] = ect2alphalookup(base, table, mult, (selectbits(alphaupper, 0, 1) << 0) | selectbits(alphalower, 30, 2));
+				targetdata[basepxoffset + 4 + 1 * targetstride] = ect2alphalookup(base, table, mult, (selectbits(alphaupper, 0, 1) << 2) | selectbits(alphalower, 30, 2));
 				targetdata[basepxoffset + 4 + 2 * targetstride] = ect2alphalookup(base, table, mult, selectbits(alphalower, 27, 3));
 				targetdata[basepxoffset + 4 + 3 * targetstride] = ect2alphalookup(base, table, mult, selectbits(alphalower, 24, 3));
 				targetdata[basepxoffset + 8 + 0 * targetstride] = ect2alphalookup(base, table, mult, selectbits(alphalower, 21, 3));

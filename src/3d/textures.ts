@@ -43,7 +43,7 @@ export class ParsedTexture {
 				this.type = "png";
 			} else if (byte0 == 0xab && byte1 == 0x4b) {
 				//0xab4b5458 "«KTX"
-				this.type == "ktx";
+				this.type = "ktx";
 			} else {
 				continue;
 			}
