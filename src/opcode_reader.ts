@@ -1279,35 +1279,44 @@ let hardcodes: Record<string, (args: unknown[], typedef: TypeDef) => ChunkParser
 
 		let refparent: ChunkParserContainer | null = null;
 
-		let options: { geq: number, lt: number, parser: ChunkParser }[] = [];
+		type ops = "=" | "<" | "<=" | ">" | ">=" | "&" | "default"
+
+		let options: { op: ops, value: number, parser: ChunkParser }[] = [];
 		let optparser = buildParser(args[0] as ComposedChunk, typedef);
 		for (let opt in args[1]) {
-			let m = opt.match(/(?<op><|<=|>|>=)?(?<version>(0x)?\d+)/);
-			if (!m) { throw new Error("invalid match value, expected <op><version>. For example '>10'"); }
-			let v = parseInt(m.groups!.version);
-			let op = m.groups!.op ?? "=";
-			let geq = -Infinity;
-			let lt = Infinity;
-			if (op == "=") { geq = v; lt = v + 1; }
-			else if (op == "<") { lt = v; }
-			else if (op == "<=") { lt = v + 1; }
-			else if (op == ">") { geq = v - 1; }
-			else if (op == ">=") { geq = v; }
-			options.push({ geq, lt, parser: buildParser(args[1][opt], typedef) });
+			let op: ops;
+			let value = 0;
+			if (opt == "default" || opt == "other") {
+				op = "default";
+			} else {
+				let m = opt.match(/(?<op><|<=|>|>=|&)?(?<version>(0x)?\d+)/);
+				if (!m) { throw new Error("invalid match value, expected <op><version>. For example '>10'"); }
+				value = parseInt(m.groups!.version);
+				op = (m.groups!.op ?? "=") as ops;
+			}
+			options.push({ op, value, parser: buildParser(args[1][opt], typedef) });
 		}
 		let r: ChunkParserContainer<any> = {
 			read(state) {
 				let opcodeprop = { $opcode: 0 };
 				state.stack.push({});
 				state.hiddenstack.push(opcodeprop);
-				let op = optparser.read(state);
-				opcodeprop.$opcode = op;
+				let value = optparser.read(state);
+				opcodeprop.$opcode = value;
 				let res: any;
 				let matched = false;
 				for (let option of options) {
-					if (op >= option.geq && op < option.lt) {
+					switch (option.op) {
+						case "=": matched = value == option.value; break;
+						case "<": matched = value < option.value; break;
+						case "<=": matched = value <= option.value; break;
+						case ">": matched = value > option.value; break;
+						case ">=": matched = value >= option.value; break;
+						case "&": matched = (value & option.value) != 0; break;
+						case "default": matched = true; break;
+					}
+					if (matched) {
 						res = option.parser.read(state);
-						matched = true;
 						break;
 					}
 				}

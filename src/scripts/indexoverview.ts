@@ -17,7 +17,7 @@ export async function indexOverview(output: ScriptOutput, outdir: ScriptFS, sour
 		let minsubfiles = index.reduce((a, v) => Math.min(a, v.subindexcount), Infinity);
 		let totalsize = 0;
 		for (let minor of index) { if (minor && minor.size) { totalsize += minor.size; } }
-		let highestindex = index[index.length - 1].minor;
+		let highestindex = index[index.length - 1]?.minor ?? -1;
 		let missingminors = highestindex + 1 - minorcount;
 		let avgsubfiles = +(subfilecount / minorcount).toFixed(2);
 		let avgsize = Math.round(totalsize / minorcount);
@@ -37,7 +37,7 @@ export async function indexOverview(output: ScriptOutput, outdir: ScriptFS, sour
 			subindices: index.subindexcount,
 			minindex: Math.min(...index.subindices),
 			maxindex: Math.max(...index.subindices),
-			missingindices: index.subindexcount + 1 - index.subindices[index.subindices.length - 1]
+			missingindices: index.subindices[index.subindices.length - 1] + 1 - index.subindexcount
 		});
 	}
 	outdir.writeFile("indexoverview.json", prettyJson({ majors, configs }));

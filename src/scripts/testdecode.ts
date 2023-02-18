@@ -280,7 +280,7 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 					sliceend = op.external.start + op.external.len;
 				}
 				let bytes = buffer.slice(index, sliceend).toString("hex");
-				let opstr = " ".repeat(op.stacksize - 1) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
+				let opstr = " ".repeat(Math.max(0, op.stacksize - 1)) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
 				err.chunks.push({ offset: index, bytes, text: opstr });
 				index = endindex;
 			}

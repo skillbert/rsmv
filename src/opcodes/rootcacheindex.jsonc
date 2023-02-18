@@ -4,8 +4,8 @@
 		["minor",["accum","$minorindex","1"]],
 		["crc","uint"],
 		["version","uint"],
-		["subindexcount","uint"],
-		["integer_10","uint"],
+		["subindexcount",["match","buildnr",{">=816":"uint","other":0}]],
+		["integer_10",["match","buildnr",{">=816":"uint","other":0}]],
 		["maybe_checksum1",["buffer",64,"hex"]]
 	]]],
 	//512bytes of data but variable length encoding that makes is 511-513

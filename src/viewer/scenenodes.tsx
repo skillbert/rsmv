@@ -1989,7 +1989,7 @@ function ScriptsUI(p: LookupModeProps) {
 						<p>The script runner allows you to run some of the CLI scripts directly from the browser.</p>
 					</React.Fragment>
 				)}
-				{SelectedScript && <SelectedScript source={source} onRun={onRun} initialArgs={initialargs ?? ""} ctx={p.partial} />}
+				{SelectedScript && <SelectedScript source={source} onRun={onRun} initialArgs={initialscript == script ? (initialargs ?? "") : ""} ctx={p.partial} />}
 				<h2>Script output</h2>
 				<OutputUI output={running} ctx={p.partial} />
 			</div>
