@@ -19,7 +19,7 @@ export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "web
 		let cnv = document.createElement("canvas");
 		cnv.width = imgdata.width;
 		cnv.height = imgdata.height;
-		let ctx = cnv.getContext("2d")!;
+		let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 		ctx.putImageData(imgdata, 0, 0);
 		return canvasToImageFile(cnv, format, quality);
 	} else {
@@ -63,7 +63,7 @@ export async function pixelsToDataUrl(imgdata: ImageData) {
 		let cnv = document.createElement("canvas");
 		cnv.width = imgdata.width;
 		cnv.height = imgdata.height;
-		let ctx = cnv.getContext("2d")!;
+		let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 		ctx.putImageData(imgdata, 0, 0);
 		return cnv.toDataURL("image/png");
 	} else {

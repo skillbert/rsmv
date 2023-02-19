@@ -537,7 +537,7 @@ async function mipCanvas(render: MapRender, files: MipCommand["files"], format: 
 	let cnv = document.createElement("canvas");
 	cnv.width = render.config.tileimgsize;
 	cnv.height = render.config.tileimgsize;
-	let ctx = cnv.getContext("2d")!;
+	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	const subtilesize = render.config.tileimgsize / 2;
 	await Promise.all(files.map(async (f, i) => {
 		if (!f) { return null; }

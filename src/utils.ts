@@ -66,7 +66,7 @@ export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Text
 
 export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
 	let cnv = document.createElement("canvas");
-	let ctx = cnv.getContext("2d")!;
+	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	drawTexture(ctx, img);
 	cnv.style.cssText = "position:absolute;top:0px;left:0px;border:1px solid red;background:purple;";
 	document.body.appendChild(cnv);

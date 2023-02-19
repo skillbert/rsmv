@@ -71,7 +71,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 			if (major == cacheMajors.index) {
 				indices = this.generateRootIndex();
 				getFile = (minor) => this.openTable(minor).readIndexFile();
-				getIndexFile = () => { throw new Error("root index file no accesible for sqlite cache"); }
+				getIndexFile = () => { throw new Error("root index file not accesible for sqlite cache"); }
 				writeFile = (minor, data) => { throw new Error("writing index files not supported"); }
 			} else {
 				let dbfile = path.resolve(this.cachedir, `js5-${major}.jcache`);

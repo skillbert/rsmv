@@ -1171,7 +1171,7 @@ class SimpleTexturePacker {
 		if (this.result) { return this.result; }
 		let cnv = document.createElement("canvas");
 		cnv.width = this.size; cnv.height = this.size;
-		let ctx = cnv.getContext("2d")!;
+		let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 		console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
 		for (let alloc of this.allocs) {
 			let xx1 = -this.padsize;
@@ -2209,7 +2209,7 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 			//no clue why this doesn't work
 			// mat.map = new THREE.Texture(img);
 			// globalThis.bug = mat.map;
-			let data = img.getContext("2d")!.getImageData(0, 0, img.width, img.height);
+			let data = img.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, img.width, img.height);
 			mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
 
 			mat.map.magFilter = THREE.LinearFilter;

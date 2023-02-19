@@ -4,7 +4,7 @@ import { MapRect, tiledimensions, TileGridSource, TileProps } from "../3d/mapsqu
 
 export function drawCollision(grid: TileGridSource, rect: MapRect, maplevel: number, pxpertile: number, wallpx: number) {
 	let cnv = document.createElement("canvas");
-	let ctx = cnv.getContext("2d")!;
+	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	cnv.width = rect.xsize * pxpertile;
 	cnv.height = rect.zsize * pxpertile;
 	ctx.scale(1, -1);
