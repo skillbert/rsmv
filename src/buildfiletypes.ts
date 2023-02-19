@@ -23,7 +23,7 @@ async function buildFileTypes() {
 			"// run `npm run filetypes` to rebuild\n\n";
 		typesfile += "export type " + objname + " = ";
 		try {
-			typesfile += opcode_reader.buildParser(opcodes as any, typedef as any).getTypescriptType("") + ";\n";
+			typesfile += opcode_reader.buildParser(null, opcodes as any, typedef as any).getTypescriptType("") + ";\n";
 		} catch (e) {
 			//console.error(e);
 			typesfile += "any;\n";

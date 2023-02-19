@@ -22,8 +22,7 @@ export class FileParser<T> {
 	}
 
 	constructor(opcodeobj: opcode_reader.ComposedChunk, originalSource?: string) {
-		this.parser = opcode_reader.buildParser(opcodeobj, typedef as any);
-		this.parser.setReferenceParent?.(null);
+		this.parser = opcode_reader.buildParser(null, opcodeobj, typedef as any);
 		this.originalSource = originalSource ?? JSON.stringify(opcodeobj, undefined, "\t");
 	}
 
@@ -105,6 +104,7 @@ function allParsers() {
 		rootCacheIndex: FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.jsonc")),
 		skeletalAnim: FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc")),
 		materials: FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/materials.jsonc")),
+		oldmaterials: FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/oldmaterials.jsonc")),
 		quickchatCategories: FileParser.fromJson<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc")),
 		quickchatLines: FileParser.fromJson<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc")),
 		environments: FileParser.fromJson<import("../generated/environments").environments>(require("./opcodes/environments.jsonc")),
