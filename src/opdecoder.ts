@@ -21,7 +21,7 @@ export class FileParser<T> {
 		return new FileParser<T>(opcodeobj, jsonObject);
 	}
 
-	constructor(opcodeobj: opcode_reader.ComposedChunk, originalSource?: string) {
+	constructor(opcodeobj: unknown, originalSource?: string) {
 		this.parser = opcode_reader.buildParser(null, opcodeobj, typedef as any);
 		this.originalSource = originalSource ?? JSON.stringify(opcodeobj, undefined, "\t");
 	}

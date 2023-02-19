@@ -1,12 +1,4 @@
-import { buildReference, ChunkParser, ChunkParserContainer, DecodeState, EncodeState, ResolvedReference, TypeDef } from "./opcode_reader";
-
-type NewChunkParserContainer = ChunkParser & {
-    resolveReference(name: string, childresolve: ResolvedReference): ResolvedReference,
-}
-
-type ChunkParserBuilder = (args: unknown[], refparent: NewChunkParserContainer, typedef: TypeDef) => ChunkParser
-
-
+import {  DecodeState, EncodeState, ResolvedReference, TypeDef } from "./opcode_reader";
 
 
 const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s: EncodeState, v: number) => void, min: number, max: number }> = {

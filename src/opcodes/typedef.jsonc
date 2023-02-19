@@ -28,7 +28,7 @@
 
     "float":            { "primitive": "float", "bytes": 4, "endianness": "big" },
 
-	"playeritem":       { "primitive": "hardcode", "name": "playeritem" },
+	"playeritem":       ["playeritem"],
 
 	"playeritemedit":   ["struct",
 		["$type","ubyte"],
