@@ -1,28 +1,5 @@
 import type * as jsonschema from "json-schema";
 
-type PrimitiveInt = {
-	primitive: "int",
-	unsigned: boolean,
-	bytes: number,
-	readmode: "fixed" | "smart" | "sumtail"
-	endianness: "big" | "little"
-};
-type PrimitiveFloat = {
-	primitive: "float",
-	bytes: number,
-	endianness: "big" | "little"
-};
-type PrimitiveValue<T> = {
-	primitive: "value",
-	value: T
-}
-type PrimitiveString = {
-	primitive: "string",
-	encoding: "latin1",
-	termination: null,
-	prebytes: number[]
-}
-
 type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand" | "gteq" | "lteq";
 
 export type TypeDef = { [name: string]: unknown };
@@ -78,8 +55,8 @@ export type ResolvedReference = {
 	resolve(v: unknown, oldvalue: number): number
 }
 
-export type ChunkParser<T = any> = {
-	read(state: DecodeState): T,
+export type ChunkParser = {
+	read(state: DecodeState): any,
 	write(state: EncodeState, v: unknown): void,
 	getTypescriptType(indent: string): string,
 	getJsonSchema(): jsonschema.JSONSchema6Definition
@@ -88,44 +65,43 @@ export type ChunkParser<T = any> = {
 type ChunkParentCallback = (prop: string, childresolve: ResolvedReference) => ResolvedReference;
 
 function resolveAlias(typename: string, parent: ChunkParentCallback, typedef: TypeDef) {
-	let newname: string = typename;
-	for (let redirects = 0; redirects < 1024; redirects++) {
-		if (!Object.hasOwn(typedef, newname)) {
-			throw new Error(`Type '${typename}' not found in typedef.json`);
-		}
-		let newtype = typedef[newname];
-		if (typeof newtype != "string") {
-			if (typeof newtype == "object" && newtype && Object.hasOwn(newtype, "primitive")) {
-				//TODO this break when aliased types have a key "primitive"
-				return primitiveParser(parent, newtype as any, typedef);
-			} else {
-				//TODO this recursion is unchecked
-				return buildParser(parent, newtype, typedef);
-			}
-		} else {
-			newname = newtype;
-		}
+	if (!Object.hasOwn(typedef, typename)) {
+		throw new Error(`Type '${typename}' not found in typedef.json`);
 	}
-	throw new Error(`Couldn't resolve alias stack for '${typename}', perhaps due to an infinite loop - last known alias was '${newname!}'`);
+	let newtype = typedef[typename];
+	if (typeof newtype != "string") {
+		//TODO this recursion is unchecked
+		return buildParser(parent, newtype, typedef);
+	} else if (Object.hasOwn(parserPrimitives, newtype)) {
+		return parserPrimitives[newtype];
+	} else {
+		return resolveAlias(newtype, parent, typedef);
+	}
 }
 
 export function buildParser(parent: ChunkParentCallback | null, chunkdef: unknown, typedef: TypeDef): ChunkParser {
 	parent ??= () => { throw new Error("reference failed to resolve"); };
 	switch (typeof chunkdef) {
+		case "boolean":
 		case "number":
-			return literalValueParser({ primitive: "value", value: chunkdef });
-		case "string":
-			return resolveAlias(chunkdef, parent, typedef);
+			return literalValueParser(chunkdef);
+		case "string": {
+			if (Object.hasOwn(parserPrimitives, chunkdef)) {
+				return parserPrimitives[chunkdef];
+			} else {
+				return resolveAlias(chunkdef, parent, typedef);
+			}
+		}
 		case "object":
 			if (chunkdef == null) {
-				return literalValueParser({ primitive: "value", value: null });
+				return literalValueParser(null);
 			} else if (!Array.isArray(chunkdef)) {
 				return opcodesParser(chunkdef, parent, typedef);
 			} else {
 				if (chunkdef.length < 1) throw new Error(`'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: ${JSON.stringify(chunkdef)}`);
 				let args = chunkdef.slice(1);
-				if (parserMap[chunkdef[0]]) {
-					return parserMap[chunkdef[0]](args, parent, typedef);
+				if (parserFunctions[chunkdef[0]]) {
+					return parserFunctions[chunkdef[0]](args, parent, typedef);
 				}
 			}
 		default:
@@ -133,35 +109,7 @@ export function buildParser(parent: ChunkParentCallback | null, chunkdef: unknow
 	}
 }
 
-function validateFloatType(primitive: PrimitiveFloat) {
-	let hasBytes = "bytes" in primitive;
-	let hasEndianness = "endianness" in primitive;
-	if (!(hasBytes && hasEndianness)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'float' variables need to specify 'bytes' and 'endianness'`);
-	if (typeof primitive.bytes !== "number" || primitive.bytes != 4) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'bytes' must be an integer 4`);
-	if (primitive.endianness !== "big" && primitive.endianness !== "little") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'endianness' must be "big" or "little"`);
-}
-
-function validateIntType(primitive: PrimitiveInt) {
-	let hasUnsigned = "unsigned" in primitive;
-	let hasBytes = "bytes" in primitive;
-	let hasReadmode = "readmode" in primitive;
-	let hasEndianness = "endianness" in primitive;
-	if (!(hasUnsigned && hasBytes && hasReadmode && hasEndianness)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'int' variables need to specify 'unsigned', 'bytes', 'variable', and 'endianness'`);
-	if (typeof primitive.unsigned !== "boolean") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'unsigned' must be a boolean`);
-	if (typeof primitive.bytes !== "number") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'bytes' must be an integer`);
-	if (["fixed", "smart", "sumtail"].indexOf(primitive.readmode) == -1) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'readmode' must be a 'fixed', 'smart' or 'sumtail'`)
-	if (primitive.endianness !== "big" && primitive.endianness !== "little") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'endianness' must be "big" or "little"`);
-}
-
-function validateStringType(primitive: PrimitiveString) {
-	let hasEncoding = "encoding" in primitive;
-	if (!hasEncoding) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'string' variables need to specify 'encoding'`);
-	if (typeof primitive.encoding !== "string") throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'encoding' must be a string`);
-	if (!(primitive.termination === null || typeof primitive.termination === "number")) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'termination' must be null or the string's length in bytes`);
-}
-
-function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
-
+function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
 			let r: Record<string, any> = {};
@@ -272,7 +220,7 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 }
 
 function tuppleParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
-	let r: ChunkParser<any[]> = {
+	let r: ChunkParser = {
 		read(state) {
 			let r: any[] = [];
 			for (let prop of props) {
@@ -339,7 +287,7 @@ function refgetter(refparent: ChunkParentCallback | null, propname: string, reso
 	}
 }
 
-function structParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
+function structParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	let r: ChunkParser = {
 		read(state) {
@@ -428,7 +376,7 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 	return r;
 }
 
-function optParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
+function optParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
 			let value = ref.read(state);
@@ -538,8 +486,7 @@ function checkCondition(condmode: CompareMode, compValue: number, v: number) {
 	}
 }
 
-function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
-
+function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
 			let len = lengthtype.read(state);
@@ -599,7 +546,7 @@ function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typede
 					type: "object",
 					properties: Object.fromEntries([...Object.entries(fullobj)]
 						.filter(([key]) => !key.startsWith("$"))
-						.map(([key, prop]) => [key, (prop as ChunkParser).getJsonSchema()])
+						.map(([key, prop]) => [key, prop.getJsonSchema()])
 					),
 					required: keys.filter(k => !k.startsWith("$"))
 				}
@@ -673,7 +620,7 @@ function bufferParserValue(value: unknown, type: typeof BufferTypes[keyof typeof
 	return value;
 }
 
-function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
+function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
 			let len = lengthtype.read(state);
@@ -728,7 +675,7 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 	return r;
 }
 
-function arrayParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
+function arrayParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
 			let len = lengthtype.read(state);
@@ -791,9 +738,10 @@ function arrayNullTerminatedParser(args: unknown[], parent: ChunkParentCallback,
 			state.hiddenstack.push(ctx);
 			state.stack.push({});
 			while (true) {
+				let oldscan = state.scan;
 				let header = lengthtype.read(state);
 				if (debugdata) {
-					debugdata.opcodes.push({ op: "opcode", index: state.scan - 1, stacksize: state.stack.length });
+					debugdata.opcodes.push({ op: "$opcode", index: oldscan, stacksize: state.stack.length });
 				}
 				if (header == 0) { break; }
 				ctx.$opcode = header;
@@ -846,157 +794,28 @@ function arrayNullTerminatedParser(args: unknown[], parent: ChunkParentCallback,
 	return r;
 }
 
-function floatParser(primitive: PrimitiveFloat): ChunkParser<number> {
-	validateFloatType(primitive);
-	let parser: ChunkParser<number> = {
-		read(state) {
-			let buffer = state.buffer;
-			if (primitive.bytes == 4) {
-				let r = (primitive.endianness == "big" ? buffer.readFloatBE(state.scan) : buffer.readFloatLE(state.scan));
-				state.scan += 4;
-				return r;
-			} else {
-				throw new Error("only 4 byte floats supported");
-			}
-		},
-		write(state, v) {
-			if (typeof v != "number") { throw new Error("number expected"); }
-			if (primitive.bytes == 4) {
-				if (primitive.endianness == "big") { state.buffer.writeFloatBE(v, state.scan); }
-				else { state.buffer.writeFloatLE(v, state.scan); }
-				state.scan += 4;
-			} else {
-				throw new Error("only 4 byte flaots supported");
-			}
-		},
-		getTypescriptType() { return "number"; },
-		getJsonSchema() { return { type: "number" }; }
+function literalValueParser(constvalue: unknown) {
+	if (typeof constvalue != "number" && typeof constvalue != "string" && typeof constvalue != "boolean" && constvalue != null) {
+		throw new Error("only bool, number, string or null literals allowed");
 	}
-	return parser;
-}
-
-function intParser(primitive: PrimitiveInt): ChunkParser<number> {
-	validateIntType(primitive);
-	let parser: ChunkParser<number> = {
-		read(state) {
-			//TODO clean this whole thing up and remove the variable bytes mode
-			let unsigned = primitive.unsigned;
-			let bytes = primitive.bytes;
-			let readmode = primitive.readmode;
-			let endianness = primitive.endianness;
-			let output = 0;
-			let buffer = state.buffer;
-			if (readmode == "smart" || readmode == "sumtail") {
-				let firstByte = buffer.readUInt8(state.scan);
-
-				let mask = 0xFF;
-				if ((firstByte & 0x80) != 0x80) bytes >>= 1; // Floored division by two when we don't have a continuation bit
-				else mask = 0x7F;
-
-				buffer[state.scan] &= mask;
-				// If the number is signed and second-most-significant bit is 1,
-				// set the most-significant bit to 1 since it's no longer a continuation bit
-				if (!unsigned && (firstByte & 0x40) == 0x40) buffer[state.scan] |= 0x80;
-				if (unsigned) {
-					if (endianness == "big") { output = buffer.readUIntBE(state.scan, bytes); }
-					else { output = buffer.readUIntLE(state.scan, bytes); }
-				} else {
-					if (endianness == "big") { output = buffer.readIntBE(state.scan, bytes); }
-					else { output = buffer.readIntLE(state.scan, bytes); }
-				}
-				state.scan += bytes;
-				buffer[state.scan - bytes] = firstByte; // Set it back to what it was originally
-				if (readmode == "sumtail") {
-					//this is very stupid but works
-					//yay for recursion
-					let overflowchunk = ~(~1 << (primitive.bytes * 8 - 2));//0111111.. pattern
-					if (output == overflowchunk) {
-						output += parser.read(state);
-					}
-				}
-			} else {
-				if (unsigned) {
-					if (endianness == "big") { output = buffer.readUIntBE(state.scan, bytes); }
-					else { output = buffer.readUIntLE(state.scan, bytes); }
-				} else {
-					if (endianness == "big") { output = buffer.readIntBE(state.scan, bytes); }
-					else { output = buffer.readIntLE(state.scan, bytes); }
-				}
-				state.scan += bytes;
-			}
-			return output;
-		},
-		write(state, value) {
-			if (typeof value != "number" || value % 1 != 0) throw new Error(`integer expected`);
-			let unsigned = primitive.unsigned;
-			let bytes = primitive.bytes;
-			let readmode = primitive.readmode;
-			let endianness = primitive.endianness;
-			let output = 0;
-			if (readmode == "smart") {
-				if (endianness != "big") throw new Error(`variable length int only accepts big endian`);
-				let fitshalf = true;
-				if (unsigned) {
-					if (value >= 1 << (bytes * 4 - 1)) { fitshalf = false; }
-				} else {
-					if (value >= 1 << (bytes * 4 - 2)) { fitshalf = false; }
-					if (value < -1 << (bytes * 4 - 2)) { fitshalf = false; }
-				}
-
-				if (fitshalf) bytes >>= 1; // Floored division by two when we don't have a continuation bit
-
-				let mask = ~(~0 << (bytes * 8 - 1));
-				let int = (value & mask) | ((fitshalf ? 0 : 1) << (bytes * 8 - 1));
-				//write 32bit ints as unsigned since js bitwise operations cast to int32
-				state.buffer[`write${unsigned && bytes != 4 ? "U" : ""}IntBE`](int, state.scan, bytes);
-				state.scan += bytes;
-			} else if (readmode == "sumtail") {
-				throw new Error("not implemented");
-			} else {
-				output = state.buffer[`write${unsigned ? "U" : ""}Int${endianness.charAt(0).toUpperCase()}E`](value, state.scan, bytes);
-				state.scan += bytes;
-			}
-		},
-		getTypescriptType() {
-			return "number";
-		},
-		getJsonSchema() {
-			return {
-				type: "integer",
-				maximum: 2 ** (primitive.bytes * 8 + (primitive.unsigned ? 0 : -1)) - 1,
-				minimum: (primitive.unsigned ? 0 : -1 * (2 ** (primitive.bytes * 8 - 1)))
-			}
-		}
-	}
-	return parser;
-}
-
-function literalValueParser<T>(primitive: PrimitiveValue<T>): ChunkParser<T> {
-	if (!("value" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', 'value' variables need to specify a 'value'`);
 	return {
 		read(state) {
-			return primitive.value;
+			return constvalue;
 		},
 		write(state, value) {
-			if (primitive.value != value) throw new Error(`expected constant ${primitive.value} was not present during write`);
-			//this is a nop, the existence of this field implis its value
+			if (value != constvalue) throw new Error(`expected constant ${constvalue} was not present during write`);
+			//this is a nop, the existence of this field implies its value
 		},
 		getTypescriptType() {
-			if (typeof primitive.value == "number" || typeof primitive.value == "boolean") {
-				return JSON.stringify(primitive.value);
-			} else if (primitive.value == null) {
-				return "null";
-			} else {
-				return typeof primitive.value;
-			}
+			return JSON.stringify(constvalue);
 		},
 		getJsonSchema() {
-			return { const: primitive.value as any }
+			return { const: constvalue }
 		}
 	}
 }
-function referenceValueParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser<number> {
-	let r: ChunkParser<number> = {
+function referenceValueParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
+	let r: ChunkParser = {
 		read(state) {
 			let value = ref.read(state);
 			if (minbit != -1) {
@@ -1046,7 +865,7 @@ function referenceValueParser(args: unknown[], parent: ChunkParentCallback, type
 
 	return r;
 }
-function bytesRemainingParser(): ChunkParser<number> {
+function bytesRemainingParser(): ChunkParser {
 	return {
 		read(state) {
 			return state.endoffset - state.scan;
@@ -1063,8 +882,8 @@ function bytesRemainingParser(): ChunkParser<number> {
 	}
 }
 
-function intAccumlatorParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
-	let r: ChunkParser<number> = {
+function intAccumlatorParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
+	let r: ChunkParser = {
 		read(state) {
 			//TODO fix the context situation
 			let increment = value.read(state);
@@ -1110,22 +929,24 @@ function intAccumlatorParser(args: unknown[], parent: ChunkParentCallback, typed
 	return r;
 }
 
-function stringParser(primitive: PrimitiveString): ChunkParser<string> {
-	validateStringType(primitive);
+function stringParser(prebytes: number[]): ChunkParser {
+	const encoding = "latin1";
 	return {
 		read(state) {
-			let encoding = primitive.encoding;
-			let termination = primitive.termination;
-			for (let i = 0; i < primitive.prebytes.length; i++, state.scan++) {
-				if (state.buffer.readUInt8(state.scan) != primitive.prebytes[i]) {
+			for (let i = 0; i < prebytes.length; i++, state.scan++) {
+				if (state.buffer.readUInt8(state.scan) != prebytes[i]) {
 					throw new Error("failed to match string header bytes");
 				}
 			}
 			let end = state.scan;
-			for (; end < state.endoffset; ++end) {
-				if ((termination === null && state.buffer.readUInt8(end) == 0x0) || (end - state.scan) == termination) {
+			while (true) {
+				if (end == state.endoffset) {
+					throw new Error("reading string without null termination");
+				}
+				if (state.buffer.readUInt8(end) == 0) {
 					break;
 				}
+				end++;
 			}
 			let outputstr = state.buffer.toString(encoding, state.scan, end);
 			state.scan = end + 1;
@@ -1133,40 +954,19 @@ function stringParser(primitive: PrimitiveString): ChunkParser<string> {
 		},
 		write(state, value) {
 			if (typeof value != "string") throw new Error(`string expected`);
-			validateStringType(primitive);
-			let encoding = primitive.encoding;
-			let termination = primitive.termination;
-			let strbuf = Buffer.from([...primitive.prebytes, ...Buffer.from(value, encoding)]);
-			//either pad with 0's to fixed length and truncate and longer strings, or add a single 0 at the end
-			let strbinbuf = Buffer.alloc(termination == null ? strbuf.byteLength + 1 : termination, 0);
-			strbuf.copy(strbinbuf, 0, 0, Math.max(strbuf.byteLength, strbinbuf.byteLength));
-			strbinbuf.copy(state.buffer, state.scan);
-			state.scan += strbinbuf.byteLength;
+			let writebytes = [
+				...prebytes,
+				...Buffer.from(value, encoding),
+				0
+			];
+			state.buffer.set(writebytes, state.scan);
+			state.scan += writebytes.length;;
 		},
 		getTypescriptType() {
 			return "string";
 		},
 		getJsonSchema() {
 			return { type: "string" };
-		}
-	}
-}
-
-function booleanParser(): ChunkParser<boolean> {
-	return {
-		read(state) {
-			let boolint = state.buffer.readUInt8(state.scan++);
-			if (boolint != 1 && boolint != 0) throw new Error(`value 0x${boolint} parsed as bool was not 0x00 or 0x01`)
-			return boolint != 0;
-		},
-		write(state, value) {
-			state.buffer.writeUInt8(value ? 1 : 0, state.scan++);
-		},
-		getTypescriptType() {
-			return "boolean";
-		},
-		getJsonSchema() {
-			return { type: "boolean" };
 		}
 	}
 }
@@ -1331,30 +1131,229 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return subtype.getJsonSchema();
 			},
 		}
+	},
+	"tailed varushort": function (args, parent, typedef) {
+		const overflowchunk = 0x7fff;
+		return {
+			read(state) {
+				let sum = 0;
+				while (true) {
+					let byte0 = state.buffer.readUint8(state.scan++);
+					let v: number;
+					if ((byte0 & 0x80) == 0) {
+						v = byte0;
+					} else {
+						let byte1 = state.buffer.readUint8(state.scan++);
+						v = ((byte0 & 0x7f) << 8) | byte1;
+					}
+					sum += v;
+					if (v != overflowchunk) {
+						return sum;
+					}
+				}
+			},
+			write(state, v) {
+				if (typeof v != "number") { throw new Error("number expected"); }
+				while (v >= 0) {
+					let chunk = Math.min(overflowchunk, v);
+					if (chunk < 0x80) {
+						state.buffer.writeUint8(chunk, state.scan++);
+					} else {
+						state.buffer.writeUint16BE(chunk | 0x8000, state.scan);
+						state.scan += 2;
+					}
+					v -= chunk;
+				}
+			},
+			getTypescriptType(indent) {
+				return "number";
+			},
+			getJsonSchema() {
+				return { type: "number" };
+			}
+		}
 	}
 }
 
+const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s: EncodeState, v: number) => void, min: number, max: number }> = {
+	ubyte: {
+		read(s) { let r = s.buffer.readUInt8(s.scan); s.scan += 1; return r; },
+		write(s, v) { s.buffer.writeUInt8(v, s.scan); s.scan += 1; },
+		min: 0, max: 255
+	},
+	byte: {
+		read(s) { let r = s.buffer.readInt8(s.scan); s.scan += 1; return r; },
+		write(s, v) { s.buffer.writeInt8(v, s.scan); s.scan += 1; },
+		min: -128, max: 127
+	},
+	ushort: {
+		read(s) { let r = s.buffer.readUInt16BE(s.scan); s.scan += 2; return r; },
+		write(s, v) { s.buffer.writeUInt16BE(v, s.scan); s.scan += 2; },
+		min: 0, max: 2 ** 16 - 1
+	},
+	short: {
+		read(s) { let r = s.buffer.readInt16BE(s.scan); s.scan += 2; return r; },
+		write(s, v) { s.buffer.writeInt16BE(v, s.scan); s.scan += 2; },
+		min: -(2 ** 15), max: 2 ** 15 - 1
+	},
+	uint: {
+		read(s) { let r = s.buffer.readUInt32BE(s.scan); s.scan += 4; return r; },
+		write(s, v) { s.buffer.writeUInt32BE(v, s.scan); s.scan += 4; },
+		min: 0, max: 2 ** 32 - 1
+	},
+	int: {
+		read(s) { let r = s.buffer.readInt32BE(s.scan); s.scan += 4; return r; },
+		write(s, v) { s.buffer.writeInt32BE(v, s.scan); s.scan += 4; },
+		min: -(2 ** 31), max: 2 ** 31 - 1
+	},
 
-function primitiveParser(parent: ChunkParentCallback, primitive: {}, typedef: TypeDef): ChunkParser {
-	if (!("primitive" in primitive)) throw new Error(`Invalid primitive definition '${JSON.stringify(primitive)}', needs to specify its datatype (e.g. "primitive": "int")`);
-	switch (primitive.primitive) {
-		case "bool":
-			return booleanParser();
-		case "int":
-			return intParser(primitive as any);
-		case "float":
-			return floatParser(primitive as any);
-		case "string":
-			return stringParser(primitive as any);
-		case "value":
-			return literalValueParser(primitive as any);
-		default:
-			//@ts-ignore
-			throw new Error(`Unsupported primitive '${primitive.primitive}' in typedef.json`);
+	uint_le: {
+		read(s) { let r = s.buffer.readUInt32LE(s.scan); s.scan += 4; return r; },
+		write(s, v) { s.buffer.writeUint32LE(v, s.scan); s.scan += 4; },
+		min: 0, max: 2 ** 32 - 1
+	},
+	ushort_le: {
+		read(s) { let r = s.buffer.readUInt16LE(s.scan); s.scan += 2; return r; },
+		write(s, v) { s.buffer.writeUint16LE(v, s.scan); s.scan += 2; },
+		min: 0, max: 2 ** 16 - 1
+	},
+	utribyte: {
+		read(s) { let r = s.buffer.readUIntBE(s.scan, 3); s.scan += 3; return r; },
+		write(s, v) { s.buffer.writeUintBE(v, s.scan, 3); s.scan += 3; },
+		min: 0, max: 2 ** 24 - 1
+	},
+	float: {
+		read(s) { let r = s.buffer.readFloatBE(s.scan); s.scan += 4; return r; },
+		write(s, v) { s.buffer.writeFloatBE(v, s.scan); s.scan += 4; },
+		min: Number.MIN_VALUE, max: Number.MAX_VALUE
+	},
+
+	varushort: {
+		read(s) {
+			let firstByte = s.buffer.readUInt8(s.scan++);
+			if ((firstByte & 0x80) == 0) {
+				return firstByte;
+			}
+			let secondByte = s.buffer.readUInt8(s.scan++);
+			return ((firstByte & 0x7f) << 8) | secondByte;
+		},
+		write(s, v) {
+			if (v < 0x80) {
+				s.buffer.writeUInt8(v, s.scan);
+				s.scan += 1;
+			} else {
+				s.buffer.writeUint16BE(v | 0x8000, s.scan);
+				s.scan += 2;
+			}
+		},
+		min: 0, max: 2 ** 15 - 1
+	},
+	varshort: {
+		read(s) {
+			let firstByte = s.buffer.readUInt8(s.scan++);
+			if ((firstByte & 0x80) == 0) {
+				//sign extend from 7nth bit (>> fills using 32th bit)
+				return (firstByte << (32 - 7)) >> (32 - 7);
+			}
+			let secondByte = s.buffer.readUInt8(s.scan++);
+			return ((((firstByte & 0x7f) << 8) | secondByte) << (32 - 15)) >> (32 - 15);
+		},
+		write(s, v) {
+			if (v < 0x40 && v >= -0x40) {
+				s.buffer.writeUInt8(v & 0x7f, s.scan);
+				s.scan += 1;
+			} else {
+				s.buffer.writeInt16BE(v | 0x8000, s.scan);
+				s.scan += 2;
+			}
+		},
+		min: -(2 ** 14), max: 2 ** 14 - 1
+	},
+	varuint: {
+		read(s) {
+			let firstWord = s.buffer.readUInt16BE(s.scan);
+			s.scan += 2;
+			if ((firstWord & 0x8000) == 0) {
+				return firstWord;
+			} else {
+				let secondWord = s.buffer.readUInt8(s.scan);
+				s.scan += 2;
+				return ((firstWord & 0x7fff) << 16) | secondWord;
+			}
+		},
+		write(s, v) {
+			if (v < 0x8000) {
+				s.buffer.writeUInt16BE(v, s.scan);
+				s.scan += 2;
+			} else {
+				s.buffer.writeUint32BE(v | 0x80000000, s.scan);
+				s.scan += 4;
+			}
+		},
+		min: 0, max: 2 ** 31 - 1
+	},
+	varint: {
+		read(s) {
+			let firstWord = s.buffer.readUInt16BE(s.scan);
+			s.scan += 2;
+			if ((firstWord & 0x8000) == 0) {
+				//sign extend from 7nth bit (>> fills using 32th bit)
+				return (firstWord << (32 - 15)) >> (32 - 15);
+			}
+			let secondWord = s.buffer.readUInt16BE(s.scan);
+			s.scan += 2;
+			return ((((firstWord & 0x7fff) << 16) | secondWord) << (32 - 31)) >> (32 - 31);
+		},
+		write(s, v) {
+			if (v < 0x4000 && v >= -0x4000) {
+				//reset bits 31-15
+				s.buffer.writeUInt16BE(v & 0x7fff, s.scan);
+				s.scan += 2;
+			} else {
+				s.buffer.writeInt16BE(v | 0x800000, s.scan);
+				s.scan += 4;
+			}
+		},
+		min: -(2 ** 30), max: 2 ** 30 - 1
 	}
 }
 
-const parserMap = {
+const parserPrimitives: Record<string, ChunkParser> = {
+	...Object.fromEntries(Object.entries(numberTypes).map<[string, ChunkParser]>(([k, e]) => [k, {
+		read: e.read,
+		write: (s, v) => {
+			if (typeof v != "number" || v > e.max || v < e.min) { throw new Error(); }
+			e.write(s, v);
+		},
+		getJsonSchema() {
+			return { type: "number", maximum: e.max, minimum: e.min };
+		},
+		getTypescriptType(indent) {
+			return "number";
+		}
+	}])),
+	bool: {
+		read(s) {
+			let r = s.buffer.readUInt8(s.scan++);
+			if (r != 0 && r != 1) { throw new Error("1 or 0 expected boolean value"); }
+			return r;
+		},
+		write(s, v) {
+			if (typeof v != "boolean") { throw new Error("boolean expected"); }
+			s.buffer.writeUInt8(+v, s.scan++);
+		},
+		getJsonSchema() {
+			return { type: "boolean" };
+		},
+		getTypescriptType(indent) {
+			return "boolean";
+		}
+	},
+	string: stringParser([]),
+	paddedstring: stringParser([0]),
+}
+
+const parserFunctions = {
 	ref: referenceValueParser,
 	accum: intAccumlatorParser,
 	opt: optParser,
@@ -1366,5 +1365,6 @@ const parserMap = {
 	struct: structParser,
 	tuple: tuppleParser,
 
-	...hardcodes
+	...hardcodes,
+	...parserPrimitives
 }

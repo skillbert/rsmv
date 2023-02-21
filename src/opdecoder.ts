@@ -13,7 +13,7 @@ const scratchbuf = Buffer.alloc(1024 * 1024);
 let bytesleftoverwarncount = 0;
 
 export class FileParser<T> {
-	parser: opcode_reader.ChunkParser<T>;
+	parser: opcode_reader.ChunkParser;
 	originalSource: string;
 
 	static fromJson<T>(jsonObject: string) {
@@ -58,7 +58,7 @@ export class FileParser<T> {
 			keepBufferJson,
 			clientVersion: source.getBuildNr()
 		};
-		return this.readInternal(state);
+		return this.readInternal(state) as T;
 	}
 
 	write(obj: T) {
