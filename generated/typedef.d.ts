@@ -3,4 +3,4 @@
 // run `npm run filetypes` to rebuild
 
 export type typedef = any;
-// Error: 'read' variables must either be a valid type-defining string, an array of type-defining strings / objects, or a valid type-defining object: undefined
+// Error: op name expected
