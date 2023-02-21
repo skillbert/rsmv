@@ -1,34 +1,26 @@
 {
-    "variable unsigned long":   { "primitive": "int", "unsigned": true, "bytes": 8, "readmode": "smart", "endianness": "big" },
-    "variable unsigned int":    { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "smart", "endianness": "big" },
-    "variable unsigned short":  { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "smart", "endianness": "big" },
-    "variable unsigned byte":   { "primitive": "int", "unsigned": true, "bytes": 1, "readmode": "smart", "endianness": "big" },
-    "unsigned variable long":   "variable unsigned long",
-    "unsigned variable int":    "variable unsigned int",
-    "unsigned variable short":  "variable unsigned short",
-    "unsigned variable byte":   "variable unsigned byte",
+    "variable unsigned long":   "varuint",
+    "variable unsigned int":    "varuint",
+    "variable unsigned short":  "varushort",
+    "unsigned variable long":   "varuint",
+    "unsigned variable int":    "varuint",
+    "unsigned variable short":  "varushort",
 
-    "variable long":    { "primitive": "int", "unsigned": false, "bytes": 8, "readmode": "smart", "endianness": "big" },
-    "variable int":     { "primitive": "int", "unsigned": false, "bytes": 4, "readmode": "smart", "endianness": "big" },
-    "variable short":   { "primitive": "int", "unsigned": false, "bytes": 2, "readmode": "smart", "endianness": "big" },
-    "variable byte":    { "primitive": "int", "unsigned": false, "bytes": 1, "readmode": "smart", "endianness": "big" },
+    "variable long":    "varint",
+    "variable int":     "varint",
+    "variable short":   "varshort",
 
-    "unsigned long":    { "primitive": "int", "unsigned": true, "bytes": 8, "readmode": "fixed", "endianness": "big" },
-    "unsigned int":     { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "fixed", "endianness": "big" },
-    "unsigned short":   { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "fixed", "endianness": "big" },
-    "unsigned byte":    { "primitive": "int", "unsigned": true, "bytes": 1, "readmode": "fixed", "endianness": "big" },
+    "unsigned long":    "uint",
+    "unsigned int":     "uint",
+    "unsigned short":   "ushort",
+    "unsigned byte":    "ubyte",
 
-    "long":             { "primitive": "int", "unsigned": false, "bytes": 8, "readmode": "fixed", "endianness": "big" },
-    "int":              { "primitive": "int", "unsigned": false, "bytes": 4, "readmode": "fixed", "endianness": "big" },
-    "short":            { "primitive": "int", "unsigned": false, "bytes": 2, "readmode": "fixed", "endianness": "big" },
-    "byte":             { "primitive": "int", "unsigned": false, "bytes": 1, "readmode": "fixed", "endianness": "big" },
+    "long":             "int",
 	
-    "ushort le":        { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "fixed", "endianness": "little" },
-    "uint le":          { "primitive": "int", "unsigned": true, "bytes": 4, "readmode": "fixed", "endianness": "little" },
+    "ushort le":        "ushort_le",
+    "uint le":          "uint_le",
 
-    "float":            { "primitive": "float", "bytes": 4, "endianness": "big" },
-
-	"playeritem":       { "primitive": "hardcode", "name": "playeritem" },
+	"playeritem":       ["playeritem"],
 
 	"playeritemedit":   ["struct",
 		["$type","ubyte"],
@@ -53,22 +45,19 @@
 	"varshort":         "variable short",
 	"varint":           "variable int",
 
-    "unsigned tribyte": { "primitive": "int", "unsigned": true, "bytes": 3, "readmode": "fixed", "endianness": "big" },
+    "unsigned tribyte": "utribyte",
 	
-    "tailed unsigned short":  { "primitive": "int", "unsigned": true, "bytes": 2, "readmode": "sumtail", "endianness": "big" },
+    "tailed unsigned short":  ["tailed varushort"],
 
-    "bool":             { "primitive": "bool" },
     "boolean":          "bool",
 
-    "true":             { "primitive": "value", "value": true },
-    "false":            { "primitive": "value", "value": false },
-    "0":                0,//obsolete backward compat
+    //obsolete backward compat
+    "true":             true,
+    "false":            false,
+    "0":                0,
     "1":                1,
     "-1":               -1,
-    "null":            { "primitive": "value", "value": null },
-
-    "string":           { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[] },
-    "paddedstring":     { "primitive": "string", "encoding": "latin1", "termination": null, "prebytes":[0] },
+    "null":             null,
 
 	"extrasmap":        [ "array","ubyte",["struct",
 		["$type","unsigned byte"],

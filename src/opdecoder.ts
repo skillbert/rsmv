@@ -13,7 +13,7 @@ const scratchbuf = Buffer.alloc(1024 * 1024);
 let bytesleftoverwarncount = 0;
 
 export class FileParser<T> {
-	parser: opcode_reader.ChunkParser<T>;
+	parser: opcode_reader.ChunkParser;
 	originalSource: string;
 
 	static fromJson<T>(jsonObject: string) {
@@ -21,9 +21,8 @@ export class FileParser<T> {
 		return new FileParser<T>(opcodeobj, jsonObject);
 	}
 
-	constructor(opcodeobj: opcode_reader.ComposedChunk, originalSource?: string) {
-		this.parser = opcode_reader.buildParser(opcodeobj, typedef as any);
-		this.parser.setReferenceParent?.(null);
+	constructor(opcodeobj: unknown, originalSource?: string) {
+		this.parser = opcode_reader.buildParser(null, opcodeobj, typedef as any);
 		this.originalSource = originalSource ?? JSON.stringify(opcodeobj, undefined, "\t");
 	}
 
@@ -59,7 +58,7 @@ export class FileParser<T> {
 			keepBufferJson,
 			clientVersion: source.getBuildNr()
 		};
-		return this.readInternal(state);
+		return this.readInternal(state) as T;
 	}
 
 	write(obj: T) {
@@ -105,6 +104,7 @@ function allParsers() {
 		rootCacheIndex: FileParser.fromJson<import("../generated/rootcacheindex").rootcacheindex>(require("./opcodes/rootcacheindex.jsonc")),
 		skeletalAnim: FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc")),
 		materials: FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/materials.jsonc")),
+		oldmaterials: FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/oldmaterials.jsonc")),
 		quickchatCategories: FileParser.fromJson<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc")),
 		quickchatLines: FileParser.fromJson<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc")),
 		environments: FileParser.fromJson<import("../generated/environments").environments>(require("./opcodes/environments.jsonc")),
