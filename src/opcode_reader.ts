@@ -1276,7 +1276,7 @@ const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s:
 			if ((firstWord & 0x8000) == 0) {
 				return firstWord;
 			} else {
-				let secondWord = s.buffer.readUInt8(s.scan);
+				let secondWord = s.buffer.readUInt16BE(s.scan);
 				s.scan += 2;
 				return ((firstWord & 0x7fff) << 16) | secondWord;
 			}
@@ -1310,7 +1310,7 @@ const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s:
 				s.buffer.writeUInt16BE(v & 0x7fff, s.scan);
 				s.scan += 2;
 			} else {
-				s.buffer.writeInt16BE(v | 0x800000, s.scan);
+				s.buffer.writeInt32BE(v | 0x800000, s.scan);
 				s.scan += 4;
 			}
 		},
