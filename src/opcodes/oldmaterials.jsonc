@@ -1,0 +1,27 @@
+["struct",
+    ["$idcount",0],
+    ["mats",["chunkedarray","ushort",
+        [["id",["accum","$idcount",1,"postadd"]]],
+        [["unk0","ubyte"]],//always 1
+        [["unk1","ubyte"]],//1 or 0
+        [["unk2","ubyte"]],//1 or 0
+        [["unk3","ubyte"]],//always 0
+        [["unk4","ushort"]],//might be [[ubyte,ubyte] probably normalized
+        [["unk5","ubyte"]],//0-7
+        [["unk6","ubyte"]],//0-3
+        [["unk7","ushort"]],//lots <0x100, but also some full range
+        [["unk8","ubyte"]],//mostly 0, some >0xf0
+        [["unk9","ubyte"]],//mostly 0, some >0xf0, some <0x20
+        [["unk10","ubyte"]],//1 or 0
+        [["unk11","ubyte"]],//1 or 0
+        [["unk12","ubyte"]],//mostly 2, some 0
+        [["unk13","ubyte"]],//1 or 0
+        [["unk14","ubyte"]],//1 or 0
+        [["unk15","ubyte"]],//1 or 0
+        [["unk16","ubyte"]],//always 0
+        [["unk17","ubyte"]],//always 0
+        [["unk18","ubyte"]],//mostly 0, some 20xx, 30xx
+        [["unk19","ushort"]],//always 0
+        [["unk20","ubyte"]]//0-2
+    ]]
+]

@@ -431,6 +431,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	sequences: { parser: parse.sequences, lookup: chunkedIndex(cacheMajors.sequences) },
 	spotanims: { parser: parse.spotAnims, lookup: chunkedIndex(cacheMajors.spotanims) },
 	materials: { parser: parse.materials, lookup: chunkedIndex(cacheMajors.materials) },
+	oldmaterials: { parser: parse.oldmaterials, lookup: singleMinorIndex(cacheMajors.materials, 0) },
 	quickchatcats: { parser: parse.quickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
 	quickchatlines: { parser: parse.quickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
 
