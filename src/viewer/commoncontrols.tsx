@@ -157,10 +157,41 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 }
 
 export function LabeledInput(p: { label: string, children: React.ReactNode }) {
-	return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-		<div>{p.label}</div>
-		{p.children}
-	</div>
+	return (
+		<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+			<div>{p.label}</div>
+			{p.children}
+		</div>
+	);
+}
+
+export function CopyButton(p: ({ text: string } | { getText: () => string }) & { onCopy?: () => void }) {
+	let [didcopy, setdidcopy] = React.useState(false);
+
+	let copy = async () => {
+		await navigator.clipboard.writeText("text" in p ? p.text : p.getText());
+		setdidcopy(true);
+		setTimeout(() => setdidcopy(false), 2000);
+	}
+
+	return (
+		<input type="button" className="sub-btn" onClick={copy} value={didcopy ? "copied!" : "copy"} />
+	);
+}
+
+export function PasteButton(p: { onPaste: (str: string) => void }) {
+	let [didcopy, setdidcopy] = React.useState(false);
+
+	let paste = async () => {
+		let v = await navigator.clipboard.readText();
+		setdidcopy(true);
+		setTimeout(() => setdidcopy(false), 2000);
+		p.onPaste(v);
+	}
+
+	return (
+		<input type="button" className="sub-btn" onClick={paste} value={didcopy ? "pasted!" : "paste"} />
+	);
 }
 
 export class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{

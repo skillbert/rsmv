@@ -47,6 +47,7 @@
 		"electron-rebuild": "^3.2.7",
 		"file-loader": "^6.2.0",
 		"idb-keyval": "^6.1.0",
+		"json-schema": "^0.4.0",
 		"json-stringify-pretty-compact": "^3.0.0",
 		"lzma-native": "^8.0.1",
 		"process": "^0.11.10",

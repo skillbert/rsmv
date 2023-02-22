@@ -19,13 +19,14 @@ import { diffCaches, FileEdit } from "../scripts/cachediff";
 import { selectEntity, showModal } from "./jsonsearch";
 import { findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
 import { items } from "../../generated/items";
 import { itemToModel, locToModel, materialToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
 import { FileParser } from '../opdecoder';
+import { assertSchema, customModelDefSchema, parseJsonOrDefault, scenarioStateSchema } from '../jsonschemas';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -195,17 +196,16 @@ function RecolorList(p: { cols: NumPair[], onChange: (v: NumPair[]) => void, sho
 	}
 	return (
 		<div className="mv-overridegroup">
-			<div style={{ gridColumn: "1/-1" }}>Color overrides</div>
+			<div style={{ gridColumn: "1/-1", textAlign: "center" }}>Color overrides</div>
 			{p.cols.flatMap((col, i) => {
 				return [
 					<div key={`${i}a`}>{col[0]}</div>,
 					<InputCommitted key={`${i}b`} type="color" value={hsl2hex(col[1])} onChange={e => editcolor(i, hex2hsl(e.currentTarget.value))} />,
-					<input type="button" className="sub-btn" value="x" onClick={e => editcolor(i, null)} />
+					<input key={`${i}c`} type="button" className="sub-btn" value="x" onClick={e => editcolor(i, null)} />
 				]
 			})}
 			<input type="number" value={addid} onChange={e => setAddid(+e.currentTarget.value)} />
 			<input type="button" value="add color" className="sub-btn" onClick={e => p.onChange(p.cols.concat([[addid, 0]]))} />
-			<div />
 		</div>
 	)
 }
@@ -223,7 +223,7 @@ function RematerialList(p: { mats: NumPair[], onChange: (v: NumPair[]) => void, 
 	}
 	return (
 		<div className="mv-overridegroup">
-			<div style={{ gridColumn: "1/-1" }}>Material overrides</div>
+			<div style={{ gridColumn: "1/-1", textAlign: "center" }}>Material overrides</div>
 			{p.mats.flatMap((col, i) => {
 				return [
 					<div key={`${i}a`}>{col[0]}</div>,
@@ -233,7 +233,6 @@ function RematerialList(p: { mats: NumPair[], onChange: (v: NumPair[]) => void, 
 			})}
 			<input type="number" value={addid} onChange={e => setAddid(+e.currentTarget.value)} />
 			<input type="button" value="add material" className="sub-btn" onClick={e => p.onChange(p.mats.concat([[addid, 0]]))} />
-			<div />
 		</div>
 	)
 }
@@ -257,13 +256,28 @@ function ScenarionComponentModelSettings(p: { index: number, comp: SimpleModelDe
 				<input type="button" className="sub-btn" value="x" onClick={e => p.onChange(p.index, null)} style={{ float: "right" }} />
 				<input type="button" className="sub-btn" value={showopts ? "collapse" : `overrides (${totaloverrides})`} onClick={e => setShowopts(!showopts)} style={{ float: "right" }} />
 			</div>
-			{showopts && <RecolorList cols={p.comp.mods.replaceColors ?? []} onChange={editcolor} showAdd={showopts} />}
-			{showopts && <RematerialList mats={p.comp.mods.replaceMaterials ?? []} onChange={editmats} showAdd={showopts} />}
+			{showopts && (
+				<div className="mv-overridegroup__border">
+					<RecolorList cols={p.comp.mods.replaceColors ?? []} onChange={editcolor} showAdd={showopts} />
+					<RematerialList mats={p.comp.mods.replaceMaterials ?? []} onChange={editmats} showAdd={showopts} />
+				</div>
+			)}
 		</React.Fragment>
 	);
 }
 
 function ScenarionComponentSettings(p: { comp: ScenarioComponent<"custom">, onChange: (v: ScenarioComponent | null) => void, showOpts: boolean }) {
+	let [addid, setAddid] = React.useState(0);
+
+	let addmodel = () => {
+		let m = p.comp.simpleModel.concat({ modelid: addid, mods: {} });
+		p.onChange({
+			...p.comp,
+			modelkey: customModelJson(m, p.comp.globalMods),
+			simpleModel: m
+		});
+	}
+
 	let change = (i: number, def: SimpleModelDef[number] | null) => {
 		let m = p.comp.simpleModel.slice();
 		if (def) { m[i] = def; }
@@ -281,7 +295,7 @@ function ScenarionComponentSettings(p: { comp: ScenarioComponent<"custom">, onCh
 			...p.comp,
 			modelkey: customModelJson(p.comp.simpleModel, mods),
 			globalMods: mods
-		})
+		});
 	}
 	let changeMats = (v: NumPair[]) => {
 		let mods = { ...p.comp.globalMods, replaceMaterials: v };
@@ -289,14 +303,22 @@ function ScenarionComponentSettings(p: { comp: ScenarioComponent<"custom">, onCh
 			...p.comp,
 			modelkey: customModelJson(p.comp.simpleModel, mods),
 			globalMods: mods
-		})
+		});
 	}
 
 	return (
 		<React.Fragment>
-			{p.showOpts && <RecolorList cols={p.comp.globalMods.replaceColors} onChange={changeColors} showAdd={true} />}
-			{p.showOpts && <RematerialList mats={p.comp.globalMods.replaceMaterials} onChange={changeMats} showAdd={true} />}
 			{p.comp.simpleModel.map((q, i) => <ScenarionComponentModelSettings index={i} key={i} comp={q} onChange={change} />)}
+			<div className="mv-overridegroup">
+				<input type="number" value={addid} onChange={e => setAddid(+e.currentTarget.value)} />
+				<input type="button" value="add model" className="sub-btn" onClick={addmodel} />
+			</div>
+			{p.showOpts && (
+				<div className="mv-overridegroup__border">
+					<RecolorList cols={p.comp.globalMods.replaceColors ?? []} onChange={changeColors} showAdd={true} />
+					<RematerialList mats={p.comp.globalMods.replaceMaterials ?? []} onChange={changeMats} showAdd={true} />
+				</div>
+			)}
 		</React.Fragment>
 	);
 }
@@ -305,7 +327,7 @@ function ScenarionComponentSettings(p: { comp: ScenarioComponent<"custom">, onCh
 // 	let box = showModal({ title: "Edit Component" }, <div>{<ScenarionComponentSettings comp={comp} onChange={onChange} />}</div>);
 // }
 
-function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
+function ScenarioComponentControl(p: { ctx: UIContextReady | null, comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
 	let [showOpts, setShowOpts] = React.useState(false);
 	let edit = () => {
 		if (p.comp.type == "simple") {
@@ -313,12 +335,23 @@ function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: Sc
 			setShowOpts(true);
 		}
 	}
+	let revert = async () => {
+		if (p.comp.type != "custom" || !p.ctx) { return; }
+		let def = await modelInitToModel(p.ctx.sceneCache, p.comp.basecomp);
+		p.onChange({
+			type: "simple",
+			modelkey: p.comp.basecomp,
+			name: p.comp.name.replace(/\*$/, ""),
+			simpleModel: def.models
+		});
+	}
 
 	return (
-		<div style={{ display: "grid", gridTemplateColumns: "1fr min-content min-content", alignItems: "baseline" }}>
+		<div style={{ display: "grid", gridTemplateColumns: "1fr min-content min-content min-content", alignItems: "baseline" }}>
 			<div style={{ maxWidth: "100%", overflow: "hidden" }}>{p.comp.name}</div>
-			{p.comp.type == "simple" && <input type="button" className="sub-btn" value="edit" onClick={edit} />}
 			{p.comp.type == "custom" && <input type="button" className="sub-btn" value={showOpts ? "-" : "+"} onClick={e => setShowOpts(!showOpts)} />}
+			{p.comp.type == "simple" && <input type="button" className="sub-btn" value="edit" onClick={edit} />}
+			{p.comp.type == "custom" && <input type="button" className="sub-btn" value="revert" onClick={revert} />}
 			<input type="button" className="sub-btn" value="x" onClick={e => p.onChange(null)} />
 			{p.comp.type == "custom" && showOpts && (
 				<div style={{ gridColumn: "1/-1" }}>
@@ -377,6 +410,9 @@ type ScenarioAction = {
 type ScenarioState = {
 	components: Record<number, ScenarioComponent>,
 	actions: ScenarioAction[],
+}
+
+type ScenarioInterfaceState = ScenarioState & {
 	addActionTarget: number,
 	addModelType: ModelInitTypes | "map",
 	addActionType: ScenarioAction["type"]
@@ -387,19 +423,9 @@ function customModelJson(models: SimpleModelDef, globalmods: ModelModifications)
 }
 
 function modeldefJsonToModel(cache: any, json: string): SimpleModelInfo<null, string> {
-	let d = JSON.parse(json) as unknown;
-	if (typeof d != "object" || !d) { throw new Error("custom should be an object"); }
+	let d: unknown = JSON.parse(json);
+	assertSchema(d, customModelDefSchema);
 	let models: SimpleModelDef = [];
-	if (!("models" in d) || !Array.isArray(d.models)) { throw new Error("custom.models should be an array"); }
-	for (let def of d.models as unknown[]) {
-		if (typeof def != "object" || !def) { throw new Error(); }
-		if (!("modelid" in def)) { throw new Error(); }
-		if (typeof def.modelid != "number") { throw new Error(); }
-		models.push({
-			modelid: def.modelid,
-			mods: {}
-		})
-	}
 
 	return {
 		id: json,
@@ -424,21 +450,38 @@ async function modelInitToModel(cache: ThreejsSceneCache, init: string): Promise
 	else { throw new Error("unknown modelinit type"); }
 }
 
-export class SceneScenario extends React.Component<LookupModeProps, ScenarioState>{
+export class SceneScenario extends React.Component<LookupModeProps, ScenarioInterfaceState>{
 	models = new Map<ScenarioComponent, RSModel | RSMapChunk>();
 	idcounter = 0;
 	mapoffset: { x: number, z: number } | null = null;
 	mapgrid = new CombinedTileGrid([]);
+	hadctx = false;
 
-	constructor(p) {
+	constructor(p: LookupModeProps) {
 		super(p);
 		this.state = {
-			components: {},
 			actions: [],
+			components: {},
 			addModelType: "model",
 			addActionType: "anim",
 			addActionTarget: -1
 		};
+		this.loadFromJson(p.initialId, true);
+	}
+
+	loadFromJson(str: unknown, isinit = false) {
+		let newstate = parseJsonOrDefault<ScenarioState>(str, scenarioStateSchema, () => {
+			if (!isinit) { throw new Error("invalid state json"); }
+			return { actions: [], components: {} };
+		});
+		let keys = Object.keys(newstate.components);
+		this.idcounter = (keys.length == 0 ? 0 : Math.max.apply(null, keys) + 1);
+		this.hadctx = false;
+		if (isinit) {
+			Object.assign(this.state, newstate);
+		} else {
+			this.setSceneState(newstate.components, newstate.actions);
+		}
 	}
 
 	componentWillUnmount() {
@@ -499,19 +542,38 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 		this.editAction(this.state.actions.length, action);
 	}
 
-	editComp(compid: number, newcomp: ScenarioComponent | null) {
-		if (!this.props.ctx) { return; }
-		let components = { ...this.state.components };
-		let oldcomp = this.state.components[compid];
-		let model = this.models.get(oldcomp);
-		if (!newcomp || oldcomp?.modelkey != newcomp.modelkey) {
-			if (model) {
-				model.cleanup();
-				model = undefined;
+	@boundMethod
+	getSceneJson(newstate: ScenarioState = this.state) {
+		return JSON.stringify({ components: newstate.components, actions: newstate.actions });
+	}
+
+	setSceneState(components: Record<number, ScenarioComponent> | null, actions: ScenarioAction[] | null) {
+		this.setState(prev => {
+			let scenestate: ScenarioState = {
+				components: components ?? prev.components,
+				actions: actions ?? prev.actions
+			};
+			//double json is correct in this case
+			localStorage.rsmv_lastsearch = JSON.stringify(this.getSceneJson(scenestate));
+			return scenestate;
+		});
+	}
+
+	ensureComp(uictx: UIContextReady, newcomp: ScenarioComponent | null, oldcomp: ScenarioComponent | null) {
+		let newmodel: RSModel | RSMapChunk | undefined = undefined;
+		if (oldcomp) {
+			let oldmodel = this.models.get(oldcomp);
+			if (newcomp && oldcomp.modelkey == newcomp.modelkey) {
+				newmodel = oldmodel;
+			} else {
+				this.models.delete(oldcomp);
+				oldmodel?.cleanup();
 			}
-			if (newcomp) {
+		}
+		if (newcomp) {
+			if (!newmodel) {
 				if (newcomp.type == "simple") {
-					model = new RSModel(newcomp.simpleModel, this.props.ctx.sceneCache);
+					newmodel = new RSModel(newcomp.simpleModel, uictx.sceneCache);
 				} else if (newcomp.type == "custom") {
 					let mappedmodel = newcomp.simpleModel.map<SimpleModelDef[number]>(model => ({
 						...model,
@@ -520,10 +582,10 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 							replaceMaterials: (model.mods.replaceMaterials ?? []).concat(newcomp.globalMods.replaceMaterials)
 						}
 					}))
-					model = new RSModel(mappedmodel, this.props.ctx.sceneCache);
+					newmodel = new RSModel(mappedmodel, uictx.sceneCache);
 				} else if (newcomp.type == "map") {
-					model = new RSMapChunk(newcomp.mapRect, this.props.ctx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
-					model.on("loaded", this.updateGrids);
+					newmodel = new RSMapChunk(newcomp.mapRect, uictx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
+					newmodel.on("loaded", this.updateGrids);
 					let hasmap = Object.values(this.state.components).some(q => q.type == "map");
 					if (!hasmap || !this.mapoffset) {
 						this.mapoffset = {
@@ -531,24 +593,28 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 							z: (newcomp.mapRect.z + newcomp.mapRect.zsize / 2) * squareSize
 						};
 					}
-					model.rootnode.position.set(-this.mapoffset.x * tiledimensions, 0, -this.mapoffset.z * tiledimensions);
+					newmodel.rootnode.position.set(-this.mapoffset.x * tiledimensions, 0, -this.mapoffset.z * tiledimensions);
 				} else {
 					throw new Error("invalid model init");
 				}
-				model.addToScene(this.props.ctx.renderer);
+				newmodel.addToScene(uictx.renderer);
 			}
+			this.models.set(newcomp, newmodel);
 		}
-		this.models.delete(oldcomp);
-		if (model && newcomp) {
-			this.models.set(newcomp, model);
-		}
+	}
+
+	editComp(compid: number, newcomp: ScenarioComponent | null) {
+		if (!this.props.ctx) { return; }
+		let components = { ...this.state.components };
+		let oldcomp = this.state.components[compid];
+		this.ensureComp(this.props.ctx, newcomp, oldcomp);
 		if (newcomp) {
 			components[compid] = newcomp;
 		} else {
 			delete components[compid];
-			this.setState({ actions: this.state.actions.filter(q => q.target != compid) });
+			this.setSceneState(null, this.state.actions.filter(q => q.target != compid));
 		}
-		this.setState({ components });
+		this.setSceneState(components, null);
 		if (!components[this.state.addActionTarget]) {
 			let ids = Object.keys(components)
 			this.setState({ addActionTarget: (ids.length == 0 ? 0 : +ids[ids.length - 1]) });
@@ -568,7 +634,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 
 		if (newaction) { actions[index] = newaction; }
 		else { actions.splice(index, 1); }
-		this.setState({ actions });
+		this.setSceneState(null, actions);
 		this.restartAnims();
 	}
 
@@ -595,6 +661,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 			});
 		}
 		this.mapgrid = new CombinedTileGrid(grids);
+		this.restartAnims();
 	}
 
 	@boundMethod
@@ -649,12 +716,21 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 	}
 
 	render() {
+		if (!this.hadctx && this.props.ctx) {
+			this.hadctx = true;
+			Object.entries(this.state.components).forEach(([key, comp]) => this.ensureComp(this.props.ctx!, comp, this.state.components[key]));
+			this.restartAnims();
+		}
 		const hasmodels = Object.keys(this.state.components).length != 0;
 		const hasAdvLookup = this.state.addModelType == "item" || this.state.addModelType == "loc" || this.state.addModelType == "npc";
 		return (
 			<React.Fragment>
 				<div className="mv-sidebar-scroll">
 					<h2>Models</h2>
+					<div>
+						<CopyButton getText={this.getSceneJson} />
+						<PasteButton onPaste={v => this.loadFromJson(v, false)} />
+					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
 						<select value={this.state.addModelType} onChange={e => this.setState({ addModelType: e.currentTarget.value as any })}>
 							<option value="model">model</option>
@@ -675,7 +751,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioStat
 					{hasmodels && (
 						<div className="mv-inset">
 							{Object.entries(this.state.components).map(([id, comp]) => {
-								return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
+								return <ScenarioComponentControl key={id} ctx={this.props.ctx} comp={comp} onChange={e => this.editComp(+id, e)} />;
 							})}
 						</div>
 					)}
