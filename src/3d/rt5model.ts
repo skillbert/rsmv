@@ -158,37 +158,44 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     }
 
     let matusecount = new Map<number, number>();
-    for (let matid of modeldata.material) {
-        matusecount.set(matid, (matusecount.get(matid) ?? 0) + 1);
-    }
     let matmesh = new Map<number, WorkingSubmesh>();
-    for (let matid of modeldata.material) {
-        let mesh = matmesh.get(matid);
-        if (!mesh) {
-            let facecount = matusecount.get(matid)!;
-            let finalvertcount = facecount * 3;
-            let colstride = (modeldata.colors ? modeldata.alpha ? 4 : 3 : 0);
-            mesh = {
-                pos: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
-                normals: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
-                color: new BufferAttribute(new Uint8Array(finalvertcount * colstride), colstride, true),
-                texuvs: new BufferAttribute(new Float32Array(finalvertcount * 2), 2),
-                index: new Uint16Array(facecount * 3),
-                originalface: new Uint16Array(facecount),
-                currentface: 0,
-                matid: ((matid & 0xff) << 8 | (matid & 0xff00) >> 8) - 1//TODO fix endianness elsewhere
-            };
-            matmesh.set(matid, mesh);
+    if (modeldata.material) {
+        for (let matid of modeldata.material) {
+            matusecount.set(matid, (matusecount.get(matid) ?? 0) + 1);
         }
+    } else {
+        matusecount.set(0, modeldata.facecount);
+    }
+    for (let [matid, facecount] of matusecount) {
+        let finalvertcount = facecount * 3;
+        let colstride = (modeldata.colors ? modeldata.alpha ? 4 : 3 : 0);
+        let mesh = {
+            pos: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
+            normals: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
+            color: new BufferAttribute(new Uint8Array(finalvertcount * colstride), colstride, true),
+            texuvs: new BufferAttribute(new Float32Array(finalvertcount * 2), 2),
+            index: new Uint16Array(facecount * 3),
+            originalface: new Uint16Array(facecount),
+            currentface: 0,
+            matid: ((matid & 0xff) << 8 | (matid & 0xff00) >> 8) - 1//TODO fix endianness elsewhere
+        };
+        matmesh.set(matid, mesh);
     }
 
     let uvids: number[] = [];
     let uvstream = new Stream(modeldata.uvs);
     while (!uvstream.eof()) {
         uvids.push(uvstream.readUShortSmart());
-        if (uvids[uvids.length - 1] < 0) { debugger; }
     }
     if (!uvstream.eof()) { throw new Error("stream not used to completion"); }
+    let vertexuvids = new Uint16Array(modeldata.vertcount);
+    if (modeldata.texuvs) {
+        let vertexuvcount = 0;
+        for (let i = 0; i < modeldata.texuvs.vertex.length; i++) {
+            vertexuvids[i] = vertexuvcount;
+            vertexuvcount += modeldata.texuvs.vertex[i];
+        }
+    }
 
     let vertexindex = new Uint16Array(modeldata.facecount * 3);
 
@@ -226,27 +233,29 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     if (!stream.eof()) { throw new Error("stream not used to completion"); }
 
     //calculate centers of material maps
-    let posa = new Vector3();
-    let posb = new Vector3();
-    let posc = new Vector3();
-    let texindex = 0;
-    for (let i = 0; i < modeldata.facecount; i++) {
-        let matarg = modeldata.material[i];
-        if (matarg == 0) { continue; }
-        let mapid = uvids[texindex++];
-        if (mapid != 0 && mapid != 0x7fff) {
-            let mapping = textureMappings[mapid - 1];
-            srcindex0 = vertexindex[i * 3 + 0];
-            srcindex1 = vertexindex[i * 3 + 1];
-            srcindex2 = vertexindex[i * 3 + 2];
-            posa.set(decodedx[srcindex0], decodedy[srcindex0], decodedz[srcindex0]);
-            posb.set(decodedx[srcindex1], decodedy[srcindex1], decodedz[srcindex1]);
-            posc.set(decodedx[srcindex2], decodedy[srcindex2], decodedz[srcindex2]);
+    if (modeldata.material) {
+        let posa = new Vector3();
+        let posb = new Vector3();
+        let posc = new Vector3();
+        let texindex = 0;
+        for (let i = 0; i < modeldata.facecount; i++) {
+            let matarg = modeldata.material[i];
+            if (matarg == 0) { continue; }//TODO is this now obsolete?
+            let mapid = uvids[texindex++];
+            if (mapid != 0 && mapid != 0x7fff) {
+                let mapping = textureMappings[mapid - 1];
+                srcindex0 = vertexindex[i * 3 + 0];
+                srcindex1 = vertexindex[i * 3 + 1];
+                srcindex2 = vertexindex[i * 3 + 2];
+                posa.set(decodedx[srcindex0], decodedy[srcindex0], decodedz[srcindex0]);
+                posb.set(decodedx[srcindex1], decodedy[srcindex1], decodedz[srcindex1]);
+                posc.set(decodedx[srcindex2], decodedy[srcindex2], decodedz[srcindex2]);
 
-            mapping.vertexsum.add(posa).add(posb).add(posc);
-            mapping.vertexmin.min(posa).min(posb).min(posc);
-            mapping.vertexmax.max(posa).max(posb).max(posc);
-            mapping.vertexcount += 3;
+                mapping.vertexsum.add(posa).add(posb).add(posc);
+                mapping.vertexmin.min(posa).min(posb).min(posc);
+                mapping.vertexmax.max(posa).max(posb).max(posc);
+                mapping.vertexcount += 3;
+            }
         }
     }
 
@@ -360,7 +369,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         vtmp0.copy(v1).sub(v0);
         vnormal.copy(v2).sub(v0).cross(vtmp0).normalize();
 
-        let matargument = modeldata.material[i];
+        let matargument = (modeldata.material ? modeldata.material[i] : 0);
         let submesh = matmesh.get(matargument)!;
         let dstfaceindex = submesh.currentface++;
         let vertbase = dstfaceindex * 3;
@@ -400,9 +409,13 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             //calculate the center of each mapping
             let mapid = uvids[texmapindex++];
             if (mapid == 0) {
+                debugger;
                 //TODO just default [0,1] uvs?
             } else if (mapid == 0x7fff) {
-                //TODO direct uv value chunk
+                //TODO still missing something
+                uvattr.setXY(vertbase + 0, modeldata.texuvs!.udata[vertexuvids[srcindex0]] / 4096, modeldata.texuvs!.vdata[vertexuvids[srcindex0]] / 4096);
+                uvattr.setXY(vertbase + 1, modeldata.texuvs!.udata[vertexuvids[srcindex1]] / 4096, modeldata.texuvs!.vdata[vertexuvids[srcindex1]] / 4096);
+                uvattr.setXY(vertbase + 2, modeldata.texuvs!.udata[vertexuvids[srcindex2]] / 4096, modeldata.texuvs!.vdata[vertexuvids[srcindex2]] / 4096);
             } else {
                 let mapping = textureMappings[mapid - 1];
                 v0.applyMatrix4(mapping.texspace);

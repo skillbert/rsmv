@@ -8,13 +8,12 @@
 	["ysize",["footer",2,"ushort"]],
 	["xsize",["footer",2,"ushort"]],
 	["flag1",["footer",1,"bool"]],
-	["hascolors",["footer",1,"bool"]],
+	["hasmaterials",["footer",1,"bool"]],
 	["flag3",["footer",1,"bool"]],
 	["hasalpha",["footer",1,"bool"]],
-	["bonebyte",["footer",1,"ubyte"]],
+	["priority",["footer",1,"ubyte"]],
 	["extraflags",["footer",1,"ubyte"]],
-	["texmapcount",["footer",1,"ubyte"]],
-	["byte4",["match","buildnr",{">=764":["footer",1,"ubyte"],">=0":0}]],
+	["texmapcount",["match","buildnr",{">=764":["footer",2,"ushort"],">=0":["footer",1,"ubyte"]}]],
 	["facecount",["footer",2,"ushort"]],
 	["vertcount",["footer",2,"ushort"]],
 
@@ -62,14 +61,14 @@
 	["vertflags",["buffer",["ref","vertcount"],"ubyte"]],//0-7 flags, whether xyz are different from previous vertex
 	["face2",["opt",["extraflags",0,"bitflag"],["buffer",["ref","facecount"]]]],
 	["tritype",["buffer",["ref","facecount"],"ubyte"]],//1-4 are types, flag 8 grabs a uv pair from the texuvs struct
-	["boneids",["opt",["bonebyte",255],["buffer",["ref","facecount"],"ubyte"]]],
+	["facepriority",["opt",["priority",255],["buffer",["ref","facecount"],"ubyte"]]],
 	["unk1",["opt",["flag3",1],["buffer",["match","buildnr",{">=764":["ref","colanimcount"],">=0":["ref","facecount"]}]]]],
 	["tridata",["opt",["flag1",1],["buffer",["ref","vertdatasize"]]]],
 	["alpha",["opt",["hasalpha",1],["buffer",["ref","facecount"]]]],
 	["indexbuffer",["buffer",["ref","indexbufsize"]]],
-	["material",["buffer",["ref","facecount"],"ushort"]],
+	["material",["opt",["hasmaterials",1],["buffer",["ref","facecount"],"ushort"]]],
 	["uvs",["buffer",["ref","uvcount"]]],
-	["colors",["opt",["hascolors",1],["buffer",["ref","facecount"],"ushort"]]],
+	["colors",["buffer",["ref","facecount"],"ushort"]],
 	["posx",["buffer",["ref","xsize"]]],
 	["posy",["buffer",["ref","ysize"]]],
 	["posz",["buffer",["ref","zsize"]]],
@@ -107,14 +106,9 @@
 		["indexsize",["footer",2,"ushort"]],
 		["datasize",["footer",2,"ushort"]],
 		["coordcount",["footer",2,"ushort"]],
-		["skipped",["buffer",["ref","indexsize"]]],
-		["offsets",["buffer",["ref","vertcount"]]],
-		// ["vertexu",["buffer",["ref","vertcount"],"short"]],
-		// ["vertexv",["buffer",["ref","vertcount"],"short"]]
-		["uvdata",["buffer",["bytesleft"]]]
+		["index",["buffer",["ref","indexsize"],"ubyte"]],
+		["vertex",["buffer",["ref","vertcount"],"ubyte"]],
+		["udata",["array",["ref","coordcount"],"short"]],
+		["vdata",["array",["ref","coordcount"],"short"]]
 	]]]
-
-	//TODO no clue what these are about, their length doesn't make any sense at all
-	// ["weirdshit1",["opt",["extraflags",2,"bitflag"],["buffer",["bytesleft"],"hex"]]],
-	// ["weirdshit2",["opt",["extraflags",7,"bitflag"],["buffer",["bytesleft"],"hex"]]]
 ]
