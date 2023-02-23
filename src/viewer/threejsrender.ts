@@ -12,7 +12,9 @@ import { VR360Render } from "./vr360camera";
 
 //TODO remove
 globalThis.THREE = THREE;
-
+//console hooks
+globalThis.logclicks = false;
+globalThis.speed = 100;
 
 //nodejs compatiable animframe calls
 //should in theory be able to get rid of these completely by enforcing autoframes=false

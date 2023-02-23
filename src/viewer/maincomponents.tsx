@@ -16,6 +16,7 @@ import { delay, drawTexture, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
 import { CacheDownloader } from "../cache/downloader";
 import { parse } from "../opdecoder";
+import * as path from "path";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -202,7 +203,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	@boundMethod
 	async clickOpenNative() {
 		if (!hasElectrion) { return; }
-		let dir = await electron.ipcRenderer.invoke("openfolder", "%programdata%/jagex/runescape/");
+		let dir = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.ProgramData!, "jagex/runescape"));
 		if (!dir.canceled) {
 			this.props.onOpen({ type: "sqlitenodejs", location: dir.filePaths[0] });
 		}
