@@ -1336,7 +1336,7 @@ const parserPrimitives: Record<string, ChunkParser> = {
 		read(s) {
 			let r = s.buffer.readUInt8(s.scan++);
 			if (r != 0 && r != 1) { throw new Error("1 or 0 expected boolean value"); }
-			return r;
+			return r != 0;
 		},
 		write(s, v) {
 			if (typeof v != "boolean") { throw new Error("boolean expected"); }
