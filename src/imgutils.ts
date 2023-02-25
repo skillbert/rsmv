@@ -35,10 +35,47 @@ export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "web
 	}
 }
 
-export async function fileToImageData(file: Uint8Array) {
-	if (typeof HTMLCanvasElement != "undefined") {
+
+let warnedstripalpha = false;
+declare global {
+	const ImageDecoder: any;
+	interface ImageDecoder { }
+}
+export async function fileToImageData(file: Uint8Array, mimetype: "image/png" | "image/jpg", stripAlpha: boolean) {
+	if (typeof ImageDecoder != "undefined") {
+		let decoder = new ImageDecoder({ data: file, type: mimetype, premultiplyAlpha: (stripAlpha ? "none" : "default"), colorSpaceConversion: "none" });
+		let frame = await decoder.decode();
+		let pixels = new Uint8Array(frame.image.allocationSize());
+		frame.image.copyTo(pixels);
+		let pixelcount = frame.image.visibleRect.width * frame.image.visibleRect.height;
+		if (frame.image.format == "BGRX" || frame.image.format == "RGBX") {
+			stripAlpha = true;
+		}
+		if (frame.image.format == "BGRA" || frame.image.format == "BGRX") {
+			for (let plane = 0; plane < 4; plane++) {
+				for (let i = 0; i < pixelcount; i++) {
+					pixels[i * 4 + 0] = pixels[i * 4 + 2];
+					pixels[i * 4 + 1] = pixels[i * 4 + 1];
+					pixels[i * 4 + 2] = pixels[i * 4 + 0];
+					pixels[i * 4 + 3] = (stripAlpha ? 255 : pixels[i * 4 + 0]);
+				}
+			}
+		} else if (frame.image.format == "RGBA" || frame.image.format == "RGBX") {
+			if (stripAlpha) {
+				for (let i = 0; i < pixelcount; i++) {
+					pixels[i * 4 + 3] = 255;
+				}
+			}
+		} else {
+			throw new Error("unexpected image format");
+		}
+		return makeImageData(pixels, frame.image.visibleRect.width, frame.image.visibleRect.height);
+	} else if (typeof HTMLCanvasElement != "undefined") {
+		if (stripAlpha && !warnedstripalpha) {
+			console.warn("can not strip alpha in browser context that does not support ImageDecoder");
+		}
 		let img = new Image();
-		let blob = new Blob([file], { type: "image/png" });//mime doesn't actually matter as long as it's img/*
+		let blob = new Blob([file], { type: mimetype });
 		let url = URL.createObjectURL(blob);
 		img.src = url;
 		await img.decode();
@@ -52,6 +89,7 @@ export async function fileToImageData(file: Uint8Array) {
 	} else {
 		const sharp = require("sharp") as typeof import("sharp");
 		let img = sharp(file);
+		if (stripAlpha) { img.removeAlpha(); }
 		let decoded = await img.raw().toBuffer({ resolveWithObject: true });
 		let pixbuf = new Uint8ClampedArray(decoded.data.buffer, decoded.data.byteOffset, decoded.data.byteLength);
 		return makeImageData(pixbuf, decoded.info.width, decoded.info.height);

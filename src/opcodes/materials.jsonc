@@ -6,8 +6,11 @@
 
 		//always 0000 after 2015
 		["opt0","ubyte"],
-		["opt0data",["opt",["opt0",16],["tuple","ubyte","ubyte","ubyte"]]],
-		["arr",["nullarray","ubyte","ushort"]],
+		["opt0data",["opt",["opt0",16],["tuple","ubyte","ushort"]]],
+		["arr",["nullarray","ubyte",["struct",
+			["op",["ref","$opcode"]],
+			["value","ushort"]
+		]]],
 
 		["textureflags","ubyte"],//always 1,3,9,16
 		["diffuse",["opt",["textureflags",17,"bitor"],["match","buildnr",{">=887":"uint",">=0":0}]]],

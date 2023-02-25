@@ -35,6 +35,7 @@ export function validOpenrs2Caches() {
 				423,//osrs cache wrongly labeled as rs3
 				623,//seems to have different builds in it
 				693,//wrong timestamp?
+				621,619,618,620,617,//wrong timestamp/osrs?
 				840,//multiple builds
 				734, 736, 733,//don't have items index
 				20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index

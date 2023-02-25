@@ -124,7 +124,7 @@ const materialDeps: DepCollector = async (cache, addDep, addHash) => {
 
 		for (let file of arch) {
 			addHash("material", file.fileid, crc32(file.buffer), index.version);
-			let mat = convertMaterial(file.buffer, cache);
+			let mat = convertMaterial(file.buffer, file.fileid, cache);
 			for (let tex of Object.values(mat.textures)) {
 				if (typeof tex == "number") {
 					addDep("texture", tex, "material", file.fileid)

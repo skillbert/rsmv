@@ -210,7 +210,7 @@
 .mv-modal-head {
 	font-size: 1.2em;
 	display: grid;
-	grid-template-columns: auto min-content;
+	grid-template-columns: auto min-content min-content min-content;
 	padding: 8px;
 	background: var(--secondary-bg-colour);
 }

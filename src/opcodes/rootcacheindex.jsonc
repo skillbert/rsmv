@@ -1,13 +1,21 @@
 ["struct",
 	["$minorindex","-1"],
-	["cachemajors",["array","ubyte",["struct",
-		["minor",["accum","$minorindex","1"]],
-		["crc","uint"],
-		["version","uint"],
-		["subindexcount",["match","buildnr",{">=816":"uint","other":0}]],
-		["integer_10",["match","buildnr",{">=816":"uint","other":0}]],
-		["maybe_checksum1",["buffer",64,"hex"]]
-	]]],
+	["cachemajors",["match","buildnr",{
+		">=605":["array","ubyte",["struct",
+			["minor",["accum","$minorindex","1"]],
+			["crc","uint"],
+			["version","uint"],
+			["subindexcount",["match","buildnr",{">=816":"uint","other":0}]],
+			["integer_10",["match","buildnr",{">=816":"uint","other":0}]],
+			["maybe_checksum1",["buffer",64,"hex"]]
+		]],
+		"other":["nullarray",["bytesleft"],["struct",
+			["minor",["accum","$minorindex","1"]],
+			["crc","uint"],
+			["version",["match","buildnr",{">=457":"uint","other":0}]],
+			["subindexcount",0]
+		]]
+	}]],
 	//512bytes of data but variable length encoding that makes is 511-513
 	["maybe_proper_checksum",["buffer",["bytesleft"],"hex"]]
 ]

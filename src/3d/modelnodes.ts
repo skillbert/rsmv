@@ -14,6 +14,7 @@ import { svgfloor } from "../map/svgrender";
 import { ThreeJsRenderer, ThreeJsSceneElement, ThreeJsSceneElementSource } from "../viewer/threejsrender";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import fetch from "node-fetch";
+import { MaterialData } from "./jmat";
 
 
 export type SimpleModelDef = {
@@ -128,15 +129,15 @@ export async function materialToModel(sceneCache: ThreejsSceneCache, modelid: nu
 	// ];
 	let mat = sceneCache.engine.getMaterialData(modelid);
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
-	let addtex = async (name: string, texid: number) => {
-		let tex = await sceneCache.getTextureFile(texid, mat.stripDiffuseAlpha && name == "diffuse");
+	let addtex = async (type: keyof MaterialData["textures"], name: string, texid: number) => {
+		let tex = await sceneCache.getTextureFile(type, texid, mat.stripDiffuseAlpha && name == "diffuse");
 		let drawable = await tex.toWebgl();
 
 		texs[name] = { texid, filesize: tex.filesize, img0: drawable };
 	}
 	for (let tex in mat.textures) {
 		if (mat.textures[tex] != 0) {
-			await addtex(tex, mat.textures[tex]);
+			await addtex(tex as keyof MaterialData["textures"], tex, mat.textures[tex]);
 		}
 	}
 	return {

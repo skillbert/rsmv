@@ -11,9 +11,11 @@ export type materials = {
 		opt0data: [
 			number,
 			number,
-			number,
 		] | null,
-		arr: number[],
+		arr: {
+			op: number,
+			value: number,
+		}[],
 		textureflags: number,
 		diffuse: (number|0) | null,
 		normal: (number|0) | null,

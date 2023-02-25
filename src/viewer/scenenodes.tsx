@@ -11,7 +11,7 @@ import { appearanceUrl, avatarStringToBytes, EquipCustomization, EquipSlot, slot
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
 import { cacheFileJsonModes, extractCacheFiles, cacheFileDecodeModes } from "../scripts/extractfiles";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
-import { UIScriptOutput, OutputUI, useForceUpdate, VR360View } from "./scriptsui";
+import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { runMapRender } from "../map";
@@ -27,6 +27,8 @@ import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
 import { FileParser } from '../opdecoder';
 import { assertSchema, customModelDefSchema, parseJsonOrDefault, scenarioStateSchema } from '../jsonschemas';
+import { fileHistory } from '../scripts/filehistory';
+import { MaterialData } from '../3d/jmat';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -1245,8 +1247,8 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 	let json: any = null;
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let models: SimpleModelDef = [];
-	let addtex = async (name: string, texid: number, stripalpha: boolean) => {
-		let tex = await sceneCache.getTextureFile(texid, stripalpha);
+	let addtex = async (type: keyof MaterialData["textures"], name: string, texid: number, stripalpha: boolean) => {
+		let tex = await sceneCache.getTextureFile(type, texid, stripalpha);
 		let drawable = await tex.toWebgl();
 
 		texs[name] = { texid, filesize: tex.filesize, img0: drawable };
@@ -1265,8 +1267,8 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 	} else if (reqid.mode == "mat") {
 		matid = reqid.id;
 	} else if (reqid.mode == "texture") {
-		await addtex("original", reqid.id, false);
-		await addtex("opaque", reqid.id, true);
+		await addtex("diffuse", "original", reqid.id, false);
+		await addtex("diffuse", "opaque", reqid.id, true);
 	} else {
 		throw new Error("invalid materialish mode");
 	}
@@ -1281,7 +1283,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 		let mat = sceneCache.engine.getMaterialData(matid);
 		for (let tex in mat.textures) {
 			if (mat.textures[tex] != 0) {
-				await addtex(tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
+				await addtex("diffuse", tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
 			}
 		}
 		json = mat;
@@ -1324,32 +1326,6 @@ function SceneMaterialIsh(p: LookupModeProps) {
 				))}
 				{data?.info.overlay && <JsonDisplay obj={data?.info.overlay} />}
 				{data?.info.underlay && <JsonDisplay obj={data?.info.underlay} />}
-				<JsonDisplay obj={data?.info.obj} />
-			</div>
-		</React.Fragment>
-	)
-}
-
-function SceneMaterial(p: LookupModeProps) {
-	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialToModel);
-
-	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
-	return (
-		<React.Fragment>
-			<IdInput onChange={setId} initialid={initid} />
-			{id == null && (
-				<React.Fragment>
-					<p>Enter a material id.</p>
-					<p>Materials define how a piece of geometry looks, besides the color texture they also define how the model interacts with light to create highlights and reflections.</p>
-				</React.Fragment>
-			)}
-			<div className="mv-sidebar-scroll">
-				{data && Object.entries(data.info.texs).map(([name, img]) => (
-					<div key={name}>
-						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
-						<ImageDataView img={img.img0} />
-					</div>
-				))}
 				<JsonDisplay obj={data?.info.obj} />
 			</div>
 		</React.Fragment>
@@ -1515,8 +1491,17 @@ function SceneItem(p: LookupModeProps) {
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, itemToModel);
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	let [enablecam, setenablecam] = React.useState(false);
+	// let [histfs, sethistfs] = React.useState<UIScriptFS | null>(null);
 
 	let centery = (model?.loaded ? (model.loaded.modeldata.maxy + model.loaded.modeldata.miny) / 2 : 0);
+
+	// let gethistory = async () => {
+	// 	if (id == null || !p.ctx) { return; }
+	// 	let output = new UIScriptOutput();
+	// 	let fs = new UIScriptFS(output);
+	// 	sethistfs(fs);
+	// 	await output.run(fileHistory, fs, "items", [id], p.ctx.source);
+	// }
 
 	return (
 		<React.Fragment>
@@ -1529,6 +1514,8 @@ function SceneItem(p: LookupModeProps) {
 				{enablecam && p.ctx && <ItemCameraMode ctx={p.ctx} meta={data?.info} centery={centery} />}
 				<JsonDisplay obj={data?.info} />
 			</div>
+			{/* <input type="button" className="sub-btn" value="history" onClick={gethistory} />
+			{histfs && p.ctx && <UIScriptFiles fs={histfs} ctx={p.ctx} />} */}
 		</React.Fragment>
 	)
 }
@@ -1836,7 +1823,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 	let [initmode, initbatched, initkeepbuffs, initfilestext] = p.initialArgs.split(":");
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
-	let [batched, setbatched] = React.useState(initbatched != "false");
+	let [batched, setbatched] = React.useState(initbatched == "true");
 	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
 
 	let run = () => {
@@ -1976,7 +1963,7 @@ function TestFilesScript(p: UiScriptProps) {
 	let [initmode, initrange, initdumpall, initordersize] = p.initialArgs.split(":");
 	let [mode, setMode] = React.useState(initmode || "");
 	let [range, setRange] = React.useState(initrange || "");
-	let [dumpall, setDumpall] = React.useState(initdumpall == "true");
+	let [dumpall, setDumpall] = React.useState(initdumpall != "false");
 	let [ordersize, setOrdersize] = React.useState(initordersize == "true");
 	let [customparser, setCustomparser] = React.useState("");
 

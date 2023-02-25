@@ -175,7 +175,7 @@ export function rootIndexBufferToObject(metaindex: Buffer, source: CacheFileSour
 				crc: q.crc,
 				version: q.version,
 				size: 0,
-				subindexcount: 1,
+				subindexcount: q.subindexcount,
 				subindices: [0],
 				uncompressed_crc: 0,
 				uncompressed_size: 0,

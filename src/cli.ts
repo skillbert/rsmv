@@ -11,6 +11,8 @@ import { diffCaches } from "./scripts/cachediff";
 import { quickChatLookup } from "./scripts/quickchatlookup";
 import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
 import { validOpenrs2Caches } from "./cache/openrs2loader";
+import { fileHistory } from "./scripts/filehistory";
+import { openrs2Ids } from "./scripts/openrs2ids";
 
 const testdecode = command({
 	name: "testdecode",
@@ -74,6 +76,25 @@ const extract = command({
 		let source = await args.source({ writable: args.edit });
 		await output.run(extractCacheFiles, outdir, source, args);
 		source.close();
+	}
+});
+
+
+const filehist = command({
+	name: "filehist",
+	args: {
+		id: option({ long: "id", short: "i", type: cmdts.string }),
+		save: option({ long: "save", short: "s", type: cmdts.string, defaultValue: () => "extract" }),
+		mode: option({ long: "mode", short: "m", type: cmdts.string, defaultValue: () => "bin" })
+	},
+	async handler(args) {
+		let outdir = new CLIScriptFS(args.save);
+		let output = new CLIScriptOutput();
+		if (!cacheFileDecodeModes[args.mode]) { throw new Error("unkown mode"); }
+
+		let id = args.id.split(".").map(q => +q);
+		if (id.length == 0 || id.some(q => isNaN(q))) { throw new Error("invalid id"); }
+		await output.run(fileHistory, outdir, args.mode as any, id, null);
 	}
 });
 
@@ -160,37 +181,18 @@ const openrs2ids = command({
 	name: "openrs2ids",
 	args: {
 		date: option({ long: "year", short: "d", defaultValue: () => "" }),
-		near: option({ long: "near", short: "n", defaultValue: () => "" })
+		near: option({ long: "near", short: "n", defaultValue: () => "" }),
+		full: flag({ long: "full", short: "f" })
 	},
 	async handler(args) {
-		let allids = await validOpenrs2Caches();
-		if (args.date) {
-			let m = args.date.match(/20\d\d/);
-			if (!m) { throw new Error("4 digit year expected"); }
-			let year = +m[0];
-			let enddate = new Date((year + 1) + "");
-			let startdate = new Date(year + "");
-			allids = allids.filter(q => q.timestamp && new Date(q.timestamp) >= startdate && new Date(q.timestamp) <= enddate);
-		}
-		if (args.near) {
-			let index = allids.findIndex(q => q.id == +args.near);
-			if (index == -1) { throw new Error("cache id not found"); }
-			let amount = 10;
-			let beforeamount = Math.min(index, amount);
-			allids = allids.slice(index - beforeamount, index + 1 + amount);
-		}
-		for (let cache of allids) {
-			let line = `id ${cache.id.toString().padStart(4)}, build ${cache.builds[0]?.major ?? "???"}`;
-			line += ` - ${cache.timestamp ? new Date(cache.timestamp).toDateString() : "unknown date"}`;
-			if (args.near && +args.near == cache.id) { line += " <--"; }
-			console.log(line);
-		}
+		let output = new CLIScriptOutput();
+		await output.run(openrs2Ids, args.date, args.near, args.full);
 	}
 })
 
 let subcommands = cmdts.subcommands({
 	name: "cache tools cli",
-	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids }
+	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist }
 });
 
 cmdts.run(subcommands, cliArguments());

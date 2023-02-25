@@ -134,7 +134,7 @@ export class EngineCache extends CachingFileSource {
 			} else {
 				let file = this.materialArchive.get(id);
 				if (!file) { throw new Error("material " + id + " not found"); }
-				cached = convertMaterial(file, this.rawsource);
+				cached = convertMaterial(file, id, this.rawsource);
 			}
 			this.materialCache.set(id, cached);
 		}
@@ -178,27 +178,125 @@ export class EngineCache extends CachingFileSource {
 }
 
 export async function detectTextureMode(source: CacheFileSource) {
-	let lastdds = -1;
-	try {
-		let ddsindex = await source.getCacheIndex(cacheMajors.texturesDds);
-		let last = ddsindex[ddsindex.length - 1];
-		await source.getFile(last.major, last.minor, last.crc);
-		lastdds = last.minor;
-	} catch (e) { }
+	let detectmajor = async (major: number) => {
+		let lastfile = -1;
+		try {
+			let indexfile = await source.getCacheIndex(major);
+			let last = indexfile[indexfile.length - 1];
+			await source.getFile(last.major, last.minor, last.crc);
+			lastfile = last.minor;
+		} catch (e) { }
+		return lastfile;
+	}
 
-	let lastbmp = -1;
-	try {
-		let bmpindex = await source.getCacheIndex(cacheMajors.texturesBmp);
-		let last = bmpindex[bmpindex.length - 1];
-		await source.getFile(last.major, last.minor, last.crc);
-		lastbmp = last.minor;
-	} catch (e) { }
+	let textureMode: TextureModes = "dds";
+	let numbmp = await detectmajor(cacheMajors.texturesBmp);
+	let numdds = await detectmajor(cacheMajors.texturesDds);
+	if (numbmp > 0 || numdds > 0) {
+		textureMode = (numbmp > numdds ? "bmp" : "dds");
+	} else {
+		let numpng2014 = await detectmajor(cacheMajors.textures2015Png);
+		let numdds2014 = await detectmajor(cacheMajors.textures2015Dds);
+		if (numpng2014 > 0 || numdds2014 >= 0) {
+			textureMode = (numdds2014 > numpng2014 ? "dds2014" : "png2014");
+		} else if (await detectmajor(cacheMajors.texturesOldPng) > 0) {
+			textureMode = "oldpng";
+		}
+	}
+	console.log(`detectedtexture mode. ${textureMode}`);
 
-	let textureMode: "bmp" | "dds" = (lastbmp > lastdds ? "bmp" : "dds");
-	console.log(`detectedtexture mode. dds:${lastdds}, bmp:${lastbmp}`, textureMode);
 	return textureMode;
 }
 
+async function convertMaterialToThree(source: ThreejsSceneCache, material: MaterialData, hasVertexAlpha: boolean) {
+	// let mat = new THREE.MeshPhongMaterial();
+	// mat.shininess = 0;
+	let mat = new THREE.MeshStandardMaterial();
+	mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
+	mat.transparent = hasVertexAlpha || material.alphamode == "blend";
+	const wraptype = THREE.RepeatWrapping;//TODO find value of this in material
+
+	if (material.textures.diffuse) {
+		let diffuse = await (await source.getTextureFile("diffuse", material.textures.diffuse, material.stripDiffuseAlpha)).toImageData();
+		let difftex = new THREE.DataTexture(diffuse.data, diffuse.width, diffuse.height, THREE.RGBAFormat);
+		difftex.needsUpdate = true;
+		difftex.wrapS = wraptype;
+		difftex.wrapT = wraptype;
+		difftex.encoding = THREE.sRGBEncoding;
+		difftex.magFilter = THREE.LinearFilter;
+		difftex.minFilter = THREE.NearestMipMapNearestFilter;
+		difftex.generateMipmaps = true;
+
+		mat.map = difftex;
+
+		if (material.textures.normal) {
+			let parsed = await source.getTextureFile("normal", material.textures.normal, false);
+			let raw = await parsed.toImageData();
+			let normals = makeImageData(null, raw.width, raw.height);
+			let emisive = makeImageData(null, raw.width, raw.height);
+			const data = raw.data;
+			for (let i = 0; i < data.length; i += 4) {
+				//normals
+				let dx = data[i + 1] / 127.5 - 1;
+				let dy = data[i + 3] / 127.5 - 1;
+				normals.data[i + 0] = data[i + 1];
+				normals.data[i + 1] = data[i + 3];
+				normals.data[i + 2] = (Math.sqrt(Math.max(1 - dx * dx - dy * dy, 0)) + 1) * 127.5;
+				normals.data[i + 3] = 255;
+				//emisive //TODO check if normals flag always implies emisive
+				const emissive = data[i + 0] / 255;
+				emisive.data[i + 0] = diffuse.data[i + 0] * emissive;
+				emisive.data[i + 1] = diffuse.data[i + 1] * emissive;
+				emisive.data[i + 2] = diffuse.data[i + 2] * emissive;
+				emisive.data[i + 3] = 255;
+			}
+			mat.normalMap = new THREE.DataTexture(normals.data, normals.width, normals.height, THREE.RGBAFormat);
+			mat.normalMap.needsUpdate = true;
+			mat.normalMap.wrapS = wraptype;
+			mat.normalMap.wrapT = wraptype;
+			mat.normalMap.magFilter = THREE.LinearFilter;
+
+			mat.emissiveMap = new THREE.DataTexture(emisive.data, emisive.width, emisive.height, THREE.RGBAFormat);
+			mat.emissiveMap.needsUpdate = true;
+			mat.emissiveMap.wrapS = wraptype;
+			mat.emissiveMap.wrapT = wraptype;
+			mat.emissiveMap.magFilter = THREE.LinearFilter;
+			mat.emissive.setRGB(material.reflectionColor[0] / 255, material.reflectionColor[1] / 255, material.reflectionColor[2] / 255);
+		}
+		if (material.textures.compound) {
+			let compound = await (await source.getTextureFile("compound", material.textures.compound, false)).toImageData();
+			let compoundmapped = makeImageData(null, compound.width, compound.height);
+			//threejs expects g=metal,b=roughness, rs has r=metal,g=roughness
+			for (let i = 0; i < compound.data.length; i += 4) {
+				compoundmapped.data[i + 1] = compound.data[i + 1];
+				compoundmapped.data[i + 2] = compound.data[i + 0];
+				compoundmapped.data[i + 3] = 255;
+			}
+			let tex = new THREE.DataTexture(compoundmapped.data, compoundmapped.width, compoundmapped.height, THREE.RGBAFormat);
+			tex.needsUpdate = true;
+			tex.wrapS = wraptype;
+			tex.wrapT = wraptype;
+			tex.encoding = THREE.sRGBEncoding;
+			tex.magFilter = THREE.LinearFilter;
+			mat.metalnessMap = tex;
+			mat.roughnessMap = tex;
+			mat.metalness = 1;
+		}
+	}
+	mat.vertexColors = material.vertexColorWhitening != 1 || hasVertexAlpha;
+
+	mat.userData = material;
+	if (material.uvAnim) {
+		(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = {
+			uvAnim: [material.uvAnim.u, material.uvAnim.v]
+		};
+	}
+
+	return { mat, matmeta: material };
+}
+
+type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014";
+type TextureTypes = keyof MaterialData["textures"];
 
 export class ThreejsSceneCache {
 	private modelCache = new Map<number, CachedObject<ModelData>>();
@@ -206,28 +304,55 @@ export class ThreejsSceneCache {
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
 	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
-	textureType: "png" | "dds" | "bmp" | "ktx" = "dds";//png support currently incomplete (and seemingly unused by jagex)
+	textureType: TextureModes = "png2014";
 	useOldModels: boolean;
 
-	static textureIndices = {
-		png: cacheMajors.texturesPng,
-		dds: cacheMajors.texturesDds,
-		bmp: cacheMajors.texturesBmp,
-		ktx: cacheMajors.texturesKtx
+	static textureIndices: Record<TextureTypes, Record<TextureModes, number>> = {
+		diffuse: {
+			png: cacheMajors.texturesPng,
+			dds: cacheMajors.texturesDds,
+			bmp: cacheMajors.texturesBmp,
+			ktx: cacheMajors.texturesKtx,
+			png2014: cacheMajors.textures2015Png,
+			dds2014: cacheMajors.textures2015Dds,
+			oldpng: cacheMajors.texturesOldPng
+		},
+		normal: {
+			png: cacheMajors.texturesPng,
+			dds: cacheMajors.texturesDds,
+			bmp: cacheMajors.texturesBmp,
+			ktx: cacheMajors.texturesKtx,
+			//TODO are these normals or compounds?
+			png2014: cacheMajors.textures2015CompoundPng,
+			dds2014: cacheMajors.textures2015CompoundDds,
+			oldpng: cacheMajors.texturesOldCompoundPng
+		},
+		compound: {
+			png: cacheMajors.texturesPng,
+			dds: cacheMajors.texturesDds,
+			bmp: cacheMajors.texturesBmp,
+			ktx: cacheMajors.texturesKtx,
+			//TODO are these normals or compounds?
+			png2014: cacheMajors.textures2015CompoundPng,
+			dds2014: cacheMajors.textures2015CompoundDds,
+			oldpng: cacheMajors.texturesOldCompoundPng
+		}
 	}
 
 	constructor(scenecache: EngineCache) {
 		this.engine = scenecache;
 		this.useOldModels = scenecache.hasOldModels && !scenecache.hasNewModels;
-		//TODO set useOldModels depending on cache build nr
 	}
 	getFileById(major: number, id: number) {
 		return this.engine.getFileById(major, id);
 	}
 
-	getTextureFile(texid: number, stripAlpha: boolean) {
-		return this.engine.fetchCachedObject(this.threejsTextureCache, texid, async () => {
-			let file = await this.getFileById(ThreejsSceneCache.textureIndices[this.textureType], texid);
+	getTextureFile(type: TextureTypes, texid: number, stripAlpha: boolean) {
+		let cacheindex = ThreejsSceneCache.textureIndices[type][this.textureType];
+		let cachekey = ((cacheindex | 0xff) << 23) | texid;
+
+		return this.engine.fetchCachedObject(this.threejsTextureCache, cachekey, async () => {
+			let file = await this.getFileById(cacheindex, texid);
 			let parsed = new ParsedTexture(file, stripAlpha, true);
 			return parsed;
 		}, obj => obj.filesize * 2);
@@ -248,104 +373,19 @@ export class ThreejsSceneCache {
 	}
 
 	getMaterial(matid: number, hasVertexAlpha: boolean) {
-		//TODO the material should have this data, not the mesh
-		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
-		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
-			let material = this.engine.getMaterialData(matid);
-
-			// let mat = new THREE.MeshPhongMaterial();
-			// mat.shininess = 0;
-			let mat = new THREE.MeshStandardMaterial();
-			mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
-			mat.transparent = hasVertexAlpha || material.alphamode == "blend";
-			const wraptype = THREE.RepeatWrapping;//TODO find value of this in material
-
-			if (material.textures.diffuse) {
-				let diffuse = await (await this.getTextureFile(material.textures.diffuse, material.stripDiffuseAlpha)).toImageData();
-				let difftex = new THREE.DataTexture(diffuse.data, diffuse.width, diffuse.height, THREE.RGBAFormat);
-				difftex.needsUpdate = true;
-				difftex.wrapS = wraptype;
-				difftex.wrapT = wraptype;
-				difftex.encoding = THREE.sRGBEncoding;
-				difftex.magFilter = THREE.LinearFilter;
-				difftex.minFilter = THREE.NearestMipMapNearestFilter;
-				difftex.generateMipmaps = true;
-
-				mat.map = difftex;
-
-				if (material.textures.normal) {
-					let parsed = await this.getTextureFile(material.textures.normal, false);
-					let raw = await parsed.toImageData();
-					let normals = makeImageData(null, raw.width, raw.height);
-					let emisive = makeImageData(null, raw.width, raw.height);
-					const data = raw.data;
-					for (let i = 0; i < data.length; i += 4) {
-						//normals
-						let dx = data[i + 1] / 127.5 - 1;
-						let dy = data[i + 3] / 127.5 - 1;
-						normals.data[i + 0] = data[i + 1];
-						normals.data[i + 1] = data[i + 3];
-						normals.data[i + 2] = (Math.sqrt(Math.max(1 - dx * dx - dy * dy, 0)) + 1) * 127.5;
-						normals.data[i + 3] = 255;
-						//emisive //TODO check if normals flag always implies emisive
-						const emissive = data[i + 0] / 255;
-						emisive.data[i + 0] = diffuse.data[i + 0] * emissive;
-						emisive.data[i + 1] = diffuse.data[i + 1] * emissive;
-						emisive.data[i + 2] = diffuse.data[i + 2] * emissive;
-						emisive.data[i + 3] = 255;
-					}
-					mat.normalMap = new THREE.DataTexture(normals.data, normals.width, normals.height, THREE.RGBAFormat);
-					mat.normalMap.needsUpdate = true;
-					mat.normalMap.wrapS = wraptype;
-					mat.normalMap.wrapT = wraptype;
-					mat.normalMap.magFilter = THREE.LinearFilter;
-
-					mat.emissiveMap = new THREE.DataTexture(emisive.data, emisive.width, emisive.height, THREE.RGBAFormat);
-					mat.emissiveMap.needsUpdate = true;
-					mat.emissiveMap.wrapS = wraptype;
-					mat.emissiveMap.wrapT = wraptype;
-					mat.emissiveMap.magFilter = THREE.LinearFilter;
-					mat.emissive.setRGB(material.reflectionColor[0] / 255, material.reflectionColor[1] / 255, material.reflectionColor[2] / 255);
-				}
-				if (material.textures.compound) {
-					let compound = await (await this.getTextureFile(material.textures.compound, false)).toImageData();
-					let compoundmapped = makeImageData(null, compound.width, compound.height);
-					//threejs expects g=metal,b=roughness, rs has r=metal,g=roughness
-					for (let i = 0; i < compound.data.length; i += 4) {
-						compoundmapped.data[i + 1] = compound.data[i + 1];
-						compoundmapped.data[i + 2] = compound.data[i + 0];
-						compoundmapped.data[i + 3] = 255;
-					}
-					let tex = new THREE.DataTexture(compoundmapped.data, compoundmapped.width, compoundmapped.height, THREE.RGBAFormat);
-					tex.needsUpdate = true;
-					tex.wrapS = wraptype;
-					tex.wrapT = wraptype;
-					tex.encoding = THREE.sRGBEncoding;
-					tex.magFilter = THREE.LinearFilter;
-					mat.metalnessMap = tex;
-					mat.roughnessMap = tex;
-					mat.metalness = 1;
-				}
-			}
-			mat.vertexColors = material.vertexColorWhitening != 1 || hasVertexAlpha;
-
-			// if (!material.vertexColorWhitening && hasVertexAlpha) {
-			// 	mat.customProgramCacheKey = () => "vertexalphaonly";
-			// 	mat.onBeforeCompile = (shader, renderer) => {
-			// 		//this sucks but is nessecary since three doesn't support vertex alpha without vertex color
-			// 		//hard to rewrite the color attribute since we don't know if other meshes do use the colors
-			// 		shader.fragmentShader = shader.fragmentShader.replace("#include <color_fragment>", "diffuseColor.a *= vColor.a;");
-			// 	}
-			// }
-			mat.userData = material;
-			if (material.uvAnim) {
-				(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = {
-					uvAnim: [material.uvAnim.u, material.uvAnim.v]
-				};
-			}
-
-			return { mat, matmeta: material };
-		}, mat => 256 * 256 * 4 * 2);
+		if (this.engine.getBuildNr() < 759) {
+			let mat = defaultMaterial();
+			mat.textures.diffuse = matid;
+			//TODO other material props
+			return convertMaterialToThree(this, mat, hasVertexAlpha);
+		} else {
+			//TODO the material should have this data, not the mesh
+			let matcacheid = materialCacheKey(matid, hasVertexAlpha);
+			return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
+				let material = this.engine.getMaterialData(matid);
+				return convertMaterialToThree(this, material, hasVertexAlpha);
+			}, mat => 256 * 256 * 4 * 2);
+		}
 	}
 }
 

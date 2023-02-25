@@ -511,7 +511,7 @@ function SimpleTextViewer(p: { file: string }) {
 	);
 }
 
-export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFile | null) => void }) {
+export function FileDisplay(p: { file: UIScriptFile }) {
 	let el: React.ReactNode = null;
 	let filedata = p.file.data;
 	let cnvref = React.useRef<HTMLCanvasElement | null>(null);
@@ -520,6 +520,8 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 		if (ext == "hexerr.json") {
 			el = <FileDecodeErrorViewer file={filedata} />;
 		} else {
+			//TODO make this not depend on wether file is Buffer or string
+			//string types so far: txt, json, batch.json
 			el = <SimpleTextViewer file={filedata} />;
 		}
 	} else {
@@ -549,15 +551,19 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 			el = <TrivialHexViewer data={filedata} />
 		}
 	}
+	return el;
+}
 
+export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFile | null) => void }) {
 	return (
 		<div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
 			<div className="mv-modal-head">
 				<span>{p.file.name}</span>
-				<span style={{ float: "right" }} onClick={e => p.onSelectFile(null)}>x</span>
+				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => downloadBlob(p.file.name, new Blob([p.file.data]))}>download</span>
+				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => p.onSelectFile(null)}>x</span>
 			</div>
 			<div style={{ overflow: "auto", flex: "1" }}>
-				{el}
+				<FileDisplay file={p.file} />
 			</div>
 		</div>
 	);

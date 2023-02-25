@@ -169,7 +169,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     for (let [matid, facecount] of matusecount) {
         let finalvertcount = facecount * 3;
         let colstride = (modeldata.colors ? modeldata.alpha ? 4 : 3 : 0);
-        let mesh = {
+        let mesh: WorkingSubmesh = {
             pos: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
             normals: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
             color: new BufferAttribute(new Uint8Array(finalvertcount * colstride), colstride, true),

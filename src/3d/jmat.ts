@@ -6,9 +6,6 @@ import type { CacheFileSource } from "cache";
 export type MaterialData = {
 	textures: {
 		diffuse?: number,
-		specular?: number,
-		metalness?: number,
-		color?: number,
 		normal?: number,
 		compound?: number
 	},
@@ -38,7 +35,7 @@ export function materialCacheKey(matid: number, hasVertexAlpha: boolean) {
 	return matid | (hasVertexAlpha ? 0x800000 : 0);
 }
 
-export function convertMaterial(data: Buffer, source: CacheFileSource) {
+export function convertMaterial(data: Buffer, materialid: number, source: CacheFileSource) {
 	let rawparsed = parse.materials.read(data, source);
 
 	let mat = defaultMaterial();
@@ -46,8 +43,11 @@ export function convertMaterial(data: Buffer, source: CacheFileSource) {
 
 	if (rawparsed.v0) {
 		let raw = rawparsed.v0;
+		mat.textures.diffuse = raw.arr.find(q => q.op == 1)?.value;
 		if (raw.diffuse) { mat.textures.diffuse = raw.diffuse; }
+		else if (raw.textureflags & 0x11) { mat.textures.diffuse = materialid; }
 		if (raw.normal) { mat.textures.normal = raw.normal; }
+		else if (raw.textureflags & 0x0a) { mat.textures.normal = materialid; }
 
 		mat.alphamode = raw.alphamode == 0 ? "opaque" : raw.alphamode == 1 ? "cutoff" : "blend";
 		if (raw.alphacutoff) { mat.alphacutoff = raw.alphacutoff / 255; }

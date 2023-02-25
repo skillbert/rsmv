@@ -315,16 +315,15 @@ const decodeSound = (major: number): DecodeModeFactory => () => {
 	}
 }
 
-const decodeSprite: DecodeModeFactory = () => {
+const decodeSprite = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "png",
-		major: cacheMajors.sprites,
+		major: major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
 		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
+		logicalToFile(id) { return { major, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let major = cacheMajors.sprites;
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 		},
 		prepareDump() { },
@@ -484,9 +483,16 @@ const npcmodels: DecodeModeFactory = function (flags) {
 
 export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	bin: decodeBinary,
-	sprites: decodeSprite,
+	sprites: decodeSprite(cacheMajors.sprites),
 	spritehash: decodeSpriteHash,
 	modelhash: decodeMeshHash,
+	textures_oldpng: decodeTexture(cacheMajors.texturesOldPng),
+	textures_2015png: decodeTexture(cacheMajors.textures2015Png),
+	textures_2015dds: decodeTexture(cacheMajors.textures2015Dds),
+	textures_2015pngmips: decodeTexture(cacheMajors.textures2015PngMips),
+	textures_2015compoundpng: decodeTexture(cacheMajors.textures2015CompoundPng),
+	textures_2015compounddds: decodeTexture(cacheMajors.textures2015CompoundDds),
+	textures_2015compoundpngmips: decodeTexture(cacheMajors.textures2015CompoundPngMips),
 	textures_dds: decodeTexture(cacheMajors.texturesDds),
 	textures_png: decodeTexture(cacheMajors.texturesPng),
 	textures_bmp: decodeTexture(cacheMajors.texturesBmp),

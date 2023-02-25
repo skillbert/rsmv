@@ -21,10 +21,21 @@ export const cacheMajors = {
 	models: 47,
 	frames: 48,
 
+	texturesOldPng: 9,
+	texturesOldCompoundPng: 37,
+
+	textures2015Png: 43,
+	textures2015CompoundPng: 44,
+	textures2015Dds: 45,
+	textures2015CompoundPngMips: 46,
+	textures2015CompoundDds: 50,
+	textures2015PngMips: 51,
+
 	texturesDds: 52,
 	texturesPng: 53,
 	texturesBmp: 54,
 	texturesKtx: 55,
+
 	skeletalAnims: 56,
 
 	achievements: 57,
