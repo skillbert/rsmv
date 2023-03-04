@@ -13,6 +13,7 @@ const BufferTypes = {
 	ushort: { constr: Uint16Array },
 	int: { constr: Int32Array },
 	uint: { constr: Uint32Array },
+	float: { constr: Float32Array }
 };
 
 var debugdata: null | {

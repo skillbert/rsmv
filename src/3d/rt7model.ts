@@ -182,11 +182,16 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 
 
 		if (mesh.uvBuffer) {
-			let uvBuffer = new Float32Array(mesh.vertexCount * 2);
-			for (let i = 0; i < mesh.vertexCount * 2; i++) {
-				uvBuffer[i] = ushortToHalf(mesh.uvBuffer[i]);
+			if (mesh.uvBuffer instanceof Uint16Array) {
+				//unpack from float 16
+				let uvBuffer = new Float32Array(mesh.vertexCount * 2);
+				for (let i = 0; i < mesh.vertexCount * 2; i++) {
+					uvBuffer[i] = ushortToHalf(mesh.uvBuffer[i]);
+				}
+				meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
+			} else {
+				meshdata.attributes.texuvs = new THREE.BufferAttribute(mesh.uvBuffer, 2);
 			}
-			meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
 		}
 
 
@@ -197,7 +202,7 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 				let x = normalBuffer[i + 0];
 				let y = normalBuffer[i + 1];
 				let z = normalBuffer[i + 2];
-				//recalc instead of taking 255 because apparently its not normalized properly
+				//recalc instead of taking 127 or 32k because apparently its not normalized properly
 				let len = Math.hypot(x, y, z);
 				if (len == 0) {
 					//TODO what does the rs engine do with missing normals?

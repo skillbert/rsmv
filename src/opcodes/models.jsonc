@@ -32,13 +32,19 @@
 		["vertexCount",["match",["ref","hasVertices"],{"=1":"ushort le","=0":0}]],
 		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
 		//currently wrong, but makes it parse
-		["unkoldbuffer",["match","buildnr",{">=887":"null",">=0":["buffer",["ref","vertexCount"],"ubyte",7]}]],
-		["normalBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"byte",3]]],
-		["tagentBuffer",["opt",["hasVertices",1],
+		["normalBuffer",["opt",["hasVertices",1],["match","buildnr",{
+			">=887":["buffer",["ref","vertexCount"],"byte",3],
+			">=0":["buffer",["ref","vertexCount"],"short",3]
+		}]]],
+		["tagentBuffer",["opt",["hasVertices",1],["match","buildnr",{
 			//TODO exact buildnr unknown
-			["match","buildnr",{">=906":["buffer",["ref","vertexCount"],"short",2],">=0":"null"}]
-		]],
-		["uvBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],
+			">=906":["buffer",["ref","vertexCount"],"short",2],
+			">=0":"null"
+		}]]],
+		["uvBuffer",["opt",["hasVertices",1],["match","buildnr",{
+			">=887":["buffer",["ref","vertexCount"],"ushort",2],
+			">=0":["buffer",["ref","vertexCount"],"float",2]
+		}]]],
 		["boneidBuffer",["opt",["hasBoneIds",1],["buffer",["ref","vertexCount"],"ushort"]]],
 		
 		["skin",["opt",["hasSkin",1],["struct",
