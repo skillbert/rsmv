@@ -1,0 +1,6 @@
+["nullarray",["struct",
+    ["op",["ref","$opcode"]],
+    ["args",["match",["ref","$opcode"],{
+        "0x01":["buffer",8,"hex"]
+    }]]
+]]

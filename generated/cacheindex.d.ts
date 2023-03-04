@@ -4,7 +4,7 @@
 
 export type cacheindex = {
 	format: number,
-	timestamp: number,
+	timestamp: (number|0),
 	flags: number,
 	indices: {
 		minor: number,

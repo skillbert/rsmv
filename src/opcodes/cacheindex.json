@@ -1,9 +1,9 @@
 ["struct",
 	["format","unsigned byte"],
-	["timestamp","unsigned int"],
+	["timestamp",["match",["ref","format"],{">=6":"uint","other":0}]],
 	["flags","unsigned byte"],
 	["$minorindex","0"],
-	["indices",["chunkedarray","variable unsigned int",
+	["indices",["chunkedarray",["match",["ref","format"],{">=7":"varuint","other":"ushort"}],
 		[
 			["minor",["accum","$minorindex","unsigned short"]]
 		],

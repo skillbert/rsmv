@@ -453,6 +453,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	models: { parser: parse.models, lookup: noArchiveIndex(cacheMajors.models) },
 	oldmodels: { parser: parse.oldmodels, lookup: noArchiveIndex(cacheMajors.oldmodels) },
 	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
+	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
 
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
 	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() }
@@ -503,7 +504,8 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 
 	npcmodels: npcmodels,
 
-	...(Object.fromEntries(Object.entries(cacheFileJsonModes).map(([k, v]) => [k, standardFile(v.parser, v.lookup)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
+		.map(([k, v]) => [k, standardFile(v.parser, v.lookup)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 });
 
 export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange, edit: boolean, keepbuffers: boolean }) {

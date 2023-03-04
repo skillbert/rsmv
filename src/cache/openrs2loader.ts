@@ -31,20 +31,21 @@ var cachelist: Promise<Openrs2CacheMeta[]> | null = null;
 export function validOpenrs2Caches() {
 	if (!cachelist) {
 		cachelist = (async () => {
-			const openrs2Blacklist = [
-				423,//osrs cache wrongly labeled as rs3
+			const openrs2Blacklist: number[] = [
+				//some of these might actually be fine
+				423,//osrs cache wrongly labeled as rs3?
 				623,//seems to have different builds in it
 				693,//wrong timestamp?
-				621,619,618,620,617,//wrong timestamp/osrs?
+				621, 619, 618, 620, 617,//wrong timestamp/osrs?
 				840,//multiple builds
 				734, 736, 733,//don't have items index
 				20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
 			];
-			let allcaches = await fetch(`${endpoint}/caches.json`).then(q => q.json());
+			let allcaches: Openrs2CacheMeta[] = await fetch(`${endpoint}/caches.json`).then(q => q.json());
 			let checkedcaches = allcaches.filter(q =>
 				q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
 				&& q.game == "runescape" && q.timestamp && q.builds.length != 0
-			).sort((a, b) => +new Date(b.timestamp!) - +new Date(a.timestamp!));
+			).sort((a, b) => b.builds[0].major - a.builds[0].major || (b.builds[0].minor ?? 0) - (a.builds[0].minor ?? 0) || +new Date(b.timestamp!) - +new Date(a.timestamp!));
 
 			return checkedcaches;
 		})();

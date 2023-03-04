@@ -5,11 +5,18 @@ import { ScriptOutput } from "../viewer/scriptsui";
 export async function openrs2Ids(output: ScriptOutput, date: string, near: string, logcontents: boolean) {
     let allids = await validOpenrs2Caches();
     if (date) {
-        let m = date.match(/20\d\d/);
-        if (!m) { throw new Error("4 digit year expected"); }
-        let year = +m[0];
-        let enddate = new Date((year + 1) + "");
-        let startdate = new Date(year + "");
+        let startdate = new Date("");//nan
+        let enddate = new Date("");//nan
+        if (date.match(/^\d{4}$/)) {
+            startdate = new Date(date);
+            enddate = new Date((+date + 1) + "");
+        } else if (date.match(/-/)) {
+            let parts = date.split("-");
+            startdate = new Date(parts[0]);
+            enddate = new Date(parts[1]);
+        }
+        if (isNaN(+enddate)) { enddate = new Date("2100"); }
+        if (isNaN(+startdate)) { startdate = new Date("1900"); }
         allids = allids.filter(q => q.timestamp && new Date(q.timestamp) >= startdate && new Date(q.timestamp) <= enddate);
     }
     if (near) {
@@ -34,24 +41,30 @@ export async function openrs2Ids(output: ScriptOutput, date: string, near: strin
             }
             let src = new Openrs2CacheSource(cache);
             try {
-                if (cache.builds[0].major >= 410) {
-                    let index = await src.getCacheIndex(cacheMajors.index);
-                    for (let i = 0; i < index.length; i++) {
-                        let config = index[i];
-                        if (!config) {
-                            line += " ".repeat(10);
-                        } else {
-                            let subcount = 0;
-                            if (config.crc != 0 && config.subindexcount == 0) {
+                // if (cache.builds[0].major >= 410) {
+                let index = await src.getCacheIndex(cacheMajors.index);
+                for (let i = 0; i < index.length; i++) {
+                    let config = index[i];
+                    if (!config) {
+                        line += " ".repeat(10);
+                    } else {
+                        let subcount = 0;
+                        if (config.crc != 0 && config.subindexcount == 0) {
+                            try {
                                 let subindex = await src.getCacheIndex(config.minor);
                                 subcount = subindex.reduce((a, v) => a + (v ? 1 : 0), 0);
-                            } else {
-                                subcount = config.subindexcount;
+                            } catch (e) {
+                                subcount = NaN;
                             }
-                            line += ` ${subcount.toString().padStart(9)}`;
+                        } else {
+                            subcount = config.subindexcount;
                         }
+                        line += ` ${subcount.toString().padStart(9)}`;
                     }
                 }
+                // }
+            } catch (e) {
+                line += `  Error ${e}`;
             } finally {
                 src.close();
             }
