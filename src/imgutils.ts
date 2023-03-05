@@ -52,13 +52,12 @@ export async function fileToImageData(file: Uint8Array, mimetype: "image/png" | 
 			stripAlpha = true;
 		}
 		if (frame.image.format == "BGRA" || frame.image.format == "BGRX") {
-			for (let plane = 0; plane < 4; plane++) {
-				for (let i = 0; i < pixelcount; i++) {
-					pixels[i * 4 + 0] = pixels[i * 4 + 2];
-					pixels[i * 4 + 1] = pixels[i * 4 + 1];
-					pixels[i * 4 + 2] = pixels[i * 4 + 0];
-					pixels[i * 4 + 3] = (stripAlpha ? 255 : pixels[i * 4 + 0]);
-				}
+			for (let i = 0; i < pixelcount; i++) {
+				let tmp = pixels[i * 4 + 0];
+				pixels[i * 4 + 0] = pixels[i * 4 + 2];
+				pixels[i * 4 + 1] = pixels[i * 4 + 1];
+				pixels[i * 4 + 2] = tmp;
+				pixels[i * 4 + 3] = (stripAlpha ? 255 : pixels[i * 4 + 0]);
 			}
 		} else if (frame.image.format == "RGBA" || frame.image.format == "RGBX") {
 			if (stripAlpha) {

@@ -1283,7 +1283,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 		let mat = sceneCache.engine.getMaterialData(matid);
 		for (let tex in mat.textures) {
 			if (mat.textures[tex] != 0) {
-				await addtex("diffuse", tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
+				await addtex(tex as any, tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
 			}
 		}
 		json = mat;
