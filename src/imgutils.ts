@@ -57,7 +57,7 @@ export async function fileToImageData(file: Uint8Array, mimetype: "image/png" | 
 				pixels[i * 4 + 0] = pixels[i * 4 + 2];
 				pixels[i * 4 + 1] = pixels[i * 4 + 1];
 				pixels[i * 4 + 2] = tmp;
-				pixels[i * 4 + 3] = (stripAlpha ? 255 : pixels[i * 4 + 0]);
+				pixels[i * 4 + 3] = (stripAlpha ? 255 : pixels[i * 4 + 3]);
 			}
 		} else if (frame.image.format == "RGBA" || frame.image.format == "RGBX") {
 			if (stripAlpha) {
