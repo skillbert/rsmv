@@ -1,7 +1,9 @@
-import { HSL2RGB, packedHSL2HSL } from "../utils";
+import { HSL2RGBfloat, packedHSL2HSL } from "../utils";
 import { parse } from "../opdecoder";
 import type { materials } from "../../generated/materials";
 import type { CacheFileSource } from "cache";
+
+type TextureRepeatMode = "clamp" | "repeat" | "mirror";
 
 export type MaterialData = {
 	textures: {
@@ -9,6 +11,8 @@ export type MaterialData = {
 		normal?: number,
 		compound?: number
 	},
+	texmodes: TextureRepeatMode,
+	texmodet: TextureRepeatMode,
 	uvAnim: { u: number, v: number } | undefined,
 	vertexColorWhitening: number
 	reflectionColor: [number, number, number],//TODO currently unused
@@ -21,9 +25,11 @@ export type MaterialData = {
 export function defaultMaterial(): MaterialData {
 	return {
 		textures: {},
+		texmodes: "repeat",
+		texmodet: "repeat",
 		uvAnim: undefined,
 		vertexColorWhitening: 0,
-		reflectionColor: [255, 255, 255],
+		reflectionColor: [1, 1, 1],
 		alphamode: "opaque",
 		alphacutoff: 0.1,
 		stripDiffuseAlpha: false,
@@ -49,6 +55,11 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 		if (raw.normal) { mat.textures.normal = raw.normal; }
 		else if (raw.textureflags & 0x0a) { mat.textures.normal = materialid; }
 
+		let repeatu = raw.texrepeatflags & 0x7;
+		let repeatv = (raw.textureflags >> 2) & 0x7;
+		mat.texmodes = repeatu == 0 ? "mirror" : repeatu == 1 ? "repeat" : "clamp";
+		mat.texmodet = repeatv == 0 ? "mirror" : repeatv == 1 ? "repeat" : "clamp";
+
 		mat.alphamode = raw.alphamode == 0 ? "opaque" : raw.alphamode == 1 ? "cutoff" : "blend";
 		if (raw.alphacutoff) { mat.alphacutoff = raw.alphacutoff / 255; }
 
@@ -58,8 +69,7 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 		}
 		mat.vertexColorWhitening = (raw.extra ? raw.extra.ignoreVertexColors / 255 : 0);
 		if (raw.extra) {
-			// mat.stripDiffuseAlpha = (raw.extra.unk00_flags & 1) != 0;//TODO this is wrong, makes floor of mapsquare 22,4 black
-			mat.reflectionColor = HSL2RGB(packedHSL2HSL(raw.extra.colorint));
+			mat.reflectionColor = HSL2RGBfloat(packedHSL2HSL(raw.extra.colorint));
 		}
 		mat.stripDiffuseAlpha = (mat.alphamode == "opaque");
 	} else if (rawparsed.v1) {

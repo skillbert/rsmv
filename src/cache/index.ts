@@ -2,6 +2,8 @@ import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
 import { cacheMajors, latestBuildNumber } from "../constants";
 import { parse } from "../opdecoder";
 
+globalThis.ignoreCache = false;
+
 export type SubFile = {
 	offset: number,
 	size: number,
@@ -339,7 +341,7 @@ export class CachingFileSource extends CacheFileSource {
 
 	fetchCachedObject<T>(map: Map<number, CachedObject<T>>, id: number, create: () => Promise<T>, getSize: (obj: T) => number) {
 		let bucket = map.get(id);
-		if (!bucket || true) {//TODO enable again
+		if (!bucket || globalThis.ignoreCache) {
 			let data = create();
 			bucket = {
 				data: data,

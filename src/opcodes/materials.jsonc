@@ -16,11 +16,11 @@
 		["diffuse",["opt",["textureflags",17,"bitor"],["match","buildnr",{">=887":"uint",">=0":0}]]],
 		["normal",["opt",["textureflags",10,"bitor"],["match","buildnr",{">=887":"uint",">=0":0}]]],
 
-		["unk3_skybox",["match","buildnr",{">=876":["buffer",4,"hex"],">=0":"null"}]],//looks like a bitflag thing, bit weird
+		["texrepeatflags",["match","buildnr",{">=876":"ubyte",">=0":0}]],
+		["unk3_skybox",["match","buildnr",{">=876":["buffer",3,"hex"],">=0":"null"}]],//looks like a bitflag thing, bit weird
 
 		["flags2","ubyte"],//always 12,13,14,28
-		["unkfloat1",["opt",["flags2",4,"bitflag"],"float"]],//always 1
-		["unkfloat2",["opt",["flags2",4,"bitflag"],"float"]],//always 1,4,32
+		["unkfloats",["opt",["flags2",4,"bitflag"],["tuple","float","float"]]],//always 1; 1,4,32
 
 		["unk7","ubyte"],//0,1,62,63,64,255
 		["weirdshit",["opt",["unk7",255],["buffer",19,"hex"]]],//only one single material that has this

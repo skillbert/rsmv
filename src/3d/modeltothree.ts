@@ -214,14 +214,15 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	let mat = new THREE.MeshStandardMaterial();
 	mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
 	mat.transparent = hasVertexAlpha || material.alphamode == "blend";
-	const wraptype = THREE.RepeatWrapping;//TODO find value of this in material
+	const wraptypes = material.texmodes == "clamp" ? THREE.ClampToEdgeWrapping : material.texmodes == "repeat" ? THREE.RepeatWrapping : THREE.MirroredRepeatWrapping;
+	const wraptypet = material.texmodet == "clamp" ? THREE.ClampToEdgeWrapping : material.texmodet == "repeat" ? THREE.RepeatWrapping : THREE.MirroredRepeatWrapping;
 
 	if (material.textures.diffuse) {
 		let diffuse = await (await source.getTextureFile("diffuse", material.textures.diffuse, material.stripDiffuseAlpha)).toImageData();
 		let difftex = new THREE.DataTexture(diffuse.data, diffuse.width, diffuse.height, THREE.RGBAFormat);
 		difftex.needsUpdate = true;
-		difftex.wrapS = wraptype;
-		difftex.wrapT = wraptype;
+		difftex.wrapS = wraptypes;
+		difftex.wrapT = wraptypet;
 		difftex.encoding = THREE.sRGBEncoding;
 		difftex.magFilter = THREE.LinearFilter;
 		difftex.minFilter = THREE.NearestMipMapNearestFilter;
@@ -252,16 +253,16 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			}
 			mat.normalMap = new THREE.DataTexture(normals.data, normals.width, normals.height, THREE.RGBAFormat);
 			mat.normalMap.needsUpdate = true;
-			mat.normalMap.wrapS = wraptype;
-			mat.normalMap.wrapT = wraptype;
+			mat.normalMap.wrapS = wraptypes;
+			mat.normalMap.wrapT = wraptypet;
 			mat.normalMap.magFilter = THREE.LinearFilter;
 
 			mat.emissiveMap = new THREE.DataTexture(emisive.data, emisive.width, emisive.height, THREE.RGBAFormat);
 			mat.emissiveMap.needsUpdate = true;
-			mat.emissiveMap.wrapS = wraptype;
-			mat.emissiveMap.wrapT = wraptype;
+			mat.emissiveMap.wrapS = wraptypes;
+			mat.emissiveMap.wrapT = wraptypet;
 			mat.emissiveMap.magFilter = THREE.LinearFilter;
-			mat.emissive.setRGB(material.reflectionColor[0] / 255, material.reflectionColor[1] / 255, material.reflectionColor[2] / 255);
+			mat.emissive.setRGB(material.reflectionColor[0], material.reflectionColor[1], material.reflectionColor[2]);
 		}
 		if (material.textures.compound) {
 			let compound = await (await source.getTextureFile("compound", material.textures.compound, false)).toImageData();
@@ -274,8 +275,8 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			}
 			let tex = new THREE.DataTexture(compoundmapped.data, compoundmapped.width, compoundmapped.height, THREE.RGBAFormat);
 			tex.needsUpdate = true;
-			tex.wrapS = wraptype;
-			tex.wrapT = wraptype;
+			tex.wrapS = wraptypes;
+			tex.wrapT = wraptypet;
 			tex.encoding = THREE.sRGBEncoding;
 			tex.magFilter = THREE.LinearFilter;
 			mat.metalnessMap = tex;
@@ -392,7 +393,7 @@ export class ThreejsSceneCache {
 
 export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
 	let oldcol = mesh.geometry.getAttribute("color");
-	let hasVertexAlpha = !!oldcol && oldcol.count == 4;
+	let hasVertexAlpha = !!oldcol && oldcol.itemSize == 4;
 	mesh.material = parsedmat.mat;
 	let needsvertexcolors = parsedmat.matmeta.vertexColorWhitening != 1 || hasVertexAlpha;
 	if (needsvertexcolors) {
@@ -400,7 +401,12 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
 			let vertcount = mesh.geometry.getAttribute("position").count;
 			let oldcol = mesh.geometry.getAttribute("color");
 			let oldfrac = 1 - parsedmat.matmeta.vertexColorWhitening;
-			let whitening = parsedmat.matmeta.vertexColorWhitening;
+			// let newrcomp = parsedmat.matmeta.vertexColorWhitening * parsedmat.matmeta.reflectionColor[0];
+			// let newgcomp = parsedmat.matmeta.vertexColorWhitening * parsedmat.matmeta.reflectionColor[1];
+			// let newbcomp = parsedmat.matmeta.vertexColorWhitening * parsedmat.matmeta.reflectionColor[2];
+			let newrcomp = 1;//This should be blended using like code above i think, but still missing something
+			let newgcomp = 1;//most models use white anyway, but there are some ~2011 models that use other colors
+			let newbcomp = 1;
 			let stride = hasVertexAlpha ? 4 : 3;
 			let buf = new Uint8Array(stride * vertcount);
 			if (hasVertexAlpha && !oldcol) {
@@ -410,11 +416,11 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
 				let oldr = (oldcol ? oldcol.getX(i) : 1);
 				let oldg = (oldcol ? oldcol.getY(i) : 1);
 				let oldb = (oldcol ? oldcol.getZ(i) : 1);
-				buf[i * stride + 0] = (oldr * oldfrac + whitening) * 255;
-				buf[i * stride + 1] = (oldg * oldfrac + whitening) * 255;
-				buf[i * stride + 2] = (oldb * oldfrac + whitening) * 255;
+				buf[i * stride + 0] = (oldr * oldfrac + newrcomp) * 255;
+				buf[i * stride + 1] = (oldg * oldfrac + newgcomp) * 255;
+				buf[i * stride + 2] = (oldb * oldfrac + newbcomp) * 255;
 				if (hasVertexAlpha) {
-					buf[i * stride + 3] = oldcol.getW(i);
+					buf[i * stride + 3] = oldcol.getW(i) * 255;
 				}
 			}
 			mesh.geometry.setAttribute("color", new BufferAttribute(buf, stride, true));
