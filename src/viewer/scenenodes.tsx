@@ -1910,8 +1910,8 @@ function CacheDiffScript(p: UiScriptProps) {
 
 	React.useEffect(() => {
 		if (result && showmodels && cache2 && p.ctx.sceneCache) {
-			let prom = EngineCache.create(cache2).then(engine => {
-				let oldscene = new ThreejsSceneCache(engine);
+			let prom = EngineCache.create(cache2).then(async engine => {
+				let oldscene = await ThreejsSceneCache.create(engine);
 				let models: RSModel[] = [];
 				const xstep = 5 * 512;
 				const zstep = 5 * 512;

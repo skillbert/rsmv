@@ -46,7 +46,7 @@ function runConnection(source: CacheFileSource, endpoint: string, auth: string) 
 		ws.onmessage = async (msg) => {
 			let packet = JSON.parse(msg.data);
 			try {
-				let scene = new ThreejsSceneCache(engine);
+				let scene = await ThreejsSceneCache.create(engine);
 				if (packet.type == "player") {
 					let ava = await renderAppearance(scene, "player", packet.data);
 					ws.send(JSON.stringify({

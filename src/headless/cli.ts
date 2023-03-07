@@ -20,7 +20,7 @@ let cmd = cmdts.command({
 			await runServer(src, args.endpoint, args.auth);
 		} else {
 			let engine = await EngineCache.create(src);
-			let scene = new ThreejsSceneCache(engine);
+			let scene = await ThreejsSceneCache.create(engine);
 
 			let modelparts = args.model.split(":");
 

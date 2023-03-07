@@ -29,7 +29,7 @@ export async function scrapePlayerAvatars(output: ScriptOutput, outdir: ScriptFS
 	if (parsed) {
 		if (!source) { throw new Error("need file source when extracting avatar data"); }
 		let engine = await EngineCache.create(source);
-		scene = new ThreejsSceneCache(engine);
+		scene = await ThreejsSceneCache.create(engine);
 	}
 	for await (let file of fetchPlayerAvatars(skip, max)) {
 		if (parsed) {

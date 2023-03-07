@@ -336,7 +336,7 @@ export class MapRenderer {
 		});
 	}
 
-	private getChunk(x: number, z: number) {
+	private async getChunk(x: number, z: number) {
 		let existing = this.squares.find(q => q.x == x && q.z == z);
 		if (existing) {
 			return existing;
@@ -345,7 +345,7 @@ export class MapRenderer {
 			// if (!this.scenecache || (id % 16 == 0)) {
 			if (!this.scenecache) {
 				console.log("refreshing scenecache");
-				this.scenecache = new ThreejsSceneCache(this.engine);
+				this.scenecache = await ThreejsSceneCache.create(this.engine);
 			}
 			let square: MaprenderSquare = {
 				x: x,
@@ -362,7 +362,7 @@ export class MapRenderer {
 		let load: MaprenderSquare[] = [];
 		for (let dz = 0; dz < zsize; dz++) {
 			for (let dx = 0; dx < xsize; dx++) {
-				load.push(this.getChunk(x + dx, z + dz))
+				load.push(await this.getChunk(x + dx, z + dz))
 			}
 		}
 		await Promise.all(load.map(q => q.chunk.model));

@@ -305,7 +305,7 @@ export class ThreejsSceneCache {
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
 	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
-	textureType: TextureModes = "png2014";
+	textureType: TextureModes = "dds";
 	useOldModels: boolean;
 
 	static textureIndices: Record<TextureTypes, Record<TextureModes, number>> = {
@@ -340,10 +340,16 @@ export class ThreejsSceneCache {
 		}
 	}
 
-	constructor(scenecache: EngineCache) {
+	private constructor(scenecache: EngineCache) {
 		this.engine = scenecache;
 		this.useOldModels = scenecache.hasOldModels && !scenecache.hasNewModels;
 	}
+	static async create(engine: EngineCache, texturemode: TextureModes | "auto" = "auto") {
+		let scene = new ThreejsSceneCache(engine);
+		scene.textureType = (texturemode == "auto" ? await detectTextureMode(engine.rawsource) : texturemode);
+		return scene;
+	}
+
 	getFileById(major: number, id: number) {
 		return this.engine.getFileById(major, id);
 	}
