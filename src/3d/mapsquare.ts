@@ -1233,18 +1233,19 @@ export function defaultMorphId(locmeta: objects) {
 //TODO move this to a more logical location
 export async function resolveMorphedObject(source: CacheFileSource, id: number) {
 	let objectfile = await source.getFileById(cacheMajors.objects, id);
-	let objectmeta = parse.object.read(objectfile, source);
-	if (objectmeta.morphs_1 || objectmeta.morphs_2) {
-		let newid = defaultMorphId(objectmeta);
+	let rawloc = parse.object.read(objectfile, source);
+	let morphedloc = rawloc;
+	if (rawloc.morphs_1 || rawloc.morphs_2) {
+		let newid = defaultMorphId(rawloc);
 		if (newid != -1) {
-			objectfile = await source.getFileById(cacheMajors.objects, newid);
-			objectmeta = {
-				...objectmeta,
-				...parse.object.read(objectfile, source)
+			let newloc = await source.getFileById(cacheMajors.objects, newid);
+			morphedloc = {
+				...rawloc,
+				...parse.object.read(newloc, source)
 			};
 		}
 	}
-	return objectmeta;
+	return { rawloc, morphedloc };
 }
 
 async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: WorldLocation[]) {
@@ -1583,8 +1584,8 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 
 
 	for (let loc of locations) {
-		let objectmeta = await resolveMorphedObject(engine, loc.id);
-		if (!objectmeta) { continue; }
+		let { morphedloc, rawloc } = await resolveMorphedObject(engine, loc.id);
+		if (!morphedloc) { continue; }
 
 		for (let inst of loc.uses) {
 			let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
@@ -1595,8 +1596,8 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 
 			//models have their center in the middle, but they always rotate such that their southwest corner
 			//corresponds to the southwest corner of the tile
-			let sizex = (objectmeta.width ?? 1);
-			let sizez = (objectmeta.length ?? 1);
+			let sizex = (morphedloc.width ?? 1);
+			let sizez = (morphedloc.length ?? 1);
 			if ((inst.rotation % 2) == 1) {
 				//flip offsets if we are rotated with 90deg or 270deg
 				[sizex, sizez] = [sizez, sizex];
@@ -1613,7 +1614,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 			}
 
 			locs.push({
-				location: objectmeta,
+				location: morphedloc,
 				locid: loc.id,
 				placement: inst.extra,
 				sizex,
@@ -1633,7 +1634,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 				12, 13, 14, 15, 16, 17, 18, 19, 20, 21//roof types, only some are confirmed
 			]
 
-			if (collision && !objectmeta.probably_nocollision) {
+			if (collision && !rawloc.probably_nocollision) {
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
 						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, callingtile.effectiveLevel);
@@ -1641,29 +1642,29 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 							let col = tile.effectiveCollision!;
 							//TODO check for other loc types
 							//22 should block, 4 should not
-							if (inst.type == 22 && objectmeta.maybe_blocks_movement) {
+							if (inst.type == 22 && rawloc.maybe_blocks_movement) {
 								col.walk[0] = true;
 							}
 							if (inst.type == 0) {
 								col.walk[1 + inst.rotation] = true;
-								if (!objectmeta.maybe_allows_lineofsight) {
+								if (!rawloc.maybe_allows_lineofsight) {
 									col.sight[1 + inst.rotation] = true;
 								}
 							} else if (inst.type == 2) {
 								col.walk[1 + inst.rotation] = true;
 								col.walk[1 + (inst.rotation + 1) % 4] = true;
-								if (!objectmeta.maybe_allows_lineofsight) {
+								if (!rawloc.maybe_allows_lineofsight) {
 									col.sight[1 + inst.rotation] = true;
 									col.sight[1 + (inst.rotation + 1) % 4] = true;
 								}
 							} else if (inst.type == 1 || inst.type == 3) {
 								col.walk[5 + inst.rotation] = true;
-								if (!objectmeta.maybe_allows_lineofsight) {
+								if (!rawloc.maybe_allows_lineofsight) {
 									col.sight[5 + inst.rotation] = true;
 								}
 							} else if (fullcollisiontypes.includes(inst.type)) {
 								col.walk[0] = true;
-								if (!objectmeta.maybe_allows_lineofsight) {
+								if (!rawloc.maybe_allows_lineofsight) {
 									col.sight[0] = true;
 								}
 							}

@@ -91,19 +91,19 @@ export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 export async function locToModel(cache: ThreejsSceneCache, id: number) {
-	let obj = await resolveMorphedObject(cache.engine, id);
+	let { morphedloc } = await resolveMorphedObject(cache.engine, id);
 	let mods: ModelModifications = {};
 	let anims: Record<string, number> = {};
 	let models: SimpleModelDef = [];
-	if (obj) {
-		if (obj.color_replacements) { mods.replaceColors = obj.color_replacements; }
-		if (obj.material_replacements) { mods.replaceMaterials = obj.material_replacements; }
-		models = obj.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [];
+	if (morphedloc) {
+		if (morphedloc.color_replacements) { mods.replaceColors = morphedloc.color_replacements; }
+		if (morphedloc.material_replacements) { mods.replaceMaterials = morphedloc.material_replacements; }
+		models = morphedloc.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [];
 	}
-	if (obj?.probably_animation) {
-		anims.default = obj.probably_animation;
+	if (morphedloc?.probably_animation) {
+		anims.default = morphedloc.probably_animation;
 	}
-	return { models, anims, info: obj, id };
+	return { models, anims, info: morphedloc, id };
 }
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	let item = parse.item.read(await cache.getFileById(cacheMajors.items, id), cache.engine.rawsource);
