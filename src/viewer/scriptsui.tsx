@@ -254,11 +254,12 @@ export function VR360View(p: { img: string | ImageData | TexImageSource }) {
 	)
 }
 
-export function DomWrap(p: { el: HTMLElement | null | undefined, style?: React.CSSProperties }) {
+export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefined, tagName?: "div" | "td" | "span" | "p", style?: React.CSSProperties, className?: string }) {
 	let ref = (el: HTMLElement | null) => {
-		p.el && el && el.appendChild(p.el);
+		p.el && el && el.replaceChildren(p.el);
 	}
-	return <div ref={ref} style={p.style}></div>;
+	let Tagname = p.tagName ?? "div";
+	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
 
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {

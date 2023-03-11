@@ -6,10 +6,10 @@ import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource, CallbackCacheLoader } from "../cache";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio, CopyButton } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
-import { UIScriptFile } from "./scriptsui";
+import { DomWrap, UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, drawTexture, TypedEmitter } from "../utils";
@@ -17,6 +17,7 @@ import { ParsedTexture } from "../3d/textures";
 import { CacheDownloader } from "../cache/downloader";
 import { parse } from "../opdecoder";
 import * as path from "path";
+import classNames from "classnames";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -420,6 +421,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	}
 	if (remember) {
 		datastore.set("openedcache", source);
+		localStorage.rsmv_openedcache = JSON.stringify(source);
 	}
 	return cache;
 }
@@ -456,14 +458,116 @@ function bufToHexView(buf: Buffer) {
 	return { resulthex, resultchrs };
 }
 
+function annotatedHexDom(data: Buffer, chunks: DecodeErrorJson["chunks"]) {
+	let resulthex = "";
+	let resultchrs = "";
+
+	let linesize = 16;
+	let groupsize = 8;
+
+	let hexels = document.createDocumentFragment();
+	let textels = document.createDocumentFragment();
+	let labelel = document.createElement("span");
+	let currentchunk: DecodeErrorJson["chunks"][number] | undefined = { offset: 0, len: 0, label: "start" };
+
+	let mappedchunks: { chunk: DecodeErrorJson["chunks"][number], hexel: HTMLElement, textel: HTMLElement }[] = [];
+
+	let hoverenter = (e: MouseEvent) => {
+		let index = +(e.currentTarget as HTMLElement).dataset.index!;
+		if (isNaN(index)) { return; }
+		let chunk = mappedchunks[index];
+		chunk.hexel.classList.add("mv-hex--select");
+		chunk.textel.classList.add("mv-hex--select");
+		labelel.innerText = `0x${chunk.chunk.offset.toString(16)} - ${chunk.chunk.len} ${index}\n${chunk.chunk.label}`;
+	}
+	let hoverleave = (e: MouseEvent) => {
+		let index = +(e.currentTarget as HTMLElement).dataset.index!;
+		if (isNaN(index)) { return; }
+		let chunk = mappedchunks[index];
+		chunk.hexel.classList.remove("mv-hex--select");
+		chunk.textel.classList.remove("mv-hex--select");
+		labelel.innerText = "";
+	}
+
+	let endchunk = () => {
+		if (resulthex != "" && resultchrs != "") {
+			let hexnode = document.createTextNode(resulthex);
+			let textnode = document.createTextNode(resultchrs);
+			if (currentchunk) {
+				let index = mappedchunks.length;
+				let hexspan = document.createElement("span");
+				let textspan = document.createElement("span");
+				hexspan.dataset.index = "" + index;
+				textspan.dataset.index = "" + index;
+				hexspan.onmouseenter = hoverenter;
+				hexspan.onmouseleave = hoverleave;
+				textspan.onmouseenter = hoverenter;
+				textspan.onmouseleave = hoverleave;
+				hexspan.appendChild(hexnode);
+				textspan.appendChild(textnode);
+				hexels.appendChild(hexspan);
+				textels.appendChild(textspan);
+				mappedchunks.push({ chunk: currentchunk, hexel: hexspan, textel: textspan });
+			} else {
+				hexels.appendChild(hexnode);
+				textels.appendChild(textnode);
+			}
+		}
+		currentchunk = undefined;
+		resulthex = "";
+		resultchrs = "";
+	}
+
+	for (let i = 0; i < data.length; i++) {
+		let hexsep = (i == 0 ? "" : i % linesize == 0 ? "\n" : i % groupsize == 0 ? "  " : " ");
+		let textsep = (i == 0 ? "" : i % linesize == 0 ? "\n" : i % groupsize == 0 ? " " : "");
+
+		if (currentchunk && (i < currentchunk.offset || i >= currentchunk.offset + currentchunk.len)) {
+			endchunk();
+			//TODO yikes n^2, worst case currently is maptiles ~20k chunks
+			currentchunk = chunks.find(q => q.offset <= i && q.offset + q.len > i);
+		} else if (!currentchunk) {
+			let newchunk = chunks.find(q => q.offset <= i && q.offset + q.len > i);
+			if (newchunk) { endchunk() }
+			currentchunk = newchunk;
+		}
+
+		let byte = data[i];
+		resulthex += hexsep + byte.toString(16).padStart(2, "0");
+		resultchrs += textsep + (byte < 0x20 ? "." : String.fromCharCode(byte));
+	}
+	endchunk();
+
+	return { hexels, textels, labelel };
+}
+
 function TrivialHexViewer(p: { data: Buffer }) {
 	let { resulthex, resultchrs } = bufToHexView(p.data);
+
 	return (
 		<table>
 			<tbody>
 				<tr>
-					<td style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>{resulthex}</td>
-					<td style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>{resultchrs}</td>
+					<td className="mv-hexrow">{resulthex}</td>
+					<td className="mv-hexrow">{resultchrs}</td>
+				</tr>
+			</tbody>
+		</table>
+	)
+}
+
+function AnnotatedHexViewer(p: { data: Buffer, chunks: DecodeErrorJson["chunks"] }) {
+	let { hexels, textels, labelel } = React.useMemo(() => annotatedHexDom(p.data, p.chunks), [p.data, p.chunks]);
+
+	return (
+		<table>
+			<tbody>
+				<tr>
+					<DomWrap tagName="td" el={hexels} className="mv-hexrow" />
+					<DomWrap tagName="td" el={textels} className="mv-hexrow" />
+					<td>
+						<DomWrap el={labelel} className="mv-hexlabel" />
+					</td>
 				</tr>
 			</tbody>
 		</table>
@@ -471,32 +575,43 @@ function TrivialHexViewer(p: { data: Buffer }) {
 }
 
 function FileDecodeErrorViewer(p: { file: string }) {
-	let err: DecodeErrorJson = JSON.parse(p.file);
-	let remainder = Buffer.from(err.remainder, "hex");
-	let remainderhex = bufToHexView(remainder);
+	let [mode, setmode] = React.useState("split" as "split" | "full");
+	let [err, buffer] = React.useMemo(() => {
+		let err: DecodeErrorJson = JSON.parse(p.file);
+		let buffer = Buffer.from(err.originalFile, "hex");
+		return [err, buffer];
+	}, [p.file]);
 	return (
-		<div style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>
+		<div className="mv-hexrow">
+			<div>
+				<input type="button" className={classNames("sub-btn", { "active": mode == "split" })} onClick={e => setmode("split")} value="split" />
+				<input type="button" className={classNames("sub-btn", { "active": mode == "full" })} onClick={e => setmode("full")} value="full" />
+				<input type="button" className="sub-btn" onClick={e => downloadBlob("file.bin", new Blob([buffer], { type: "application/octet-stream" }))} value="download original" />
+				<CopyButton getText={() => bufToHexView(buffer).resulthex} />
+			</div>
 			{err.error}
-			<div>Chunks</div>
-			<table>
-				<tbody>
-					{err.chunks.map((q, i) => {
-						let hexview = bufToHexView(Buffer.from(q.bytes, "hex"));
-						return (
-							<tr key={q.offset + "-" + i}>
-								<td>{hexview.resulthex}</td>
-								<td>{hexview.resultchrs}</td>
-								<td>{q.text}</td>
-							</tr>
-						);
-					})}
-					<tr>
-						<td>{remainderhex.resulthex}</td>
-						<td>{remainderhex.resultchrs}</td>
-						<td>remainder: {remainder.byteLength}</td>
-					</tr>
-				</tbody>
-			</table>
+			{mode == "full" && (
+				<AnnotatedHexViewer data={buffer} chunks={err.chunks} />
+			)}
+			{mode == "split" && (
+				<React.Fragment>
+					<div>Chunks</div>
+					<table>
+						<tbody>
+							{err.chunks.map((q, i) => {
+								let hexview = bufToHexView(buffer.slice(q.offset, q.offset + q.len));
+								return (
+									<tr key={q.offset + "-" + i}>
+										<td>{hexview.resulthex}</td>
+										<td>{hexview.resultchrs}</td>
+										<td>{q.label}</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+				</React.Fragment>
+			)}
 			<div>State</div>
 			{prettyJson(err.state)}
 		</div>
@@ -505,7 +620,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
 
 function SimpleTextViewer(p: { file: string }) {
 	return (
-		<div style={{ whiteSpace: "pre", userSelect: "text", fontFamily: "monospace" }}>
+		<div className="mv-hexrow">
 			{p.file}
 		</div>
 	);

@@ -19,7 +19,7 @@ const BufferTypes = {
 var debugdata: null | {
 	structstack: object[],
 	opcodes: {
-		op: number | string,
+		op: string,
 		index: number,
 		stacksize: number,
 		external?: { start: number, len: number }

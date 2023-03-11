@@ -5,14 +5,13 @@ import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser, parse } from "../opdecoder";
 import { FileRange } from "../cliparser";
 import { compareCacheMajors } from "./cachediff";
-import { GameCacheLoader } from "../cache/sqlite";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
 
 
 export type DecodeErrorJson = {
-	chunks: { offset: number, bytes: string, text: string }[],
-	remainder: string,
+	originalFile: string,
+	chunks: { offset: number, len: number, label: string }[],
 	state: any,
 	error: string
 }
@@ -56,12 +55,12 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 		cacheMajors.oldmodels//~2015
 	];
 
-	let caches = function* (): Generator<CacheInput> {
+	let caches = async function* (): AsyncGenerator<CacheInput> {
 		if (!before && basecache) {
 			yield { source: basecache, info: "base cache", date: Date.now(), buildnr: basecache.getBuildNr() };
 		}
 		for (let src of checkedcaches) {
-			let cache = new Openrs2CacheSource(src);
+			let cache = await Openrs2CacheSource.fromMeta(src);
 			let date = new Date(src.timestamp ?? "");
 			yield {
 				source: cache,
@@ -74,7 +73,7 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 
 	let prevcache: CacheInput | null = null;
 	let currentcache: CacheInput | null = null;
-	for (let nextcache of caches()) {
+	for await (let nextcache of caches()) {
 		prevcache = currentcache;
 		currentcache = nextcache;
 		if (before && !prevcache) { continue; }
@@ -150,19 +149,29 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 
 	fileiter = async function* () {
 		let allfiles: DecodeEntry[] = [];
-		let currentarch: SubFile[] | null = null;
-		let currentarchindex: CacheIndex | null = null;
+		let currentarch: { index: CacheIndex, subfiles: SubFile[], error: Error | null } | null = null;
 		for (let file of files) {
 			let index = file.index;
-			if (index != currentarchindex) {
-				currentarch = await source.getFileArchive(index);
-				currentarchindex = index;
-				memuse += currentarch.reduce((a, v) => a + v.size, 0);
+			if (!currentarch || index != currentarch.index) {
+				let subfiles: SubFile[];
+				let error: Error | null = null;
+				try {
+					subfiles = await source.getFileArchive(index);
+				} catch (e) {
+					subfiles = [];
+					error = e;
+				}
+				currentarch = { index, subfiles, error };
+				memuse += subfiles.reduce((a, v) => a + v.size, 0);
 			}
 
-			let subfile = currentarch![file.subindex];
+			let subfile = currentarch.subfiles[file.subindex];
 			if (!subfile) {
-				output.log("subfile not found");
+				if (currentarch.error) {
+					output.log(`skipped ${mode.lookup.fileToLogical(file.index.major, file.index.minor, file.subindex).join(".")} due to error: ${currentarch.error}`);
+				} else {
+					output.log("subfile not found");
+				}
 				continue;
 			}
 			let entry: DecodeEntry = { major: index.major, minor: index.minor, subfile: file.subindex, file: subfile.buffer };
@@ -203,7 +212,8 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 				errorcount++;
 			}
 			if (opts.dumpall || !res.success) {
-				let filename = `${res.success ? "pass" : "fail"}-${file.name ? `${file.name}` : `${file.major}_${file.minor}_${file.subfile}`}`;
+				let logicalindex = mode.lookup.fileToLogical(file.major, file.minor, file.subfile);
+				let filename = `${res.success ? "pass" : "fail"}-${file.name ? `${file.name}` : `${logicalindex.join("_")}`}`;
 				if (opts.outmode == "json") {
 					outdir.writeFile(filename + ".hexerr.json", res.getDebugFile(opts.outmode));
 				}
@@ -265,8 +275,8 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 		}
 		if (outmode == "json" || outmode == "hextext") {
 			let err: DecodeErrorJson = {
+				originalFile: buffer.toString("hex"),
 				chunks: [],
-				remainder: "",
 				state: null,
 				error: error?.message ?? "success"
 			};
@@ -279,12 +289,13 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 					index = op.external.start;
 					sliceend = op.external.start + op.external.len;
 				}
-				let bytes = buffer.slice(index, sliceend).toString("hex");
-				let opstr = " ".repeat(Math.max(0, op.stacksize - 1)) + (typeof op.op == "number" ? "0x" + op.op.toString(16).padStart(2, "0") : op.op);
-				err.chunks.push({ offset: index, bytes, text: opstr });
+				let opstr = " ".repeat(Math.max(0, op.stacksize - 1)) + op.op;
+				err.chunks.push({ offset: index, len: sliceend - index, label: opstr });
 				index = endindex;
 			}
-			err.remainder = buffer.slice(index, state.endoffset).toString("hex");
+			let remainingbytes = state.endoffset - index;
+			let remainderchunk: DecodeErrorJson["chunks"][number] = { offset: index, len: remainingbytes, label: `remainder: ${remainingbytes}` };
+			err.chunks.push(remainderchunk);
 			// err.state = state.stack[state.stack.length - 1] ?? null;
 			err.state = debugdata.structstack[debugdata.structstack.length - 1] ?? null;
 
@@ -295,10 +306,11 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 				let chunks: Buffer[] = [];
 				let outindex = 0;
 				for (let chunk of err.chunks) {
-					let databytes = Buffer.from(chunk.bytes, "hex");
+					if (chunk == remainderchunk) { continue; }
+					let databytes = buffer.slice(chunk.offset, chunk.offset + chunk.len);
 					chunks.push(databytes);
 					outindex += databytes.length;
-					let opstr = chunk.text.slice(0, 6).padStart(6, "\0");
+					let opstr = chunk.label.slice(0, 6).padStart(6, "\0");
 					let minfill = opstr.length + 1;
 					let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + minfill) / 16) * 16 - outindex);
 					if (fillsize > 0) {
@@ -308,11 +320,13 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 					}
 					outindex += fillsize;
 				}
-				let remainder = Buffer.from(err.remainder, "hex");
-				chunks.push(remainder);
-				outindex += remainder.byteLength
-				chunks.push(Buffer.alloc(2, 0xcc));
-				outindex += 2;
+				if (remainderchunk) {
+					let remainder = buffer.slice(remainderchunk.offset, remainderchunk.offset + remainderchunk.len);
+					chunks.push(remainder);
+					outindex += remainder.byteLength;
+					chunks.push(Buffer.alloc(2, 0xcc));
+					outindex += 2;
+				}
 				let fillsize = (outindex == 0 ? 0 : Math.ceil((outindex + 33) / 16) * 16 - outindex);
 				chunks.push(Buffer.alloc(fillsize, 0xff));
 				chunks.push(Buffer.from(err.error, "ascii"));

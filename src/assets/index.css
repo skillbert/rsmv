@@ -298,3 +298,19 @@
 	border: 1px solid #5e5e5e;
 	margin: 5px 0px;
 }
+
+.mv-hexrow {
+	white-space: pre;
+	user-select: text;
+	font-family: monospace;
+}
+
+.mv-hexlabel {
+	position: fixed;
+	top: 180px;
+}
+
+
+.mv-hex--select {
+	background-color: #fff3;
+}

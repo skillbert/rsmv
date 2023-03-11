@@ -36,7 +36,21 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 		this.state = {
 			openedFile: this.props.ctx.openedfile
 		};
-		datastore.get<SavedCacheSource>("openedcache").then(c => c && this.openCache(c));
+		(async () => {
+			try {
+				let c = await Promise.race([
+					datastore.get<SavedCacheSource>("openedcache"),
+					new Promise<never>((d, f) => setTimeout(f, 1000))
+				]);
+				if (c) { this.openCache(c); }
+			} catch (e) {
+				console.log("failed to open indexedDB openedcache, fallback to localStorage (without webfs support)");
+				try {
+					let cache = JSON.parse(localStorage.rsmv_openedcache!);
+					this.openCache(cache);
+				} catch (e) { }
+			};
+		})();
 	}
 
 	@boundMethod
@@ -69,6 +83,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 	@boundMethod
 	closeCache() {
 		datastore.del("openedcache");
+		localStorage.rsmv_openedcache = "";
 		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
 		this.props.ctx.source?.close();
 		this.props.ctx.setCacheSource(null);
