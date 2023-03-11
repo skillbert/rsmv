@@ -1056,7 +1056,7 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 	let textureproms: Promise<void>[] = [];
 	for (let [matid, repeat] of matids.entries()) {
 		let mat = scene.engine.getMaterialData(matid);
-		if (mat.textures.diffuse) {
+		if (mat.textures.diffuse && scene.textureType != "none") {
 			textureproms.push(scene.getTextureFile("diffuse", mat.textures.diffuse, mat.stripDiffuseAlpha)
 				.then(tex => tex.toWebgl())
 				.then(src => {
@@ -1252,7 +1252,8 @@ export function defaultMorphId(locmeta: objects) {
 	let newid = -1;
 	if (locmeta.morphs_1) { newid = locmeta.morphs_1.unk2[0] ?? locmeta.morphs_1.unk3; }
 	if (locmeta.morphs_2) { newid = locmeta.morphs_2.unk2; }
-	if (newid == (1 << 15) - 1) { newid = -1; }
+	if (newid == (1 << 15) - 1) { newid = -1; }//new caches with varuint
+	if (newid == (1 << 16) - 1) { newid = -1; }//old caches which use ushort
 	return newid;
 }
 

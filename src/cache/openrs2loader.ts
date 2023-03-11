@@ -65,24 +65,14 @@ export function validOpenrs2Caches() {
 export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
+	xteaKeysLoaded = false;
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
-		return Openrs2CacheSource.fromMeta(meta.meta);
+		return new Openrs2CacheSource(meta.meta);
 	}
-	static async fromMeta(meta: Openrs2CacheMeta) {
-		let keys: Openrs2XteaKey[] = await fetch(`${endpoint}/caches/runescape/${meta.id}/keys.json`).then(q => q.json());
-
-		let xteakeys: cache.XteaTable = new Map();
-		for (let key of keys) {
-			//merge into one 31bit int
-			let lookupid = (key.archive << 23) | key.group;
-			xteakeys.set(lookupid, new Uint32Array(key.key));
-		}
-		return new Openrs2CacheSource(meta, xteakeys);
-	}
-	constructor(meta: Openrs2CacheMeta, keys: cache.XteaTable | null) {
-		super(false, keys);
+	constructor(meta: Openrs2CacheMeta) {
+		super(false);
 		this.meta = meta;
 		if (meta.builds.length != 0) {
 			this.buildnr = meta.builds[0].major;
@@ -101,6 +91,20 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	}
 	getBuildNr() {
 		return this.buildnr;
+	}
+	async getCacheIndex(major) {
+		if (this.buildnr <= 700 && !this.xteaKeysLoaded && major == cacheMajors.mapsquares) {
+			this.xteakeys ??= new Map();
+			let keys: Openrs2XteaKey[] = await fetch(`${endpoint}/caches/runescape/${this.meta.id}/keys.json`).then(q => q.json());
+			for (let key of keys) {
+				//merge into one 31bit int
+				let lookupid = (key.archive << 23) | key.group;
+				this.xteakeys.set(lookupid, new Uint32Array(key.key));
+			}
+			this.xteaKeysLoaded = true;
+			console.log(`loaded ${keys.length} xtea keys`);
+		}
+		return super.getCacheIndex(major);
 	}
 
 	static async downloadCacheMeta(cacheid: number) {
@@ -155,6 +159,9 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 		if (metarows[4][0][1].endsWith("MiB")) { cachesize *= 1024 * 1024; }
 		else if (metarows[4][0][1].endsWith("GiB")) { cachesize *= 1024 * 1024 * 1024; }
 		else { throw new Error("failed to parse cache size"); }
+
+		//find first row with non-emtpy date
+		sourcerows.sort((a, b) => +(b[4][1].length != 0) - +(a[4][1].length != 0));
 
 		let meta: Openrs2CacheMeta = {
 			id: cacheid,

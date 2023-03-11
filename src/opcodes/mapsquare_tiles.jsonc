@@ -1,12 +1,17 @@
 ["struct",
-	["tiles",["array",16384,["struct",
-		["flags","unsigned byte"],
-		["shape",["opt",["flags",0,"bitflag"],"unsigned byte"]],
-		["overlay",["opt",["flags",0,"bitflag"],"variable unsigned short"]],
-		["settings",["opt",["flags",1,"bitflag"],"unsigned byte"]],
-		["underlay",["opt",["flags",2,"bitflag"],"variable unsigned short"]],
-		["height",["opt",["flags",3,"bitflag"],"unsigned byte"]]
-	]]],
+	["tiles",["array",16384,
+		["match","buildnr",{
+			">=750":["struct",
+				["flags","unsigned byte"],
+				["shape",["opt",["flags",0,"bitflag"],"unsigned byte"]],
+				["overlay",["opt",["flags",0,"bitflag"],"variable unsigned short"]],
+				["settings",["opt",["flags",1,"bitflag"],"unsigned byte"]],
+				["underlay",["opt",["flags",2,"bitflag"],"variable unsigned short"]],
+				["height",["opt",["flags",3,"bitflag"],"unsigned byte"]]
+			],
+			"other":["legacy_maptile"]
+		}]
+	]],
 	//1 bit per 8x8 subarea, starting southwest, going north and wrapping east
 	["nonmembarea",["match","buildnr",{">=765":["buffer",8,"hex"],"other":null}]],
 	["extra",{

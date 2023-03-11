@@ -39,7 +39,7 @@ export async function openrs2Ids(output: ScriptOutput, date: string, near: strin
                 }
                 output.log(extraline);
             }
-            let src = new Openrs2CacheSource(cache, null);
+            let src = new Openrs2CacheSource(cache);
             try {
                 // if (cache.builds[0].major >= 410) {
                 let index = await src.getCacheIndex(cacheMajors.index);

@@ -299,10 +299,9 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 	requiresCrc: boolean;
 	xteakeys: XteaTable | null;
 
-	constructor(needscrc: boolean, xteakeys: XteaTable | null) {
+	constructor(needscrc: boolean) {
 		super();
 		this.requiresCrc = needscrc;
-		this.xteakeys = xteakeys;
 	}
 
 	getFile(major: number, minor: number, crc?: number): Promise<Buffer> {
@@ -337,7 +336,7 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 
 export class CallbackCacheLoader extends DirectCacheFileSource {
 	constructor(fn: (major: number, minor: number, crc?: number) => Promise<Buffer>, needsCrc: boolean) {
-		super(needsCrc, null);
+		super(needsCrc);
 		this.getFile = fn;
 	}
 

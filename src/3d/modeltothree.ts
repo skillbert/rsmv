@@ -107,9 +107,12 @@ export class EngineCache extends CachingFileSource {
 		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
 			.forEach(q => this.mapOverlays[q.fileid] = parse.mapsquareOverlays.read(q.buffer, this.rawsource));
 		this.mapMapscenes = [];
-		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
-			.forEach(q => this.mapMapscenes[q.fileid] = parse.mapscenes.read(q.buffer, this.rawsource));
-
+		try {
+			(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
+				.forEach(q => this.mapMapscenes[q.fileid] = parse.mapscenes.read(q.buffer, this.rawsource));
+		} catch (e) {
+			//ignore missing mapscenes
+		}
 		try {
 			await this.getCacheIndex(cacheMajors.oldmodels);
 			this.hasOldModels = true;
@@ -210,6 +213,8 @@ export async function detectTextureMode(source: CacheFileSource) {
 			textureMode = (numdds2014 > numpng2014 ? "dds2014" : "png2014");
 		} else if (await detectmajor(cacheMajors.texturesOldPng) > 0) {
 			textureMode = "oldpng";
+		} else {
+			textureMode = "none";
 		}
 	}
 	console.log(`detectedtexture mode. ${textureMode}`);
@@ -226,7 +231,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	const wraptypes = material.texmodes == "clamp" ? THREE.ClampToEdgeWrapping : material.texmodes == "repeat" ? THREE.RepeatWrapping : THREE.MirroredRepeatWrapping;
 	const wraptypet = material.texmodet == "clamp" ? THREE.ClampToEdgeWrapping : material.texmodet == "repeat" ? THREE.RepeatWrapping : THREE.MirroredRepeatWrapping;
 
-	if (material.textures.diffuse) {
+	if (material.textures.diffuse && source.textureType != "none") {
 		let diffuse = await (await source.getTextureFile("diffuse", material.textures.diffuse, material.stripDiffuseAlpha)).toImageData();
 		let difftex = new THREE.DataTexture(diffuse.data, diffuse.width, diffuse.height, THREE.RGBAFormat);
 		difftex.needsUpdate = true;
@@ -305,7 +310,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	return { mat, matmeta: material };
 }
 
-type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014";
+type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none";
 type TextureTypes = keyof MaterialData["textures"];
 
 export class ThreejsSceneCache {
@@ -317,7 +322,7 @@ export class ThreejsSceneCache {
 	textureType: TextureModes = "dds";
 	useOldModels: boolean;
 
-	static textureIndices: Record<TextureTypes, Record<TextureModes, number>> = {
+	static textureIndices: Record<TextureTypes, Record<Exclude<TextureModes, "none">, number>> = {
 		diffuse: {
 			png: cacheMajors.texturesPng,
 			dds: cacheMajors.texturesDds,

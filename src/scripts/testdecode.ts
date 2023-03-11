@@ -55,12 +55,12 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 		cacheMajors.oldmodels//~2015
 	];
 
-	let caches = async function* (): AsyncGenerator<CacheInput> {
+	let caches = function* (): Generator<CacheInput> {
 		if (!before && basecache) {
 			yield { source: basecache, info: "base cache", date: Date.now(), buildnr: basecache.getBuildNr() };
 		}
 		for (let src of checkedcaches) {
-			let cache = await Openrs2CacheSource.fromMeta(src);
+			let cache = new Openrs2CacheSource(src);
 			let date = new Date(src.timestamp ?? "");
 			yield {
 				source: cache,
@@ -73,7 +73,7 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 
 	let prevcache: CacheInput | null = null;
 	let currentcache: CacheInput | null = null;
-	for await (let nextcache of caches()) {
+	for (let nextcache of caches()) {
 		prevcache = currentcache;
 		currentcache = nextcache;
 		if (before && !prevcache) { continue; }

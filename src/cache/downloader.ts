@@ -238,7 +238,7 @@ export class CacheDownloader extends DirectCacheFileSource {
 	pending: PendingFile[];
 
 	constructor() {
-		super(true, null);
+		super(true);
 		this.configPromise = downloadServerConfig().then(parseClientConfig);
 	}
 

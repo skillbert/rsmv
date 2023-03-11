@@ -509,6 +509,17 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             normals: m.normals
         },
     }));
+
+    //old model format stores with lower presicion
+    if (modeldata.modelversion == 0) {
+        for (let mesh of meshes) {
+            let arr = mesh.attributes.pos.array as number[];
+            for (let i = 0; i < arr.length; i++) {
+                arr[i] *= 4;
+            }
+        }
+    }
+
     let r: ModelData = { maxy, miny, meshes, bonecount: bonecount, skincount: skincount, debugmeshes };
 
     return r;

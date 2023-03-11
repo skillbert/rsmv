@@ -1,6 +1,30 @@
 {
-	"0x01": { "name":                              "models", "read": [ "array", ["struct", ["type", "byte"], ["values", ["array", "unsigned variable int"]]] ] },
+	//TODO build nr for count arg unknown															
+	"0x01": { "name":                              "models", "read":["match","buildnr",{
+																">=582":["array","ubyte",["struct",
+																	["type","ubyte"],
+																	["values",["array","ubyte","item_modelid"]]
+																]],
+																"other":["array","ubyte",["struct",
+																	["values",["array",1,"item_modelid"]],
+																	["type","ubyte"]
+																]]}]},
 	"0x02": { "name":                                "name", "read": "string" },
+	//not sure what this is but they seem identical
+	"0x05": { "name":                           "models_05", "read":["match","buildnr",{
+																">=582":["struct",
+																	["models", ["array","ubyte",["struct",
+																		["type","ubyte"],
+																		["values",["array","ubyte","item_modelid"]]
+																	]]],
+																	["unktail",["array","ubyte","uint"]]],
+																"other":["struct",
+																	["models",["array",1,["struct",
+																		["type",10],
+																		["values",["array","ubyte","item_modelid"]],
+																		["unktail",["array",0,"uint"]]
+																	]]]]
+																}]},
 	"0x0E": { "name":                               "width", "read": "unsigned byte" },
 	"0x0F": { "name":                              "length", "read": "unsigned byte" },
 	"0x11": { "name":                "probably_nocollision", "read": "true" },
@@ -24,6 +48,7 @@
 	"0x2A": { "name":                     "recolourPalette", "read": [ "array", "byte" ] },
 	"0x2C": { "name":                          "unknown_2C", "read": "unsigned short" },
 	"0x2D": { "name":                          "unknown_2D", "read": "unsigned short" },
+	"0x3C": { "name":                          "unknown_3c", "read": "ushort" },//replaced by mapfunction 6B later in ~2010
 	"0x3E": { "name":                              "mirror", "read": "true" },
 	"0x40": { "name":                          "unknown_40", "read": "true" },
 	"0x41": { "name":                              "scaleX", "read": "short" },
@@ -38,23 +63,25 @@
 	"0x4B": { "name":                          "unknown_4B", "read": "unsigned byte" },
 	"0x4D": { "name":                            "morphs_1", "read": [ "struct",
 																["unk1", "unsigned int"],
-																["unk2", [ "array",["match","buildnr",{">=910":"varushort",">=0":"ubyte"}], "unsigned variable int" ]],
-																["unk3", "unsigned variable int"] ] },
+																["unk2", [ "array",["match","buildnr",{">=910":"varushort",">=0":"ubyte"}],"item_modelid"]],
+																["unk3", "item_modelid"] ] },
 	"0x4E": { "name":             "light_source_related_4E", "read": [ "struct", ["maybe_color", "unsigned short"], ["maybe_radius", "unsigned byte"] ] },
 	"0x4F": { "name":                          "unknown_4F", "read": [ "struct", ["unknown_1", "unsigned short"], ["unknown_2", "unsigned short"], ["unknown_3", "unsigned byte"], ["unknown_4", ["array", "unsigned short"]] ] },
 	"0x51": { "name":                          "unknown_51", "read": "unsigned byte" },
 	"0x52": { "name":                          "unknown_52", "read": "true" },
 	"0x58": { "name":                          "is_members", "read": "true" },
 	"0x59": { "name":                          "unknown_59", "read": "true" },
+	"0x5A": { "name":                          "unknown_5A", "read": "true" },
 	"0x5B": { "name":                           "isMembers", "read": "true" },
 	"0x5C": { "name":                            "morphs_2", "read": [ "struct",
 																["unk1", "unsigned int"],
-																["unk2", "unsigned variable int"],
-																["unk3", [ "array", ["match","buildnr",{">=910":"varushort",">=0":"ubyte"}], "unsigned variable int" ]],
-																["unk4", "unsigned variable int"] ] },
+																["unk2", "item_modelid"],
+																["unk3", [ "array", ["match","buildnr",{">=910":"varushort",">=0":"ubyte"}],"item_modelid"]],
+																["unk4", "item_modelid"] ] },
 	"0x5D": { "name":                             "tilt_xz", "read": [ "tuple", "byte", "byte"] },
 	"0x5E": { "name":                         "under_water", "read": "true" },
-	"0x5F": { "name":         "probably_morphCeilingOffset", "read": "short" },
+	"0x5F": { "name":         "probably_morphCeilingOffset", "read": ["match","buildnr",{">=600":"short","other":0}]},//TODO buildnr somewhere between 580-728
+	"0x60": { "name":                          "unknown_60", "read": "true" },
 	"0x61": { "name":        "ground_decoration_related_61", "read": "true" },
 	"0x62": { "name":                "has_animated_texture", "read": "true" },
 	"0x63": { "name":                            "dummy_63", "read": [ "struct", ["unknown_2", "unsigned byte"], ["unknown_1", "unsigned short"] ] },
@@ -66,6 +93,7 @@
 	"0x69": { "name":                      "invertMapScene", "read": "true" },
 	"0x6A": { "name":                          "headModels", "read": [ "array", ["struct", ["model", "varuint"], ["unknown_2", "unsigned byte"]] ] },
 	"0x6B": { "name":                         "mapFunction", "read": "unsigned short" },
+	"0x71": { "name":                          "unknown_71", "read": "unsigned byte" },
 	"0x96": { "name":                    "members_action_1", "read": "string" },
 	"0x97": { "name":                    "members_action_2", "read": "string" },
 	"0x98": { "name":                    "members_action_3", "read": "string" },

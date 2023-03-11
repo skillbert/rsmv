@@ -1173,6 +1173,49 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return { type: "number" };
 			}
 		}
+	},
+	"legacy_maptile": function (args, parent, typedef) {
+		return {
+			read(state) {
+				let res = {
+					shape: null as number | null,
+					flags: 0,
+					height: null as number | null,
+					overlay: null as number | null,
+					settings: null as number | null,
+					underlay: null as number | null
+				}
+				while (true) {
+					let op = state.buffer.readUint8(state.scan++);
+					if (op == 0) { break; }
+					if (op == 1) {
+						res.height = state.buffer.readUint8(state.scan++);
+						break;
+					}
+					if (op >= 2 && op <= 49) {
+						res.shape = op - 2;
+						res.overlay = state.buffer.readUint8(state.scan);
+						state.scan += 1;
+					}
+					if (op >= 50 && op <= 81) {
+						res.settings = op - 49;
+					}
+					if (op >= 82) {
+						res.underlay = op - 81;
+					}
+				}
+				return res;
+			},
+			write(state) {
+				throw new Error("not implemented");
+			},
+			getTypescriptType(indent) {
+				return "any";
+			},
+			getJsonSchema() {
+				return { type: "any" };
+			}
+		}
 	}
 }
 

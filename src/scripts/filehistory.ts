@@ -18,12 +18,12 @@ export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: 
     let histsources = await validOpenrs2Caches();
     let decoder = cacheFileDecodeModes[mode]({});
 
-    let allsources = async function* () {
+    let allsources = function* () {
         if (basecache) {
             yield basecache;
         }
         for (let id of histsources) {
-            yield Openrs2CacheSource.fromMeta(id);
+            yield new Openrs2CacheSource(id);
         }
     }
 
@@ -31,7 +31,7 @@ export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: 
 
     let history: HistoricVersion[] = [];
 
-    for await (let source of allsources()) {
+    for (let source of allsources()) {
         try {
             let sourcename = source.getCacheMeta().name.replace(/:/g, "-");
             let changed = false;
