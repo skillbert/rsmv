@@ -27,6 +27,15 @@ export type Openrs2CacheMeta = {
 	disk_store_valid: boolean
 };
 
+type Openrs2XteaKey = {
+	archive: number,
+	group: number,
+	name_hash: number,
+	name: string | null,
+	mapsquare: number | null,
+	key: [number, number, number, number]
+}
+
 var cachelist: Promise<Openrs2CacheMeta[]> | null = null;
 export function validOpenrs2Caches() {
 	if (!cachelist) {
@@ -59,10 +68,21 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
-		return new Openrs2CacheSource(meta.meta);
+		return Openrs2CacheSource.fromMeta(meta.meta);
 	}
-	constructor(meta: Openrs2CacheMeta) {
-		super(false);
+	static async fromMeta(meta: Openrs2CacheMeta) {
+		let keys: Openrs2XteaKey[] = await fetch(`${endpoint}/caches/runescape/${meta.id}/keys.json`).then(q => q.json());
+
+		let xteakeys: cache.XteaTable = new Map();
+		for (let key of keys) {
+			//merge into one 31bit int
+			let lookupid = (key.archive << 23) | key.group;
+			xteakeys.set(lookupid, new Uint32Array(key.key));
+		}
+		return new Openrs2CacheSource(meta, xteakeys);
+	}
+	constructor(meta: Openrs2CacheMeta, keys: cache.XteaTable | null) {
+		super(false, keys);
 		this.meta = meta;
 		if (meta.builds.length != 0) {
 			this.buildnr = meta.builds[0].major;
@@ -109,6 +129,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 					minor: major,
 					crc: 0,
 					size: 0,
+					name: null,
 					subindexcount: 1,
 					subindices: [0],
 					version: version,
@@ -179,6 +200,6 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
-		return decompress(await this.downloadFile(major, minor));
+		return decompress(await this.downloadFile(major, minor), this.getXteaKey(major, minor));
 	}
 }

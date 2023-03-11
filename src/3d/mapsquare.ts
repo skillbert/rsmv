@@ -80,8 +80,8 @@ export type ChunkData = {
 	mapsquarez: number,
 	tiles: mapsquare_tiles["tiles"],
 	extra: mapsquare_tiles["extra"],
-	archive: SubFile[],
-	cacheIndex: CacheIndex,
+	locsfile: Buffer | null,
+	tilefile: Buffer | null,
 	locs: WorldLocation[]
 }
 
@@ -962,21 +962,44 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
 		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
-			let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
-			let selfindex = mapunderlaymeta[squareindex];
-			if (!selfindex) {
-				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
-				continue;
-			}
-			let selfarchive = (await engine.getFileArchive(selfindex));
-			let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
-			let tileindexwater = selfindex.subindices.indexOf(cacheMapFiles.squaresWater);
+			let tilefile: Buffer;
+			let locsfile: Buffer | null = null;
+			let selfindex: CacheIndex;
+			if (engine.getBuildNr() >= 759) {
+				let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
+				selfindex = mapunderlaymeta[squareindex];
+				if (!selfindex) {
+					// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
+					continue;
+				}
+				let selfarchive = (await engine.getFileArchive(selfindex));
 
-			if (tileindex == -1) {
-				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it has no tiles`);
-				continue;
+				let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
+				if (tileindex == -1) { continue; }
+				tilefile = selfarchive[tileindex].buffer;
+				let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
+				if (locsindex != -1) {
+					locsfile = selfarchive[locsindex].buffer;
+				}
+			} else {
+				try {
+					let index = await engine.findFileByName(cacheMajors.mapsquares, `m${rect.x + x}_${rect.z + z}`);
+					if (!index) { continue; }
+					selfindex = index;
+					tilefile = await engine.getFile(index.major, index.minor, index.crc);
+				} catch (e) {
+					//missing xtea
+					continue;
+				}
+				try {
+					let index = await engine.findFileByName(cacheMajors.mapsquares, `l${rect.x + x}_${rect.z + z}`);
+					if (index) {
+						locsfile = await engine.getFile(index.major, index.minor, index.crc);
+					}
+				} catch (e) {
+					//ignore
+				}
 			}
-			let tilefile = selfarchive[tileindex].buffer;
 			//let watertilefile = selfarchive[tileindexwater]?.buffer;
 			//let watertiles = parse.mapsquareWaterTiles.read(watertilefile);
 			let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
@@ -985,7 +1008,10 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 				zoffset: (rect.z + z) * squareSize,
 				mapsquarex: rect.x + x,
 				mapsquarez: rect.z + z,
-				tiles: tiledata.tiles, extra: tiledata.extra, cacheIndex: selfindex, archive: selfarchive,
+				tiles: tiledata.tiles,
+				extra: tiledata.extra,
+				locsfile,
+				tilefile,
 				locs: []
 			};
 			grid.addMapsquare(chunk, !!opts?.collision);
@@ -1578,9 +1604,8 @@ export type WorldLocation = {
 export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, grid: TileGrid, collision = false) {
 	let locs: WorldLocation[] = [];
 
-	let locationindex = chunk.cacheIndex.subindices.indexOf(cacheMapFiles.locations);
-	if (locationindex == -1) { return locs; }
-	let locations = parse.mapsquareLocations.read(chunk.archive[locationindex].buffer, engine.rawsource).locations;
+	if (!chunk.locsfile) { return locs; }
+	let locations = parse.mapsquareLocations.read(chunk.locsfile, engine.rawsource).locations;
 
 
 	for (let loc of locations) {

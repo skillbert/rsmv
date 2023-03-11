@@ -38,7 +38,7 @@ export function defaultMaterial(): MaterialData {
 }
 
 export function materialCacheKey(matid: number, hasVertexAlpha: boolean) {
-	return matid | (hasVertexAlpha ? 0x800000 : 0);
+	return (matid == -1 ? 0x7fffff : matid) | (hasVertexAlpha ? 0x800000 : 0);
 }
 
 export function convertMaterial(data: Buffer, materialid: number, source: CacheFileSource) {

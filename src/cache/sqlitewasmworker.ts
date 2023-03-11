@@ -1,4 +1,4 @@
-import { compressSqlite, decompressSqlite } from "./compression";
+import { compressSqlite, decompress } from "./compression";
 //only type info, import the actual thing at runtime so it can be avoided if not used
 import type { InitSqlJsStatic, Database } from "sql.js";
 
@@ -94,7 +94,7 @@ async function getFile(major: number, minor: number, crc?: number) {
 	}
 	let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
 	// console.log("size",file.byteLength);
-	let res = decompressSqlite(file);
+	let res = decompress(file);
 	return res;
 }
 
@@ -113,9 +113,10 @@ async function getIndex(major: number) {
 	let { dbget } = openTable(major);
 	let row = await dbget(`SELECT DATA FROM cache_index`, []);
 	let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
-	return decompressSqlite(file);
+	return decompress(file);
 }
 
+//obsolete since the main process simply just kills the entire thread/environment
 function close() {
 	for (let table of opentables.values()) {
 		table.dbprom.then(q => q.close());

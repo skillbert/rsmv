@@ -25,6 +25,17 @@ export type Stream = {
 	bytesLeft(): number;
 }
 
+export function cacheFilenameHash(name: string) {
+	let hash = 0;
+	for (let ch of name) {
+		//two different hash modes, i don't know which is used when
+		// hash = (Math.imul(hash, 61) + ch.charCodeAt(0) - 32) | 0;
+		hash = (((hash << 5) - hash) | 0) + ch.charCodeAt(0) | 0;
+	}
+	return hash >>> 0;//cast to u32
+}
+globalThis.cacheFilenameHash = cacheFilenameHash;
+
 export function stringToMapArea(str: string) {
 	let [x, z, xsize, zsize] = str.split(/[,\.\/:;]/).map(n => +n);
 	xsize = xsize ?? 1;

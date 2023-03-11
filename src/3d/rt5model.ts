@@ -104,6 +104,7 @@ function jagexOldNormalSpace(normal_x: number, normal_y: number, normal_z: numbe
 }
 
 export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
+    const enabletextures = false;
     let modeldata = parse.oldmodels.read(modelfile, source);
 
     let maxy = 0;
@@ -159,7 +160,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
 
     let matusecount = new Map<number, number>();
     let matmesh = new Map<number, WorkingSubmesh>();
-    if (modeldata.material) {
+    if (enabletextures && modeldata.material) {
         for (let matid of modeldata.material) {
             matusecount.set(matid, (matusecount.get(matid) ?? 0) + 1);
         }
@@ -233,7 +234,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     if (!stream.eof()) { throw new Error("stream not used to completion"); }
 
     //calculate centers of material maps
-    if (modeldata.material) {
+    if (enabletextures && modeldata.material) {
         let posa = new Vector3();
         let posb = new Vector3();
         let posc = new Vector3();
@@ -369,7 +370,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         vtmp0.copy(v1).sub(v0);
         vnormal.copy(v2).sub(v0).cross(vtmp0).normalize();
 
-        let matargument = (modeldata.material ? modeldata.material[i] : 0);
+        let matargument = (enabletextures && modeldata.material ? modeldata.material[i] : 0);
         let submesh = matmesh.get(matargument)!;
         let dstfaceindex = submesh.currentface++;
         let vertbase = dstfaceindex * 3;
@@ -409,7 +410,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             //calculate the center of each mapping
             let mapid = uvids[texmapindex++];
             if (mapid == 0) {
-                debugger;
+                // debugger;
                 //TODO just default [0,1] uvs?
             } else if (mapid == 0x7fff) {
                 //TODO still missing something

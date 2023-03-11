@@ -2,7 +2,7 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parse, FileParser } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
-import { constrainedMap } from "../utils";
+import { cacheFilenameHash, constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
@@ -39,6 +39,32 @@ async function filerange(source: CacheFileSource, startindex: FileId, endindex: 
 		}
 	}
 	return files;
+}
+
+function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
+	return {
+		major: cacheMajors.mapsquares,
+		logicalDimensions: 2,
+		multiIndexArchives: false,
+		fileToLogical(major, minor, subfile) {
+			return [255, minor];
+		},
+		logicalToFile(id) {
+			throw new Error("not implemented");
+		},
+		async logicalRangeToFiles(source, start, end) {
+			let index = await source.getCacheIndex(cacheMajors.mapsquares);
+			let res: CacheFileId[] = [];
+			for (let x = start[0]; x <= Math.min(end[0], 100); x++) {
+				for (let z = start[1]; z <= Math.min(end[1], 200); z++) {
+					let namehash = cacheFilenameHash(`${key}${x}_${z}`);
+					let file = index.find(q => q.name == namehash);
+					if (file) { res.push({ index: file, subindex: 0 }); }
+				}
+			}
+			return res;
+		}
+	}
 }
 
 function worldmapIndex(subfile: number): DecodeLookup {
@@ -170,7 +196,7 @@ function rootindexfileIndex(): DecodeLookup {
 		logicalToFile(id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return [
-				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, subindexcount: 1, subindices: [0] }, subindex: 0 }
+				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, name: null, subindexcount: 1, subindices: [0] }, subindex: 0 }
 			];
 		}
 	}
@@ -448,6 +474,8 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	maptiles: { parser: parse.mapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
 	maptiles_nxt: { parser: parse.mapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
 	maplocations: { parser: parse.mapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
+	maptiles_old: { parser: parse.mapsquareTiles, lookup: oldWorldmapIndex("m") },
+	maplocations_old: { parser: parse.mapsquareLocations, lookup: oldWorldmapIndex("l") },
 
 	frames: { parser: parse.frames, lookup: standardIndex(cacheMajors.frames) },
 	models: { parser: parse.models, lookup: noArchiveIndex(cacheMajors.models) },
@@ -527,7 +555,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 		.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subindex - b.subindex);
 
 
-	let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
+	let lastarchive: null | { index: CacheIndex, subfiles: SubFile[], error: Error | null } = null;
 	let currentBatch: { name: string, startIndex: CacheIndex, arch: SubFile[], outputs: (string | Buffer)[], batchchunknr: number } | null = null;
 	let flushbatch = () => {
 		if (currentBatch) {
@@ -547,10 +575,20 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 		if (lastarchive && lastarchive.index == fileid.index) {
 			arch = lastarchive.subfiles;
 		} else {
-			arch = await source.getFileArchive(fileid.index);
-			lastarchive = { index: fileid.index, subfiles: arch };
+			let err: Error | null = null;
+			try {
+				arch = await source.getFileArchive(fileid.index);
+			} catch (e) {
+				err = e;
+				arch = [];
+			}
+			lastarchive = { index: fileid.index, subfiles: arch, error: err };
 		}
 		let file = arch[fileid.subindex];
+		if (!file) {
+			output.log(`skipped ${mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subindex).join(".")} due to error: ${lastarchive.error}`);
+			continue;
+		}
 		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
 		let res = mode.read(file.buffer, logicalid, source);
 		// //@ts-ignore //TODO remove
@@ -603,7 +641,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 			} else {
 				await archedited();
 				arch = await source.getFileArchive(fileid.index);
-				lastarchive = { index: fileid.index, subfiles: arch };
+				lastarchive = { index: fileid.index, subfiles: arch, error: null };
 			}
 			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
 			let newfile = await outdir.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);

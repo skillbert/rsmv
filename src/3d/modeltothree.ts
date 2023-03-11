@@ -127,18 +127,27 @@ export class EngineCache extends CachingFileSource {
 	}
 
 	getMaterialData(id: number) {
-		let cached = this.materialCache.get(id);
-		if (!cached) {
-			if (id == -1) {
-				cached = defaultMaterial();
-			} else {
-				let file = this.materialArchive.get(id);
-				if (!file) { throw new Error("material " + id + " not found"); }
-				cached = convertMaterial(file, id, this.rawsource);
+		if (this.getBuildNr() < 759) {
+			let mat = defaultMaterial();
+			if (id != -1) {
+				mat.textures.diffuse = id;
 			}
-			this.materialCache.set(id, cached);
+			//TODO other material props
+			return mat;
+		} else {
+			let cached = this.materialCache.get(id);
+			if (!cached) {
+				if (id == -1) {
+					cached = defaultMaterial();
+				} else {
+					let file = this.materialArchive.get(id);
+					if (!file) { throw new Error("material " + id + " not found"); }
+					cached = convertMaterial(file, id, this.rawsource);
+				}
+				this.materialCache.set(id, cached);
+			}
+			return cached;
 		}
-		return cached;
 	}
 
 	/**
@@ -380,19 +389,12 @@ export class ThreejsSceneCache {
 	}
 
 	getMaterial(matid: number, hasVertexAlpha: boolean) {
-		if (this.engine.getBuildNr() < 759) {
-			let mat = defaultMaterial();
-			mat.textures.diffuse = matid;
-			//TODO other material props
-			return convertMaterialToThree(this, mat, hasVertexAlpha);
-		} else {
-			//TODO the material should have this data, not the mesh
-			let matcacheid = materialCacheKey(matid, hasVertexAlpha);
-			return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
-				let material = this.engine.getMaterialData(matid);
-				return convertMaterialToThree(this, material, hasVertexAlpha);
-			}, mat => 256 * 256 * 4 * 2);
-		}
+		//TODO the material should have this data, not the mesh
+		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
+		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
+			let material = this.engine.getMaterialData(matid);
+			return convertMaterialToThree(this, material, hasVertexAlpha);
+		}, mat => 256 * 256 * 4 * 2);
 	}
 }
 

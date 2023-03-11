@@ -1,6 +1,7 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
 import { cacheMajors, latestBuildNumber } from "../constants";
 import { parse } from "../opdecoder";
+import { cacheFilenameHash } from "../utils";
 
 globalThis.ignoreCache = false;
 
@@ -17,13 +18,16 @@ export type CacheIndex = {
 	crc: number,
 	version: number,
 	subindexcount: number,
-	subindices: number[]
+	subindices: number[],
+	name: number | null,
 	uncompressed_crc?: number | null,
 	size?: number | null,
 	uncompressed_size?: number | null,
 }
 
 export type CacheIndexFile = CacheIndex[];
+
+export type XteaTable = Map<number, Uint32Array>;
 
 export function packSqliteBufferArchive(buffers: Buffer[]) {
 	return new Archive(buffers).packSqlite();
@@ -177,6 +181,7 @@ export function rootIndexBufferToObject(metaindex: Buffer, source: CacheFileSour
 				crc: q.crc,
 				version: q.version,
 				size: 0,
+				name: null,
 				subindexcount: q.subindexcount,
 				subindices: [0],
 				uncompressed_crc: 0,
@@ -267,6 +272,24 @@ export abstract class CacheFileSource {
 		let file = files[subindex].buffer;
 		return file;
 	}
+
+	async findFileByName(major: number, name: string) {
+		let hash = cacheFilenameHash(name);
+		let indexfile = await this.getCacheIndex(major);
+		return indexfile.find(q => q && q.name == hash);
+	}
+
+	//for testing only
+	async bruteForceFindAnyNamedFile(name: string) {
+		let rootindex = await this.getCacheIndex(cacheMajors.index);
+		for (let index of rootindex) {
+			if (!index) { continue; }
+			let res = await this.findFileByName(index.minor, name);
+			if (res) { return this.getFileArchive(res); }
+		}
+		return null;
+	}
+
 	close() { }
 }
 
@@ -274,10 +297,12 @@ export abstract class CacheFileSource {
 export abstract class DirectCacheFileSource extends CacheFileSource {
 	indexMap = new Map<number, Promise<CacheIndexFile>>();
 	requiresCrc: boolean;
+	xteakeys: XteaTable | null;
 
-	constructor(needscrc: boolean) {
+	constructor(needscrc: boolean, xteakeys: XteaTable | null) {
 		super();
 		this.requiresCrc = needscrc;
+		this.xteakeys = xteakeys;
 	}
 
 	getFile(major: number, minor: number, crc?: number): Promise<Buffer> {
@@ -286,6 +311,10 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 
 	async getFileArchive(meta: CacheIndex) {
 		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindices);
+	}
+	getXteaKey(major: number, minor: number) {
+		let key = (major << 23) | minor;
+		return this.xteakeys?.get(key);
 	}
 	getCacheIndex(major: number) {
 		let index = this.indexMap.get(major);
@@ -308,7 +337,7 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 
 export class CallbackCacheLoader extends DirectCacheFileSource {
 	constructor(fn: (major: number, minor: number, crc?: number) => Promise<Buffer>, needsCrc: boolean) {
-		super(needsCrc);
+		super(needsCrc, null);
 		this.getFile = fn;
 	}
 

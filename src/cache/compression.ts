@@ -1,28 +1,20 @@
+import { simplexteadecrypt } from "../libs/xtea";
 
 //decompress data as it comes from the server
-export function decompress(input: Buffer) {
+export function decompress(input: Buffer, key?: Uint32Array) {
 	switch (input.readUInt8(0x0)) {
 		case 0:
 			return _uncompressed(input);
 		case 1:
 			return _bz2(input);
 		case 2:
-			return _zlib(input);
+			return _zlib(input, key);
 		case 3:
 			return _lzma(input);
-		default:
-			throw new Error("Unknown compression type (" + input.readUInt8(0x0).toString() + ")");
-	}
-}
-
-//decompress the BLOBs in the sqlite caches, this may or may not be compatible with the other decompress function
-export function decompressSqlite(input: Buffer) {
-	switch (input.readUInt8(0x0)) {
-		case 0x5a:
+		case 0x5a: //0x5a4c4201
 			return _zlibSqlite(input);
 		default:
-			return decompress(input);
-			throw new Error(`unknown sqlite compresstion type ${input.readUInt8(0x0).toString(16)}`)
+			throw new Error("Unknown compression type (" + input.readUInt8(0x0).toString() + ")");
 	}
 }
 
@@ -69,14 +61,20 @@ var _bz2 = function (input: Buffer) {
 /**
  * @param {Buffer} input The input buffer straight from the server
  */
-var _zlib = function (input: Buffer) {
+var _zlib = function (input: Buffer, key?: Uint32Array) {
 	var zlib = require("zlib") as typeof import("zlib");
-	var compressed = input.readUInt32BE(0x1);
-	var uncompressed = input.readUInt32BE(0x5);
-	var processed = Buffer.alloc(compressed);
-	input.copy(processed, 0x0, 0x9);
-
-	return zlib.gunzipSync(processed);
+	try {
+		if (key) {
+			let compressedsize = input.readUint32BE(1);
+			let compressedData = simplexteadecrypt(input.slice(5, 5 + 4 + compressedsize), key);
+			return zlib.gunzipSync(compressedData.slice(4, 4 + compressedsize));
+		} else {
+			let compressedData = input.slice(9);
+			return zlib.gunzipSync(compressedData);
+		}
+	} catch (e) {
+		throw new Error(`gzip decompress failed, possibly due to missing or wrong xtea key, key: ${key ?? "none"}`, { cause: e });
+	}
 }
 
 

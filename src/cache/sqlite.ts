@@ -1,5 +1,5 @@
 import * as cache from "./index";
-import { compressSqlite, decompressSqlite } from "./compression";
+import { compressSqlite, decompress } from "./compression";
 import { cacheMajors } from "../constants";
 import { CacheIndex } from "./index";
 import * as path from "path";
@@ -100,8 +100,8 @@ export class GameCacheLoader extends cache.CacheFileSource {
 				writeFile = (minor, data) => dbrun(`UPDATE cache SET DATA=? WHERE KEY=?`, [data, minor]);
 				getFile = (minor) => dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
 				getIndexFile = () => dbget(`SELECT DATA FROM cache_index`, []);
-				indices = getIndexFile().then(row => {
-					let file = decompressSqlite(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
+				indices = getIndexFile().then(async row => {
+					let file = decompress(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
 					return cache.indexBufferToObject(major, file, this);
 				});
 			}
@@ -120,7 +120,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		}
 		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
 		// console.log("size",file.byteLength);
-		let res = decompressSqlite(file);
+		let res = decompress(file);
 		return res;
 	}
 
@@ -148,7 +148,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	async getIndexFile(major: number) {
 		let row = await this.openTable(major).readIndexFile();
 		let file = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
-		return decompressSqlite(file);
+		return decompress(file);
 	}
 
 	close() {

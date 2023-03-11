@@ -25,6 +25,7 @@ export class RawFileLoader extends CacheFileSource {
 				subindices: [0],
 				version: 0,
 				size: 0,
+				name: null,
 				uncompressed_crc: 0,
 				uncompressed_size: 0
 			};
