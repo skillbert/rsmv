@@ -10,7 +10,7 @@ import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
-import { cacheFileJsonModes } from "../scripts/extractfiles";
+import { cacheFileJsonModes } from "../scripts/filetypes";
 import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";

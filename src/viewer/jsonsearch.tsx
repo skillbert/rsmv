@@ -3,7 +3,7 @@ import * as ReactDOM from "react-dom/client";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput } from "./commoncontrols";
 import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-schema";
-import { cacheFileJsonModes } from "../scripts/extractfiles";
+import { cacheFileJsonModes } from "../scripts/filetypes";
 import { UIContext, UIContextReady } from "./maincomponents";
 
 function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, onClose: () => void }) {

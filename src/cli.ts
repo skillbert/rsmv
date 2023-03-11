@@ -1,16 +1,14 @@
 import { filesource, cliArguments, ReadCacheSource, filerange } from "./cliparser";
 import { run, command, option, flag } from "cmd-ts";
-import * as fs from "fs";
-import * as path from "path";
-import { DecodeMode, cacheFileDecodeModes, extractCacheFiles, cacheFileJsonModes, writeCacheFiles } from "./scripts/extractfiles";
+import { cacheFileDecodeModes, cacheFileJsonModes } from "./scripts/filetypes";
 import { CLIScriptFS, CLIScriptOutput, ScriptOutput } from "./viewer/scriptsui";
 import { defaultTestDecodeOpts, testDecode, testDecodeHistoric } from "./scripts/testdecode";
+import { extractCacheFiles, writeCacheFiles } from "./scripts/extractfiles";
 import * as cmdts from "cmd-ts";
 import { indexOverview } from "./scripts/indexoverview";
 import { diffCaches } from "./scripts/cachediff";
 import { quickChatLookup } from "./scripts/quickchatlookup";
 import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
-import { validOpenrs2Caches } from "./cache/openrs2loader";
 import { fileHistory } from "./scripts/filehistory";
 import { openrs2Ids } from "./scripts/openrs2ids";
 

@@ -1,6 +1,6 @@
 import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
-import { JsonBasedFile } from "./extractfiles";
+import { JsonBasedFile } from "./filetypes";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser, parse } from "../opdecoder";
 import { FileRange } from "../cliparser";

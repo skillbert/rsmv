@@ -1,10 +1,9 @@
 import * as React from "react";
-import { UIContext, UIContextReady } from "./maincomponents";
 import { boundMethod } from "autobind-decorator";
 import prettyJson from "json-stringify-pretty-compact";
 import classNames from "classnames";
 import { EngineCache } from "3d/modeltothree";
-import { cacheFileJsonModes } from "scripts/extractfiles";
+import { cacheFileJsonModes } from "scripts/filetypes";
 import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
 

@@ -9,7 +9,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
-import { cacheFileJsonModes, extractCacheFiles, cacheFileDecodeModes } from "../scripts/extractfiles";
+import { cacheFileJsonModes, cacheFileDecodeModes } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
@@ -29,6 +29,7 @@ import { FileParser } from '../opdecoder';
 import { assertSchema, customModelDefSchema, parseJsonOrDefault, scenarioStateSchema } from '../jsonschemas';
 import { fileHistory } from '../scripts/filehistory';
 import { MaterialData } from '../3d/jmat';
+import { extractCacheFiles } from '../scripts/extractfiles';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -2006,8 +2007,8 @@ function TestFilesScript(p: UiScriptProps) {
 			<LabeledInput label="file range">
 				<input type="text" onChange={e => setRange(e.currentTarget.value)} value={range} />
 			</LabeledInput>
-			<label><input type="checkbox" checked={ordersize} onChange={e => setOrdersize(e.currentTarget.checked)} />Order by size (puts everything in mem)</label>
-			<label><input type="checkbox" checked={dumpall} onChange={e => setDumpall(e.currentTarget.checked)} />Output successes as well</label>
+			<div><label><input type="checkbox" checked={ordersize} onChange={e => setOrdersize(e.currentTarget.checked)} />Order by size (puts everything in mem)</label></div>
+			<div><label><input type="checkbox" checked={dumpall} onChange={e => setDumpall(e.currentTarget.checked)} />Output successes as well</label></div>
 			<br />
 			<input type="button" className="sub-btn" value="Edit parser" onClick={customparserUi} />
 			{customparser && <input type="button" className="sub-btn" value="Reset" onClick={() => setCustomparser("")} />}

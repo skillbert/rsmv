@@ -2,7 +2,7 @@ import { CacheFileSource, CacheIndexFile } from "../cache";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
-import { cacheFileDecodeModes } from "./extractfiles";
+import { cacheFileDecodeModes } from "./filetypes";
 
 
 type HistoricVersion = {
