@@ -13,6 +13,8 @@ app.commandLine.appendSwitch("js-flags", "--expose-gc");
 //these flags only make it worse right now since it prevents a full crash when buffer allocs start failing
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=16384");
 app.commandLine.appendSwitch("js-flags", "--max-heap-size=16384");
+//needed to read map imagedata from runeapps
+app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
 
 //for some reason it very crashes very often if using embedded GPU
 //so force dedicated GPU if available
@@ -102,7 +104,9 @@ require("${entry}");
 		width: 800, height: 600,
 		webPreferences: {
 			nodeIntegration: true,
-			contextIsolation: false
+			contextIsolation: false,
+			//needed to disable CORS
+			webSecurity: false
 		},
 		show: !hidden
 	});
