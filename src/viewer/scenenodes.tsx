@@ -1852,6 +1852,39 @@ function ExtractFilesScript(p: UiScriptProps) {
 		</React.Fragment>
 	)
 }
+function ExtractHistoricScript(p: UiScriptProps) {
+	let [initmode, initfilestext, initcacheids] = p.initialArgs.split(":");
+	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
+	let [cacheids, setcacheids] = React.useState(initcacheids ?? "");
+	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
+
+	let run = () => {
+		let ids = (!cacheids ? null : cacheids.split(",").map(q => parseInt(q)));
+		let output = new UIScriptOutput();
+		let outdir = output.makefs("out");
+		let files = stringToFileRange(filestext);
+		output.run(fileHistory, outdir, mode, files[0].start, null, ids);
+		p.onRun(output, `${mode}:${filestext}:${cacheids}`);
+	}
+
+	return (
+		<React.Fragment>
+			<p>Extract files from the cache.<br />The ranges field uses logical file id's for JSON based files, {"<major>.<minor>"} notation for bin mode, or {"<x>.<z>"} for map based files.</p>
+			<LabeledInput label="Mode">
+				<select value={mode} onChange={e => setMode(e.currentTarget.value as any)}>
+					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+				</select>
+			</LabeledInput>
+			<LabeledInput label="File ranges">
+				<InputCommitted type="text" onChange={e => setFilestext(e.currentTarget.value)} value={filestext} />
+			</LabeledInput>
+			<LabeledInput label="Cache ids (empty for all)">
+				<input type="text" value={cacheids} onChange={e => setcacheids(e.currentTarget.value)} />
+			</LabeledInput>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
 
 function MaprenderScript(p: UiScriptProps) {
 	let [endpoint, setEndpoint] = React.useState(localStorage.rsmv_script_map_endpoint ?? "");
@@ -2021,6 +2054,7 @@ type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, in
 const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	test: TestFilesScript,
 	extract: ExtractFilesScript,
+	historic: ExtractHistoricScript,
 	maprender: MaprenderScript,
 	diff: CacheDiffScript
 }

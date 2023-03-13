@@ -54,10 +54,10 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 		}
 		let file = arch[fileid.subindex];
 		if (!file) {
-			output.log(`skipped ${mode.fileToLogical(fileid.index.major, fileid.index.minor, fileid.subindex).join(".")} due to error: ${lastarchive.error}`);
+			output.log(`skipped ${mode.fileToLogical(source, fileid.index.major, fileid.index.minor, fileid.subindex).join(".")} due to error: ${lastarchive.error}`);
 			continue;
 		}
-		let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
+		let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
 		let res = mode.read(file.buffer, logicalid, source);
 		// //@ts-ignore //TODO remove
 		// if (res.length == 0) { continue; }
@@ -111,7 +111,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 				arch = await source.getFileArchive(fileid.index);
 				lastarchive = { index: fileid.index, subfiles: arch, error: null };
 			}
-			let logicalid = mode.fileToLogical(fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
+			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
 			let newfile = await outdir.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);
 			arch[fileid.subindex].buffer = mode.write(newfile);
 		}
@@ -154,7 +154,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 			let logicalid = singlematch[2].split(/_/g).map(q => +q);
 			let mode = getmode(singlematch[1]);
 
-			let archid = mode.logicalToFile(logicalid);
+			let archid = mode.logicalToFile(source, logicalid);
 			let arch = getarch(archid.major, archid.minor, mode);
 
 			let raw = await diffdir.readFileBuffer(file);

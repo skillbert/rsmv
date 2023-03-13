@@ -3,15 +3,22 @@
 // run `npm run filetypes` to rebuild
 
 export type mapsquare_tiles = {
-	tiles: {
-		flags: number,
-		shape: number | null,
-		overlay: number | null,
-		settings: number | null,
-		underlay: number | null,
-		height: number | null,
-	}[],
-	nonmembarea: Uint8Array,
+	tiles: ({
+			flags: number,
+			shape: number | null,
+			overlay: number | null,
+			settings: number | null,
+			underlay: number | null,
+			height: number | null,
+		}|{
+			flags: number,
+			shape: number | null,
+			overlay: number | null,
+			settings: number | null,
+			underlay: number | null,
+			height: number | null,
+		})[],
+	nonmembarea: (Uint8Array|null),
 	extra: {
 		unk00?: {
 			flags: number,
@@ -26,7 +33,7 @@ export type mapsquare_tiles = {
 			] | null,
 			unk20: number[] | null,
 			unk40: number | null,
-			unk80: number | null,
+			unk80: (number|number[]) | null,
 		} | null
 		unk01?: {
 			byte2: number,
@@ -37,10 +44,10 @@ export type mapsquare_tiles = {
 			short3: number,
 			short4: number,
 			extraflags: number,
-			extra08: number,
+			extra08: (number|0),
 			extra1f: number | null,
 		}[] | null
-		unk02?: number[] | null
+		unk02?: (number|number)[] | null
 		unk03?: [
 			number,
 			number,

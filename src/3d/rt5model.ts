@@ -1,4 +1,4 @@
-import { Stream, packedHSL2HSL, HSL2RGBfloat } from "../utils";
+import { Stream, packedHSL2HSL, HSL2RGBfloat, flipEndian16 } from "../utils";
 import * as THREE from "three";
 import { parse } from "../opdecoder";
 import type { CacheFileSource } from "../cache";
@@ -148,7 +148,6 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     for (let i = 0; i < modeldata.texmapcount; i++) {
         let flag = modeldata.texflags[i];
         textureMappings.push({
-            // mode: texttypemap[flag.type],
             texspace: new Matrix4(),
             vertexsum: new Vector3(),
             vertexcount: 0,
@@ -160,8 +159,29 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
 
     let matusecount = new Map<number, number>();
     let matmesh = new Map<number, WorkingSubmesh>();
-    if (enabletextures && modeldata.material) {
-        for (let matid of modeldata.material) {
+    let materialbuffer: Uint16Array | null = modeldata.material;
+    let colorbuffer = modeldata.colors;
+    let uvids: number[] = [];
+    let uvstream = new Stream(modeldata.uvs);
+    while (!uvstream.eof()) {
+        uvids.push(uvstream.readUShortSmart());
+    }
+    if (!uvstream.eof()) { throw new Error("stream not used to completion"); }
+    if (modeldata.mode_2) {
+        materialbuffer = new Uint16Array(modeldata.facecount);
+        colorbuffer = colorbuffer.slice();
+        for (let i = 0; i < modeldata.facecount; i++) {
+            let op = modeldata.mode_2[i];
+
+            if (op & 2) {
+                materialbuffer[i] = flipEndian16(flipEndian16(colorbuffer[i]) + 1);//TODO fix the endian thing at the other spot
+                colorbuffer[i] = flipEndian16(127);//hsl for white//TODO unflip endianness
+                uvids.push((op >> 2) + 1);
+            }
+        }
+    }
+    if (materialbuffer) {
+        for (let matid of materialbuffer) {
             matusecount.set(matid, (matusecount.get(matid) ?? 0) + 1);
         }
     } else {
@@ -169,7 +189,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     }
     for (let [matid, facecount] of matusecount) {
         let finalvertcount = facecount * 3;
-        let colstride = (modeldata.colors ? modeldata.alpha ? 4 : 3 : 0);
+        let colstride = (colorbuffer ? modeldata.alpha ? 4 : 3 : 0);
         let mesh: WorkingSubmesh = {
             pos: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
             normals: new BufferAttribute(new Float32Array(finalvertcount * 3), 3),
@@ -178,24 +198,9 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             index: new Uint16Array(facecount * 3),
             originalface: new Uint16Array(facecount),
             currentface: 0,
-            matid: ((matid & 0xff) << 8 | (matid & 0xff00) >> 8) - 1//TODO fix endianness elsewhere
+            matid: flipEndian16(matid) - 1//TODO fix endianness elsewhere
         };
         matmesh.set(matid, mesh);
-    }
-
-    let uvids: number[] = [];
-    let uvstream = new Stream(modeldata.uvs);
-    while (!uvstream.eof()) {
-        uvids.push(uvstream.readUShortSmart());
-    }
-    if (!uvstream.eof()) { throw new Error("stream not used to completion"); }
-    let vertexuvids = new Uint16Array(modeldata.vertcount);
-    if (modeldata.texuvs) {
-        let vertexuvcount = 0;
-        for (let i = 0; i < modeldata.texuvs.vertex.length; i++) {
-            vertexuvids[i] = vertexuvcount;
-            vertexuvcount += modeldata.texuvs.vertex[i];
-        }
     }
 
     let vertexindex = new Uint16Array(modeldata.facecount * 3);
@@ -234,13 +239,13 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     if (!stream.eof()) { throw new Error("stream not used to completion"); }
 
     //calculate centers of material maps
-    if (enabletextures && modeldata.material) {
+    if (materialbuffer) {
         let posa = new Vector3();
         let posb = new Vector3();
         let posc = new Vector3();
         let texindex = 0;
         for (let i = 0; i < modeldata.facecount; i++) {
-            let matarg = modeldata.material[i];
+            let matarg = materialbuffer[i];
             if (matarg == 0) { continue; }//TODO is this now obsolete?
             let mapid = uvids[texindex++];
             if (mapid != 0 && mapid != 0x7fff) {
@@ -267,11 +272,14 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         let v1 = new Vector3();
         let v2 = new Vector3();
         let vtmp = new Vector3();
+        //different prop name depending on model version
+        let texmap_verts = (modeldata.texmap_verts_1 ?? modeldata.texmap_verts_2)!;
+
         //parse texmaps
         for (let i = 0; i < modeldata.texflags.length; i++) {
             let mapping = textureMappings[i];
             if (mapping.args.type == 0) {
-                let [i0, i1, i2] = modeldata.texmap_verts[mapping.args.vertindex];
+                let [i0, i1, i2] = texmap_verts[mapping.args.vertindex];
 
                 v0.set(decodedx[i0], decodedy[i0], decodedz[i0]);
                 v1.set(decodedx[i1], decodedy[i1], decodedz[i1]);
@@ -350,6 +358,16 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         }
     }
 
+    let vertexuvids: Uint16Array | null = null;
+    if (modeldata.texuvs) {
+        vertexuvids = new Uint16Array(modeldata.vertcount);
+        let vertexuvcount = 0;
+        for (let i = 0; i < modeldata.texuvs.vertex.length; i++) {
+            vertexuvids[i] = vertexuvcount;
+            vertexuvcount += modeldata.texuvs.vertex[i];
+        }
+    }
+
     let texmapindex = 0;
     let v0 = new Vector3();
     let v1 = new Vector3();
@@ -370,7 +388,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         vtmp0.copy(v1).sub(v0);
         vnormal.copy(v2).sub(v0).cross(vtmp0).normalize();
 
-        let matargument = (enabletextures && modeldata.material ? modeldata.material[i] : 0);
+        let matargument = (materialbuffer ? materialbuffer[i] : 0);
         let submesh = matmesh.get(matargument)!;
         let dstfaceindex = submesh.currentface++;
         let vertbase = dstfaceindex * 3;
@@ -379,7 +397,8 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         let normalattr = submesh.normals;
         let indexbuf = submesh.index;
         if (!(Math.abs(1 - vnormal.length()) < 0.01)) {
-            debugger;
+            //some models have degenerate triangles, not sure what the rs engine does about them
+            // debugger;
         }
         posattr.setXYZ(vertbase + 0, v0.x, v0.y, v0.z);
         posattr.setXYZ(vertbase + 1, v1.x, v1.y, v1.z);
@@ -388,12 +407,12 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         normalattr.setXYZ(vertbase + 1, vnormal.x, vnormal.y, vnormal.z);
         normalattr.setXYZ(vertbase + 2, vnormal.x, vnormal.y, vnormal.z);
 
-        if (modeldata.colors) {
+        if (colorbuffer) {
             let colorattr = submesh.color;
             //TODO force new triangle vertices of last color wasn't equal
-            let colint = modeldata.colors[i];
+            let colint = colorbuffer[i];
             //TODO fix endianness elsewhere
-            let [r, g, b] = HSL2RGBfloat(packedHSL2HSL(((colint & 0xff) << 8) | ((colint & 0xff00) >> 8)));
+            let [r, g, b] = HSL2RGBfloat(packedHSL2HSL(flipEndian16(colint)));
             if (!modeldata.alpha) {
                 colorattr.setXYZ(vertbase + 0, r, g, b);
                 colorattr.setXYZ(vertbase + 1, r, g, b);
@@ -414,9 +433,9 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
                 //TODO just default [0,1] uvs?
             } else if (mapid == 0x7fff) {
                 //TODO still missing something
-                uvattr.setXY(vertbase + 0, modeldata.texuvs!.udata[vertexuvids[srcindex0]] / 4096, modeldata.texuvs!.vdata[vertexuvids[srcindex0]] / 4096);
-                uvattr.setXY(vertbase + 1, modeldata.texuvs!.udata[vertexuvids[srcindex1]] / 4096, modeldata.texuvs!.vdata[vertexuvids[srcindex1]] / 4096);
-                uvattr.setXY(vertbase + 2, modeldata.texuvs!.udata[vertexuvids[srcindex2]] / 4096, modeldata.texuvs!.vdata[vertexuvids[srcindex2]] / 4096);
+                uvattr.setXY(vertbase + 0, modeldata.texuvs!.udata[vertexuvids![srcindex0]] / 4096, modeldata.texuvs!.vdata[vertexuvids![srcindex0]] / 4096);
+                uvattr.setXY(vertbase + 1, modeldata.texuvs!.udata[vertexuvids![srcindex1]] / 4096, modeldata.texuvs!.vdata[vertexuvids![srcindex1]] / 4096);
+                uvattr.setXY(vertbase + 2, modeldata.texuvs!.udata[vertexuvids![srcindex2]] / 4096, modeldata.texuvs!.vdata[vertexuvids![srcindex2]] / 4096);
             } else {
                 let mapping = textureMappings[mapid - 1];
                 v0.applyMatrix4(mapping.texspace);

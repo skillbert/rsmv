@@ -4,7 +4,7 @@
 
 export type mapsquare_overlays = {
 	primary_colour?: number[] | null
-	unknown_0x02?: number | null
+	materialbyte?: number | null
 	material?: number | null
 	unknown_0x05?: true | null
 	secondary_colour?: number[] | null

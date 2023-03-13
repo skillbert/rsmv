@@ -125,8 +125,8 @@ export class FileEdit {
 	}
 }
 
-export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFileSource | null | undefined, sourceb: CacheFileSource, major: number) {
-	//source a can be empty, allow diffing to nothing
+export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFileSource | null | undefined, sourceb: CacheFileSource | null | undefined, major: number, minorstart = 0, minorend = 1 << 30) {
+	//sources can be empty, allow diffing to nothing
 	let indexa: CacheIndexFile = [];
 	let indexb: CacheIndexFile = [];
 	try {
@@ -135,7 +135,9 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 		}
 	} catch (e) { }
 	try {
-		indexb = await sourceb.getCacheIndex(major);
+		if (sourceb) {
+			indexb = await sourceb.getCacheIndex(major);
+		}
 	} catch (e) { }
 
 	let len = Math.max(indexa.length, indexb.length);
@@ -148,7 +150,9 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 	// 	output.log(`checking major ${major} ${actionarg.name} subfiles:${actionarg.comparesubfiles}`);
 	// }
 
-	for (let i = 0; i < len; i++) {
+	minorstart = Math.max(0, minorstart);
+	minorend = Math.min(len, minorend);
+	for (let i = minorstart; i < minorend; i++) {
 		if (output.state != "running") { break; }
 
 		var action = (typeof actionarg == "function" ? actionarg(major, i) ?? defaultAction(major) : actionarg);
@@ -159,7 +163,7 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 				if (action.comparesubfiles) {
 					try {
 						var archa = (metaa && sourcea ? await sourcea.getFileArchive(metaa) : []);
-						var archb = (metab ? await sourceb.getFileArchive(metab) : []);
+						var archb = (metab && sourceb ? await sourceb.getFileArchive(metab) : []);
 					} catch (e) {
 						output.log((e as Error).message);
 						continue;
@@ -187,14 +191,14 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 					}
 				} else {
 					if (!metaa) {
-						let file = new Loadable(sourceb, metab.major, metab.minor, metab.crc);
+						let file = (!sourceb ? null : new Loadable(sourceb, metab.major, metab.minor, metab.crc));
 						changes.push(new FileEdit(action, "add", metab.major, metab.minor, -1, null, file));
 					} else if (!metab) {
 						let file = (!sourcea ? null : new Loadable(sourcea, metaa.major, metaa.minor, metaa.crc));
 						changes.push(new FileEdit(action, "delete", metaa.major, metaa.minor, -1, file, null));
 					} else {
 						let before = (!sourcea ? null : new Loadable(sourcea, metaa.major, metaa.minor, metaa.crc));
-						let after = new Loadable(sourceb, metab.major, metab.minor, metab.crc);
+						let after = (!sourceb ? null : new Loadable(sourceb, metab.major, metab.minor, metab.crc));
 						changes.push(new FileEdit(action, "add", metaa.major, metaa.minor, -1, before, after));
 					}
 				}

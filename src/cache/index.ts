@@ -1,5 +1,5 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
-import { cacheMajors, latestBuildNumber } from "../constants";
+import { cacheConfigPages, cacheMajors, latestBuildNumber } from "../constants";
 import { parse } from "../opdecoder";
 import { cacheFilenameHash } from "../utils";
 
@@ -216,7 +216,20 @@ const mappedFileIds = {
 	[cacheMajors.materials]: Number.MAX_SAFE_INTEGER//is single index
 }
 
-export function fileIdToArchiveminor(major: number, fileid: number) {
+const oldconfigmaps = {
+	[cacheMajors.items]: cacheConfigPages.items_old,
+	[cacheMajors.npcs]: cacheConfigPages.npcs_old,
+	[cacheMajors.objects]: cacheConfigPages.locs_old,
+	[cacheMajors.spotanims]: cacheConfigPages.spotanim_old
+}
+
+export function fileIdToArchiveminor(major: number, fileid: number, buildnr: number) {
+	if (buildnr < 488) {
+		let page = oldconfigmaps[major];
+		if (page !== undefined) {
+			return { minor: page, major: cacheMajors.config, subid: fileid };
+		}
+	}
 	let archsize = mappedFileIds[major] ?? 1;
 	let holderindex = Math.floor(fileid / archsize);
 	return { minor: holderindex, major, subid: fileid % archsize };
@@ -261,8 +274,8 @@ export abstract class CacheFileSource {
 	}
 
 	async getFileById(major: number, fileid: number) {
-		let holderindex = fileIdToArchiveminor(major, fileid);
-		let indexfile = await this.getCacheIndex(major);
+		let holderindex = fileIdToArchiveminor(major, fileid, this.getBuildNr());
+		let indexfile = await this.getCacheIndex(holderindex.major);
 		//TODO cache these in a map or something
 		let holder = indexfile[holderindex.minor];
 		if (!holder) { throw new Error(`file id ${fileid} in major ${major} has no archive`); }
@@ -274,7 +287,7 @@ export abstract class CacheFileSource {
 	}
 
 	async findFileByName(major: number, name: string) {
-		let hash = cacheFilenameHash(name);
+		let hash = cacheFilenameHash(name, this.getBuildNr() <= 377);
 		let indexfile = await this.getCacheIndex(major);
 		return indexfile.find(q => q && q.name == hash);
 	}

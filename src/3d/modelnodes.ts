@@ -98,7 +98,10 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	if (morphedloc) {
 		if (morphedloc.color_replacements) { mods.replaceColors = morphedloc.color_replacements; }
 		if (morphedloc.material_replacements) { mods.replaceMaterials = morphedloc.material_replacements; }
-		models = morphedloc.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [];
+		models = [
+			...morphedloc.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [],
+			...morphedloc.models_05?.models.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? []
+		];
 	}
 	if (morphedloc?.probably_animation) {
 		anims.default = morphedloc.probably_animation;

@@ -1,15 +1,24 @@
 ["struct",
-	["footbytes",["match","buildnr",{">=764":0,">=0":["footer",2,"ushort"]}]],
+	["footbytes",["match","buildnr",{">=764":65535,">=0":["footer",2,"ushort"]}]],
 	["colanimcount",["match","buildnr",{">=764":["footer",2,"ushort"],">=0":0}]],
 	["unkcount0",["match","buildnr",{">=764":["footer",2,"ushort"],">=0":0}]],
-	["uvcount",["footer",2,"ushort"]],
-	["indexbufsize",["footer",2,"ushort"]],
+	["uvcount",["match",["ref","footbytes"],{
+		"0xffff":["footer",2,"ushort"],
+		"other":0
+	}]],
+	["indexbufsize",["match",["ref","footbytes"],{
+		"0xffff":["footer",2,"ushort"],
+		"other":["ref","footbytes"]
+	}]],
 	["zsize",["footer",2,"ushort"]],
 	["ysize",["footer",2,"ushort"]],
 	["xsize",["footer",2,"ushort"]],
-	["flag1",["footer",1,"bool"]],
-	["hasmaterials",["footer",1,"bool"]],
-	["flag3",["footer",1,"bool"]],
+	["hasbones",["footer",1,"bool"]],
+	["hasmaterials",["match",["ref","footbytes"],{
+		"0xffff":["footer",1,"bool"],
+		"other":false
+	}]],
+	["flag3",["footer",1,"bool"]],//called transgroups in runelite
 	["hasalpha",["footer",1,"bool"]],
 	["priority",["footer",1,"ubyte"]],
 	["extraflags",["footer",1,"ubyte"]],
@@ -37,42 +46,61 @@
 	["texmap_vertcount",0],
 	["texmap_projectioncount",0],
 	["texmap_transsize",0],
-	["texflags",["array",["ref","texmapcount"],["match","ubyte",{
-		"0":["struct",
-			["type",0],
-			["vertindex",["accum","texmap_vertcount",1,"postadd"]]
-		],
-		"1":["struct",
-			["type",1],
-			["projection",["accum","texmap_projectioncount",1,"postadd"]],
-			["speed",["accum","texmap_transsize",1,"postadd"]]
-		],
-		"2":["struct",
-			["type",2],
-			["projection",["accum","texmap_projectioncount",1,"postadd"]],
-			["speed",["accum","texmap_transsize",3,"postadd"]]
-		],
-		"3":["struct",
-			["type",3],
-			["projection",["accum","texmap_projectioncount",1,"postadd"]],
-			["speed",["accum","texmap_transsize",1,"postadd"]]
-		]
-	}]]],
+	["texflags",["array",["ref","texmapcount"],
+		["match",["match",["ref","footbytes"],{"65535":"ubyte","other":0}],{
+			"0":["struct",
+				["type",0],
+				["vertindex",["accum","texmap_vertcount",1,"postadd"]]
+			],
+			"1":["struct",
+				["type",1],
+				["projection",["accum","texmap_projectioncount",1,"postadd"]],
+				["speed",["accum","texmap_transsize",1,"postadd"]]
+			],
+			"2":["struct",
+				["type",2],
+				["projection",["accum","texmap_projectioncount",1,"postadd"]],
+				["speed",["accum","texmap_transsize",3,"postadd"]]
+			],
+			"3":["struct",
+				["type",3],
+				["projection",["accum","texmap_projectioncount",1,"postadd"]],
+				["speed",["accum","texmap_transsize",1,"postadd"]]
+			]
+		}]]
+	],
 	["vertflags",["buffer",["ref","vertcount"],"ubyte"]],//0-7 flags, whether xyz are different from previous vertex
-	["face2",["opt",["extraflags",0,"bitflag"],["buffer",["ref","facecount"]]]],
+	["mode_1",["match",["ref","footbytes"],{
+		"0xffff":["opt",["extraflags",0,"bitflag"],["buffer",["ref","facecount"],"ubyte"]],
+		"other":null
+	}]],
 	["tritype",["buffer",["ref","facecount"],"ubyte"]],//1-4 are types, flag 8 grabs a uv pair from the texuvs struct
 	["facepriority",["opt",["priority",255],["buffer",["ref","facecount"],"ubyte"]]],
-	["unk1",["opt",["flag3",1],["buffer",["match","buildnr",{">=764":["ref","colanimcount"],">=0":["ref","facecount"]}]]]],
-	["tridata",["opt",["flag1",1],["buffer",["ref","vertdatasize"]]]],
+	["unk1",["opt",["flag3",1],["buffer",["match","buildnr",{">=764":["ref","colanimcount"],">=0":["ref","facecount"]}]]]],//"transgroups"
+	["mode_2",["match",["ref","footbytes"],{
+		"0xffff":null,
+		"other":["opt",["extraflags",0,"bitflag"],["buffer",["ref","facecount"],"ubyte"]]
+	}]],
+	["boneids",["opt",["hasbones",1],["buffer",["ref","vertdatasize"]]]],
 	["alpha",["opt",["hasalpha",1],["buffer",["ref","facecount"]]]],
 	["indexbuffer",["buffer",["ref","indexbufsize"]]],
-	["material",["opt",["hasmaterials",1],["buffer",["ref","facecount"],"ushort"]]],
+	["material",["match",["ref","footbytes"],{
+		"0xffff":["opt",["hasmaterials",1],["buffer",["ref","facecount"],"ushort"]],
+		"other":null
+	}]],
 	["uvs",["buffer",["ref","uvcount"]]],
 	["colors",["buffer",["ref","facecount"],"ushort"]],
+	["texmap_verts_1",["match",["ref","footbytes"],{
+		"0xffff":null,
+		"other":["array",["ref","texmap_vertcount"],["tuple","ushort","ushort","ushort"]]
+	}]],
 	["posx",["buffer",["ref","xsize"]]],
 	["posy",["buffer",["ref","ysize"]]],
 	["posz",["buffer",["ref","zsize"]]],
-	["texmap_verts",["array",["ref","texmap_vertcount"],["tuple","ushort","ushort","ushort"]]],
+	["texmap_verts_2",["match",["ref","footbytes"],{
+		"0xffff":["array",["ref","texmap_vertcount"],["tuple","ushort","ushort","ushort"]],
+		"other":null
+	}]],
 	["texmap_projections",["chunkedarray",["ref","texmap_projectioncount"],[
 		["normal",["tuple","short","short","short"]]
 	],[
@@ -110,5 +138,12 @@
 		["vertex",["buffer",["ref","vertcount"],"ubyte"]],
 		["udata",["array",["ref","coordcount"],"short"]],
 		["vdata",["array",["ref","coordcount"],"short"]]
-	]]]
+	]]],
+	["unusedendbytes",["match",["ref","footbytes"],{
+		"0xffff":["match","buildnr",{
+			">=526":null,
+			"other":["array","ubyte",["tuple","ushort","ushort","ushort","int"]]
+		}],
+		"other":null
+	}]]
 ]

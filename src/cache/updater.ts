@@ -234,8 +234,9 @@ export const updateCallbacks: { [major: number]: { [minor: number]: CacheUpdateH
 				},
 				hydrateFsFile: (staticarguments, record, buffer) => {
 					//TODO read all subimgs/mipmaps
-					let texture = ParsedTexture.fromFile([buffer]);
-					return texture.fullfile;
+					// let texture = ParsedTexture.fromFile([buffer]);
+					// return texture.fullfile;
+					return null!;//TODO remove 
 				}
 			}
 		}

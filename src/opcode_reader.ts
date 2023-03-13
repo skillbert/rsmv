@@ -1092,7 +1092,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			if (opt == "default" || opt == "other") {
 				op = "default";
 			} else {
-				let m = opt.match(/(?<op><|<=|>|>=|&)?(?<version>(0x)?\d+)/);
+				let m = opt.match(/^(?<op><|<=|>|>=|&|=)?(?<version>0x[\da-fA=F]+|\d+)$/);
 				if (!m) { throw new Error("invalid match value, expected <op><version>. For example '>10'"); }
 				value = parseInt(m.groups!.version);
 				op = (m.groups!.op ?? "=") as ops;
@@ -1178,12 +1178,12 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		return {
 			read(state) {
 				let res = {
-					shape: null as number | null,
 					flags: 0,
-					height: null as number | null,
+					shape: null as number | null,
 					overlay: null as number | null,
 					settings: null as number | null,
-					underlay: null as number | null
+					underlay: null as number | null,
+					height: null as number | null
 				}
 				while (true) {
 					let op = state.buffer.readUint8(state.scan++);
@@ -1210,7 +1210,15 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				throw new Error("not implemented");
 			},
 			getTypescriptType(indent) {
-				return "any";
+				let newindent = indent + "\t";
+				return `{\n`
+					+ `${newindent}flags: number,\n`
+					+ `${newindent}shape: number | null,\n`
+					+ `${newindent}overlay: number | null,\n`
+					+ `${newindent}settings: number | null,\n`
+					+ `${newindent}underlay: number | null,\n`
+					+ `${newindent}height: number | null,\n`
+					+ `${indent}}`;
 			},
 			getJsonSchema() {
 				return { type: "any" };

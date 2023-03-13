@@ -168,7 +168,8 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 			let subfile = currentarch.subfiles[file.subindex];
 			if (!subfile) {
 				if (currentarch.error) {
-					output.log(`skipped ${mode.lookup.fileToLogical(file.index.major, file.index.minor, file.subindex).join(".")} due to error: ${currentarch.error}`);
+					let id = mode.lookup.fileToLogical(source, file.index.major, file.index.minor, file.subindex);
+					output.log(`skipped ${id.join(".")} due to error: ${currentarch.error}`);
 				} else {
 					output.log("subfile not found");
 				}
@@ -212,7 +213,7 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 				errorcount++;
 			}
 			if (opts.dumpall || !res.success) {
-				let logicalindex = mode.lookup.fileToLogical(file.major, file.minor, file.subfile);
+				let logicalindex = mode.lookup.fileToLogical(source, file.major, file.minor, file.subfile);
 				let filename = `${res.success ? "pass" : "fail"}-${file.name ? `${file.name}` : `${logicalindex.join("_")}`}`;
 				if (opts.outmode == "json") {
 					outdir.writeFile(filename + ".hexerr.json", res.getDebugFile(opts.outmode));

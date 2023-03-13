@@ -891,9 +891,9 @@ export class TileGrid implements TileGridSource {
 					let overlay = (tile.overlay != undefined ? this.engine.mapOverlays[tile.overlay - 1] : undefined);
 					if (overlay) {
 						overlayprop = {
-							material: overlay.material ?? -1,
+							material: overlay.material ?? overlay.materialbyte ?? -1,
 							materialTiling: overlay.material_tiling ?? 128,
-							color: overlay.primary_colour ?? [255, 0, 255]
+							color: overlay.primary_colour ?? (overlay.materialbyte != null ? [255, 255, 255] : [255, 0, 255])
 						};
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
@@ -1500,11 +1500,21 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 
 		let modelcount = 0;
 		let addmodel = (type: number, finalmorph: FloorMorph) => {
-			for (let ch of objectmeta!.models ?? []) {
-				if (ch.type != type) { continue; }
-				modelcount++;
-				for (let modelid of ch.values) {
-					locmodels.push({ model: modelid, morph: finalmorph });
+			if (objectmeta.models) {
+				for (let ch of objectmeta.models) {
+					if (ch.type != type) { continue; }
+					modelcount++;
+					for (let modelid of ch.values) {
+						locmodels.push({ model: modelid, morph: finalmorph });
+					}
+				}
+			} else if (objectmeta.models_05) {
+				for (let ch of objectmeta.models_05.models) {
+					if (ch.type != type) { continue; }
+					modelcount++;
+					for (let modelid of ch.values) {
+						locmodels.push({ model: modelid, morph: finalmorph });
+					}
 				}
 			}
 		}
@@ -2088,7 +2098,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				if (hasneighbours && shape.overlay.length != 0) {
 					//code is a bit weird here, shouldnt have to call back to the raw overlay props
 					let overlaytype = grid.engine.mapOverlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
-					let color = overlaytype.primary_colour ?? [255, 0, 255];
+					let color = overlaytype.primary_colour ?? (typeof overlaytype.materialbyte != "undefined" ? [255, 255, 255] : [255, 0, 255]);
 					let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
 					if (worldmap && !isvisible && overlaytype.secondary_colour) {
 						color = overlaytype.secondary_colour;

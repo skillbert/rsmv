@@ -3,6 +3,7 @@ import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { cacheFileDecodeModes } from "./filetypes";
+import { testDecodeFile } from "./testdecode";
 
 
 type HistoricVersion = {
@@ -14,8 +15,11 @@ type HistoricVersion = {
     decodedname: string
 }
 
-export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: keyof typeof cacheFileDecodeModes, id: number[], basecache: CacheFileSource | null) {
+export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: keyof typeof cacheFileDecodeModes, id: number[], basecache: CacheFileSource | null, openrs2ids?: number[] | null) {
     let histsources = await validOpenrs2Caches();
+    if (openrs2ids) {
+        histsources = histsources.filter(q => openrs2ids.includes(q.id));
+    }
     let decoder = cacheFileDecodeModes[mode]({});
 
     let allsources = function* () {
@@ -32,14 +36,20 @@ export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: 
     let history: HistoricVersion[] = [];
 
     for (let source of allsources()) {
+        if (output.state == "canceled") {
+            break;
+        }
         try {
-            let sourcename = source.getCacheMeta().name.replace(/:/g, "-");
+            let sourcemeta = source.getCacheMeta()
+            let sourcename = `${sourcemeta.name.replace(/:/g, "-")}-${source.getBuildNr()}`;
             let changed = false;
-            let fileid = decoder.logicalToFile(id);
+            let fileid = decoder.logicalToFile(source, id);
             let indexfile = await source.getCacheIndex(fileid.major);
             let filemeta = indexfile.at(fileid.minor);
             let newfile: Buffer | null = null;
             let decoded: string | Buffer | null = null;
+            let success = true;
+            let ext = "bin";
             if (filemeta) {
                 let newarchive = await source.getFileArchive(filemeta);
                 newfile = newarchive[fileid.subid]?.buffer;
@@ -49,14 +59,34 @@ export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: 
                         console.log("file change detected without crc change");
                     }
                     changed = true;
-                    decoded = await decoder.read(newfile, id, source);
+                    if (decoder.parser) {
+                        let res = testDecodeFile(decoder.parser, newfile, source);
+                        decoded = res.getDebugFile("json");
+                        success = res.success;
+                        ext = "hexerr.json";
+                    } else {
+                        try {
+                            decoded = await decoder.read(newfile, id, source);
+                            success = true;
+                            ext = decoder.ext;
+                        } catch {
+                            decoded = newfile;
+                            success = false;
+                            ext = "bin";
+                        }
+                    }
                 }
             } else if (lastversion && lastversion.file) {
                 changed = true;
             }
             if (changed) {
+                if (!decoded) {
+                    decoded = "";
+                    ext = "";
+                }
                 let majorname = Object.entries(cacheMajors).find(([k, v]) => v == fileid.major)?.[0] ?? `unkown-${fileid.major}`;
-                let decodedname = `${majorname}-${fileid.minor}-${fileid.subid}-${sourcename}.${decoded ? decoder.ext : "txt"}`;
+                let status = (!decoded ? "empty" : success ? "pass" : "fail");
+                let decodedname = `${status}-${majorname}-${fileid.minor}-${fileid.subid}-${sourcename}${ext && "."}${ext}`;
 
                 lastversion = {
                     cacheids: [],
@@ -67,15 +97,15 @@ export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: 
                     file: newfile,
                 };
                 history.push(lastversion);
-                await outdir.writeFile(decodedname, decoded ?? "empty");
+                await outdir.writeFile(decodedname, decoded ?? "");
             }
 
             lastversion!.buildnr.push(source.getBuildNr());
             lastversion!.cacheids.push(source.getCacheMeta().name);
         } catch (e) {
-            console.log(`error while decoding diffing file ${id} in "${source.getCacheMeta().name}, ${source.getCacheMeta().descr}"`);
+            output.log(`error while decoding diffing file ${id} in "${source.getCacheMeta().name}, ${source.getCacheMeta().descr}"`);
             //TODO use different stopping condition
-            return history;
+            // return history;
         } finally {
             if (source != basecache) {
                 source.close();

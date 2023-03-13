@@ -10,6 +10,7 @@
 																	["type","ubyte"]
 																]]}]},
 	"0x02": { "name":                                "name", "read": "string" },
+	"0x03": { "name":                             "examine", "read": "string" },//removed in jun 2006
 	//not sure what this is but they seem identical
 	"0x05": { "name":                           "models_05", "read":["match","buildnr",{
 																">=582":["struct",
@@ -54,6 +55,7 @@
 	"0x41": { "name":                              "scaleX", "read": "short" },
 	"0x42": { "name":                              "scaleY", "read": "short" },
 	"0x43": { "name":                              "scaleZ", "read": "short" },
+	"0x44": { "name":                        "mapscene_old", "read": "unsigned short" },//replaced by 0x66
 	"0x45": { "name":                            "dummy_45", "read": "unsigned byte" },
 	"0x46": { "name":                          "translateX", "read": "short" },
 	"0x47": { "name":                          "translateY", "read": "short" },

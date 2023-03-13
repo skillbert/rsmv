@@ -116,6 +116,7 @@ function allParsers() {
 		particles_0: FileParser.fromJson<import("../generated/particles_0").particles_0>(require("./opcodes/particles_0.jsonc")),
 		particles_1: FileParser.fromJson<import("../generated/particles_1").particles_1>(require("./opcodes/particles_1.jsonc")),
 		audio: FileParser.fromJson<import("../generated/audio").audio>(require("./opcodes/audio.jsonc")),
-		proctexture: FileParser.fromJson<import("../generated/proctexture").proctexture>(require("./opcodes/proctexture.jsonc"))
+		proctexture: FileParser.fromJson<import("../generated/proctexture").proctexture>(require("./opcodes/proctexture.jsonc")),
+		oldproctexture: FileParser.fromJson<import("../generated/oldproctexture").oldproctexture>(require("./opcodes/oldproctexture.jsonc"))
 	}
 }

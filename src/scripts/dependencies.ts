@@ -2,7 +2,7 @@
 // import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parse } from "../opdecoder";
-import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
+import { archiveToFileId, CacheFileSource } from "../cache";
 import { defaultMorphId, squareSize } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
@@ -66,6 +66,13 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 			}
 			if (loc.models) {
 				for (let group of loc.models) {
+					for (let model of group.values) {
+						addDep("model", model, "loc", id);
+					}
+				}
+			}
+			if (loc.models_05) {
+				for (let group of loc.models_05.models) {
 					for (let model of group.values) {
 						addDep("model", model, "loc", id);
 					}

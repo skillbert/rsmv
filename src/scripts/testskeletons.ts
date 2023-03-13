@@ -1,6 +1,6 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parse } from "../opdecoder";
-import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
+import { archiveToFileId } from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
 
 

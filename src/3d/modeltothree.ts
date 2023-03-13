@@ -15,6 +15,7 @@ import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
+import { parseSprite } from "./sprite";
 
 export type ParsedMaterial = {
 	//TODO rename
@@ -95,62 +96,62 @@ export class EngineCache extends CachingFileSource {
 	}
 
 	private async preload() {
-		let matarch = await this.getArchiveById(cacheMajors.materials, 0);
-		for (let file of matarch) {
-			this.materialArchive.set(file.fileid, file.buffer);
+		this.mapUnderlays = [];
+		this.mapOverlays = [];
+		this.mapMapscenes = [];
+		for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays)) {
+			this.mapUnderlays[subfile.fileid] = parse.mapsquareUnderlays.read(subfile.buffer, this.rawsource);
+		}
+		for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays)) {
+			this.mapOverlays[subfile.fileid] = parse.mapsquareOverlays.read(subfile.buffer, this.rawsource);
+		}
+		if (this.getBuildNr() >= 527) {
+			for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes)) {
+				this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
+			}
+		}
+		if (this.getBuildNr() <= 498) {
+			for (let file of await this.getArchiveById(cacheMajors.texturesOldPng, 0)) {
+				this.materialArchive.set(file.fileid, file.buffer);
+			}
+		} else if (this.getBuildNr() >= 754) {
+			for (let file of await this.getArchiveById(cacheMajors.materials, 0)) {
+				this.materialArchive.set(file.fileid, file.buffer);
+			}
 		}
 
-		this.mapUnderlays = [];
-		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays))
-			.forEach(q => this.mapUnderlays[q.fileid] = parse.mapsquareUnderlays.read(q.buffer, this.rawsource));
-		this.mapOverlays = [];
-		(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays))
-			.forEach(q => this.mapOverlays[q.fileid] = parse.mapsquareOverlays.read(q.buffer, this.rawsource));
-		this.mapMapscenes = [];
-		try {
-			(await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes))
-				.forEach(q => this.mapMapscenes[q.fileid] = parse.mapscenes.read(q.buffer, this.rawsource));
-		} catch (e) {
-			//ignore missing mapscenes
-		}
-		try {
-			await this.getCacheIndex(cacheMajors.oldmodels);
-			this.hasOldModels = true;
-		} catch {
-			this.hasOldModels = false;
-		}
-		try {
-			await this.getCacheIndex(cacheMajors.models);
-			this.hasNewModels = true;
-		} catch {
-			this.hasNewModels = false;
-		}
+		let rootindex = await this.getCacheIndex(cacheMajors.index);
+		this.hasNewModels = !!rootindex[cacheMajors.models];
+		this.hasOldModels = !!rootindex[cacheMajors.oldmodels];
 
 		return this;
 	}
 
 	getMaterialData(id: number) {
-		if (this.getBuildNr() < 759) {
-			let mat = defaultMaterial();
-			if (id != -1) {
-				mat.textures.diffuse = id;
-			}
-			//TODO other material props
-			return mat;
-		} else {
-			let cached = this.materialCache.get(id);
-			if (!cached) {
-				if (id == -1) {
+		let cached = this.materialCache.get(id);
+		if (!cached) {
+			if (id == -1) {
+				cached = defaultMaterial();
+			} else {
+				if (this.getBuildNr() <= 498) {
+					let file = this.materialArchive.get(id);
+					if (!file) { throw new Error("material " + id + " not found"); }
+					let matprops = parse.oldproctexture.read(file, this);
 					cached = defaultMaterial();
+					cached.textures.diffuse = matprops.spriteid;
+				} else if (this.getBuildNr() < 759) {
+					cached = defaultMaterial();
+					if (id != -1) { cached.textures.diffuse = id; }
+					//TODO other material props
 				} else {
 					let file = this.materialArchive.get(id);
 					if (!file) { throw new Error("material " + id + " not found"); }
 					cached = convertMaterial(file, id, this.rawsource);
 				}
-				this.materialCache.set(id, cached);
 			}
-			return cached;
+			this.materialCache.set(id, cached);
 		}
+		return cached;
 	}
 
 	/**
@@ -174,7 +175,7 @@ export class EngineCache extends CachingFileSource {
 						lastarchive = { index: fileid.index, subfiles: arch };
 					}
 					let file = arch[fileid.subindex];
-					let logicalid = mode.lookup.fileToLogical(fileid.index.major, fileid.index.minor, file.fileid);
+					let logicalid = mode.lookup.fileToLogical(this, fileid.index.major, fileid.index.minor, file.fileid);
 					let res = mode.parser.read(file.buffer, this.rawsource);
 					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
 					files.push(res);
@@ -201,24 +202,29 @@ export async function detectTextureMode(source: CacheFileSource) {
 		return lastfile;
 	}
 
-	let textureMode: TextureModes = "dds";
-	let numbmp = await detectmajor(cacheMajors.texturesBmp);
-	let numdds = await detectmajor(cacheMajors.texturesDds);
-	if (numbmp > 0 || numdds > 0) {
-		textureMode = (numbmp > numdds ? "bmp" : "dds");
+	let textureMode: TextureModes = "none";
+	if (source.getBuildNr() <= 498) {
+		textureMode = "oldproc";
+	} else if (source.getBuildNr() <= 736) {
+		textureMode = "none";//uses old procedural textures in index 9
 	} else {
-		let numpng2014 = await detectmajor(cacheMajors.textures2015Png);
-		let numdds2014 = await detectmajor(cacheMajors.textures2015Dds);
-		if (numpng2014 > 0 || numdds2014 >= 0) {
-			textureMode = (numdds2014 > numpng2014 ? "dds2014" : "png2014");
-		} else if (await detectmajor(cacheMajors.texturesOldPng) > 0) {
-			textureMode = "oldpng";
+		let numbmp = await detectmajor(cacheMajors.texturesBmp);
+		let numdds = await detectmajor(cacheMajors.texturesDds);
+		if (numbmp > 0 || numdds > 0) {
+			textureMode = (numbmp > numdds ? "bmp" : "dds");
 		} else {
-			textureMode = "none";
+			let numpng2014 = await detectmajor(cacheMajors.textures2015Png);
+			let numdds2014 = await detectmajor(cacheMajors.textures2015Dds);
+			if (numpng2014 > 0 || numdds2014 >= 0) {
+				textureMode = (numdds2014 > numpng2014 ? "dds2014" : "png2014");
+			} else if (await detectmajor(cacheMajors.texturesOldPng) > 0) {
+				textureMode = "oldpng";
+			} else {
+				textureMode = "none";
+			}
 		}
 	}
 	console.log(`detectedtexture mode. ${textureMode}`);
-
 	return textureMode;
 }
 
@@ -310,7 +316,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	return { mat, matmeta: material };
 }
 
-type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none";
+type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc";
 type TextureTypes = keyof MaterialData["textures"];
 
 export class ThreejsSceneCache {
@@ -330,7 +336,8 @@ export class ThreejsSceneCache {
 			ktx: cacheMajors.texturesKtx,
 			png2014: cacheMajors.textures2015Png,
 			dds2014: cacheMajors.textures2015Dds,
-			oldpng: cacheMajors.texturesOldPng
+			oldpng: cacheMajors.texturesOldPng,
+			oldproc: cacheMajors.sprites
 		},
 		normal: {
 			png: cacheMajors.texturesPng,
@@ -340,7 +347,8 @@ export class ThreejsSceneCache {
 			//TODO are these normals or compounds?
 			png2014: cacheMajors.textures2015CompoundPng,
 			dds2014: cacheMajors.textures2015CompoundDds,
-			oldpng: cacheMajors.texturesOldCompoundPng
+			oldpng: cacheMajors.texturesOldCompoundPng,
+			oldproc: 0,
 		},
 		compound: {
 			png: cacheMajors.texturesPng,
@@ -350,7 +358,8 @@ export class ThreejsSceneCache {
 			//TODO are these normals or compounds?
 			png2014: cacheMajors.textures2015CompoundPng,
 			dds2014: cacheMajors.textures2015CompoundDds,
-			oldpng: cacheMajors.texturesOldCompoundPng
+			oldpng: cacheMajors.texturesOldCompoundPng,
+			oldproc: 0
 		}
 	}
 
@@ -371,11 +380,16 @@ export class ThreejsSceneCache {
 	getTextureFile(type: TextureTypes, texid: number, stripAlpha: boolean) {
 		let cacheindex = ThreejsSceneCache.textureIndices[type][this.textureType];
 		let cachekey = ((cacheindex | 0xff) << 23) | texid;
+		let texmode = this.textureType;
 
 		return this.engine.fetchCachedObject(this.threejsTextureCache, cachekey, async () => {
 			let file = await this.getFileById(cacheindex, texid);
-			let parsed = new ParsedTexture(file, stripAlpha, true);
-			return parsed;
+			if (texmode == "oldproc") {
+				let sprite = parseSprite(file);
+				return new ParsedTexture(sprite[0].img, stripAlpha, false);
+			} else {
+				return new ParsedTexture(file, stripAlpha, true);
+			}
 		}, obj => obj.filesize * 2);
 	}
 

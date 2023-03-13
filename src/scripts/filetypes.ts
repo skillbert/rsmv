@@ -46,10 +46,10 @@ function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 		major: cacheMajors.mapsquares,
 		logicalDimensions: 2,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) {
+		fileToLogical(source, major, minor, subfile) {
 			return [255, minor];
 		},
-		logicalToFile(id) {
+		logicalToFile(source, id) {
 			throw new Error("not implemented");
 		},
 		async logicalRangeToFiles(source, start, end) {
@@ -57,7 +57,7 @@ function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 			let res: CacheFileId[] = [];
 			for (let x = start[0]; x <= Math.min(end[0], 100); x++) {
 				for (let z = start[1]; z <= Math.min(end[1], 200); z++) {
-					let namehash = cacheFilenameHash(`${key}${x}_${z}`);
+					let namehash = cacheFilenameHash(`${key}${x}_${z}`, source.getBuildNr() <= 377);
 					let file = index.find(q => q.name == namehash);
 					if (file) { res.push({ index: file, subindex: 0 }); }
 				}
@@ -74,10 +74,10 @@ function worldmapIndex(subfile: number): DecodeLookup {
 		major,
 		logicalDimensions: 2,
 		multiIndexArchives: true,
-		fileToLogical(major, minor, subfile) {
+		fileToLogical(source, major, minor, subfile) {
 			return [minor % worldStride, Math.floor(minor / worldStride)];
 		},
-		logicalToFile(id: LogicalIndex) {
+		logicalToFile(source, id: LogicalIndex) {
 			return { major, minor: id[0] + id[1] * worldStride, subid: subfile };
 		},
 		async logicalRangeToFiles(source, start, end) {
@@ -106,10 +106,10 @@ function singleMinorIndex(major: number, minor: number): DecodeLookup {
 		major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) {
+		fileToLogical(source, major, minor, subfile) {
 			return [subfile];
 		},
-		logicalToFile(id: LogicalIndex) {
+		logicalToFile(source, id: LogicalIndex) {
 			return { major, minor, subid: id[0] };
 		},
 		async logicalRangeToFiles(source, start, end) {
@@ -123,15 +123,15 @@ function chunkedIndex(major: number): DecodeLookup {
 		major,
 		logicalDimensions: 1,
 		multiIndexArchives: true,
-		fileToLogical(major, minor, subfile) {
+		fileToLogical(source, major, minor, subfile) {
 			return [archiveToFileId(major, minor, subfile)];
 		},
-		logicalToFile(id: LogicalIndex) {
-			return fileIdToArchiveminor(major, id[0]);
+		logicalToFile(source, id: LogicalIndex) {
+			return fileIdToArchiveminor(major, id[0], source.getBuildNr());
 		},
 		async logicalRangeToFiles(source, start, end) {
-			let startindex = fileIdToArchiveminor(major, start[0]);
-			let endindex = fileIdToArchiveminor(major, end[0]);
+			let startindex = fileIdToArchiveminor(major, start[0], source.getBuildNr());
+			let endindex = fileIdToArchiveminor(major, end[0], source.getBuildNr());
 			return filerange(source, startindex, endindex);
 		}
 	};
@@ -142,8 +142,8 @@ function noArchiveIndex(major: number): DecodeLookup {
 		major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { if (subfile != 0) { throw new Error("nonzero subfile in noarch index"); } return [minor]; },
-		logicalToFile(id) { return { major, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("nonzero subfile in noarch index"); } return [minor]; },
+		logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 		}
@@ -155,8 +155,8 @@ function standardIndex(major: number): DecodeLookup {
 		major,
 		logicalDimensions: 2,
 		multiIndexArchives: true,
-		fileToLogical(major, minor, subfile) { return [minor, subfile]; },
-		logicalToFile(id) { return { major, minor: id[0], subid: id[1] }; },
+		fileToLogical(source, major, minor, subfile) { return [minor, subfile]; },
+		logicalToFile(source, id) { return { major, minor: id[0], subid: id[1] }; },
 		async logicalRangeToFiles(source, start, end) {
 			return filerange(source, { major, minor: start[0], subid: start[1] }, { major, minor: end[0], subid: end[1] });
 		}
@@ -176,8 +176,8 @@ function indexfileIndex(): DecodeLookup {
 		major: cacheMajors.index,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let indices = await source.getCacheIndex(cacheMajors.index);
 			return indices
@@ -192,8 +192,8 @@ function rootindexfileIndex(): DecodeLookup {
 		major: cacheMajors.index,
 		logicalDimensions: 0,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return []; },
-		logicalToFile(id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return []; },
+		logicalToFile(source, id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return [
 				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, name: null, subindexcount: 1, subindices: [0] }, subindex: 0 }
@@ -265,8 +265,8 @@ type DecodeLookup = {
 	logicalDimensions: number,
 	multiIndexArchives: boolean;
 	logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
-	fileToLogical(major: number, minor: number, subfile: number): LogicalIndex,
-	logicalToFile(id: LogicalIndex): FileId
+	fileToLogical(source: CacheFileSource, major: number, minor: number, subfile: number): LogicalIndex,
+	logicalToFile(source: CacheFileSource, id: LogicalIndex): FileId
 }
 
 export type DecodeMode<T = Buffer | string> = {
@@ -284,8 +284,8 @@ const decodeBinary: DecodeModeFactory = () => {
 		major: undefined,
 		logicalDimensions: 3,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [major, minor, subfile]; },
-		logicalToFile(id) { return { major: id[0], minor: id[1], subid: id[2] }; },
+		fileToLogical(source, major, minor, subfile) { return [major, minor, subfile]; },
+		logicalToFile(source, id) { return { major: id[0], minor: id[1], subid: id[2] }; },
 		async logicalRangeToFiles(source, start, end) {
 			if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
 			let major = start[0];
@@ -304,8 +304,8 @@ const decodeMusic: DecodeModeFactory = () => {
 		major: cacheMajors.music,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.music, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.music, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let enumfile = await source.getFileById(cacheMajors.enums, 1351);
 			let enumdata = parse.enums.read(enumfile, source);
@@ -328,8 +328,8 @@ const decodeSound = (major: number): DecodeModeFactory => () => {
 		major: major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let res = await filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 			return res.filter(q => q.index.minor != 0);
@@ -341,14 +341,38 @@ const decodeSound = (major: number): DecodeModeFactory => () => {
 	}
 }
 
+const decodeOldProcTexture: DecodeModeFactory = () => {
+	return {
+		ext: "png",
+		major: cacheMajors.texturesOldPng,
+		logicalDimensions: 1,
+		multiIndexArchives: true,
+		fileToLogical(source, major, minor, subfile) { return [subfile]; },
+		logicalToFile(soundjson, id) { return { major: cacheMajors.texturesOldPng, minor: 0, subid: id[0] }; },
+		logicalRangeToFiles(source, start, end) {
+			return filerange(source, { major: cacheMajors.texturesOldPng, minor: 0, subid: start[0] }, { major: cacheMajors.texturesOldPng, minor: 0, subid: end[0] });
+		},
+		prepareDump() { },
+		async read(b, id, source) {
+			let obj = parse.oldproctexture.read(b, source);
+			let spritefile = await source.getFileById(cacheMajors.sprites, obj.spriteid);
+			let sprites = parseSprite(spritefile);
+			if (sprites.length != 1) { throw new Error("exactly one subsprite expected"); }
+			return pixelsToImageFile(sprites[0].img, "png", 1);
+		},
+		write(b) { throw new Error("write not supported"); },
+		combineSubs(b) { throw new Error("not supported"); }
+	}
+}
+
 const decodeSprite = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "png",
 		major: major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 		},
@@ -368,8 +392,8 @@ const decodeTexture = (major: number): DecodeModeFactory => () => {
 		major: major,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major: major, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
 		},
@@ -392,8 +416,8 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 		major: cacheMajors.sprites,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let major = cacheMajors.sprites;
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
@@ -420,8 +444,8 @@ const decodeMeshHash: DecodeModeFactory = () => {
 		major: cacheMajors.models,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
-		fileToLogical(major, minor, subfile) { return [minor]; },
-		logicalToFile(id) { return { major: cacheMajors.models, minor: id[0], subid: 0 }; },
+		fileToLogical(source, major, minor, subfile) { return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.models, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let major = cacheMajors.models;
 			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
@@ -482,6 +506,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	oldmodels: { parser: parse.oldmodels, lookup: noArchiveIndex(cacheMajors.oldmodels) },
 	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
 	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
+	oldproctextures: { parser: parse.oldproctexture, lookup: singleMinorIndex(cacheMajors.texturesOldPng, 0) },
 
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
 	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() }
@@ -513,6 +538,7 @@ const npcmodels: DecodeModeFactory = function (flags) {
 export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	bin: decodeBinary,
 	sprites: decodeSprite(cacheMajors.sprites),
+	oldproctexture_img: decodeOldProcTexture,
 	spritehash: decodeSpriteHash,
 	modelhash: decodeMeshHash,
 	textures_oldpng: decodeTexture(cacheMajors.texturesOldPng),

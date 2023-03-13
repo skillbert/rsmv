@@ -3,11 +3,28 @@
 // run `npm run filetypes` to rebuild
 
 export type objects = {
-	models?: {
-		type: number,
-		values: number[],
-	}[] | null
+	models?: ({
+			type: number,
+			values: (number|number)[],
+		}[]|{
+			values: (number|number)[],
+			type: number,
+		}[]) | null
 	name?: string | null
+	examine?: string | null
+	models_05?: ({
+			models: {
+				type: number,
+				values: (number|number)[],
+			}[],
+			unktail: number[],
+		}|{
+			models: {
+				type: 10,
+				values: (number|number)[],
+				unktail: number[],
+			}[],
+		}) | null
 	width?: number | null
 	length?: number | null
 	probably_nocollision?: true | null
@@ -37,11 +54,13 @@ export type objects = {
 	recolourPalette?: number[] | null
 	unknown_2C?: number | null
 	unknown_2D?: number | null
+	unknown_3c?: number | null
 	mirror?: true | null
 	unknown_40?: true | null
 	scaleX?: number | null
 	scaleY?: number | null
 	scaleZ?: number | null
+	mapscene_old?: number | null
 	dummy_45?: number | null
 	translateX?: number | null
 	translateY?: number | null
@@ -51,8 +70,8 @@ export type objects = {
 	unknown_4B?: number | null
 	morphs_1?: {
 		unk1: number,
-		unk2: number[],
-		unk3: number,
+		unk2: (number|number)[],
+		unk3: (number|number),
 	} | null
 	light_source_related_4E?: {
 		maybe_color: number,
@@ -68,19 +87,21 @@ export type objects = {
 	unknown_52?: true | null
 	is_members?: true | null
 	unknown_59?: true | null
+	unknown_5A?: true | null
 	isMembers?: true | null
 	morphs_2?: {
 		unk1: number,
-		unk2: number,
-		unk3: number[],
-		unk4: number,
+		unk2: (number|number),
+		unk3: (number|number)[],
+		unk4: (number|number),
 	} | null
 	tilt_xz?: [
 		number,
 		number,
 	] | null
 	under_water?: true | null
-	probably_morphCeilingOffset?: number | null
+	probably_morphCeilingOffset?: (number|0) | null
+	unknown_60?: true | null
 	ground_decoration_related_61?: true | null
 	has_animated_texture?: true | null
 	dummy_63?: {
@@ -101,6 +122,7 @@ export type objects = {
 		unknown_2: number,
 	}[] | null
 	mapFunction?: number | null
+	unknown_71?: number | null
 	members_action_1?: string | null
 	members_action_2?: string | null
 	members_action_3?: string | null
