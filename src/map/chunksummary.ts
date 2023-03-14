@@ -28,7 +28,7 @@ export async function chunkSummary(engine: EngineCache, grid: TileGrid, models: 
 
 		let loc = locids.get(info.locationid);
 		if (!loc) {
-			let buf = await engine.getFileById(cacheMajors.objects, info.locationid)
+			let buf = await engine.getGameFile("objects", info.locationid)
 			loc = parse.object.read(buf, engine.rawsource);
 			locids.set(info.locationid, loc);
 		}

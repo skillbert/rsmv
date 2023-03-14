@@ -1,4 +1,5 @@
 import type * as jsonschema from "json-schema";
+import { lastLegacyBuildnr } from "./constants";
 
 type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand" | "gteq" | "lteq";
 
@@ -934,6 +935,7 @@ function stringParser(prebytes: number[]): ChunkParser {
 	const encoding = "latin1";
 	return {
 		read(state) {
+			let terminator = (state.clientVersion <= lastLegacyBuildnr ? 0xA : 0);
 			for (let i = 0; i < prebytes.length; i++, state.scan++) {
 				if (state.buffer.readUInt8(state.scan) != prebytes[i]) {
 					throw new Error("failed to match string header bytes");
@@ -944,7 +946,7 @@ function stringParser(prebytes: number[]): ChunkParser {
 				if (end == state.endoffset) {
 					throw new Error("reading string without null termination");
 				}
-				if (state.buffer.readUInt8(end) == 0) {
+				if (state.buffer.readUInt8(end) == terminator) {
 					break;
 				}
 				end++;
@@ -955,10 +957,11 @@ function stringParser(prebytes: number[]): ChunkParser {
 		},
 		write(state, value) {
 			if (typeof value != "string") throw new Error(`string expected`);
+			let terminator = (state.clientVersion <= lastLegacyBuildnr ? 0xA : 0);
 			let writebytes = [
 				...prebytes,
 				...Buffer.from(value, encoding),
-				0
+				terminator
 			];
 			state.buffer.set(writebytes, state.scan);
 			state.scan += writebytes.length;;

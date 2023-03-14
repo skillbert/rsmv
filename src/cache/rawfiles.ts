@@ -23,6 +23,7 @@ export class RawFileLoader extends CacheFileSource {
 				crc: 0,
 				subindexcount: 1,
 				subindices: [0],
+				subnames: null,
 				version: 0,
 				size: 0,
 				name: null,
@@ -45,7 +46,7 @@ export class RawFileLoader extends CacheFileSource {
 	}
 	async getFileArchive(index: CacheIndex): Promise<SubFile[]> {
 		let file = await this.getFile(index.major, index.minor, index.crc)
-		return [{ fileid: 0, offset: 0, size: file.byteLength, buffer: file }];
+		return [{ fileid: 0, offset: 0, size: file.byteLength, buffer: file, namehash: null }];
 	}
 	async getCacheIndex(major: number): Promise<CacheIndexFile> {
 		return this.index;

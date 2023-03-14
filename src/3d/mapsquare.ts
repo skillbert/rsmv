@@ -1,6 +1,6 @@
 import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
 import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
-import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -15,6 +15,7 @@ import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
+import { legacyMajors } from "../cache/legacycache";
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
@@ -891,9 +892,9 @@ export class TileGrid implements TileGridSource {
 					let overlay = (tile.overlay != undefined ? this.engine.mapOverlays[tile.overlay - 1] : undefined);
 					if (overlay) {
 						overlayprop = {
-							material: overlay.material ?? overlay.materialbyte ?? -1,
+							material: overlay.materialbyte ?? overlay.material ?? -1,
 							materialTiling: overlay.material_tiling ?? 128,
-							color: overlay.primary_colour ?? (overlay.materialbyte != null ? [255, 255, 255] : [255, 0, 255])
+							color: overlay.color ?? (overlay.materialbyte != null ? [255, 255, 255] : [255, 0, 255])
 						};
 						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
 					}
@@ -964,10 +965,9 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
 			let tilefile: Buffer;
 			let locsfile: Buffer | null = null;
-			let selfindex: CacheIndex;
 			if (engine.getBuildNr() >= 759) {
 				let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
-				selfindex = mapunderlaymeta[squareindex];
+				let selfindex = mapunderlaymeta[squareindex];
 				if (!selfindex) {
 					// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
 					continue;
@@ -981,11 +981,10 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 				if (locsindex != -1) {
 					locsfile = selfarchive[locsindex].buffer;
 				}
-			} else {
+			} else if (engine.getBuildNr() > lastLegacyBuildnr) {
 				try {
 					let index = await engine.findFileByName(cacheMajors.mapsquares, `m${rect.x + x}_${rect.z + z}`);
 					if (!index) { continue; }
-					selfindex = index;
 					tilefile = await engine.getFile(index.major, index.minor, index.crc);
 				} catch (e) {
 					//missing xtea
@@ -999,6 +998,14 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 				} catch (e) {
 					//ignore
 				}
+			} else {
+				let index = (rect.x + x) * 256 + (rect.z + z);
+				let info = engine.legacyData?.mapmeta.get(index);
+				if (!info) {
+					continue;
+				}
+				tilefile = await engine.getFile(legacyMajors.map, info.map);
+				locsfile = await engine.getFile(legacyMajors.map, info.loc);
 			}
 			//let watertilefile = selfarchive[tileindexwater]?.buffer;
 			//let watertiles = parse.mapsquareWaterTiles.read(watertilefile);
@@ -1258,14 +1265,14 @@ export function defaultMorphId(locmeta: objects) {
 }
 
 //TODO move this to a more logical location
-export async function resolveMorphedObject(source: CacheFileSource, id: number) {
-	let objectfile = await source.getFileById(cacheMajors.objects, id);
+export async function resolveMorphedObject(source: EngineCache, id: number) {
+	let objectfile = await source.getGameFile("objects", id);
 	let rawloc = parse.object.read(objectfile, source);
 	let morphedloc = rawloc;
 	if (rawloc.morphs_1 || rawloc.morphs_2) {
 		let newid = defaultMorphId(rawloc);
 		if (newid != -1) {
-			let newloc = await source.getFileById(cacheMajors.objects, newid);
+			let newloc = await source.getGameFile("objects", newid);
 			morphedloc = {
 				...rawloc,
 				...parse.object.read(newloc, source)
@@ -2098,7 +2105,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				if (hasneighbours && shape.overlay.length != 0) {
 					//code is a bit weird here, shouldnt have to call back to the raw overlay props
 					let overlaytype = grid.engine.mapOverlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
-					let color = overlaytype.primary_colour ?? (typeof overlaytype.materialbyte != "undefined" ? [255, 255, 255] : [255, 0, 255]);
+					let color = overlaytype.color ?? (typeof overlaytype.materialbyte != "undefined" ? [255, 255, 255] : [255, 0, 255]);
 					let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
 					if (worldmap && !isvisible && overlaytype.secondary_colour) {
 						color = overlaytype.secondary_colour;

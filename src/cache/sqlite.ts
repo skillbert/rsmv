@@ -126,7 +126,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 
 	async getFileArchive(index: cache.CacheIndex) {
 		let arch = await this.getFile(index.major, index.minor, index.crc);
-		let res = cache.unpackSqliteBufferArchive(arch, index.subindices);
+		let res = cache.unpackSqliteBufferArchive(arch, index.subindices, index.subnames);
 		return res;
 	}
 

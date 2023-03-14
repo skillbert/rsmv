@@ -1,4 +1,4 @@
-import { cacheConfigPages, cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors, lastLegacyBuildnr } from "../constants";
 import { ParsedTexture } from "./textures";
 import { ModelData, parseOb3Model } from '../3d/rt7model';
 import { parseRT5Model } from "../3d/rt5model";
@@ -15,7 +15,8 @@ import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
-import { parseSprite } from "./sprite";
+import { parseLegacySprite, parseSprite } from "./sprite";
+import { LegacyData, legacyGroups, legacyMajors, legacyPreload } from "../cache/legacycache";
 
 export type ParsedMaterial = {
 	//TODO rename
@@ -80,10 +81,12 @@ export class EngineCache extends CachingFileSource {
 
 	materialArchive = new Map<number, Buffer>();
 	materialCache = new Map<number, MaterialData>();
-	mapUnderlays: mapsquare_underlays[];
+	mapUnderlays: (mapsquare_underlays | mapsquare_overlays)[];
 	mapOverlays: mapsquare_overlays[];
 	mapMapscenes: mapscenes[];
 	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
+
+	legacyData: LegacyData | null = null;
 
 	static async create(source: CacheFileSource) {
 		let ret = new EngineCache(source);
@@ -99,32 +102,52 @@ export class EngineCache extends CachingFileSource {
 		this.mapUnderlays = [];
 		this.mapOverlays = [];
 		this.mapMapscenes = [];
-		for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays)) {
-			this.mapUnderlays[subfile.fileid] = parse.mapsquareUnderlays.read(subfile.buffer, this.rawsource);
-		}
-		for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays)) {
-			this.mapOverlays[subfile.fileid] = parse.mapsquareOverlays.read(subfile.buffer, this.rawsource);
-		}
-		if (this.getBuildNr() >= 527) {
-			for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes)) {
-				this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
+		if (this.getBuildNr() >= lastLegacyBuildnr) {
+			for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays)) {
+				this.mapUnderlays[subfile.fileid] = parse.mapsquareUnderlays.read(subfile.buffer, this.rawsource);
 			}
-		}
-		if (this.getBuildNr() <= 498) {
-			for (let file of await this.getArchiveById(cacheMajors.texturesOldPng, 0)) {
-				this.materialArchive.set(file.fileid, file.buffer);
+			for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapoverlays)) {
+				this.mapOverlays[subfile.fileid] = parse.mapsquareOverlays.read(subfile.buffer, this.rawsource);
 			}
-		} else if (this.getBuildNr() >= 754) {
-			for (let file of await this.getArchiveById(cacheMajors.materials, 0)) {
-				this.materialArchive.set(file.fileid, file.buffer);
-			}
-		}
 
-		let rootindex = await this.getCacheIndex(cacheMajors.index);
-		this.hasNewModels = !!rootindex[cacheMajors.models];
-		this.hasOldModels = !!rootindex[cacheMajors.oldmodels];
+			if (this.getBuildNr() >= 527) {
+				for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes)) {
+					this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
+				}
+			}
+			if (this.getBuildNr() <= 498) {
+				for (let file of await this.getArchiveById(cacheMajors.texturesOldPng, 0)) {
+					this.materialArchive.set(file.fileid, file.buffer);
+				}
+			} else if (this.getBuildNr() >= 754) {
+				for (let file of await this.getArchiveById(cacheMajors.materials, 0)) {
+					this.materialArchive.set(file.fileid, file.buffer);
+				}
+			}
+
+			let rootindex = await this.getCacheIndex(cacheMajors.index);
+			this.hasNewModels = !!rootindex[cacheMajors.models];
+			this.hasOldModels = !!rootindex[cacheMajors.oldmodels];
+		} else {
+			this.legacyData = await legacyPreload(this);
+			let floors = this.legacyData.overlays.map(q => parse.mapsquareOverlays.read(q, this));
+			this.mapOverlays = floors;
+			this.mapUnderlays = floors;
+
+
+			this.hasNewModels = false;
+			this.hasOldModels = true;
+		}
 
 		return this;
+	}
+
+	async getGameFile(type: keyof LegacyData & keyof typeof cacheMajors, id: number) {
+		if (this.legacyData) {
+			return this.legacyData[type][id];
+		} else {
+			return this.getFileById(cacheMajors[type], id);
+		}
 	}
 
 	getMaterialData(id: number) {
@@ -133,7 +156,10 @@ export class EngineCache extends CachingFileSource {
 			if (id == -1) {
 				cached = defaultMaterial();
 			} else {
-				if (this.getBuildNr() <= 498) {
+				if (this.getBuildNr() <= lastLegacyBuildnr) {
+					cached = defaultMaterial();
+					if (id != -1) { cached.textures.diffuse = id; }
+				} else if (this.getBuildNr() <= 498) {
 					let file = this.materialArchive.get(id);
 					if (!file) { throw new Error("material " + id + " not found"); }
 					let matprops = parse.oldproctexture.read(file, this);
@@ -203,7 +229,9 @@ export async function detectTextureMode(source: CacheFileSource) {
 	}
 
 	let textureMode: TextureModes = "none";
-	if (source.getBuildNr() <= 498) {
+	if (source.getBuildNr() <= lastLegacyBuildnr) {
+		textureMode = "legacy";
+	} else if (source.getBuildNr() <= 498) {
 		textureMode = "oldproc";
 	} else if (source.getBuildNr() <= 736) {
 		textureMode = "none";//uses old procedural textures in index 9
@@ -316,7 +344,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	return { mat, matmeta: material };
 }
 
-type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc";
+type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc" | "legacy";
 type TextureTypes = keyof MaterialData["textures"];
 
 export class ThreejsSceneCache {
@@ -337,7 +365,8 @@ export class ThreejsSceneCache {
 			png2014: cacheMajors.textures2015Png,
 			dds2014: cacheMajors.textures2015Dds,
 			oldpng: cacheMajors.texturesOldPng,
-			oldproc: cacheMajors.sprites
+			oldproc: cacheMajors.sprites,
+			legacy: legacyMajors.data
 		},
 		normal: {
 			png: cacheMajors.texturesPng,
@@ -349,6 +378,7 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015CompoundDds,
 			oldpng: cacheMajors.texturesOldCompoundPng,
 			oldproc: 0,
+			legacy: 0
 		},
 		compound: {
 			png: cacheMajors.texturesPng,
@@ -359,7 +389,8 @@ export class ThreejsSceneCache {
 			png2014: cacheMajors.textures2015CompoundPng,
 			dds2014: cacheMajors.textures2015CompoundDds,
 			oldpng: cacheMajors.texturesOldCompoundPng,
-			oldproc: 0
+			oldproc: 0,
+			legacy: 0
 		}
 	}
 
@@ -373,22 +404,25 @@ export class ThreejsSceneCache {
 		return scene;
 	}
 
-	getFileById(major: number, id: number) {
-		return this.engine.getFileById(major, id);
-	}
-
 	getTextureFile(type: TextureTypes, texid: number, stripAlpha: boolean) {
 		let cacheindex = ThreejsSceneCache.textureIndices[type][this.textureType];
 		let cachekey = ((cacheindex | 0xff) << 23) | texid;
 		let texmode = this.textureType;
 
 		return this.engine.fetchCachedObject(this.threejsTextureCache, cachekey, async () => {
-			let file = await this.getFileById(cacheindex, texid);
-			if (texmode == "oldproc") {
-				let sprite = parseSprite(file);
-				return new ParsedTexture(sprite[0].img, stripAlpha, false);
+			if (texmode == "legacy") {
+				let spritedata = await this.engine.getArchiveById(legacyMajors.data, legacyGroups.textures);
+				let metafile = await this.engine.findSubfileByName(legacyMajors.data, legacyGroups.textures, "INDEX.DAT");
+				let img = parseLegacySprite(metafile!.buffer, spritedata[texid].buffer);
+				return new ParsedTexture(img, stripAlpha, false);
 			} else {
-				return new ParsedTexture(file, stripAlpha, true);
+				let file = await this.engine.getFileById(cacheindex, texid);
+				if (texmode == "oldproc") {
+					let sprite = parseSprite(file);
+					return new ParsedTexture(sprite[0].img, stripAlpha, false);
+				} else {
+					return new ParsedTexture(file, stripAlpha, true);
+				}
 			}
 		}, obj => obj.filesize * 2);
 	}
@@ -396,7 +430,8 @@ export class ThreejsSceneCache {
 	getModelData(id: number, type: "auto" | "old" | "new" = "auto") {
 		if (type == "old" || (type == "auto" && this.useOldModels)) {
 			return this.engine.fetchCachedObject(this.oldModelCache, id, () => {
-				return this.engine.getFileById(cacheMajors.oldmodels, id)
+				let major = (this.engine.legacyData ? legacyMajors.oldmodels : cacheMajors.oldmodels);
+				return this.engine.getFileById(major, id)
 					.then(f => parseRT5Model(f, this.engine.rawsource));
 			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 		} else {

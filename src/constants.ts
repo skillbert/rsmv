@@ -70,3 +70,5 @@ export const cacheConfigPages = {
 	items_old: 10,
 	spotanim_old: 13
 }
+
+export const lastLegacyBuildnr = 377;

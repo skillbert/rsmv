@@ -7,7 +7,7 @@ export type ModelModifications = {
 
 export type Stream = {
 	getData(): Buffer;
-	skip(n: number): void;
+	skip(n: number): Stream;
 	scanloc(): number;
 	readByte(): number;
 	readUByte(): number;
@@ -23,6 +23,8 @@ export type Stream = {
 	readHalf(flip?: boolean): number;
 	eof(): boolean;
 	bytesLeft(): number;
+	readBuffer(len?: number): Buffer;
+	tee(): Stream
 }
 
 export function cacheFilenameHash(name: string, oldhash: boolean) {
@@ -55,8 +57,8 @@ export function stringToFileRange(str: string) {
 		let start = ends[0] ? ends[0].split(".") : [];
 		let end = (ends[0] || ends[1]) ? (ends[1] ?? ends[0]).split(".") : [];
 		return {
-			start: [+(start[0] ?? 0), +(start[1] ?? 0)] as [number, number],
-			end: [+(end[0] ?? Infinity), +(end[1] ?? Infinity)] as [number, number]
+			start: [+(start[0] ?? 0), +(start[1] ?? 0), +(start[2] ?? 0)] as [number, number, number],
+			end: [+(end[0] ?? Infinity), +(end[1] ?? Infinity), +(end[2] ?? Infinity)] as [number, number, number]
 		}
 	});
 	return ranges;
@@ -130,12 +132,21 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 	this.bytesLeft = function () {
 		return data.length - scan;
 	}
+	this.readBuffer = function (len = data.length - scan) {
+		let res = data.slice(scan, scan + len);
+		scan += len;
+		return res;
+	}
+	this.tee = function () {
+		return new Stream(data, scan);
+	}
 	this.eof = function () {
 		if (scan > data.length) { throw new Error("reading past end of buffer"); }
 		return scan >= data.length;
 	}
 	this.skip = function (n: number) {
 		scan += n;
+		return this;
 	}
 	this.scanloc = function () {
 		return scan;
@@ -210,9 +221,9 @@ export const Stream: { new(buf: Buffer): Stream, prototype: Stream } = function 
 
 	this.readUInt = function (bigendian = false) {
 		if (bigendian)
-			return ((data[scan++] << 24) & 0xFF000000) | ((data[scan++] << 16) & 0xFF0000) | ((data[scan++] << 8) & 0xFF00) | data[scan++];
+			return (((data[scan++] << 24) & 0xFF000000) | ((data[scan++] << 16) & 0xFF0000) | ((data[scan++] << 8) & 0xFF00) | data[scan++]) >>> 0;
 		else
-			return data[scan++] | ((data[scan++] << 8) & 0xFF00) | ((data[scan++] << 16) & 0xFF0000) | ((data[scan++] << 24) & 0xFF000000);
+			return (data[scan++] | ((data[scan++] << 8) & 0xFF00) | ((data[scan++] << 16) & 0xFF0000) | ((data[scan++] << 24) & 0xFF000000)) >>> 0;
 	}
 
 	this.readFloat = function (bigendian = false, signage = false) {

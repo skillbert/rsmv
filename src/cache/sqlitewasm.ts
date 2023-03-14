@@ -85,7 +85,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 
 	async getFileArchive(index: cache.CacheIndex) {
 		let arch = await this.getFile(index.major, index.minor, index.crc);
-		return cache.unpackSqliteBufferArchive(arch, index.subindices);
+		return cache.unpackSqliteBufferArchive(arch, index.subindices, index.subnames);
 	}
 
 	async getCacheIndex(major: number) {

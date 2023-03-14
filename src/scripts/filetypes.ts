@@ -1,19 +1,18 @@
 
-import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse, FileParser } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { cacheFilenameHash, constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
-import { parseSprite } from "../3d/sprite";
+import { parseLegacySprite, parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { getModelHashes } from "../3d/modeltothree";
-import { GameCacheLoader } from "../cache/sqlite";
-import { FileRange } from "../cliparser";
 import { ParsedTexture } from "../3d/textures";
 import { parseMusic } from "./musictrack";
+import { legacyGroups, legacyMajors } from "../cache/legacycache";
 
 
 type CacheFileId = {
@@ -25,20 +24,65 @@ type LogicalIndex = number[];
 
 async function filerange(source: CacheFileSource, startindex: FileId, endindex: FileId) {
 	if (startindex.major != endindex.major) { throw new Error("range must span one major"); }
-	let indexfile = await source.getCacheIndex(startindex.major);
 	let files: CacheFileId[] = [];
-	for (let index of indexfile) {
-		if (!index) { continue; }
-		if (index.minor >= startindex.minor && index.minor <= endindex.minor) {
-			for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
-				let subfileid = index.subindices[fileindex];
-				if (index.minor == startindex.minor && subfileid < startindex.subid) { continue; }
-				if (index.minor == endindex.minor && subfileid > endindex.subid) { continue; }
-				files.push({ index, subindex: fileindex });
+	if (source.getBuildNr() <= lastLegacyBuildnr) {
+		//dummy filerange since we don't have an index
+		let itercount = 0;
+		for (let minor = startindex.minor; minor <= endindex.minor; minor++) {
+			if (itercount++ > 1000) { break; }
+			try {
+				//bit silly since we download the files and then only return their ids
+				//however it doesn't matter that much since the entire cache is <20mb
+				let group: SubFile[] = [];
+				if (startindex.major == 0) {
+					group = await source.getArchiveById(startindex.major, minor);
+				} else {
+					await source.getFile(startindex.major, minor);
+					group = [{ buffer: null!, fileid: 0, namehash: null, offset: 0, size: 0 }];
+				}
+				let groupindex: CacheIndex = {
+					major: startindex.major,
+					minor,
+					crc: 0,
+					name: null,
+					subindexcount: group.length,
+					subindices: group.map(q => q.fileid),
+					subnames: group.map(q => q.fileid),
+					version: 0
+				};
+				for (let sub of group) {
+					if (sub.fileid >= startindex.subid && sub.fileid <= endindex.subid) {
+						files.push({
+							index: groupindex,
+							subindex: sub.fileid
+						});
+					}
+				}
+			} catch {
+				//omit missing groups from listing
+			}
+		}
+	} else {
+		let indexfile = await source.getCacheIndex(startindex.major);
+		for (let index of indexfile) {
+			if (!index) { continue; }
+			if (index.minor >= startindex.minor && index.minor <= endindex.minor) {
+				for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
+					let subfileid = index.subindices[fileindex];
+					if (index.minor == startindex.minor && subfileid < startindex.subid) { continue; }
+					if (index.minor == endindex.minor && subfileid > endindex.subid) { continue; }
+					files.push({ index, subindex: fileindex });
+				}
 			}
 		}
 	}
 	return files;
+}
+
+const throwOnNonSimple = {
+	prepareDump() { },
+	write(b) { throw new Error("write not supported"); },
+	combineSubs(b: Buffer[]) { throw new Error("not supported"); }
 }
 
 function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
@@ -57,7 +101,7 @@ function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 			let res: CacheFileId[] = [];
 			for (let x = start[0]; x <= Math.min(end[0], 100); x++) {
 				for (let z = start[1]; z <= Math.min(end[1], 200); z++) {
-					let namehash = cacheFilenameHash(`${key}${x}_${z}`, source.getBuildNr() <= 377);
+					let namehash = cacheFilenameHash(`${key}${x}_${z}`, source.getBuildNr() <= lastLegacyBuildnr);
 					let file = index.find(q => q.name == namehash);
 					if (file) { res.push({ index: file, subindex: 0 }); }
 				}
@@ -196,7 +240,7 @@ function rootindexfileIndex(): DecodeLookup {
 		logicalToFile(source, id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			return [
-				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, name: null, subindexcount: 1, subindices: [0] }, subindex: 0 }
+				{ index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, name: null, subindexcount: 1, subindices: [0], subnames: null }, subindex: 0 }
 			];
 		}
 	}
@@ -316,43 +360,28 @@ const decodeMusic: DecodeModeFactory = () => {
 				.filter((q, i, arr) => i == 0 || arr[i - 1][1] != q[1])//filter duplicates
 				.map<CacheFileId>(q => ({ index: indexfile[q[1]], subindex: 0 }))
 		},
-		prepareDump(output) { },
-		read(buf, fileid, source) { return parseMusic(source, cacheMajors.music, fileid[0], buf); },
-		write(file) { throw new Error("music write not supported"); },
-		combineSubs(files) { throw new Error("not supported"); },
+		...throwOnNonSimple,
+		read(buf, fileid, source) {
+			return parseMusic(source, cacheMajors.music, fileid[0], buf);
+		}
 	}
 }
 const decodeSound = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "ogg",
-		major: major,
-		logicalDimensions: 1,
-		multiIndexArchives: false,
-		fileToLogical(source, major, minor, subfile) { return [minor]; },
-		logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
-		async logicalRangeToFiles(source, start, end) {
-			let res = await filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
-			return res.filter(q => q.index.minor != 0);
-		},
-		prepareDump(output) { },
-		read(buf, fileid, source) { return parseMusic(source, major, fileid[0], buf); },
-		write(file) { throw new Error("music write not supported"); },
-		combineSubs(files) { throw new Error("not supported"); },
+		...noArchiveIndex(major),
+		...throwOnNonSimple,
+		read(buf, fileid, source) {
+			return parseMusic(source, major, fileid[0], buf);
+		}
 	}
 }
 
 const decodeOldProcTexture: DecodeModeFactory = () => {
 	return {
 		ext: "png",
-		major: cacheMajors.texturesOldPng,
-		logicalDimensions: 1,
-		multiIndexArchives: true,
-		fileToLogical(source, major, minor, subfile) { return [subfile]; },
-		logicalToFile(soundjson, id) { return { major: cacheMajors.texturesOldPng, minor: 0, subid: id[0] }; },
-		logicalRangeToFiles(source, start, end) {
-			return filerange(source, { major: cacheMajors.texturesOldPng, minor: 0, subid: start[0] }, { major: cacheMajors.texturesOldPng, minor: 0, subid: end[0] });
-		},
-		prepareDump() { },
+		...singleMinorIndex(cacheMajors.texturesOldPng, 0),
+		...throwOnNonSimple,
 		async read(b, id, source) {
 			let obj = parse.oldproctexture.read(b, source);
 			let spritefile = await source.getFileById(cacheMajors.sprites, obj.spriteid);
@@ -360,43 +389,38 @@ const decodeOldProcTexture: DecodeModeFactory = () => {
 			if (sprites.length != 1) { throw new Error("exactly one subsprite expected"); }
 			return pixelsToImageFile(sprites[0].img, "png", 1);
 		},
-		write(b) { throw new Error("write not supported"); },
-		combineSubs(b) { throw new Error("not supported"); }
+	}
+}
+
+const decodeLegacySprite = (minor: number): DecodeModeFactory => () => {
+	return {
+		ext: "png",
+		...singleMinorIndex(legacyMajors.data, minor),
+		...throwOnNonSimple,
+		async read(b, id, source) {
+			let metafile = await source.findSubfileByName(legacyMajors.data, minor, "INDEX.DAT");
+			let img = parseLegacySprite(metafile!.buffer, b);
+			return pixelsToImageFile(img, "png", 1);
+		}
 	}
 }
 
 const decodeSprite = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "png",
-		major: major,
-		logicalDimensions: 1,
-		multiIndexArchives: false,
-		fileToLogical(source, major, minor, subfile) { return [minor]; },
-		logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
-		async logicalRangeToFiles(source, start, end) {
-			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
-		},
-		prepareDump() { },
+		...noArchiveIndex(major),
+		...throwOnNonSimple,
 		read(b, id) {
 			//TODO support subimgs
 			return pixelsToImageFile(parseSprite(b)[0].img, "png", 1);
-		},
-		write(b) { throw new Error("write not supported"); },
-		combineSubs(b: Buffer[]) { throw new Error("not supported"); }
+		}
 	}
 }
 
 const decodeTexture = (major: number): DecodeModeFactory => () => {
 	return {
 		ext: "png",
-		major: major,
-		logicalDimensions: 1,
-		multiIndexArchives: false,
-		fileToLogical(source, major, minor, subfile) { return [minor]; },
-		logicalToFile(source, id) { return { major: major, minor: id[0], subid: 0 }; },
-		async logicalRangeToFiles(source, start, end) {
-			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
-		},
+		...noArchiveIndex(major),
 		prepareDump() { },
 		read(b, id) {
 			let p = new ParsedTexture(b, false, true);
@@ -413,16 +437,8 @@ const decodeTexture = (major: number): DecodeModeFactory => () => {
 const decodeSpriteHash: DecodeModeFactory = () => {
 	return {
 		ext: "json",
-		major: cacheMajors.sprites,
-		logicalDimensions: 1,
-		multiIndexArchives: false,
-		fileToLogical(source, major, minor, subfile) { return [minor]; },
-		logicalToFile(source, id) { return { major: cacheMajors.sprites, minor: id[0], subid: 0 }; },
-		async logicalRangeToFiles(source, start, end) {
-			let major = cacheMajors.sprites;
-			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
-		},
-		prepareDump() { },
+		...noArchiveIndex(cacheMajors.sprites),
+		...throwOnNonSimple,
 		async read(b, id) {
 			//TODO support subimgs
 			let images = parseSprite(b);
@@ -433,7 +449,6 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 			}
 			return str;
 		},
-		write(b) { throw new Error("write not supported"); },
 		combineSubs(b: string[]) { return "[" + b.join(",\n") + "]"; }
 	}
 }
@@ -441,22 +456,13 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 const decodeMeshHash: DecodeModeFactory = () => {
 	return {
 		ext: "json",
-		major: cacheMajors.models,
-		logicalDimensions: 1,
-		multiIndexArchives: false,
-		fileToLogical(source, major, minor, subfile) { return [minor]; },
-		logicalToFile(source, id) { return { major: cacheMajors.models, minor: id[0], subid: 0 }; },
-		async logicalRangeToFiles(source, start, end) {
-			let major = cacheMajors.models;
-			return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
-		},
-		prepareDump() { },
+		...noArchiveIndex(cacheMajors.models),
+		...throwOnNonSimple,
 		read(b, id, source) {
 			let model = parse.models.read(b, source);
 			let meshhashes = getModelHashes(model, id[0]);
 			return JSON.stringify(meshhashes);
 		},
-		write(b) { throw new Error("write not supported"); },
 		combineSubs(b: string[]) { return "[" + b.filter(q => q).join(",\n") + "]"; }
 	}
 }
@@ -538,6 +544,8 @@ const npcmodels: DecodeModeFactory = function (flags) {
 export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	bin: decodeBinary,
 	sprites: decodeSprite(cacheMajors.sprites),
+	legacy_sprites: decodeLegacySprite(legacyGroups.sprites),
+	legacy_textures: decodeLegacySprite(legacyGroups.textures),
 	oldproctexture_img: decodeOldProcTexture,
 	spritehash: decodeSpriteHash,
 	modelhash: decodeMeshHash,

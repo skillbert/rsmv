@@ -5,9 +5,13 @@
 export type npcs = {
 	models?: (number|number)[] | null
 	name?: string | null
+	examine?: string | null
 	unknown_08?: number | null
 	unknown_0B?: number | null
 	boundSize?: number | null
+	unk_0D?: number | null
+	unk_0E?: number | null
+	unk_11?: number[] | null
 	actions_0?: string | null
 	actions_1?: string | null
 	actions_2?: string | null

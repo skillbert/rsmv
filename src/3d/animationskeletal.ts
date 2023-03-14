@@ -25,7 +25,7 @@ import { MountableAnimation } from "./animationframes";
 
 
 export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSceneCache, framebaseid: number) {
-	let base = parse.framemaps.read(await cache.getFileById(cacheMajors.framemaps, framebaseid), cache.engine.rawsource);
+	let base = parse.framemaps.read(await cache.engine.getFileById(cacheMajors.framemaps, framebaseid), cache.engine.rawsource);
 	if (!base.skeleton) {
 		throw new Error("framebase does not have skeleton");
 	}
@@ -77,7 +77,7 @@ export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSc
 }
 
 export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number) {
-	let anim = parse.skeletalAnim.read(await cache.getFileById(cacheMajors.skeletalAnims, animid), cache.engine.rawsource);
+	let anim = parse.skeletalAnim.read(await cache.engine.getFileById(cacheMajors.skeletalAnims, animid), cache.engine.rawsource);
 
 	let convertedtracks: KeyframeTrack[] = [];
 

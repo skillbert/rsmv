@@ -1260,7 +1260,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 	if (reqid.mode == "overlay") {
 		overlay = sceneCache.engine.mapOverlays[reqid.id];
 		if (overlay.material) { matid = overlay.material; }
-		if (overlay.primary_colour) { color = overlay.primary_colour; }
+		if (overlay.color) { color = overlay.color; }
 	} else if (reqid.mode == "underlay") {
 		underlay = sceneCache.engine.mapUnderlays[reqid.id];
 		if (underlay.material) { matid = underlay.material; }

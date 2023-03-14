@@ -164,7 +164,7 @@ export async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenc
 		}
 	}
 
-	let framebase = parse.framemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
+	let framebase = parse.framemaps.read(await loader.engine.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
 
 	let { actions, rootboneinits } = buildFramebaseSkeleton(framebase);
 	let clips = getFrameClips(framebase, orderedframes);
@@ -261,7 +261,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		keyframetimes[keyframetimes.length - 1] = endtime;
 	}
 
-	let framebase = parse.framemaps.read(await loader.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
+	let framebase = parse.framemaps.read(await loader.engine.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
 
 	// let { bones } = buildFramebaseSkeleton(framebase);
 	let clips = getFrameClips(framebase, orderedframes);

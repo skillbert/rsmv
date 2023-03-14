@@ -1,7 +1,6 @@
 import * as cache from "./index";
-import { decompress } from "./compression";
-import { cacheMajors, latestBuildNumber } from "../constants";
-import { CacheIndex } from "./index";
+import { decompress, legacyGzip } from "./compression";
+import { cacheMajors, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import fetch from "node-fetch";
 
 const endpoint = `https://archive.openrs2.org`;
@@ -209,6 +208,15 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
-		return decompress(await this.downloadFile(major, minor), this.getXteaKey(major, minor));
+		let rawfile = await this.downloadFile(major, minor);
+		if (this.buildnr <= lastLegacyBuildnr) {
+			if (major == 0) {
+				return rawfile;
+			} else {
+				return legacyGzip(rawfile);
+			}
+		} else {
+			return decompress(rawfile, this.getXteaKey(major, minor));
+		}
 	}
 }

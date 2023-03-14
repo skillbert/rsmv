@@ -148,7 +148,7 @@ async function updateRecords(downloader: CacheDownloader, index: CacheIndex & { 
 
 		var recordIndex = recordIndices[i];
 		var buffer = await downloader.getFile(recordIndex.major, recordIndex.minor, recordIndex.crc);
-		var subbuffers = unpackBufferArchive(buffer, recordIndex.subindices);
+		var subbuffers = unpackBufferArchive(buffer, recordIndex.subindices, recordIndex.subnames);
 
 		for (var j = 0; j < recordIndex.subindices.length; ++j, ++n) {
 			var recordSubindex = recordIndex.subindices[j];

@@ -3,10 +3,11 @@
 // run `npm run filetypes` to rebuild
 
 export type mapsquare_overlays = {
-	primary_colour?: number[] | null
+	color?: number[] | null
 	materialbyte?: number | null
-	material?: number | null
+	material?: (number|0) | null
 	unknown_0x05?: true | null
+	name?: string | null
 	secondary_colour?: number[] | null
 	unknown_0x08?: true | null
 	material_tiling?: number | null

@@ -1,7 +1,8 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
-import { cacheConfigPages, cacheMajors, latestBuildNumber } from "../constants";
+import { cacheConfigPages, cacheMajors, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import { parse } from "../opdecoder";
 import { cacheFilenameHash } from "../utils";
+import { parseLegacyArchive } from "./legacycache";
 
 globalThis.ignoreCache = false;
 
@@ -9,7 +10,8 @@ export type SubFile = {
 	offset: number,
 	size: number,
 	buffer: Buffer,
-	fileid: number
+	fileid: number,
+	namehash: number | null
 }
 
 export type CacheIndex = {
@@ -19,6 +21,7 @@ export type CacheIndex = {
 	version: number,
 	subindexcount: number,
 	subindices: number[],
+	subnames: number[] | null,
 	name: number | null,
 	uncompressed_crc?: number | null,
 	size?: number | null,
@@ -33,9 +36,9 @@ export function packSqliteBufferArchive(buffers: Buffer[]) {
 	return new Archive(buffers).packSqlite();
 }
 
-export function unpackSqliteBufferArchive(buffer: Buffer, subids: number[]) {
+export function unpackSqliteBufferArchive(buffer: Buffer, subids: number[], namehashes: number[] | null): SubFile[] {
 	if (subids.length == 1) {
-		return [{ buffer, offset: 0, size: buffer.byteLength, fileid: subids[0] } as SubFile];
+		return [{ buffer, offset: 0, size: buffer.byteLength, fileid: subids[0], namehash: namehashes?.[0] ?? null }];
 	}
 	let index = 0;
 	let unknownbyte = buffer.readUInt8(index); index++;
@@ -49,7 +52,8 @@ export function unpackSqliteBufferArchive(buffer: Buffer, subids: number[]) {
 			buffer: buffer.slice(fileoffset, endoffset),
 			offset: fileoffset,
 			size: endoffset - fileoffset,
-			fileid: subids[filenr]
+			fileid: subids[filenr],
+			namehash: namehashes?.[filenr] ?? null
 		});
 		fileoffset = endoffset;
 	}
@@ -129,13 +133,14 @@ export function packBufferArchive(buffers: Buffer[]) {
 	return new Archive(buffers).packNetwork();
 }
 
-export function unpackBufferArchive(buffer: Buffer, subids: number[]) {
+export function unpackBufferArchive(buffer: Buffer, subids: number[], namehashes: number[] | null) {
 	if (subids.length == 1) {
 		let r: SubFile[] = [{
 			buffer: buffer,
 			offset: 0,
 			size: buffer.byteLength,
-			fileid: subids[0]
+			fileid: subids[0],
+			namehash: namehashes?.[0] ?? null
 		}];
 		return r;
 	}
@@ -162,7 +167,8 @@ export function unpackBufferArchive(buffer: Buffer, subids: number[]) {
 					buffer: recordBuffer,
 					offset: scan,
 					size,
-					fileid: subids[fileindex]
+					fileid: subids[fileindex],
+					namehash: namehashes?.[fileindex] ?? null
 				};
 			}
 		}
@@ -184,6 +190,7 @@ export function rootIndexBufferToObject(metaindex: Buffer, source: CacheFileSour
 				name: null,
 				subindexcount: q.subindexcount,
 				subindices: [0],
+				subnames: null,
 				uncompressed_crc: 0,
 				uncompressed_size: 0,
 			}
@@ -216,18 +223,24 @@ const mappedFileIds = {
 	[cacheMajors.materials]: Number.MAX_SAFE_INTEGER//is single index
 }
 
-const oldconfigmaps = {
+const oldConfigMaps = {
 	[cacheMajors.items]: cacheConfigPages.items_old,
 	[cacheMajors.npcs]: cacheConfigPages.npcs_old,
 	[cacheMajors.objects]: cacheConfigPages.locs_old,
 	[cacheMajors.spotanims]: cacheConfigPages.spotanim_old
 }
 
-export function fileIdToArchiveminor(major: number, fileid: number, buildnr: number) {
+export type FilePosition = {
+	major: number,
+	minor: number,
+	subid: number
+}
+
+export function fileIdToArchiveminor(major: number, fileid: number, buildnr: number): FilePosition {
 	if (buildnr < 488) {
-		let page = oldconfigmaps[major];
+		let page = oldConfigMaps[major];
 		if (page !== undefined) {
-			return { minor: page, major: cacheMajors.config, subid: fileid };
+			return { major: cacheMajors.config, minor: page, subid: fileid };
 		}
 	}
 	let archsize = mappedFileIds[major] ?? 1;
@@ -267,29 +280,34 @@ export abstract class CacheFileSource {
 	}
 
 	async getArchiveById(major: number, minor: number) {
-		let indexfile = await this.getCacheIndex(major);
-		let index = indexfile[minor];
+		let index: CacheIndex;
+		if (this.getBuildNr() <= lastLegacyBuildnr) {
+			index = { major, minor, crc: 0, name: null, subindexcount: 1, subindices: [0], subnames: null, version: 0 };
+		} else {
+			let indexfile = await this.getCacheIndex(major);
+			index = indexfile[minor];
+		}
 		if (!index) { throw new Error(`minor id ${minor} does not exist in major ${major}.`); }
 		return this.getFileArchive(index);
 	}
 
 	async getFileById(major: number, fileid: number) {
 		let holderindex = fileIdToArchiveminor(major, fileid, this.getBuildNr());
-		let indexfile = await this.getCacheIndex(holderindex.major);
-		//TODO cache these in a map or something
-		let holder = indexfile[holderindex.minor];
-		if (!holder) { throw new Error(`file id ${fileid} in major ${major} has no archive`); }
-		let subindex = holder.subindices.indexOf(holderindex.subid);
-		if (subindex == -1) { throw new Error(`file id ${fileid} in major ${major} does not exist in archive`); }
-		let files = await this.getFileArchive(holder);
-		let file = files[subindex].buffer;
-		return file;
+		let files = await this.getArchiveById(holderindex.major, holderindex.minor);
+		let match = files.find(q => q.fileid == holderindex.subid);
+		if (!match) { throw new Error(`File ${fileid} in major ${major} not found, (redirected to ${holderindex.major}.${holderindex.minor}.${holderindex.subid})`); }
+		return match.buffer;
 	}
 
 	async findFileByName(major: number, name: string) {
-		let hash = cacheFilenameHash(name, this.getBuildNr() <= 377);
+		let hash = cacheFilenameHash(name, this.getBuildNr() <= lastLegacyBuildnr);
 		let indexfile = await this.getCacheIndex(major);
 		return indexfile.find(q => q && q.name == hash);
+	}
+	async findSubfileByName(major: number, minor: number, name: string) {
+		let hash = cacheFilenameHash(name, this.getBuildNr() <= lastLegacyBuildnr);
+		let arch = await this.getArchiveById(major, minor);
+		return arch.find(q => q && q.namehash == hash);
 	}
 
 	//for testing only
@@ -322,7 +340,12 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 	}
 
 	async getFileArchive(meta: CacheIndex) {
-		return unpackBufferArchive(await this.getFile(meta.major, meta.minor, meta.crc), meta.subindices);
+		let file = await this.getFile(meta.major, meta.minor, meta.crc);
+		if (this.getBuildNr() <= lastLegacyBuildnr) {
+			return parseLegacyArchive(file, meta.major, meta.minor);
+		} else {
+			return unpackBufferArchive(file, meta.subindices, meta.subnames);
+		}
 	}
 	getXteaKey(major: number, minor: number) {
 		let key = (major << 23) | minor;
