@@ -1,7 +1,7 @@
 {
 	"0x01": { "name":                               "color", "read": ["array",3,"unsigned byte"] },
 	"0x02": { "name":                        "materialbyte", "read": "unsigned byte" },//last used in ~2008
-	"0x03": { "name":                            "material", "read": ["match","buildnr",{">657":"unsigned short","other":0}] },
+	"0x03": { "name":                            "material", "read": ["match","buildnr",{">377":"unsigned short","other":0}] },
 	"0x05": { "name":                        "unknown_0x05", "read": "true" },
 	"0x06": { "name":                                "name", "read": "string" },//not used after 2006
 	"0x07": { "name":                    "secondary_colour", "read": ["array",3,"unsigned byte"] },
