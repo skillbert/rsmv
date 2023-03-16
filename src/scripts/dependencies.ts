@@ -3,7 +3,7 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { parse } from "../opdecoder";
 import { archiveToFileId, CacheFileSource } from "../cache";
-import { defaultMorphId, squareSize } from "../3d/mapsquare";
+import { defaultMorphId } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
 import { arrayEnum } from "../utils";

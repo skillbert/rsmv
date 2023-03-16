@@ -72,3 +72,6 @@ export const cacheConfigPages = {
 }
 
 export const lastLegacyBuildnr = 377;
+//unclear if there ended up beign overlap with (public) rs2 since this was 12 years after rs2 release
+//first known rs2 is 254
+export const lastClassicBuildnr = 235;

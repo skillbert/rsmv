@@ -76,6 +76,19 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		Object.assign(this.dbfiles, blobs);
 		this.sendWorker({ type: "blobs", blobs });
 	}
+	async giveFsDirectory(dir: FileSystemDirectoryHandle) {
+		let files: Record<string, Blob> = {};
+		if (await dir.queryPermission() != "granted") {
+			console.log("tried to open cache without permission");
+			return null;
+		}
+		// await source.handle.requestPermission();
+		for await (let file of dir.values()) {
+			if (file.kind == "file") {
+				files[file.name] = await file.getFile();
+			}
+		}
+	}
 
 	async getFile(major: number, minor: number, crc?: number) {
 		if (major == cacheMajors.index) { return this.getIndexFile(minor); }

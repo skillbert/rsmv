@@ -1,8 +1,8 @@
-import { ThreejsSceneCache, EngineCache } from '../3d/modeltothree';
+import { ThreejsSceneCache, EngineCache, constModelsIds } from '../3d/modeltothree';
 import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture, ModelModifications, stringToFileRange, stringToMapArea } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
-import { MapRect, TileGrid, squareSize, CombinedTileGrid, getTileHeight } from '../3d/mapsquare';
+import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize } from '../3d/mapsquare';
 import { Euler, Quaternion, Vector3 } from "three";
 import { cacheMajors } from "../constants";
 import * as React from "react";
@@ -21,7 +21,7 @@ import { findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
 import { items } from "../../generated/items";
-import { itemToModel, locToModel, materialToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
+import { itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
@@ -592,8 +592,8 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 					let hasmap = Object.values(this.state.components).some(q => q.type == "map");
 					if (!hasmap || !this.mapoffset) {
 						this.mapoffset = {
-							x: (newcomp.mapRect.x + newcomp.mapRect.xsize / 2) * squareSize,
-							z: (newcomp.mapRect.z + newcomp.mapRect.zsize / 2) * squareSize
+							x: (newcomp.mapRect.x + newcomp.mapRect.xsize / 2) * rs2ChunkSize,
+							z: (newcomp.mapRect.z + newcomp.mapRect.zsize / 2) * rs2ChunkSize
 						};
 					}
 					newmodel.rootnode.position.set(-this.mapoffset.x * tiledimensions, 0, -this.mapoffset.z * tiledimensions);
@@ -656,10 +656,10 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 			grids.push({
 				src: model.loaded.grid,
 				rect: {
-					x: model.rect.x * squareSize,
-					z: model.rect.z * squareSize,
-					xsize: model.rect.xsize * squareSize,
-					zsize: model.rect.zsize * squareSize
+					x: model.rect.x * rs2ChunkSize,
+					z: model.rect.z * rs2ChunkSize,
+					xsize: model.rect.xsize * rs2ChunkSize,
+					zsize: model.rect.zsize * rs2ChunkSize
 				}
 			});
 		}
@@ -1276,10 +1276,13 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 
 
 	if (matid != -1) {
-		let assetid = 93808;//"RuneTek_Asset" jagex test model
+		let assetid = constModelsIds.materialCube;
 		let mods: ModelModifications = {
-			replaceMaterials: [[4311, matid]],
-			replaceColors: [[20287, HSL2packHSL(...RGB2HSL(...color as [number, number, number]))]]
+			replaceMaterials: [[0, matid]],
+			replaceColors: [[
+				HSL2packHSL(...RGB2HSL(255, 255, 255)),
+				HSL2packHSL(...RGB2HSL(...color as [number, number, number]))
+			]]
 		};
 		let mat = sceneCache.engine.getMaterialData(matid);
 		for (let tex in mat.textures) {
@@ -1336,25 +1339,9 @@ function SceneMaterialIsh(p: LookupModeProps) {
 function SceneRawModel(p: LookupModeProps) {
 	let initid = (typeof p.initialId == "number" ? p.initialId : 0);
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, modelToModel);
-	let [preferOld, setPreferOld] = React.useState(false);
-	let hasbothmodels = !p.ctx || (p.ctx.sceneCache.engine.hasNewModels && p.ctx.sceneCache.engine.hasOldModels);
-	let oldcheckbox = (hasbothmodels ? preferOld : !!p.ctx && !p.ctx.sceneCache.engine.hasNewModels);
-	React.useEffect(() => {
-		if (!p.ctx) { return; }
-		let prevmode = p.ctx.sceneCache.useOldModels;
-		p.ctx.sceneCache.useOldModels = oldcheckbox;
-		if (typeof id == "number") { setId(id); }
-		return () => {
-			if (p.ctx?.sceneCache) { p.ctx!.sceneCache.useOldModels = prevmode; }
-		}
-	}, [oldcheckbox, p.ctx?.sceneCache])
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={id ?? initid} />
-			<label>
-				<input type="checkbox" disabled={!hasbothmodels} checked={oldcheckbox} onChange={e => setPreferOld(e.currentTarget.checked)} />
-				Use old model format
-			</label>
 			{id == null && (
 				<React.Fragment>
 					<p>Enter a model id.</p>
@@ -1664,9 +1651,10 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 		let center = this.state.center;
 		if (this.state.chunkgroups.length == 0) {
+			let chunksize = (sceneCache.engine.classicData ? classicChunkSize : rs2ChunkSize);
 			center = {
-				x: (rect.x + rect.xsize / 2) * 64 * 512,
-				z: (rect.z + rect.zsize / 2) * 64 * 512,
+				x: (rect.x + rect.xsize / 2) * chunksize * 512,
+				z: (rect.z + rect.zsize / 2) * chunksize * 512,
 			}
 		}
 		let chunkentry = { rect, chunk, background: "" };

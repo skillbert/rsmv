@@ -94,9 +94,9 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 	files: UIScriptFile[] = [];
 	rootdirhandle: FileSystemDirectoryHandle | null = null;
 	outdirhandles = new Map<string, FileSystemDirectoryHandle | null>();
-	output: UIScriptOutput;
+	output: UIScriptOutput | null;
 
-	constructor(output: UIScriptOutput) {
+	constructor(output: UIScriptOutput | null) {
 		super();
 		this.output = output;
 	}
@@ -104,13 +104,13 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 	async mkDir(name: string) {
 		this.outdirhandles.set(name, null);
 		this.emit("writefile", undefined);
-		this.output.emit("writefile", undefined);
+		this.output?.emit("writefile", undefined);
 	}
 	async writeFile(name: string, data: Buffer | string) {
 		this.files.push({ name, data });
 		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
-		this.output.emit("writefile", undefined);
+		this.output?.emit("writefile", undefined);
 	}
 	readFileBuffer(name: string): Promise<Buffer> {
 		throw new Error("not implemented");
@@ -137,7 +137,7 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 			}
 			await Promise.all(this.files.map(q => this.saveLocalFile(q.name, q.data)));
 		}
-		this.output.emit("statechange", undefined);
+		this.output?.emit("statechange", undefined);
 	}
 
 	async mkdirLocal(path: string[]) {

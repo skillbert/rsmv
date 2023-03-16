@@ -1,6 +1,5 @@
 import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
-import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "../cache";
-import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -8,7 +7,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { ModelMeshData, ModelData } from "./rt7model";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial } from "./modeltothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial, constModelsIds } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
@@ -16,17 +15,19 @@ import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { legacyMajors } from "../cache/legacycache";
+import { classicIntToModelMods, getClassicMapData } from "../cache/classicloader";
+import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
 export const tiledimensions = 512;
-export const squareSize = 64;
+export const rs2ChunkSize = 64;
+export const classicChunkSize = 48;
 export const squareLevels = 4;
 const heightScale = 1 / 16;
 export const worldStride = 128;
 
 const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
-const wallmodels = generateWallModels();
 
 const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255] };
 
@@ -75,14 +76,13 @@ export type TileVertex = {
 }
 
 export type ChunkData = {
-	xoffset: number,
-	zoffset: number,
+	tilerect: MapRect,
+	levelcount: number,
 	mapsquarex: number,
 	mapsquarez: number,
 	tiles: mapsquare_tiles["tiles"],
 	extra: mapsquare_tiles["extra"],
-	locsfile: Buffer | null,
-	tilefile: Buffer | null,
+	rawlocs: mapsquare_locations["locations"],
 	locs: WorldLocation[]
 }
 
@@ -170,177 +170,7 @@ type FloorMorph = {
 	level: number
 }
 
-function squareMesh(sizex: number, sizez: number, color: number[]): ModelMeshData {
-	let pos = new Float32Array([
-		-sizex / 2, 0, -sizez / 2,
-		sizex / 2, 0, -sizez / 2,
-		-sizex / 2, 0, sizez / 2,
-		sizex / 2, 0, sizez / 2
-	]);
-	let col = new Uint8Array([
-		color[0], color[1], color[2],
-		color[0], color[1], color[2],
-		color[0], color[1], color[2],
-		color[0], color[1], color[2]
-	]);
-	let uvs = new Float32Array([
-		0, 1,
-		1, 1,
-		0, 0,
-		1, 0
-	]);
-	let indexbuffer = new Uint16Array([
-		0, 3, 1,
-		0, 2, 3
-	]);
-	return {
-		attributes: {
-			pos: new THREE.BufferAttribute(pos, 3, false),
-			color: new THREE.BufferAttribute(col, 3, true),
-			texuvs: new THREE.BufferAttribute(uvs, 2, false)
-		},
-		needsNormalBlending: false,
-		indices: new THREE.BufferAttribute(indexbuffer, 1, false),
-		hasVertexAlpha: false,
-		materialId: -1
-	}
-}
-
-function extrudedPolygonMesh(points: { x: number, z: number }[], height: number, color: number[]): ModelMeshData {
-	let nvertices = points.length * 2;
-	let nfaces = 2;
-	if (height != 0) {
-		nvertices += points.length * 4;
-		nfaces += points.length;
-	}
-	let pos = new Float32Array(3 * nvertices);
-	let col = new Uint8Array(3 * nvertices);
-	for (let a = 0; a < col.length; a += 3) {
-		col[a + 0] = color[0]; col[a + 1] = color[1]; col[a + 2] = color[2];
-	}
-	let indexbuffer = new Uint16Array((nvertices - nfaces) * 3);
-	//side faces
-	let vertexindex = 0;
-	let index = 0;
-	let lastpoint = points[points.length - 1];
-	//side faces
-	if (height != 0) {
-		for (let a = 0; a < points.length; a++) {
-			let point = points[a];
-			let firstvertex = vertexindex / 3;
-			pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = 0; pos[vertexindex++] = lastpoint.z;
-			pos[vertexindex++] = point.x; pos[vertexindex++] = 0; pos[vertexindex++] = point.z;
-			pos[vertexindex++] = lastpoint.x; pos[vertexindex++] = height; pos[vertexindex++] = lastpoint.z;
-			pos[vertexindex++] = point.x; pos[vertexindex++] = height; pos[vertexindex++] = point.z;
-
-			indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 1; indexbuffer[index++] = firstvertex + 3;
-			indexbuffer[index++] = firstvertex; indexbuffer[index++] = firstvertex + 3; indexbuffer[index++] = firstvertex + 2;
-
-			lastpoint = point;
-		}
-	}
-
-	//bottom polygon
-	let firstvertex = vertexindex / 3;
-	pos[vertexindex++] = points[0].x; pos[vertexindex++] = 0; pos[vertexindex++] = points[0].z;
-	let lastvertex = vertexindex / 3;
-	pos[vertexindex++] = points[points.length - 1].x; pos[vertexindex++] = 0; pos[vertexindex++] = points[points.length - 1].z;
-	for (let a = points.length - 2; a >= 1; a--) {
-		let vertex = vertexindex / 3;
-		pos[vertexindex++] = points[a].x; pos[vertexindex++] = 0; pos[vertexindex++] = points[a].z;
-		indexbuffer[index++] = firstvertex; indexbuffer[index++] = lastvertex; indexbuffer[index++] = vertex;
-		lastvertex = vertex
-	}
-	//top polygon
-	firstvertex = vertexindex / 3;
-	pos[vertexindex++] = points[0].x; pos[vertexindex++] = height; pos[vertexindex++] = points[0].z;
-	lastvertex = vertexindex / 3;
-	pos[vertexindex++] = points[1].x; pos[vertexindex++] = height; pos[vertexindex++] = points[1].z;
-	for (let a = 2; a < points.length; a++) {
-		let vertex = vertexindex / 3;
-		pos[vertexindex++] = points[a].x; pos[vertexindex++] = height; pos[vertexindex++] = points[a].z;
-		indexbuffer[index++] = firstvertex; indexbuffer[index++] = lastvertex; indexbuffer[index++] = vertex;
-		lastvertex = vertex
-	}
-
-	return {
-		attributes: {
-			pos: new THREE.BufferAttribute(pos, 3, false),
-			color: new THREE.BufferAttribute(col, 3, true)
-		},
-		needsNormalBlending: false,
-		indices: new THREE.BufferAttribute(indexbuffer, 1, false),
-		hasVertexAlpha: false,
-		materialId: -1
-	}
-}
-
-function generateWallModels() {
-	const thick = tiledimensions / 8;
-	const height = 0;//tiledimensions * 1.5;
-	const white = [255, 255, 255];
-	const red = [255, 0, 0];
-	const halftile = tiledimensions / 2;
-	return {
-		wall: {
-			maxy: height,
-			miny: 0,
-			meshes: [extrudedPolygonMesh([
-				{ x: -halftile, z: -halftile },
-				{ x: -halftile, z: halftile },
-				{ x: -halftile + thick, z: halftile },
-				{ x: -halftile + thick, z: -halftile }
-			], height, white)]
-		} as ModelData,
-		shortcorner: {
-			maxy: height,
-			miny: 0,
-			meshes: [extrudedPolygonMesh([
-				{ x: -halftile, z: halftile },
-				{ x: -halftile + thick, z: halftile },
-				{ x: -halftile + thick, z: halftile - thick },
-				{ x: -halftile, z: halftile - thick }
-			], height, white)]
-		} as ModelData,
-		longcorner: {
-			maxy: height,
-			miny: 0,
-			meshes: [extrudedPolygonMesh([
-				{ x: -halftile + thick, z: halftile - thick },
-				{ x: -halftile + thick, z: -halftile },
-				{ x: -halftile, z: -halftile },
-				{ x: -halftile, z: halftile },
-				{ x: halftile, z: halftile },
-				{ x: halftile, z: halftile - thick },
-			], height, white)]
-		} as ModelData,
-		pillar: {
-			maxy: height,
-			miny: 0,
-			meshes: [extrudedPolygonMesh([
-				{ x: -halftile, z: halftile },
-				{ x: -halftile + thick, z: halftile },
-				{ x: -halftile + thick, z: halftile - thick },
-				{ x: -halftile, z: halftile - thick }
-			], height, white)]
-		} as ModelData,
-		diagonal: {
-			maxy: height,
-			miny: 0,
-			meshes: [extrudedPolygonMesh([
-				{ x: -halftile, z: -halftile },
-				{ x: -halftile, z: -halftile + thick },
-				{ x: halftile - thick, z: halftile },
-				{ x: halftile, z: halftile },
-				{ x: halftile, z: halftile - thick },
-				{ x: -halftile + thick, z: -halftile },
-			], height, white)]
-		} as ModelData,
-	}
-}
-
 function generateTileShapes() {
-
 	//we have 8 possible vertices along the corners and halfway on the edges of the tile
 	//select these vertices to draw the tile shape
 	//from bottom to top: [[0,1,2],[7,<9>,3],[6,5,4]]
@@ -651,8 +481,9 @@ export class TileGrid implements TileGridSource {
 	engine: EngineCache;
 	area: MapRect;
 	tilemask: undefined | MapRect[];
-	width: number;
-	height: number;
+	xsize: number;
+	zsize: number;
+	levels = 4;
 	//position of this grid measured in tiles
 	xoffset: number;
 	zoffset: number;
@@ -662,14 +493,14 @@ export class TileGrid implements TileGridSource {
 	xstep: number;
 	zstep: number;
 	levelstep: number;
-	constructor(engine: EngineCache, area: MapRect, tilemask: MapRect[] | undefined) {
+	constructor(engine: EngineCache, area: MapRect, tilemask?: MapRect[] | undefined) {
 		this.area = area;
-		this.tilemask = tilemask && tilemask.filter(q => mapRectsIntersect(q, area));
+		this.tilemask = tilemask?.filter(q => mapRectsIntersect(q, area));
 		this.engine = engine;
 		this.xoffset = area.x;
 		this.zoffset = area.z;
-		this.width = area.xsize;
-		this.height = area.zsize;
+		this.xsize = area.xsize;
+		this.zsize = area.zsize;
 		this.xstep = 1;
 		this.zstep = this.xstep * area.xsize;
 		this.levelstep = this.zstep * area.zsize;
@@ -700,18 +531,18 @@ export class TileGrid implements TileGridSource {
 	getTile(x: number, z: number, level: number) {
 		x -= this.xoffset;
 		z -= this.zoffset;
-		if (x < 0 || z < 0 || x >= this.width || z >= this.height) { return undefined; }
+		if (x < 0 || z < 0 || x >= this.xsize || z >= this.zsize) { return undefined; }
 		return this.tiles[this.levelstep * level + z * this.zstep + x * this.xstep];
 	}
 	blendUnderlays(kernelRadius = 3) {
-		for (let z = this.zoffset; z < this.zoffset + this.height; z++) {
-			for (let x = this.xoffset; x < this.xoffset + this.width; x++) {
+		for (let z = this.zoffset; z < this.zoffset + this.zsize; z++) {
+			for (let x = this.xoffset; x < this.xoffset + this.xsize; x++) {
 				let effectiveVisualLevel = 0;
 				let layer1tile = this.getTile(x, z, 1);
 				let flag2 = ((layer1tile?.raw.settings ?? 0) & 2) != 0;
 				let leveloffset = (flag2 ? -1 : 0);
 
-				for (let level = 0; level < squareLevels; level++) {
+				for (let level = 0; level < this.levels; level++) {
 					let currenttile = this.getTile(x, z, level);
 					if (!currenttile) { continue; }
 
@@ -796,9 +627,9 @@ export class TileGrid implements TileGridSource {
 			}
 		}
 
-		for (let z = this.zoffset; z < this.zoffset + this.height; z++) {
-			for (let x = this.xoffset; x < this.xoffset + this.width; x++) {
-				for (let level = 0; level < squareLevels; level++) {
+		for (let z = this.zoffset; z < this.zoffset + this.zsize; z++) {
+			for (let x = this.xoffset; x < this.xoffset + this.xsize; x++) {
+				for (let level = 0; level < this.levels; level++) {
 					let currenttile = this.getTile(x, z, level);
 					if (!currenttile) { continue; }
 					//bleed overlay materials
@@ -835,7 +666,7 @@ export class TileGrid implements TileGridSource {
 				mats.set(id, repeat);
 			}
 		}
-		for (let level = 0; level < squareLevels; level++) {
+		for (let level = 0; level < this.levels; level++) {
 			for (let dz = 0; dz < zsize; dz++) {
 				for (let dx = 0; dx < xsize; dx++) {
 					let tile = this.getTile(x + dx, z + dz, level);
@@ -851,20 +682,20 @@ export class TileGrid implements TileGridSource {
 		}
 		return mats;
 	}
-	addMapsquare(chunk: ChunkData, docollision = false) {
-		const tiles = chunk.tiles;
-		if (tiles.length != squareSize * squareSize * squareLevels) { throw new Error(); }
-		let baseoffset = (chunk.xoffset - this.xoffset) * this.xstep + (chunk.zoffset - this.zoffset) * this.zstep;
-		for (let z = 0; z < squareSize; z++) {
-			for (let x = 0; x < squareSize; x++) {
-				let tilex = (chunk.xoffset + x) * tiledimensions;
-				let tilez = (chunk.zoffset + z) * tiledimensions;
-				if (!mapRectContains(this.area, chunk.xoffset + x, chunk.zoffset + z)) { continue; }
-				if (this.tilemask && !this.tilemask.some(q => mapRectContains(q, chunk.xoffset + x, chunk.zoffset + z))) { continue; }
-				let tileindex = z + x * squareSize;
+	addMapsquare(tiles: mapsquare_tiles["tiles"], chunkrect: MapRect, levels: number, docollision = false) {
+		if (tiles.length != chunkrect.xsize * chunkrect.zsize * levels) { throw new Error(); }
+		let baseoffset = (chunkrect.x - this.xoffset) * this.xstep + (chunkrect.z - this.zoffset) * this.zstep;
+		for (let z = 0; z < chunkrect.zsize; z++) {
+			for (let x = 0; x < chunkrect.xsize; x++) {
+				if (!mapRectContains(this.area, chunkrect.x + x, chunkrect.z + z)) { continue; }
+				if (this.tilemask && !this.tilemask.some(q => mapRectContains(q, chunkrect.x + x, chunkrect.z + z))) { continue; }
+
+				let tilex = (chunkrect.x + x) * tiledimensions;
+				let tilez = (chunkrect.z + z) * tiledimensions;
+				let tileindex = z + x * chunkrect.zsize;
 				let height = 0;
-				for (let level = 0; level < squareLevels; level++) {
-					let tile = tiles[tileindex];
+				for (let level = 0; level < this.levels; level++) {
+					let tile = (level < levels ? tiles[tileindex] : {} as typeof tiles[number]);
 					if (tile.height != undefined) {
 						//not sure what the 1=0 thing is about, but seems correct for trees
 						height += (tile.height == 1 ? 0 : tile.height);
@@ -939,7 +770,7 @@ export class TileGrid implements TileGridSource {
 						effectiveVisualLevel: 0
 					}
 					this.tiles[newindex] = parsedTile;
-					tileindex += squareSize * squareSize;
+					tileindex += chunkrect.xsize * chunkrect.zsize;
 				}
 			}
 		}
@@ -950,8 +781,8 @@ export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, coll
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
 export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
-
 	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
+	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
 	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
 	let grid = new TileGrid(engine, {
 		x: rect.x * squareSize - chunkfloorpadding,
@@ -963,65 +794,89 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
 		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
 			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
-			let tilefile: Buffer;
-			let locsfile: Buffer | null = null;
-			if (engine.getBuildNr() >= 759) {
-				let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
-				let selfindex = mapunderlaymeta[squareindex];
-				if (!selfindex) {
-					// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
-					continue;
-				}
-				let selfarchive = (await engine.getFileArchive(selfindex));
 
-				let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
-				if (tileindex == -1) { continue; }
-				tilefile = selfarchive[tileindex].buffer;
-				let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
-				if (locsindex != -1) {
-					locsfile = selfarchive[locsindex].buffer;
-				}
-			} else if (engine.getBuildNr() > lastLegacyBuildnr) {
-				try {
-					let index = await engine.findFileByName(cacheMajors.mapsquares, `m${rect.x + x}_${rect.z + z}`);
-					if (!index) { continue; }
-					tilefile = await engine.getFile(index.major, index.minor, index.crc);
-				} catch (e) {
-					//missing xtea
-					continue;
-				}
-				try {
-					let index = await engine.findFileByName(cacheMajors.mapsquares, `l${rect.x + x}_${rect.z + z}`);
-					if (index) {
-						locsfile = await engine.getFile(index.major, index.minor, index.crc);
+			let tiles: mapsquare_tiles["tiles"];
+			let tilesextra: mapsquare_tiles["extra"] = {};
+			let locs: mapsquare_locations["locations"] = [];
+			let tilerect: MapRect;
+			let levelcount = squareLevels;
+
+			if (engine.getBuildNr() > lastClassicBuildnr) {
+				let tilefile: Buffer;
+				let locsfile: Buffer | null = null;
+				if (engine.getBuildNr() >= 759) {
+					let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
+					let selfindex = mapunderlaymeta[squareindex];
+					if (!selfindex) {
+						// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
+						continue;
 					}
-				} catch (e) {
-					//ignore
+					let selfarchive = (await engine.getFileArchive(selfindex));
+
+					let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
+					if (tileindex == -1) { continue; }
+					tilefile = selfarchive[tileindex].buffer;
+					let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
+					if (locsindex != -1) {
+						locsfile = selfarchive[locsindex].buffer;
+					}
+				} else if (engine.getBuildNr() > lastLegacyBuildnr) {
+					try {
+						let index = await engine.findFileByName(cacheMajors.mapsquares, `m${rect.x + x}_${rect.z + z}`);
+						if (!index) { continue; }
+						tilefile = await engine.getFile(index.major, index.minor, index.crc);
+					} catch (e) {
+						//missing xtea
+						continue;
+					}
+					try {
+						let index = await engine.findFileByName(cacheMajors.mapsquares, `l${rect.x + x}_${rect.z + z}`);
+						if (index) {
+							locsfile = await engine.getFile(index.major, index.minor, index.crc);
+						}
+					} catch (e) {
+						//ignore
+					}
+				} else {
+					let index = (rect.x + x) * 256 + (rect.z + z);
+					let info = engine.legacyData?.mapmeta.get(index);
+					if (!info) {
+						continue;
+					}
+					tilefile = await engine.getFile(legacyMajors.map, info.map);
+					locsfile = await engine.getFile(legacyMajors.map, info.loc);
 				}
+				let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
+				tiles = tiledata.tiles;
+				tilesextra = tiledata.extra;
+				if (locsfile) {
+					locs = parse.mapsquareLocations.read(locsfile, engine.rawsource).locations;
+				}
+				tilerect = {
+					x: (rect.x + x) * squareSize,
+					z: (rect.z + z) * squareSize,
+					xsize: squareSize,
+					zsize: squareSize
+				};
 			} else {
-				let index = (rect.x + x) * 256 + (rect.z + z);
-				let info = engine.legacyData?.mapmeta.get(index);
-				if (!info) {
-					continue;
-				}
-				tilefile = await engine.getFile(legacyMajors.map, info.map);
-				locsfile = await engine.getFile(legacyMajors.map, info.loc);
+				let mapdata = await getClassicMapData(engine, rect.x + x, rect.z + z, 0);
+				if (!mapdata) { continue; }
+				tiles = mapdata.tiles;
+				tilerect = mapdata.rect;
+				levelcount = mapdata.levels;
+				locs = mapdata.locs;
 			}
-			//let watertilefile = selfarchive[tileindexwater]?.buffer;
-			//let watertiles = parse.mapsquareWaterTiles.read(watertilefile);
-			let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
 			let chunk: ChunkData = {
-				xoffset: (rect.x + x) * squareSize,
-				zoffset: (rect.z + z) * squareSize,
+				tilerect,
+				levelcount,
 				mapsquarex: rect.x + x,
 				mapsquarez: rect.z + z,
-				tiles: tiledata.tiles,
-				extra: tiledata.extra,
-				locsfile,
-				tilefile,
+				tiles: tiles,
+				extra: tilesextra,
+				rawlocs: locs,
 				locs: []
 			};
-			grid.addMapsquare(chunk, !!opts?.collision);
+			grid.addMapsquare(chunk.tiles, chunk.tilerect, chunk.levelcount, !!opts?.collision);
 
 			//only add the actual ones we need to the queue
 			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.xsize) { continue; }
@@ -1031,7 +886,7 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 	}
 	grid.blendUnderlays();
 	for (let chunk of chunks) {
-		chunk.locs = await mapsquareObjects(engine, chunk, grid, !!opts?.collision);
+		chunk.locs = await mapsquareObjects(engine, grid, chunk.rawlocs, chunk.tilerect.x, chunk.tilerect.z, !!opts?.collision);
 	}
 
 	return { grid, chunks };
@@ -1058,7 +913,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 
 export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
 	let floors: FloorMeshData[] = [];
-	let matids = grid.gatherMaterials(chunk.xoffset, chunk.zoffset, squareSize + 1, squareSize + 1);
+	let matids = grid.gatherMaterials(chunk.tilerect.x, chunk.tilerect.z, chunk.tilerect.xsize + 1, chunk.tilerect.zsize + 1);
 	let textures = new Map<number, { tex: CanvasImage, repeat: number }>();
 	let textureproms: Promise<void>[] = [];
 	for (let [matid, repeat] of matids.entries()) {
@@ -1108,11 +963,11 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkModelData, placedlocs: PlacedModel[]) {
 	let node = new THREE.Group();
 	node.matrixAutoUpdate = false;
-	node.position.set(chunk.chunk.xoffset * tiledimensions, 0, chunk.chunk.zoffset * tiledimensions);
+	node.position.set(chunk.chunk.tilerect.x * tiledimensions, 0, chunk.chunk.tilerect.z * tiledimensions);
 	node.updateMatrix();
 
-	let rootx = chunk.chunk.xoffset * tiledimensions;
-	let rootz = chunk.chunk.zoffset * tiledimensions;
+	let rootx = chunk.chunk.tilerect.x * tiledimensions;
+	let rootz = chunk.chunk.tilerect.z * tiledimensions;
 	if (placedlocs.length != 0) { node.add(...placedlocs.map(q => meshgroupsToThree(grid, q, rootx, rootz))); }
 	let chunkoverlays = chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(grid, q, rootx, rootz));
 	if (chunkoverlays.length != 0) { node.add(...chunkoverlays); }
@@ -1266,20 +1121,36 @@ export function defaultMorphId(locmeta: objects) {
 
 //TODO move this to a more logical location
 export async function resolveMorphedObject(source: EngineCache, id: number) {
-	let objectfile = await source.getGameFile("objects", id);
-	let rawloc = parse.object.read(objectfile, source);
-	let morphedloc = rawloc;
-	if (rawloc.morphs_1 || rawloc.morphs_2) {
-		let newid = defaultMorphId(rawloc);
-		if (newid != -1) {
-			let newloc = await source.getGameFile("objects", newid);
-			morphedloc = {
-				...rawloc,
-				...parse.object.read(newloc, source)
-			};
+	if (source.classicData) {
+		let rawloc = source.classicData.wallobjects[id];
+		//TODO recolor+retexture
+		let rs2loc: objects = {
+			name: rawloc.name,
+			probably_morphFloor: true,
+			models: [
+				{ type: 0, values: [constModelsIds.paperWall] },
+				{ type: 9, values: [constModelsIds.paperWallDiag] }
+			],
+			//sets replace_colors/mats and if invisible sets models to null
+			...classicIntToModelMods(rawloc.frontdecor, rawloc.backdecor)
 		}
+		return { rawloc: rs2loc, morphedloc: rs2loc };
+	} else {
+		let objectfile = await source.getGameFile("objects", id);
+		let rawloc = parse.object.read(objectfile, source);
+		let morphedloc = rawloc;
+		if (rawloc.morphs_1 || rawloc.morphs_2) {
+			let newid = defaultMorphId(rawloc);
+			if (newid != -1) {
+				let newloc = await source.getGameFile("objects", newid);
+				morphedloc = {
+					...rawloc,
+					...parse.object.read(newloc, source)
+				};
+			}
+		}
+		return { rawloc, morphedloc };
 	}
-	return { rawloc, morphedloc };
 }
 
 async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: WorldLocation[]) {
@@ -1348,7 +1219,11 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 		let tex = (group.material.mat as MeshBasicMaterial).map! as DataTexture;
 
 		const spritescale = 128;
-		let mesh = squareMesh(tex.image.width * spritescale, tex.image.height * spritescale, [255, 255, 255]);
+		let w = tex.image.width * spritescale;
+		let h = tex.image.height * spritescale;
+		let mesh = new MeshBuilder(null)
+			.addParallelogram([255, 255, 255], [-w / 2, 0, -h / 2], [w, 0, 0], [0, 0, h])
+			.convertSubmesh(0);
 		let translate = new THREE.Vector3((loc.x + loc.sizex / 2) * tiledimensions, 0, (loc.z + loc.sizez / 2) * tiledimensions);
 		group.models.push({
 			model: mesh,
@@ -1375,15 +1250,15 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 
 	for (let loc of locs) {
 		if (loc.type == 0) {
-			addwall(wallmodels.wall, loc);
+			addwall(topdown2dWallModels.wall, loc);
 		} else if (loc.type == 1) {
-			addwall(wallmodels.shortcorner, loc);
+			addwall(topdown2dWallModels.shortcorner, loc);
 		} else if (loc.type == 2) {
-			addwall(wallmodels.longcorner, loc);
+			addwall(topdown2dWallModels.longcorner, loc);
 		} else if (loc.type == 3) {
-			addwall(wallmodels.pillar, loc);
+			addwall(topdown2dWallModels.pillar, loc);
 		} else if (loc.type == 9) {
-			addwall(wallmodels.diagonal, loc);
+			addwall(topdown2dWallModels.diagonal, loc);
 		}
 
 		if (loc.location.mapscene != undefined) {
@@ -1619,19 +1494,15 @@ export type WorldLocation = {
 	effectiveLevel: number
 }
 
-export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, grid: TileGrid, collision = false) {
+export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, locations: mapsquare_locations["locations"], originx: number, originz: number, collision = false) {
 	let locs: WorldLocation[] = [];
-
-	if (!chunk.locsfile) { return locs; }
-	let locations = parse.mapsquareLocations.read(chunk.locsfile, engine.rawsource).locations;
-
 
 	for (let loc of locations) {
 		let { morphedloc, rawloc } = await resolveMorphedObject(engine, loc.id);
 		if (!morphedloc) { continue; }
 
 		for (let inst of loc.uses) {
-			let callingtile = grid.getTile(inst.x + chunk.xoffset, inst.y + chunk.zoffset, inst.plane);
+			let callingtile = grid.getTile(inst.x + originx, inst.y + originz, inst.plane);
 			if (!callingtile) {
 				// console.log("callingtile not found");
 				continue;
@@ -1649,7 +1520,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 			let visualLevel = callingtile.effectiveVisualLevel;
 			for (let dz = 0; dz < sizez; dz++) {
 				for (let dx = 0; dx < sizex; dx++) {
-					let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, inst.plane);
+					let tile = grid.getTile(inst.x + originx + dx, inst.y + originz + dz, inst.plane);
 					if (tile && tile.effectiveVisualLevel > visualLevel) {
 						visualLevel = tile.effectiveVisualLevel;
 					}
@@ -1662,8 +1533,8 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 				placement: inst.extra,
 				sizex,
 				sizez,
-				x: inst.x + chunk.xoffset,
-				z: inst.y + chunk.zoffset,
+				x: inst.x + originx,
+				z: inst.y + originz,
 				type: inst.type,
 				rotation: inst.rotation,
 				plane: inst.plane,
@@ -1680,7 +1551,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 			if (collision && !rawloc.probably_nocollision) {
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
-						let tile = grid.getTile(inst.x + chunk.xoffset + dx, inst.y + chunk.zoffset + dz, callingtile.effectiveLevel);
+						let tile = grid.getTile(inst.x + originx + dx, inst.y + originz + dz, callingtile.effectiveLevel);
 						if (tile) {
 							let col = tile.effectiveCollision!;
 							//TODO check for other loc types
@@ -1721,7 +1592,7 @@ export async function mapsquareObjects(engine: EngineCache, chunk: ChunkData, gr
 }
 
 function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number, rawmode = false) {
-	const maxtriangles = squareSize * squareSize * 5 * 6 * 2;
+	const maxtriangles = chunk.tilerect.xsize * chunk.tilerect.zsize * 5 * 6 * 2;
 	let posoffset = 0;
 	let coloroffset = 12;
 	let stride = 16;
@@ -1732,8 +1603,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 	let posbuffer = new Float32Array(buf);
 	let colorbuffer = new Uint8Array(buf);
 
-	let rootx = chunk.xoffset * tiledimensions;
-	let rootz = chunk.zoffset * tiledimensions;
+	let rootx = chunk.tilerect.x * tiledimensions;
+	let rootz = chunk.tilerect.z * tiledimensions;
 
 	let vertexindex = 0;
 	let indexpointer = 0;
@@ -1783,8 +1654,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 		indexbuf[indexpointer++] = v100; indexbuf[indexpointer++] = v111; indexbuf[indexpointer++] = v110;
 		indexbuf[indexpointer++] = v100; indexbuf[indexpointer++] = v101; indexbuf[indexpointer++] = v111;
 	}
-	for (let z = chunk.zoffset; z < chunk.zoffset + squareSize; z++) {
-		for (let x = chunk.xoffset; x < chunk.xoffset + squareSize; x++) {
+	for (let z = chunk.tilerect.z; z < chunk.tilerect.z + chunk.tilerect.zsize; z++) {
+		for (let x = chunk.tilerect.x; x < chunk.tilerect.x + chunk.tilerect.xsize; x++) {
 			let tile = grid.getTile(x, z, level);
 			let collision = (rawmode ? tile?.rawCollision : tile?.effectiveCollision);
 			if (tile && collision) {
@@ -1968,7 +1839,7 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 
 
 function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
-	const maxtiles = squareSize * squareSize * squareLevels;
+	const maxtiles = chunk.tilerect.xsize * chunk.tilerect.zsize * grid.levels;
 	const maxVerticesPerTile = 8;
 	const posoffset = 0;// 0/4
 	const normaloffset = 3;// 12/4
@@ -1997,8 +1868,8 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 	let vertexindex = 0;
 	let indexpointer = 0;
 
-	const modelx = chunk.xoffset * tiledimensions;
-	const modelz = chunk.zoffset * tiledimensions;
+	const modelx = chunk.tilerect.x * tiledimensions;
+	const modelz = chunk.tilerect.z * tiledimensions;
 	let tileinfos: MeshTileInfo[] = [];
 	let tileindices: number[] = [];
 
@@ -2070,11 +1941,11 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		return vertexindex++;
 	}
 
-	for (let tilelevel = level; tilelevel < squareLevels; tilelevel++) {
+	for (let tilelevel = level; tilelevel < chunk.levelcount; tilelevel++) {
 		if (showhidden && tilelevel != level) { continue; }
-		for (let z = 0; z < squareSize; z++) {
-			for (let x = 0; x < squareSize; x++) {
-				let tile = grid.getTile(chunk.xoffset + x, chunk.zoffset + z, tilelevel);
+		for (let z = 0; z < chunk.tilerect.zsize; z++) {
+			for (let x = 0; x < chunk.tilerect.xsize; x++) {
+				let tile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, tilelevel);
 				if (!tile) { continue; }
 				if (!showhidden && tile.effectiveVisualLevel != level) { continue; }
 

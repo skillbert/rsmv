@@ -9,7 +9,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio, CopyButton } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
-import { DomWrap, UIScriptFile } from "./scriptsui";
+import { CLIScriptFS, DomWrap, ScriptFS, UIScriptFile, UIScriptFS } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, drawTexture, TypedEmitter } from "../utils";
@@ -18,6 +18,7 @@ import { CacheDownloader } from "../cache/downloader";
 import { parse } from "../opdecoder";
 import * as path from "path";
 import classNames from "classnames";
+import { selectFsCache } from "../cache/autocache";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -26,7 +27,7 @@ const hasElectrion = !!electron.ipcRenderer;
 export type SavedCacheSource = {
 	type: string
 } & ({
-	type: "sqlitehandle",
+	type: "autohandle",
 	handle: FileSystemDirectoryHandle
 } | {
 	type: "sqliteblobs",
@@ -35,7 +36,7 @@ export type SavedCacheSource = {
 	type: "openrs2",
 	cachename: string
 } | {
-	type: "sqlitenodejs",
+	type: "autofs",
 	location: string
 } | {
 	type: "live"
@@ -198,7 +199,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	@boundMethod
 	async clickOpen() {
 		let dir = await showDirectoryPicker();
-		this.props.onOpen({ type: "sqlitehandle", handle: dir });
+		this.props.onOpen({ type: "autohandle", handle: dir });
 	}
 
 	@boundMethod
@@ -206,7 +207,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 		if (!hasElectrion) { return; }
 		let dir = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.ProgramData!, "jagex/runescape"));
 		if (!dir.canceled) {
-			this.props.onOpen({ type: "sqlitenodejs", location: dir.filePaths[0] });
+			this.props.onOpen({ type: "autofs", location: dir.filePaths[0] });
 		}
 	}
 
@@ -219,7 +220,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	async clickReopen() {
 		if (!this.state.lastFolderOpen) { return; }
 		if (await this.state.lastFolderOpen.requestPermission() == "granted") {
-			this.props.onOpen({ type: "sqlitehandle", handle: this.state.lastFolderOpen });
+			this.props.onOpen({ type: "autohandle", handle: this.state.lastFolderOpen });
 		}
 	}
 
@@ -257,7 +258,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 			if (folderhandles.length == 1 && filehandles.length == 0) {
 				console.log("stored folder " + folderhandles[0].name);
 				datastore.set("lastfolderopen", folderhandles[0]);
-				this.props.onOpen({ type: "sqlitehandle", handle: folderhandles[0] });
+				this.props.onOpen({ type: "autohandle", handle: folderhandles[0] });
 			} else {
 				console.log(`added ${Object.keys(files).length} files`);
 				this.props.onOpen({ type: "sqliteblobs", blobs: files });
@@ -386,35 +387,27 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, sta
 
 
 export async function openSavedCache(source: SavedCacheSource, remember: boolean) {
-	let handle: FileSystemDirectoryHandle | null = null;
 	let cache: CacheFileSource | null = null;
-	if (source.type == "sqliteblobs" || source.type == "sqlitehandle") {
-		let files: Record<string, Blob> = {};
-		if (source.type == "sqlitehandle") {
-			handle = source.handle;
-			if (await source.handle.queryPermission() != "granted") {
-				console.log("tried to open cache without permission");
-				return null;
-			}
-			// await source.handle.requestPermission();
-			for await (let handle of source.handle.values()) {
-				if (handle.kind == "file") {
-					files[handle.name] = await handle.getFile();
-				}
-			}
-			navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle }));
+	if (source.type == "sqliteblobs" || source.type == "autohandle") {
+		let wasmcache = new WasmGameCacheLoader();
+		if (source.type == "autohandle") {
+			let fs = new UIScriptFS(null);
+			await fs.setSaveDirHandle(source.handle);
+			cache = await selectFsCache(fs);
+			// await wasmcache.giveFsDirectory(source.handle);
+			navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: source.handle }));
 		} else {
-			files = source.blobs;
+			wasmcache.giveBlobs(source.blobs);
 		}
 
-		cache = new WasmGameCacheLoader();
-		(cache as WasmGameCacheLoader).giveBlobs(files);
+		cache = wasmcache;
 	}
 	if (source.type == "openrs2") {
 		cache = await Openrs2CacheSource.fromId(+source.cachename);
 	}
-	if (hasElectrion && source.type == "sqlitenodejs") {
-		cache = new GameCacheLoader(source.location);
+	if (hasElectrion && source.type == "autofs") {
+		let fs = new CLIScriptFS(source.location);
+		cache = await selectFsCache(fs);
 	}
 	if (source.type == "live") {
 		cache = new CacheDownloader();

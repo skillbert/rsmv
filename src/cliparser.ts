@@ -3,32 +3,22 @@ import { ArgParser } from "cmd-ts/dist/cjs/argparser";
 
 import { CacheFileSource, CallbackCacheLoader } from "./cache";
 import { CacheDownloader } from "./cache/downloader";
-import * as updater from "./cache/updater";
 import { GameCacheLoader } from "./cache/sqlite";
 import { RawFileLoader } from "./cache/rawfiles";
 import { Openrs2CacheSource } from "./cache/openrs2loader";
 import type { MapRect } from "./3d/mapsquare";
 import { stringToFileRange, stringToMapArea } from "./utils";
+import { selectFsCache } from "./cache/autocache";
+import { CLIScriptFS } from "./viewer/scriptsui";
 
 export type Rect = { x: number, y: number, width: number, height: number };
 
-let loadingIndicator = {
-	interval: 1000,
-	start: async () => { },
-	progress: (d: any) => { console.log(`${d.message}${d.max ? ` ${d.value}/${d.max}` : ""}`) },
-	done: async () => { console.log("done"); }
-}
-
-//expose here so we can override it for ui
-export function setLoadingIndicator(ind: typeof loadingIndicator) {
-	loadingIndicator = ind;
-}
-
+export type CacheOpts = { writable?: boolean } | undefined;
 
 function cacheSourceFromString(str: string) {
 	let [mode, ...argparts] = str.split(":",);
 	let arg = argparts.join(":");
-	return async (opts?: { writable?: boolean }) => {
+	return async (opts: CacheOpts) => {
 		switch (mode) {
 			case "live":
 				return new CacheDownloader();
@@ -38,14 +28,9 @@ function cacheSourceFromString(str: string) {
 					throw new Error("the 'global' cache source requires a callback function with name <arg> to be exposed on the global scope");
 				}
 				return new CallbackCacheLoader(fn, false);
-			case "local":
-				updater.on("update-progress", loadingIndicator.progress.bind(loadingIndicator));
-				await loadingIndicator.start();
-				await updater.run(arg || "cache", loadingIndicator.interval);
-				await loadingIndicator.done();
-				return updater.fileSource;
 			case "cache":
-				return new GameCacheLoader(arg, !!opts?.writable);
+				let fs = new CLIScriptFS(arg);
+				return selectFsCache(fs, opts);
 			case "files":
 				return new RawFileLoader(arg, 0);
 			case "openrs":

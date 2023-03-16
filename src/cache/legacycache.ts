@@ -1,7 +1,9 @@
-import { SubFile } from "./index";
+import { CacheFileSource, SubFile } from "./index";
 import { EngineCache } from "../3d/modeltothree";
 import { cacheFilenameHash, Stream } from "../utils";
 import { legacybz2 } from "./compression";
+import { parseLegacySprite, parseTgaSprite } from "../3d/sprite";
+import { makeImageData } from "../imgutils";
 
 export const legacyMajors = {
     data: 0,//mostly index 2 in dat2
@@ -9,7 +11,7 @@ export const legacyMajors = {
     oldframebases: 2,//index 0 in dat2
     //3? has 636 files sprites?
     map: 4// index 5 in dat2
-}
+} as const;
 
 export const legacyGroups = {
     //1 login 
@@ -18,11 +20,11 @@ export const legacyGroups = {
     sprites: 4,
     index: 5,
     textures: 6
-}
+} as const;
 
 //pre-2006 caches
-export function parseLegacyArchive(file: Buffer, major: number, minor: number): SubFile[] {
-    if (major != 0) {
+export function parseLegacyArchive(file: Buffer, major: number, isclassic: boolean): SubFile[] {
+    if (!isclassic && major != 0) {
         return [{
             buffer: file,
             fileid: 0,
@@ -32,10 +34,11 @@ export function parseLegacyArchive(file: Buffer, major: number, minor: number): 
         }];
     }
     let stream = new Stream(file);
-    let compressedlen = stream.readTribyte();
     let len = stream.readTribyte();
+    let compressedlen = stream.readTribyte();
     if (compressedlen != len) {
         stream = new Stream(legacybz2(stream.readBuffer()));
+        if (stream.bytesLeft() != len) { throw new Error("decompress failed"); }
     }
 
     let files: SubFile[] = [];
@@ -49,6 +52,7 @@ export function parseLegacyArchive(file: Buffer, major: number, minor: number): 
         let subfile = filestream.readBuffer(subcomplen);
         if (subdecomplen != subcomplen) {
             subfile = legacybz2(subfile);
+            if (subfile.length != subdecomplen) { throw new Error("decompress failed"); }
         }
         files.push({
             fileid: i,
@@ -60,7 +64,6 @@ export function parseLegacyArchive(file: Buffer, major: number, minor: number): 
     }
     return files;
 }
-globalThis.parseLegacyArchive = parseLegacyArchive;
 
 type Mapinfo = Map<number, { map: number, loc: number, crc: number, version: number }>;
 type LegacyKeys = "items" | "objects" | "overlays" | "underlays" | "npcs" | "spotanims";
@@ -127,4 +130,51 @@ function readLegacySubGroup(group: SubFile[], groupname: string) {
         offset += size;
     }
     return files;
+}
+
+async function getLegacyImage(source: CacheFileSource, name: string, usetga) {
+    let filename = `${name}.${usetga ? "tga" : "dat"}`;
+    let spritefile = await source.findSubfileByName(legacyMajors.data, legacyGroups.textures, filename);
+
+    if (usetga) {
+        return parseTgaSprite(spritefile!.buffer);
+    } else {
+        return parseLegacyImageFile(source, spritefile!.buffer);
+    }
+}
+
+export async function parseLegacyImageFile(source: CacheFileSource, buf: Buffer) {
+    let metafile = await source.findSubfileByName(legacyMajors.data, legacyGroups.textures, "INDEX.DAT");
+    return parseLegacySprite(metafile!.buffer, buf);
+}
+
+export async function combineLegacyTexture(engine: EngineCache, name: string, subname: string, useTga: boolean) {
+    let img = await getLegacyImage(engine, name, useTga);
+    if (!subname) {
+        return img;
+    }
+    let subimg = await getLegacyImage(engine, subname, useTga);
+
+
+    if (subimg.img.width + subimg.x > img.img.width || subimg.img.height + subimg.y > img.img.height) {
+        throw new Error("tried to overlay image outside of dest bounds");
+    }
+    let combined = makeImageData(img.img.data.slice(), img.img.width, img.img.height);
+    for (let srcy = 0; srcy < subimg.img.height; srcy++) {
+        for (let srcx = 0; srcx < subimg.img.width; srcx++) {
+            let srci = (srcy * subimg.img.width + srcx) * 4;
+            let dsti = ((srcy + subimg.y) * img.img.width + (srcx + subimg.x)) * 4;
+            let subr = subimg.img.data[srci + 0];
+            let subg = subimg.img.data[srci + 1];
+            let subb = subimg.img.data[srci + 2];
+            let suba = subimg.img.data[srci + 3];
+            let forcetrans = (subr == 0 && subg == 255 && subb == 0 && suba == 255);
+            let usesub = (suba == 255);
+            combined.data[dsti + 0] = (forcetrans ? 0 : usesub ? subr : img.img.data[dsti + 0]);
+            combined.data[dsti + 1] = (forcetrans ? 0 : usesub ? subg : img.img.data[dsti + 1]);
+            combined.data[dsti + 2] = (forcetrans ? 0 : usesub ? subb : img.img.data[dsti + 2]);
+            combined.data[dsti + 3] = (forcetrans ? 0 : usesub ? suba : img.img.data[dsti + 3]);
+        }
+    }
+    return { x: img.x, y: img.y, img: combined };
 }

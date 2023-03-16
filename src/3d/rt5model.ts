@@ -22,13 +22,12 @@ type OldTextureMapping = {
     args: oldmodels["texflags"][number]
 }
 
-type WorkingSubmesh = {
+export type WorkingSubmesh = {
     pos: BufferAttribute,
     texuvs: BufferAttribute,
     color: BufferAttribute,
     normals: BufferAttribute,
     index: Uint16Array,
-    originalface: Uint16Array,
     currentface: number,
     matid: number
 }
@@ -104,7 +103,7 @@ function jagexOldNormalSpace(normal_x: number, normal_y: number, normal_z: numbe
 }
 
 export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
-    const enabletextures = false;
+    const enabletextures = false;//TODO fix this flag
     let modeldata = parse.oldmodels.read(modelfile, source);
 
     let maxy = 0;
@@ -196,7 +195,6 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             color: new BufferAttribute(new Uint8Array(finalvertcount * colstride), colstride, true),
             texuvs: new BufferAttribute(new Float32Array(finalvertcount * 2), 2),
             index: new Uint16Array(facecount * 3),
-            originalface: new Uint16Array(facecount),
             currentface: 0,
             matid: flipEndian16(matid) - 1//TODO fix endianness elsewhere
         };

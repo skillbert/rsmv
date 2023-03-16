@@ -1,0 +1,21 @@
+["struct",
+    ["vertexcount","ushort"],
+    ["facecount","ushort"],
+    ["xpos",["array",["ref","vertexcount"],"short"]],
+    ["ypos",["array",["ref","vertexcount"],"short"]],
+    ["zpos",["array",["ref","vertexcount"],"short"]],
+    ["faces",["chunkedarray",["ref","facecount"],[
+        ["$nverts","ubyte"]
+    ],[
+        ["color","ushort"]
+    ],[
+        ["backcolor","ushort"]
+    ],[
+        ["intensity","ubyte"]
+    ],[
+        ["verts",["array",["ref","$nverts"],["match",["ref","vertexcount"],{
+            "<256":"ubyte",
+            "other":"ushort"
+        }]]]
+    ]]]
+]

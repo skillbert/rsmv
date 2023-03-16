@@ -1,4 +1,4 @@
-import { TileGridSource, ChunkData, squareLevels, squareSize, TileVertex, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
+import { TileGridSource, squareLevels, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
 import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
 import { EngineCache } from "../3d/modeltothree";

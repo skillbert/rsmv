@@ -1,7 +1,7 @@
 import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids } from '../3d/modeltothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
@@ -16,6 +16,7 @@ import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import fetch from "node-fetch";
 import { MaterialData } from "./jmat";
 import { legacyMajors } from "../cache/legacycache";
+import { classicGroups } from "../cache/classicloader";
 
 
 export type SimpleModelDef = {
@@ -34,10 +35,13 @@ export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	let modeldata = await cache.getModelData(id);
 	//getting the same file a 2nd time to get the full json
 	let info: any;
-	if (cache.useOldModels) {
+	if (cache.modelType == "classic") {
+		let arch = await cache.engine.getArchiveById(0, classicGroups.models);
+		info = parse.classicmodels.read(arch[id].buffer, cache.engine.rawsource);
+	} else if (cache.modelType == "old") {
 		let major = (cache.engine.legacyData ? legacyMajors.oldmodels : cacheMajors.oldmodels);
 		info = parse.oldmodels.read(await cache.engine.getFileById(major, id), cache.engine.rawsource);
-	} else {
+	} else if (cache.modelType == "nxt") {
 		info = parse.models.read(await cache.engine.getFileById(cacheMajors.models, id), cache.engine.rawsource);
 	}
 	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info }, id };
@@ -124,14 +128,10 @@ export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 export async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
-	let assetid = 93808;//"RuneTek_Asset" jagex test model
+	let assetid = constModelsIds.materialCube;
 	let mods: ModelModifications = {
-		replaceMaterials: [[4311, modelid]]
+		replaceMaterials: [[0, modelid]]
 	};
-	// modelids = [67768];//is a cube but has transparent vertices
-	// mods.replaceMaterials = [
-	// 	[8868, +searchid]
-	// ];
 	let mat = sceneCache.engine.getMaterialData(modelid);
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let addtex = async (type: keyof MaterialData["textures"], name: string, texid: number) => {
@@ -312,6 +312,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 export type RSMapChunkData = {
 	grid: TileGrid,
 	chunks: ChunkData[],
+	chunkSize: number,
 	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
 	modeldata: PlacedMesh[][],
@@ -342,8 +343,8 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 	}
 
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
-		let { chunks, grid } = await this.model;
-		let rect: MapRect = { x: this.rect.x * 64, z: this.rect.z * 64, xsize: this.rect.xsize * 64, zsize: this.rect.zsize * 64 };
+		let { chunks, grid, chunkSize } = await this.model;
+		let rect: MapRect = { x: this.rect.x * chunkSize, z: this.rect.z * chunkSize, xsize: this.rect.xsize * chunkSize, zsize: this.rect.zsize * chunkSize };
 		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
 
@@ -394,6 +395,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 			}));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
+			let chunkSize = chunks[0].tilerect.xsize;//TODO depends on classic or rs2, must be better way
 			if (processedChunks.length != 0) {
 				this.rootnode.add(...processedChunks.map(q => q.group));
 			}
@@ -421,7 +423,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 
 			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
 			let chunkmodels = processedChunks.map(q => q.group);
-			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels };
+			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize };
 			this.onModelLoaded();
 			return this.loaded;
 		})();

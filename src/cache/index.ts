@@ -1,5 +1,5 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
-import { cacheConfigPages, cacheMajors, lastLegacyBuildnr, latestBuildNumber } from "../constants";
+import { cacheConfigPages, cacheMajors, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import { parse } from "../opdecoder";
 import { cacheFilenameHash } from "../utils";
 import { parseLegacyArchive } from "./legacycache";
@@ -342,7 +342,7 @@ export abstract class DirectCacheFileSource extends CacheFileSource {
 	async getFileArchive(meta: CacheIndex) {
 		let file = await this.getFile(meta.major, meta.minor, meta.crc);
 		if (this.getBuildNr() <= lastLegacyBuildnr) {
-			return parseLegacyArchive(file, meta.major, meta.minor);
+			return parseLegacyArchive(file, meta.major, this.getBuildNr() <= lastClassicBuildnr);
 		} else {
 			return unpackBufferArchive(file, meta.subindices, meta.subnames);
 		}

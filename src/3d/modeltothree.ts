@@ -1,4 +1,4 @@
-import { cacheConfigPages, cacheMajors, lastLegacyBuildnr } from "../constants";
+import { cacheConfigPages, cacheMajors, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { ParsedTexture } from "./textures";
 import { ModelData, parseOb3Model } from '../3d/rt7model';
 import { parseRT5Model } from "../3d/rt5model";
@@ -15,8 +15,25 @@ import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
-import { parseLegacySprite, parseSprite } from "./sprite";
-import { LegacyData, legacyGroups, legacyMajors, legacyPreload } from "../cache/legacycache";
+import { parseLegacySprite, parseSprite, parseTgaSprite, SubImageData } from "./sprite";
+import { combineLegacyTexture, LegacyData, legacyGroups, legacyMajors, legacyPreload, parseLegacyImageFile } from "../cache/legacycache";
+import { classicConfig, ClassicConfig, classicGroups, classicUnderlays } from "../cache/classicloader";
+import { parseRT2Model } from "./rt2model";
+import { materialPreviewCube, paperWall, paperWallDiag } from "./modelutils";
+
+const constModelOffset = 1000000;
+
+export const constModelsIds = {
+	materialCube: constModelOffset + 1,
+	paperWall: constModelOffset + 2,
+	paperWallDiag: constModelOffset + 3
+}
+
+const constModels = new Map([
+	[constModelsIds.materialCube, Promise.resolve(materialPreviewCube)],
+	[constModelsIds.paperWall, Promise.resolve(paperWall)],
+	[constModelsIds.paperWallDiag, Promise.resolve(paperWallDiag)]
+]);
 
 export type ParsedMaterial = {
 	//TODO rename
@@ -75,7 +92,6 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 
 //basically stores all the config of the game engine
 export class EngineCache extends CachingFileSource {
-	ready: Promise<EngineCache>;
 	hasOldModels: boolean;
 	hasNewModels: boolean;
 
@@ -87,15 +103,15 @@ export class EngineCache extends CachingFileSource {
 	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 
 	legacyData: LegacyData | null = null;
+	classicData: ClassicConfig | null = null;
 
-	static async create(source: CacheFileSource) {
+	static create(source: CacheFileSource) {
 		let ret = new EngineCache(source);
-		return ret.ready;
+		return ret.preload();
 	}
 
 	private constructor(source: CacheFileSource) {
 		super(source);
-		this.ready = this.preload();
 	}
 
 	private async preload() {
@@ -128,13 +144,18 @@ export class EngineCache extends CachingFileSource {
 			let rootindex = await this.getCacheIndex(cacheMajors.index);
 			this.hasNewModels = !!rootindex[cacheMajors.models];
 			this.hasOldModels = !!rootindex[cacheMajors.oldmodels];
-		} else {
+		} else if (this.getBuildNr() >= lastClassicBuildnr) {
 			this.legacyData = await legacyPreload(this);
 			let floors = this.legacyData.overlays.map(q => parse.mapsquareOverlays.read(q, this));
 			this.mapOverlays = floors;
 			this.mapUnderlays = floors;
 
-
+			this.hasNewModels = false;
+			this.hasOldModels = true;
+		} else {
+			this.classicData = await classicConfig(this);
+			//TODO
+			this.mapUnderlays = classicUnderlays();
 			this.hasNewModels = false;
 			this.hasOldModels = true;
 		}
@@ -158,7 +179,12 @@ export class EngineCache extends CachingFileSource {
 			} else {
 				if (this.getBuildNr() <= lastLegacyBuildnr) {
 					cached = defaultMaterial();
-					if (id != -1) { cached.textures.diffuse = id; }
+					if (id != -1) {
+						cached.textures.diffuse = id;
+						cached.vertexColorWhitening = (id == 0 ? 0 : 1);
+						cached.texmodes = "mirror";
+						cached.texmodet = "mirror";
+					}
 				} else if (this.getBuildNr() <= 498) {
 					let file = this.materialArchive.get(id);
 					if (!file) { throw new Error("material " + id + " not found"); }
@@ -229,7 +255,10 @@ export async function detectTextureMode(source: CacheFileSource) {
 	}
 
 	let textureMode: TextureModes = "none";
-	if (source.getBuildNr() <= lastLegacyBuildnr) {
+	if (source.getBuildNr() <= lastClassicBuildnr) {
+		let texindex = await source.findSubfileByName(0, classicGroups.textures, "INDEX.DAT");
+		textureMode = (texindex ? "legacy" : "legacytga");
+	} else if (source.getBuildNr() <= lastLegacyBuildnr) {
 		textureMode = "legacy";
 	} else if (source.getBuildNr() <= 498) {
 		textureMode = "oldproc";
@@ -344,17 +373,17 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	return { mat, matmeta: material };
 }
 
-type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc" | "legacy";
+type ModelModes = "nxt" | "old" | "classic";
+type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc" | "legacy" | "legacytga";
 type TextureTypes = keyof MaterialData["textures"];
 
 export class ThreejsSceneCache {
 	private modelCache = new Map<number, CachedObject<ModelData>>();
-	private oldModelCache = new Map<number, CachedObject<ModelData>>();
 	private threejsTextureCache = new Map<number, CachedObject<ParsedTexture>>();
 	private threejsMaterialCache = new Map<number, CachedObject<ParsedMaterial>>();
 	engine: EngineCache;
 	textureType: TextureModes = "dds";
-	useOldModels: boolean;
+	modelType: ModelModes = "nxt";
 
 	static textureIndices: Record<TextureTypes, Record<Exclude<TextureModes, "none">, number>> = {
 		diffuse: {
@@ -366,7 +395,8 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015Dds,
 			oldpng: cacheMajors.texturesOldPng,
 			oldproc: cacheMajors.sprites,
-			legacy: legacyMajors.data
+			legacy: legacyMajors.data,
+			legacytga: 0
 		},
 		normal: {
 			png: cacheMajors.texturesPng,
@@ -378,7 +408,8 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015CompoundDds,
 			oldpng: cacheMajors.texturesOldCompoundPng,
 			oldproc: 0,
-			legacy: 0
+			legacy: 0,
+			legacytga: 0
 		},
 		compound: {
 			png: cacheMajors.texturesPng,
@@ -390,16 +421,25 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015CompoundDds,
 			oldpng: cacheMajors.texturesOldCompoundPng,
 			oldproc: 0,
-			legacy: 0
+			legacy: 0,
+			legacytga: 0
 		}
 	}
 
-	private constructor(scenecache: EngineCache) {
+	private constructor(scenecache: EngineCache, modeltype: ModelModes | "auto") {
 		this.engine = scenecache;
-		this.useOldModels = scenecache.hasOldModels && !scenecache.hasNewModels;
+		if (modeltype != "auto") {
+			this.modelType = modeltype;
+		} else if (scenecache.getBuildNr() <= lastClassicBuildnr) {
+			this.modelType = "classic";
+		} else if (scenecache.hasOldModels && !scenecache.hasNewModels) {
+			this.modelType = "old";
+		} else {
+			this.modelType = "nxt";
+		}
 	}
-	static async create(engine: EngineCache, texturemode: TextureModes | "auto" = "auto") {
-		let scene = new ThreejsSceneCache(engine);
+	static async create(engine: EngineCache, texturemode: TextureModes | "auto" = "auto", modelmode: ModelModes | "auto" = "auto") {
+		let scene = new ThreejsSceneCache(engine, modelmode);
 		scene.textureType = (texturemode == "auto" ? await detectTextureMode(engine.rawsource) : texturemode);
 		return scene;
 	}
@@ -410,11 +450,16 @@ export class ThreejsSceneCache {
 		let texmode = this.textureType;
 
 		return this.engine.fetchCachedObject(this.threejsTextureCache, cachekey, async () => {
-			if (texmode == "legacy") {
-				let spritedata = await this.engine.getArchiveById(legacyMajors.data, legacyGroups.textures);
-				let metafile = await this.engine.findSubfileByName(legacyMajors.data, legacyGroups.textures, "INDEX.DAT");
-				let img = parseLegacySprite(metafile!.buffer, spritedata[texid].buffer);
-				return new ParsedTexture(img, stripAlpha, false);
+			if (texmode == "legacytga" || texmode == "legacy") {
+				let img: SubImageData;
+				if (this.engine.classicData) {
+					let texmeta = this.engine.classicData.textures[texid - 1];
+					img = await combineLegacyTexture(this.engine, texmeta.name, texmeta.subname, texmode == "legacytga");
+				} else {
+					let imgfile = await this.engine.getArchiveById(legacyMajors.data, legacyGroups.textures);
+					img = await parseLegacyImageFile(this.engine, imgfile[texid].buffer)
+				}
+				return new ParsedTexture(img.img, stripAlpha, false);
 			} else {
 				let file = await this.engine.getFileById(cacheindex, texid);
 				if (texmode == "oldproc") {
@@ -427,19 +472,28 @@ export class ThreejsSceneCache {
 		}, obj => obj.filesize * 2);
 	}
 
-	getModelData(id: number, type: "auto" | "old" | "new" = "auto") {
-		if (type == "old" || (type == "auto" && this.useOldModels)) {
-			return this.engine.fetchCachedObject(this.oldModelCache, id, () => {
-				let major = (this.engine.legacyData ? legacyMajors.oldmodels : cacheMajors.oldmodels);
-				return this.engine.getFileById(major, id)
-					.then(f => parseRT5Model(f, this.engine.rawsource));
-			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
-		} else {
-			return this.engine.fetchCachedObject(this.modelCache, id, () => {
-				return this.engine.getFileById(cacheMajors.models, id)
-					.then(f => parseOb3Model(f, this.engine));
-			}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
+	getModelData(id: number) {
+		if (id >= constModelOffset) {
+			let res = constModels.get(id);
+			if (!res) { throw new Error(`constmodel ${id} does not exist`); }
+			return res;
 		}
+
+		return this.engine.fetchCachedObject(this.modelCache, id, async () => {
+			if (this.modelType == "nxt") {
+				let file = await this.engine.getFileById(cacheMajors.models, id);
+				return parseOb3Model(file, this.engine);
+			} else if (this.modelType == "old") {
+				let major = (this.engine.legacyData ? legacyMajors.oldmodels : cacheMajors.oldmodels);
+				let file = await this.engine.getFileById(major, id);
+				return parseRT5Model(file, this.engine.rawsource);
+			} else if (this.modelType == "classic") {
+				let arch = await this.engine.getArchiveById(0, classicGroups.models);
+				return parseRT2Model(arch[id].buffer, this.engine);
+			} else {
+				throw new Error("unexpected");
+			}
+		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 	}
 
 	getMaterial(matid: number, hasVertexAlpha: boolean) {
@@ -626,6 +680,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 			mesh = new THREE.Mesh(geo);
 		}
 		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha));
+		mesh.geometry.computeVertexNormals();//TODO remove, only used for classic models atm
 		rootnode.add(mesh);
 	}
 	if (model.debugmeshes && model.debugmeshes.length != 0) {

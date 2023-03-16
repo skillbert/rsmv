@@ -1,13 +1,11 @@
 
 import { disposeThreeTree, ThreeJsRenderer } from "../viewer/threejsrender";
-import { ParsemapOpts, TileGrid, ChunkData, ChunkModelData, MapRect, worldStride, CombinedTileGrid, squareSize } from "../3d/mapsquare";
+import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
-import type { Material, Object3D } from "three";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, isImageEqual, pixelsToImageFile } from "../imgutils";
-import * as THREE from "three";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
@@ -658,10 +656,10 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 					let grid = new CombinedTileGrid(chunks.map(ch => ({
 						src: ch.chunk.loaded!.grid,
 						rect: {
-							x: ch.chunk.rect.x * squareSize,
-							z: ch.chunk.rect.z * squareSize,
-							xsize: ch.chunk.rect.xsize * squareSize,
-							zsize: ch.chunk.rect.zsize * squareSize,
+							x: ch.chunk.rect.x * ch.chunk.loaded!.chunkSize,
+							z: ch.chunk.rect.z * ch.chunk.loaded!.chunkSize,
+							xsize: ch.chunk.rect.xsize * ch.chunk.loaded!.chunkSize,
+							zsize: ch.chunk.rect.zsize * ch.chunk.loaded!.chunkSize,
 						}
 					})));
 					let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
@@ -696,8 +694,8 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				hash: depcrc,
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
-					let { grid, modeldata } = await chunks[0].chunk.model;
-					let res = await chunkSummary(engine, grid, modeldata, { x: x * squareSize, z: z * squareSize, xsize: squareSize, zsize: squareSize });
+					let { grid, modeldata, chunkSize } = await chunks[0].chunk.model;
+					let res = await chunkSummary(engine, grid, modeldata, { x: x * chunkSize, z: z * chunkSize, xsize: chunkSize, zsize: chunkSize });
 					let textual = prettyJson(res, { indent: "\t" });
 					return { file: () => Promise.resolve(Buffer.from(textual, "utf8")) };
 				}
@@ -718,10 +716,10 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 					let grid = new CombinedTileGrid(chunks.map(ch => ({
 						src: ch.chunk.loaded!.grid,
 						rect: {
-							x: ch.chunk.rect.x * squareSize,
-							z: ch.chunk.rect.z * squareSize,
-							xsize: ch.chunk.rect.xsize * squareSize,
-							zsize: ch.chunk.rect.zsize * squareSize,
+							x: ch.chunk.rect.x * ch.chunk.loaded!.chunkSize,
+							z: ch.chunk.rect.z * ch.chunk.loaded!.chunkSize,
+							xsize: ch.chunk.rect.xsize * ch.chunk.loaded!.chunkSize,
+							zsize: ch.chunk.rect.zsize * ch.chunk.loaded!.chunkSize,
 						}
 					})));
 					let file = drawCollision(grid, area, thiscnf.level, thiscnf.pxpersquare, 1);

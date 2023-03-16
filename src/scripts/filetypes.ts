@@ -1,18 +1,19 @@
 
-import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse, FileParser } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { cacheFilenameHash, constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { JSONSchema6Definition } from "json-schema";
-import { parseLegacySprite, parseSprite } from "../3d/sprite";
+import { parseLegacySprite, parseSprite, parseTgaSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { crc32, CrcBuilder } from "../libs/crc32util";
 import { getModelHashes } from "../3d/modeltothree";
 import { ParsedTexture } from "../3d/textures";
 import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
+import { classicGroups } from "../cache/classicloader";
 
 
 type CacheFileId = {
@@ -34,12 +35,7 @@ async function filerange(source: CacheFileSource, startindex: FileId, endindex: 
 				//bit silly since we download the files and then only return their ids
 				//however it doesn't matter that much since the entire cache is <20mb
 				let group: SubFile[] = [];
-				if (startindex.major == 0) {
-					group = await source.getArchiveById(startindex.major, minor);
-				} else {
-					await source.getFile(startindex.major, minor);
-					group = [{ buffer: null!, fileid: 0, namehash: null, offset: 0, size: 0 }];
-				}
+				group = await source.getArchiveById(startindex.major, minor);
 				let groupindex: CacheIndex = {
 					major: startindex.major,
 					minor,
@@ -400,7 +396,7 @@ const decodeLegacySprite = (minor: number): DecodeModeFactory => () => {
 		async read(b, id, source) {
 			let metafile = await source.findSubfileByName(legacyMajors.data, minor, "INDEX.DAT");
 			let img = parseLegacySprite(metafile!.buffer, b);
-			return pixelsToImageFile(img, "png", 1);
+			return pixelsToImageFile(img.img, "png", 1);
 		}
 	}
 }
@@ -513,6 +509,8 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
 	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
 	oldproctextures: { parser: parse.oldproctexture, lookup: singleMinorIndex(cacheMajors.texturesOldPng, 0) },
+
+	classicmodels: { parser: parse.classicmodels, lookup: singleMinorIndex(0, classicGroups.models) },
 
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
 	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() }

@@ -1,6 +1,12 @@
 import { makeImageData } from "../imgutils";
 import { Stream } from "../utils";
 
+export type SubImageData = {
+	x: number,
+	y: number,
+	img: ImageData
+}
+
 export function parseSubsprite(buf: Buffer, palette: Buffer, width: number, height: number, alpha: boolean, transposed: boolean) {
 	let imgsize = width * height;
 	let offset = 0;
@@ -48,7 +54,7 @@ export function parseLegacySprite(metafile: Buffer, buf: Buffer) {
 	let palettecount = meta.readUByte() - 1;
 	let palette = meta.readBuffer(palettecount * 3);
 
-	let imgs: ImageData[] = [];
+	let imgs: SubImageData[] = [];
 	while (!file.eof()) {
 		let offsetx = meta.readUByte();
 		let offsety = meta.readUByte();
@@ -57,7 +63,11 @@ export function parseLegacySprite(metafile: Buffer, buf: Buffer) {
 		let transpose = meta.readUByte() != 0;
 
 		let imgbytes = file.readBuffer(width * height);
-		imgs.push(parseSubsprite(imgbytes, palette, width, height, false, transpose).img);
+		imgs.push({
+			x: offsetx,
+			y: offsety,
+			img: parseSubsprite(imgbytes, palette, width, height, false, transpose).img
+		});
 	}
 
 	if (imgs.length != 1) {
@@ -73,7 +83,7 @@ export function parseSprite(buf: Buffer) {
 	let format = data >> 15;
 	let count = (data & 0x7FFF);
 
-	let spriteimgs: { x: number, y: number, img: ImageData }[] = [];
+	let spriteimgs: SubImageData[] = [];
 
 	if (format == 0) {
 		let footsize = 7 + 8 * count;
@@ -135,4 +145,58 @@ export function parseSprite(buf: Buffer) {
 		spriteimgs.push({ x: 0, y: 0, img: makeImageData(imgdata, width, height) });
 	}
 	return spriteimgs;
+}
+
+export function parseTgaSprite(file: Buffer) {
+	let str = new Stream(file);
+	let idlength = str.readUByte();
+	let colormaptype = str.readUByte();
+	let datatypecode = str.readUByte();
+	let colormapoffset = str.readUShort(false);
+	let colormaplen = str.readUShort(false);
+	let colormapdepth = str.readUByte();
+	let originx = str.readUShort(false);
+	let originy = str.readUShort(false);
+	let width = str.readUShort(false);
+	let height = str.readUShort(false);
+	let bpp = str.readUByte();
+	let imgdescr = str.readUByte();
+	str.skip(idlength);//possible text content
+	if (colormaptype != 1 || bpp != 8) { throw new Error("only palette based uncompressed TGA supported"); }
+	if (colormapdepth != 24) { throw new Error("only 24bpp rgb TGA supported"); }
+	if (imgdescr != 0) { throw new Error("no fancy TGA's allowed"); }
+
+	let palette = str.readBuffer(colormaplen * 3);
+	let imgdata = new Uint8ClampedArray(width * height * 4);
+
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			let outoffset = x * 4 + y * width * 4;
+			let pxindex = str.readUByte();
+			let paletteoffset = pxindex * 3;
+			//bgr->rgb flip!!
+			imgdata[outoffset + 0] = palette[paletteoffset + 2];
+			imgdata[outoffset + 1] = palette[paletteoffset + 1];
+			imgdata[outoffset + 2] = palette[paletteoffset + 0];
+			imgdata[outoffset + 3] = 255;
+
+			//jagex treats 255,0,255 as transparent
+			if (imgdata[outoffset + 0] == 255 && imgdata[outoffset + 1] == 0 && imgdata[outoffset + 2] == 255) {
+				imgdata[outoffset + 0] = 0;
+				imgdata[outoffset + 1] = 0;
+				imgdata[outoffset + 2] = 0;
+				imgdata[outoffset + 3] = 0;
+			}
+		}
+	}
+
+	if (!str.eof) {
+		console.warn("didn't parse TGA sprite to completion");
+	}
+	let r: SubImageData = {
+		x: originx,
+		y: originy,
+		img: makeImageData(imgdata, width, height)
+	};
+	return r;
 }

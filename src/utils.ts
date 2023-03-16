@@ -30,6 +30,7 @@ export type Stream = {
 export function cacheFilenameHash(name: string, oldhash: boolean) {
 	let hash = 0;
 	if (oldhash) {
+		name = name.toUpperCase();
 		for (let ch of name) {
 			hash = (Math.imul(hash, 61) + ch.charCodeAt(0) - 32) | 0;
 		}
