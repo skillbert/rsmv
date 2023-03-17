@@ -215,7 +215,11 @@ export const paperWall = new ModelBuilder()
 
 export const paperWallDiag = new ModelBuilder()
     .mat(0).addParallelogram(white, [halftile, 0, halftile], [0, 2 * tile, 0], [-tile, 0, -tile])
-    .mat(0).addParallelogram(white, [-halftile, 0, -halftile], [0, 2 * tile, 0], [tile, 0, tile],)
+    .mat(1).addParallelogram(white, [-halftile, 0, -halftile], [0, 2 * tile, 0], [tile, 0, tile],)
+    .convert();
+
+export const paperRoof = new ModelBuilder()
+    .mat(0).addParallelogram(white, [-halftile, 2 * tile, -halftile], [tile, 0, 0], [0, 0, tile])
     .convert();
 
 export const topdown2dWallModels = generateTopdown2dWallModels();

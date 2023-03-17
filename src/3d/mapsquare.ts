@@ -15,7 +15,7 @@ import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { legacyMajors } from "../cache/legacycache";
-import { classicIntToModelMods, getClassicMapData } from "../cache/classicloader";
+import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "../cache/classicloader";
 import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 
 const upvector = new THREE.Vector3(0, 1, 0);
@@ -27,7 +27,7 @@ export const squareLevels = 4;
 const heightScale = 1 / 16;
 export const worldStride = 128;
 
-const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
+export const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 
 const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255] };
 
@@ -782,6 +782,7 @@ export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocatio
 
 export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
 	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
+	// chunkfloorpadding = 0;//TODO remove
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
 	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
 	let grid = new TileGrid(engine, {
@@ -885,6 +886,9 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 		}
 	}
 	grid.blendUnderlays();
+	if (engine.classicData) {
+		classicModifyTileGrid(grid);
+	}
 	for (let chunk of chunks) {
 		chunk.locs = await mapsquareObjects(engine, grid, chunk.rawlocs, chunk.tilerect.x, chunk.tilerect.z, !!opts?.collision);
 	}
@@ -1122,19 +1126,8 @@ export function defaultMorphId(locmeta: objects) {
 //TODO move this to a more logical location
 export async function resolveMorphedObject(source: EngineCache, id: number) {
 	if (source.classicData) {
-		let rawloc = source.classicData.wallobjects[id];
-		//TODO recolor+retexture
-		let rs2loc: objects = {
-			name: rawloc.name,
-			probably_morphFloor: true,
-			models: [
-				{ type: 0, values: [constModelsIds.paperWall] },
-				{ type: 9, values: [constModelsIds.paperWallDiag] }
-			],
-			//sets replace_colors/mats and if invisible sets models to null
-			...classicIntToModelMods(rawloc.frontdecor, rawloc.backdecor)
-		}
-		return { rawloc: rs2loc, morphedloc: rs2loc };
+		let locdata = getClassicLoc(source, id);
+		return { rawloc: locdata, morphedloc: locdata };
 	} else {
 		let objectfile = await source.getGameFile("objects", id);
 		let rawloc = parse.object.read(objectfile, source);

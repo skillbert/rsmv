@@ -17,22 +17,24 @@ import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
 import { parseLegacySprite, parseSprite, parseTgaSprite, SubImageData } from "./sprite";
 import { combineLegacyTexture, LegacyData, legacyGroups, legacyMajors, legacyPreload, parseLegacyImageFile } from "../cache/legacycache";
-import { classicConfig, ClassicConfig, classicGroups, classicUnderlays } from "../cache/classicloader";
+import { classicConfig, ClassicConfig, classicDecodeMaterialInt, classicGroups, classicIntsToModelMods, classicUnderlays } from "../cache/classicloader";
 import { parseRT2Model } from "./rt2model";
-import { materialPreviewCube, paperWall, paperWallDiag } from "./modelutils";
+import { materialPreviewCube, paperRoof, paperWall, paperWallDiag } from "./modelutils";
 
 const constModelOffset = 1000000;
 
 export const constModelsIds = {
 	materialCube: constModelOffset + 1,
 	paperWall: constModelOffset + 2,
-	paperWallDiag: constModelOffset + 3
+	paperWallDiag: constModelOffset + 3,
+	paperRoof: constModelOffset + 4,
 }
 
 const constModels = new Map([
 	[constModelsIds.materialCube, Promise.resolve(materialPreviewCube)],
 	[constModelsIds.paperWall, Promise.resolve(paperWall)],
-	[constModelsIds.paperWallDiag, Promise.resolve(paperWallDiag)]
+	[constModelsIds.paperWallDiag, Promise.resolve(paperWallDiag)],
+	[constModelsIds.paperRoof, Promise.resolve(paperRoof)]
 ]);
 
 export type ParsedMaterial = {
@@ -92,14 +94,14 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 
 //basically stores all the config of the game engine
 export class EngineCache extends CachingFileSource {
-	hasOldModels: boolean;
-	hasNewModels: boolean;
+	hasOldModels = false;
+	hasNewModels = false;
 
 	materialArchive = new Map<number, Buffer>();
 	materialCache = new Map<number, MaterialData>();
-	mapUnderlays: (mapsquare_underlays | mapsquare_overlays)[];
-	mapOverlays: mapsquare_overlays[];
-	mapMapscenes: mapscenes[];
+	mapUnderlays: (mapsquare_underlays | mapsquare_overlays)[] = [];
+	mapOverlays: mapsquare_overlays[] = [];
+	mapMapscenes: mapscenes[] = [];
 	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 
 	legacyData: LegacyData | null = null;
@@ -115,9 +117,6 @@ export class EngineCache extends CachingFileSource {
 	}
 
 	private async preload() {
-		this.mapUnderlays = [];
-		this.mapOverlays = [];
-		this.mapMapscenes = [];
 		if (this.getBuildNr() >= lastLegacyBuildnr) {
 			for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays)) {
 				this.mapUnderlays[subfile.fileid] = parse.mapsquareUnderlays.read(subfile.buffer, this.rawsource);
@@ -156,6 +155,10 @@ export class EngineCache extends CachingFileSource {
 			this.classicData = await classicConfig(this);
 			//TODO
 			this.mapUnderlays = classicUnderlays();
+			this.mapOverlays = this.classicData.tiles.map(q => {
+				let mods = classicDecodeMaterialInt(q.decor);
+				return { color: mods.color, material: mods.material };
+			});
 			this.hasNewModels = false;
 			this.hasOldModels = true;
 		}

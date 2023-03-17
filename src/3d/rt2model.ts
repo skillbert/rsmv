@@ -6,12 +6,13 @@ import { ModelData } from "./rt7model";
 
 export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
     let parsed = parse.classicmodels.read(modelfile, source);
+    const posscale = 4;
 
     let matusecount = new Map<number, { verts: number, tris: number }>();
     let allocmat = (colorid: number, nverts: number) => {
         if (colorid == 0x7fff) { return; }
         if (nverts < 3) { return; }
-        let matid = (colorid & 0x8000 ? 0 : colorid);
+        let matid = (colorid & 0x8000 ? 0 : colorid + 1);
         let count = matusecount.get(matid);
         if (!count) {
             count = { tris: 0, verts: 0 };
@@ -54,14 +55,15 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
         }
         group.pos.setXYZ(
             group.currentface,
-            parsed.xpos[posindex],
-            -parsed.ypos[posindex],
-            parsed.zpos[posindex]
+            parsed.xpos[posindex] * posscale,
+            -parsed.ypos[posindex] * posscale,
+            parsed.zpos[posindex] * posscale
         );
+
         group.texuvs.setXY(
             group.currentface,
-            (polyindex <= 1 ? 0 : 1),
-            (polyindex % 2 == 0 ? 0 : 1)
+            (polyindex == 0 || polyindex == 3 ? 0 : 1),
+            (polyindex == 0 || polyindex == 1 ? 0 : 1)
         )
         return group.currentface++;
     }
@@ -71,7 +73,7 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
         if (face.color != 0x7fff) {
             //convert n-poly to tris
             //reverse iteration
-            let group = matmeshes.get(face.color & 0x8000 ? 0 : face.color)!;
+            let group = matmeshes.get(face.color & 0x8000 ? 0 : face.color + 1)!;
             let firstvert = addvert(group, face.verts, face.verts.length - 1, face.color);
             let lastvert = addvert(group, face.verts, face.verts.length - 2, face.color);
             for (let i = face.verts.length - 3; i >= 0; i--) {
@@ -83,10 +85,10 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
             }
         }
         if (face.backcolor != 0x7fff) {
-            let group = matmeshes.get(face.backcolor & 0x8000 ? 0 : face.backcolor)!;
+            let group = matmeshes.get(face.backcolor & 0x8000 ? 0 : face.backcolor + 1)!;
             let firstvert = addvert(group, face.verts, 0, face.backcolor);
             let lastvert = addvert(group, face.verts, 1, face.backcolor);
-            for (let i = 0; i < face.verts.length; i++) {
+            for (let i = 2; i < face.verts.length; i++) {
                 let newvert = addvert(group, face.verts, i, face.backcolor);
                 group.index[group.currentindex++] = firstvert;
                 group.index[group.currentindex++] = lastvert;
