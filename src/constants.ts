@@ -41,7 +41,7 @@ export const cacheMajors = {
 	achievements: 57,
 
 	index: 255
-}
+} as const;
 
 //represents the largest build number that this application is aware off
 //is used as default value when a cache is considered "current"
@@ -53,7 +53,7 @@ export const cacheMapFiles = {
 	squares: 3,
 	squaresWater: 4,
 	square_nxt: 5
-}
+} as const;
 
 export const cacheConfigPages = {
 	mapunderlays: 1,
@@ -69,7 +69,7 @@ export const cacheConfigPages = {
 	npcs_old: 9,
 	items_old: 10,
 	spotanim_old: 13
-}
+} as const;
 
 export const lastLegacyBuildnr = 377;
 //unclear if there ended up beign overlap with (public) rs2 since this was 12 years after rs2 release

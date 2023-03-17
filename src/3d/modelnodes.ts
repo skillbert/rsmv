@@ -2,7 +2,7 @@ import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
-import { ModelModifications, constrainedMap, TypedEmitter } from '../utils';
+import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
@@ -156,11 +156,11 @@ export async function materialToModel(sceneCache: ThreejsSceneCache, modelid: nu
 export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: number }> implements ThreeJsSceneElementSource {
 	model: Promise<{ modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip }>;
 	loaded: { modeldata: ModelData, mesh: Object3D, nullAnim: AnimationClip, matUvAnims: { tex: Texture, v: Vector2 }[] } | null = null;
-	cache: ThreejsSceneCache;
+	cache!: ThreejsSceneCache;
 	rootnode = new THREE.Group();
-	nullAnimLoaded: (clip: AnimationClip) => void;
+	nullAnimPromise = { clip: null as AnimationClip | null, prom: new CallbackPromise<AnimationClip>() };
 	anims: Record<number, { clip: AnimationClip | null, prom: Promise<AnimationClip> }> = {
-		"-1": { clip: null, prom: new Promise(d => this.nullAnimLoaded = d) }
+		"-1": this.nullAnimPromise
 	};
 	mountedanim: AnimationClip | null = null;
 	mixer = new AnimationMixer(this.rootnode);
@@ -232,8 +232,8 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				}
 			});
 			let nullAnim = new AnimationClip(undefined, undefined, []);
-			this.nullAnimLoaded(nullAnim);
-			this.anims[-1].clip = nullAnim;
+			this.nullAnimPromise.clip = nullAnim;
+			this.nullAnimPromise.prom.done(nullAnim);
 
 			this.rootnode.add(mesh);
 			this.loaded = { mesh, modeldata, nullAnim, matUvAnims };

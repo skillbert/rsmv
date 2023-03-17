@@ -4,8 +4,6 @@ import type { WorkerPackets } from "./sqlitewasmworker";
 
 
 export class WasmGameCacheLoader extends cache.CacheFileSource {
-	cachedir: string;
-	writable: boolean;
 	indices = new Map<number, Promise<cache.CacheIndexFile>>();
 	dbfiles: Record<string, Blob> = {};
 	worker: Worker;

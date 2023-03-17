@@ -5,7 +5,6 @@ import { CacheFileSource, CacheIndex, CacheIndexFile, SubFile } from "./index";
 
 export class RawFileLoader extends CacheFileSource {
 	cachedir: string;
-	writable: boolean;
 	virtualMajor: number;
 	index: CacheIndex[];
 	files = new Map<number, string>();

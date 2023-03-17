@@ -2,7 +2,10 @@
 	"compilerOptions": {
 		"moduleResolution": "node",
 		"module": "ESNext",
-		"lib": [ "ESNext","DOM"],
+		"lib": [
+			"ESNext",
+			"DOM"
+		],
 		"target": "ES2020",
 		"sourceMap": false,
 		"alwaysStrict": true,
@@ -14,8 +17,14 @@
 		"rootDir": "./src",
 		"esModuleInterop": true,
 		"experimentalDecorators": true,
-		"resolveJsonModule": true
+		"resolveJsonModule": true,
+		"noImplicitThis": true,
+		"strictFunctionTypes": true,
+		"strictPropertyInitialization":true
 	},
-	"exclude": [ "node_modules", "./generated"],
+	"exclude": [
+		"node_modules",
+		"./generated"
+	],
 	"compileOnSave": false
 }

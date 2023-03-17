@@ -368,90 +368,6 @@ export function packedHSL2HSL(hsl: number) {
 	return [h, s, l];
 }
 
-/*function packedHSL2RGBAArray(hsl)
-{
-	var packedRGBA = packedHSL2RGBA(hsl);
-	var rgba = [];
-	rgba.push((packedRGBA      ) & 0xFF);
-	rgba.push((packedRGBA >>  8) & 0xFF);
-	rgba.push((packedRGBA >> 16) & 0xFF);
-	rgba.push((packedRGBA >> 24) & 0xFF);
-	return rgba;
-}*/
-
-// https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_model_view_projection#Perspective_matrix
-export function getProjectionMatrix(fieldOfViewInRadians: number, aspectRatio: number, near: number, far: number) {
-	var f = 1.0 / Math.tan(fieldOfViewInRadians / 2);
-	var rangeInv = 1 / (near - far);
-
-	return [
-		f / aspectRatio, 0, 0, 0,
-		0, f, 0, 0,
-		0, 0, (near + far) * rangeInv, -1,
-		0, 0, near * far * rangeInv * 2, 0
-	];
-}
-
-export namespace Matrix4x4Utils {
-	export function mul(a: number[], b: number[]) {
-		var c: number[] = [];
-		for (var y = 0; y < 4; ++y) {
-			for (var x = 0; x < 4; ++x) {
-				var sum = 0;
-				for (var n = 0; n < 4; ++n) {
-					sum += a[n + y * 4] * b[x + n * 4];
-				}
-				c.push(sum);
-			}
-		}
-		return c;
-	}
-
-	export function identity() {
-		return [
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			0.0, 0.0, 0.0, 1.0
-		];
-	}
-
-	export function translation(x: number, y: number, z: number) {
-		return [
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			x, y, z, 1.0
-		];
-	}
-
-	export function rotation(axis: "x" | "y" | "z", angle: number) {
-		var a = 0, b = 0;
-		if (axis == "x") {
-			a = 1;
-			b = 2;
-		}
-		else if (axis == "y") {
-			a = 0;
-			b = 2;
-		}
-		else if (axis == "z") {
-			a = 0;
-			b = 1;
-		}
-		else
-			//TODO throw here?
-			return; // Incorrect axis parameter, ya basic!
-
-		var matrix = this.identity();
-		matrix[a + a * 4] = Math.cos(angle);
-		matrix[b + b * 4] = Math.cos(angle);
-		matrix[b + a * 4] = -Math.sin(angle);
-		matrix[a + b * 4] = Math.sin(angle);
-		return matrix;
-	}
-}
-
 export class TypedEmitter<T extends Record<string, any>> {
 	protected listeners: { [key in keyof T]?: Set<(v: T[key]) => void> } = {};
 	on<K extends keyof T>(event: K, listener: (v: T[K]) => void) {
@@ -475,3 +391,18 @@ export class TypedEmitter<T extends Record<string, any>> {
 		listeners.forEach(cb => cb(value));
 	}
 }
+
+export class CallbackPromise<T = void> extends Promise<T> {
+	done!: (v: T) => void;
+	err!: (e: Error) => void;
+	constructor(exe = (done: (v: T) => void, err: (e: Error) => void) => { }) {
+		//tmp vars since i can't access this during the super callback
+		let tmpdone: (v: T) => void;
+		let tmperr: (e: Error) => void;
+		super((done, err) => { tmpdone = done; tmperr = err; return exe(done, err); });
+		this.done = tmpdone!;
+		this.err = tmperr!;
+	}
+}
+
+globalThis.promhack = CallbackPromise;

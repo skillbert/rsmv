@@ -328,7 +328,7 @@ export abstract class CacheFileSource {
 export abstract class DirectCacheFileSource extends CacheFileSource {
 	indexMap = new Map<number, Promise<CacheIndexFile>>();
 	requiresCrc: boolean;
-	xteakeys: XteaTable | null;
+	xteakeys: XteaTable | null = null;
 
 	constructor(needscrc: boolean) {
 		super();

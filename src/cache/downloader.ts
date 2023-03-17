@@ -4,7 +4,7 @@ import * as net from "net";
 import fetch from "node-fetch";
 import { crc32 } from "../libs/crc32util";
 import { FileParser } from "../opdecoder";
-import { delay } from "../utils";
+import { CallbackPromise, delay } from "../utils";
 import { cacheMajors } from "../constants";
 
 const maxblocksize = 102400;
@@ -96,7 +96,7 @@ function trackDataUsage(len: number) {
 
 class DownloadSocket {
 	pending: PendingFile[] = [];
-	ready: Promise<void>;
+	ready = new CallbackPromise();
 	socket: net.Socket;
 	config: ParsedClientconfig;
 
@@ -148,8 +148,8 @@ class DownloadSocket {
 	}
 
 	async run() {
-		this.ready = this.connect();
-		await this.ready;
+		await this.connect();
+		this.ready.done();
 		while (true) {
 			let bytesread = 0;
 			try { var chunk = await this.getChunk(1 + 4); }
@@ -235,7 +235,6 @@ export class CacheDownloader extends DirectCacheFileSource {
 	configPromise: Promise<ParsedClientconfig>;
 	socket: DownloadSocket | null = null;
 	socketPromise: Promise<DownloadSocket> | null = null;
-	pending: PendingFile[];
 
 	constructor() {
 		super(true);

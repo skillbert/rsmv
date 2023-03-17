@@ -91,7 +91,6 @@ export class FileEdit {
 	minor: number;
 	subfile: number;
 	action: FileAction;
-	source: CacheFileSource;
 	before: Buffer | Loadable | null;
 	after: Buffer | Loadable | null;
 	constructor(action: FileAction, type: CacheEditType, major: number, minor: number, subfile: number, before: Buffer | Loadable | null, after: Buffer | Loadable | null) {

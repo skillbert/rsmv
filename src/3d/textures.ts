@@ -22,6 +22,7 @@ export class ParsedTexture {
 		if (texture instanceof ImageData) {
 			this.filesize = texture.data.byteLength;
 			this.type = "imagedata";
+			this.mipmaps = 1;
 			this.cachedImageDatas = [Promise.resolve(texture)];
 		} else {
 			this.filesize = texture.byteLength;
@@ -36,33 +37,34 @@ export class ParsedTexture {
 				let offset = 0;
 
 				//peek first bytes of first image file
-				let foundtype = false;
-				for (let extraoffset = 0; extraoffset <= 1; extraoffset++) {
+				let extraoffset = 0
+				while (true) {
 					let byte0 = texture.readUInt8(extraoffset + offset + 1 + 4 + 0);
 					let byte1 = texture.readUInt8(extraoffset + offset + 1 + 4 + 1);
 					if (byte0 == 0 && byte1 == 0) {
 						//has no header magic, but starts by writing the width in uint32 BE, any widths under 65k have 0x0000xxxx
 						this.type = "bmpmips";
+						break;
 					} else if (byte0 == 0x44 && byte1 == 0x44) {
 						//0x44445320 "DDS "
 						this.type = "dds";
+						break;
 					} else if (byte0 == 0x89 && byte1 == 0x50) {
 						//0x89504e47 ".PNG"
 						this.type = "png";
+						break;
 					} else if (byte0 == 0xab && byte1 == 0x4b) {
 						//0xab4b5458 "«KTX"
 						this.type = "ktx";
-					} else {
+						break;
+					} else if (extraoffset++ <= 1) {
 						continue;
 					}
-					foundtype = true;
-					if (extraoffset == 1) {
-						let numtexs = texture.readUint8(offset++);
-						//TODO figure this out further
-					}
-					break;
-				} if (!foundtype) {
 					throw new Error(`failed to detect texture`);
+				}
+				if (extraoffset == 1) {
+					let numtexs = texture.readUint8(offset++);
+					//TODO figure this out further
 				}
 				this.mipmaps = texture.readUInt8(offset++);
 
