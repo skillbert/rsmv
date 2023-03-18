@@ -15,21 +15,22 @@ import { parseSprite } from "./sprite";
 import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { legacyMajors } from "../cache/legacycache";
-import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "../cache/classicloader";
+import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
 import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 
-const upvector = new THREE.Vector3(0, 1, 0);
 
 export const tiledimensions = 512;
 export const rs2ChunkSize = 64;
 export const classicChunkSize = 48;
 export const squareLevels = 4;
-const heightScale = 1 / 16;
 export const worldStride = 128;
+const heightScale = 1 / 16;
 
-export const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
+const upvector = new THREE.Vector3(0, 1, 0);
 
 const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255] };
+
+export const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 
 export type MapRect = {
 	x: number,
@@ -782,7 +783,6 @@ export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocatio
 
 export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
 	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
-	// chunkfloorpadding = 0;//TODO remove
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
 	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
 	let grid = new TileGrid(engine, {

@@ -1,4 +1,4 @@
-import { BufferAttribute } from "three";
+import { BufferAttribute, Vector3 } from "three";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { WorkingSubmesh } from "./rt5model";
@@ -59,6 +59,12 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
             -parsed.ypos[posindex] * posscale,
             parsed.zpos[posindex] * posscale
         );
+        group.normals.setXYZ(
+            group.currentface,
+            currentNormal.x,
+            currentNormal.y,
+            currentNormal.z
+        )
 
         group.texuvs.setXY(
             group.currentface,
@@ -68,14 +74,32 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
         return group.currentface++;
     }
 
+    let currentNormal = new Vector3();
+    let v0 = new Vector3();
+    let v1 = new Vector3();
+    let v2 = new Vector3();
     for (let face of parsed.faces) {
         if (face.verts.length < 3) { continue; }
         if (face.color != 0x7fff) {
+
+            let i0 = face.verts.at(-1)!;
+            let i1 = face.verts.at(-2)!;
+            let i2 = face.verts.at(-3)!;
+
+            v0.set(parsed.xpos[i0], -parsed.ypos[i0], parsed.zpos[i0]);
+            v1.set(parsed.xpos[i1], -parsed.ypos[i1], parsed.zpos[i1]);
+            v2.set(parsed.xpos[i2], -parsed.ypos[i2], parsed.zpos[i2]);
+
+            v1.sub(v0);
+            v2.sub(v0);
+            currentNormal.copy(v1).cross(v2).normalize();
+
             //convert n-poly to tris
             //reverse iteration
             let group = matmeshes.get(face.color & 0x8000 ? 0 : face.color + 1)!;
             let firstvert = addvert(group, face.verts, face.verts.length - 1, face.color);
             let lastvert = addvert(group, face.verts, face.verts.length - 2, face.color);
+
             for (let i = face.verts.length - 3; i >= 0; i--) {
                 let newvert = addvert(group, face.verts, i, face.color);
                 group.index[group.currentindex++] = firstvert;
@@ -85,6 +109,18 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
             }
         }
         if (face.backcolor != 0x7fff) {
+            let i0 = face.verts[0];
+            let i1 = face.verts[1];
+            let i2 = face.verts[2];
+
+            v0.set(parsed.xpos[i0], -parsed.ypos[i0], parsed.zpos[i0]);
+            v1.set(parsed.xpos[i1], -parsed.ypos[i1], parsed.zpos[i1]);
+            v2.set(parsed.xpos[i2], -parsed.ypos[i2], parsed.zpos[i2]);
+
+            v1.sub(v0);
+            v2.sub(v0);
+            currentNormal.copy(v1).cross(v2).normalize();
+
             let group = matmeshes.get(face.backcolor & 0x8000 ? 0 : face.backcolor + 1)!;
             let firstvert = addvert(group, face.verts, 0, face.backcolor);
             let lastvert = addvert(group, face.verts, 1, face.backcolor);
@@ -109,12 +145,13 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
             attributes: {
                 pos: q.pos,
                 color: q.color,
-                texuvs: q.texuvs
+                texuvs: q.texuvs,
+                normals: q.normals
             },
             hasVertexAlpha: false,
             indices: new BufferAttribute(q.index, 1),
             materialId: q.matid,
-            needsNormalBlending: false
+            needsNormalBlending: true
         }))
     }
 

@@ -515,24 +515,27 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			if (!obj.visible) { continue; }
 			let meshdata = obj.userData as ModelExtras;
 
-			if (globalThis.logclicks && firstloggable) {
+			if (firstloggable) {
+				globalThis.model = isct.object;
 				firstloggable = false;
-				if (isct.object instanceof Mesh && isct.object.geometry instanceof BufferGeometry) {
+				if (globalThis.logclicks) {
+					if (isct.object instanceof Mesh && isct.object.geometry instanceof BufferGeometry) {
 
-					let indices = [isct.face!.a, isct.face!.b, isct.face!.c];
+						let indices = [isct.face!.a, isct.face!.b, isct.face!.c];
 
-					console.log("Click intersect");
-					for (let [id, attr] of Object.entries(isct.object.geometry.attributes)) {
-						let vals: number[][] = [];
-						for (let index of indices) {
-							let val: number[] = [];
-							vals.push(val);
-							if (attr.itemSize >= 1) { val.push(attr.getX(index)); }
-							if (attr.itemSize >= 2) { val.push(attr.getY(index)); }
-							if (attr.itemSize >= 3) { val.push(attr.getZ(index)); }
-							if (attr.itemSize >= 4) { val.push(attr.getW(index)); }
+						console.log("Click intersect");
+						for (let [id, attr] of Object.entries(isct.object.geometry.attributes)) {
+							let vals: number[][] = [];
+							for (let index of indices) {
+								let val: number[] = [];
+								vals.push(val);
+								if (attr.itemSize >= 1) { val.push(attr.getX(index)); }
+								if (attr.itemSize >= 2) { val.push(attr.getY(index)); }
+								if (attr.itemSize >= 3) { val.push(attr.getZ(index)); }
+								if (attr.itemSize >= 4) { val.push(attr.getW(index)); }
+							}
+							console.log(`${id} = ${vals.map(q => `[${q.map(q => q.toFixed(2)).join(",")}]`)}`);
 						}
-						console.log(`${id} = ${vals.map(q => `[${q.map(q => q.toFixed(2)).join(",")}]`)}`);
 					}
 				}
 			}

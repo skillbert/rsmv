@@ -157,6 +157,8 @@ export async function combineLegacyTexture(engine: EngineCache, name: string, su
 
 
     if (subimg.img.width + subimg.x > img.img.width || subimg.img.height + subimg.y > img.img.height) {
+        console.warn("tried to overlay image outside of dest bounds");
+        return img;
         throw new Error("tried to overlay image outside of dest bounds");
     }
     let combined = makeImageData(img.img.data.slice(), img.img.width, img.img.height);

@@ -17,9 +17,10 @@ import { crc32, CrcBuilder } from "../libs/crc32util";
 import { makeImageData } from "../imgutils";
 import { parseLegacySprite, parseSprite, parseTgaSprite, SubImageData } from "./sprite";
 import { combineLegacyTexture, LegacyData, legacyGroups, legacyMajors, legacyPreload, parseLegacyImageFile } from "../cache/legacycache";
-import { classicConfig, ClassicConfig, classicDecodeMaterialInt, classicGroups, classicIntsToModelMods, classicUnderlays } from "../cache/classicloader";
+import { classicConfig, ClassicConfig, classicGroups } from "../cache/classicloader";
 import { parseRT2Model } from "./rt2model";
 import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof17, classicRoof12, materialPreviewCube, classicWall, classicWallDiag, classicRoof15 } from "./modelutils";
+import { classicOverlays, classicUnderlays } from "./classicmap";
 
 const constModelOffset = 1000000;
 
@@ -164,16 +165,9 @@ export class EngineCache extends CachingFileSource {
 			this.hasNewModels = false;
 			this.hasOldModels = true;
 		} else {
-			this.classicData = await classicConfig(this);
-			//TODO
+			this.classicData = await classicConfig(this, this.getBuildNr());
 			this.mapUnderlays = classicUnderlays();
-			this.mapOverlays = this.classicData.tiles.map(q => {
-				let mods = classicDecodeMaterialInt(q.decor);
-				return {
-					color: (q.type.type == 5 ? [255, 0, 255] : mods.color),
-					material: mods.material
-				};
-			});
+			this.mapOverlays = await classicOverlays(this);
 			this.hasNewModels = false;
 			this.hasOldModels = true;
 		}
