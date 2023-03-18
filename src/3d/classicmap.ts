@@ -45,7 +45,7 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
 
     const config = engine.classicData!;
     let chunkx = 100 - rs2x;
-    let chunkz = 100 - rs2z;
+    let chunkz = 100 - (isunderground ? rs2z - 100 : rs2z);
     let chunknum = `${chunkx.toString().padStart(2, "0")}${chunkz.toString().padStart(2, "0")}`;
 
     let leveldatas: { hei: Buffer | undefined, jm: Buffer | undefined, loc: Buffer | undefined, dat: Buffer | undefined }[] = [];
