@@ -19,22 +19,34 @@ import { parseLegacySprite, parseSprite, parseTgaSprite, SubImageData } from "./
 import { combineLegacyTexture, LegacyData, legacyGroups, legacyMajors, legacyPreload, parseLegacyImageFile } from "../cache/legacycache";
 import { classicConfig, ClassicConfig, classicDecodeMaterialInt, classicGroups, classicIntsToModelMods, classicUnderlays } from "../cache/classicloader";
 import { parseRT2Model } from "./rt2model";
-import { materialPreviewCube, paperRoof, paperWall, paperWallDiag } from "./modelutils";
+import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof17, classicRoof12, materialPreviewCube, classicWall, classicWallDiag, classicRoof15 } from "./modelutils";
 
 const constModelOffset = 1000000;
 
 export const constModelsIds = {
 	materialCube: constModelOffset + 1,
-	paperWall: constModelOffset + 2,
-	paperWallDiag: constModelOffset + 3,
-	paperRoof: constModelOffset + 4,
+	classicWall: constModelOffset + 2,
+	classicWallDiag: constModelOffset + 3,
+	classicRoof10: constModelOffset + 10,
+	classicRoof12: constModelOffset + 12,
+	classicRoof13: constModelOffset + 13,
+	classicRoof14: constModelOffset + 14,
+	classicRoof15: constModelOffset + 15,
+	classicRoof16: constModelOffset + 16,
+	classicRoof17: constModelOffset + 17,
 }
 
 const constModels = new Map([
 	[constModelsIds.materialCube, Promise.resolve(materialPreviewCube)],
-	[constModelsIds.paperWall, Promise.resolve(paperWall)],
-	[constModelsIds.paperWallDiag, Promise.resolve(paperWallDiag)],
-	[constModelsIds.paperRoof, Promise.resolve(paperRoof)]
+	[constModelsIds.classicWall, Promise.resolve(classicWall)],
+	[constModelsIds.classicWallDiag, Promise.resolve(classicWallDiag)],
+	[constModelsIds.classicRoof10, Promise.resolve(classicRoof10)],
+	[constModelsIds.classicRoof12, Promise.resolve(classicRoof12)],
+	[constModelsIds.classicRoof13, Promise.resolve(classicRoof13)],
+	[constModelsIds.classicRoof14, Promise.resolve(classicRoof14)],
+	[constModelsIds.classicRoof15, Promise.resolve(classicRoof15)],
+	[constModelsIds.classicRoof16, Promise.resolve(classicRoof16)],
+	[constModelsIds.classicRoof17, Promise.resolve(classicRoof17)]
 ]);
 
 export type ParsedMaterial = {
@@ -157,7 +169,10 @@ export class EngineCache extends CachingFileSource {
 			this.mapUnderlays = classicUnderlays();
 			this.mapOverlays = this.classicData.tiles.map(q => {
 				let mods = classicDecodeMaterialInt(q.decor);
-				return { color: mods.color, material: mods.material };
+				return {
+					color: (q.type.type == 5 ? [255, 0, 255] : mods.color),
+					material: mods.material
+				};
 			});
 			this.hasNewModels = false;
 			this.hasOldModels = true;

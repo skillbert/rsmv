@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh } from '../3d/mapsquare';
+import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors } from "../constants";
@@ -395,7 +395,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 			}));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
-			let chunkSize = chunks[0].tilerect.xsize;//TODO depends on classic or rs2, must be better way
+			let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
 			if (processedChunks.length != 0) {
 				this.rootnode.add(...processedChunks.map(q => q.group));
 			}

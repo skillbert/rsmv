@@ -8,6 +8,19 @@ const white: rgb = [255, 255, 255];
 const red: rgb = [255, 0, 0];
 const tile = 512;
 const halftile = 256;
+const wall = tile * 192 / 128;//based on wall height
+const rooftop = wall + tile / 2;
+const roofoverhang = halftile + tile / 5;
+const roofhang = wall;// wall - (rooftop - wall) / tile * (roofoverhang - halftile);
+const roofcorner = rooftop - (rooftop - roofhang) / (halftile + roofoverhang) * tile;
+
+function getnormal(v0: xyz, v1: xyz, v2: xyz): xyz {
+    let normx = (v2[1] - v0[1]) * (v1[2] - v0[2]) - (v1[1] - v0[1]) * (v2[2] - v0[2]);
+    let normy = (v2[2] - v0[2]) * (v1[0] - v0[0]) - (v1[2] - v0[2]) * (v2[0] - v0[0]);
+    let normz = (v2[0] - v0[0]) * (v1[1] - v0[1]) - (v1[0] - v0[0]) * (v2[1] - v0[1]);
+    let invlen = 1 / Math.hypot(normx, normy, normz);
+    return [normx * invlen, normy * invlen, normz * invlen];
+}
 
 export class MeshBuilder {
     pos: number[] = [];
@@ -20,38 +33,17 @@ export class MeshBuilder {
     constructor(parent: ModelBuilder | null) {
         this.parent = parent;
     }
-    addParallelogram(col: rgb, [x, y, z]: xyz, [dx1, dy1, dz1]: xyz, [dx2, dy2, dz2]: xyz) {
-        this.pos.push(
-            x, y, z,
-            x + dx1, y + dy1, z + dz1,
-            x + dx1 + dx2, y + dy1 + dy2, z + dz1 + dz2,
-            x + dx2, y + dy2, z + dz2
-        );
-        this.color.push(
-            ...col,
-            ...col,
-            ...col,
-            ...col
-        );
-        this.uvs.push(
-            0, 0,
-            1, 0,
-            1, 1,
-            0, 1
-        );
-        let normx = dy2 * dz1 - dy1 * dz2;
-        let normy = dz2 * dx1 - dz1 * dx2;
-        let normz = dx2 * dy1 - dx1 * dy2;
-        let len = Math.hypot(normx, normy, normz);
-        normx /= len;
-        normy /= len;
-        normz /= len;
-        this.normals.push(
-            normx, normy, normz,
-            normx, normy, normz,
-            normx, normy, normz,
-            normx, normy, normz,
-        )
+    addParallelogram(col: rgb, v0: xyz, v1: xyz, v2: xyz) {
+        let v3 = [
+            v0[0] + v2[0] - v1[0],
+            v0[1] + v2[1] - v1[1],
+            v0[2] + v2[2] - v1[2]
+        ];
+        let norm = getnormal(v0, v1, v2);
+        this.pos.push(...v0, ...v1, ...v2, ...v3);
+        this.color.push(...col, ...col, ...col, ...col);
+        this.normals.push(...norm, ...norm, ...norm, ...norm)
+        this.uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
         this.index.push(
             this.vertindex + 0, this.vertindex + 2, this.vertindex + 1,
             this.vertindex + 0, this.vertindex + 3, this.vertindex + 2,
@@ -59,9 +51,14 @@ export class MeshBuilder {
         this.vertindex += 4;
         return this;
     }
-    addDoubleParallelogram(col: rgb, [x, y, z]: xyz, [dx1, dy1, dz1]: xyz, [dx2, dy2, dz2]: xyz) {
-        this.addParallelogram(col, [x, y, z], [dx1, dy1, dz1], [dx2, dy2, dz2]);
-        this.addParallelogram(col, [x + dx1, y + dy1, z + dz1], [-dx1, -dy1, -dz1], [dx2, dy2, dz2]);
+    addTriangle(col: rgb, v0: xyz, v1: xyz, v2: xyz) {
+        let norm = getnormal(v0, v2, v1);
+        this.color.push(...col, ...col, ...col);
+        this.pos.push(...v0, ...v1, ...v2);
+        this.uvs.push(0, 0, 0, 1, 1, 1);
+        this.normals.push(...norm, ...norm, ...norm);
+        this.index.push(this.vertindex + 0, this.vertindex + 1, this.vertindex + 2);
+        this.vertindex += 3;
         return this;
     }
     addCube(col: rgb, [centerx, centery, centerz]: xyz, [sizex, sizey, sizez]: xyz) {
@@ -71,12 +68,12 @@ export class MeshBuilder {
         let x1 = x0 + sizex;
         let y1 = y0 + sizey;
         let z1 = z0 + sizez;
-        this.addParallelogram(col, [x0, y0, z0], [sizex, 0, 0], [0, sizey, 0]);
-        this.addParallelogram(col, [x1, y0, z0], [0, 0, sizez], [0, sizey, 0]);
-        this.addParallelogram(col, [x1, y0, z1], [-sizex, 0, 0], [0, sizey, 0]);
-        this.addParallelogram(col, [x0, y0, z1], [0, 0, -sizez], [0, sizey, 0]);
-        this.addParallelogram(col, [x0, y0, z1], [sizex, 0, 0], [0, 0, -sizez]);
-        this.addParallelogram(col, [x0, y1, z0], [sizex, 0, 0], [0, 0, sizez]);
+        this.addParallelogram(col, [x0, y0, z0], [x1, y0, z0], [x1, y1, z0]);
+        this.addParallelogram(col, [x1, y0, z0], [x1, y0, z1], [x1, y1, z1]);
+        this.addParallelogram(col, [x1, y0, z1], [x0, y0, z1], [x0, y1, z1]);
+        this.addParallelogram(col, [x0, y0, z1], [x0, y0, z0], [x0, y1, z0]);
+        this.addParallelogram(col, [x0, y0, z1], [x1, y0, z1], [x1, y0, z0]);
+        this.addParallelogram(col, [x0, y1, z0], [x1, y1, z0], [x1, y1, z1]);
         return this;
     }
     addExtrusion(color: rgb, vector: xyz, points: xyz[]) {
@@ -85,7 +82,7 @@ export class MeshBuilder {
         if (Math.hypot(...vector) != 0) {
             for (let a = 0; a < points.length; a++) {
                 let point = points[a];
-                this.addParallelogram(color, prevpoint, [point[0] - prevpoint[0], point[1] - prevpoint[1], point[2] - prevpoint[2]], vector);
+                this.addParallelogram(color, prevpoint, point, [point[0] + vector[0], point[1] + vector[1], point[2] + vector[2]]);
                 prevpoint = point;
             }
         }
@@ -208,19 +205,54 @@ export const materialPreviewCube = new ModelBuilder()
     .mat(0).addCube(white, [0, 300, 0], [600, 600, 600])
     .convert();
 
-export const paperWall = new ModelBuilder()
-    .mat(0).addParallelogram(white, [-halftile, 0, halftile], [0, 2 * tile, 0], [0, 0, -tile])
-    .mat(1).addParallelogram(red, [-halftile, 0, -halftile], [0, 2 * tile, 0], [0, 0, tile])
+export const classicWall = new ModelBuilder()
+    .mat(0).addParallelogram(white, [-halftile, 0, halftile], [-halftile, tile, halftile], [-halftile, tile, -halftile])
+    .mat(1).addParallelogram(red, [-halftile, 0, -halftile], [-halftile, tile, -halftile], [-halftile, tile, halftile])
     .convert();
 
-export const paperWallDiag = new ModelBuilder()
-    .mat(0).addParallelogram(white, [halftile, 0, halftile], [0, 2 * tile, 0], [-tile, 0, -tile])
-    .mat(1).addParallelogram(white, [-halftile, 0, -halftile], [0, 2 * tile, 0], [tile, 0, tile],)
+export const classicWallDiag = new ModelBuilder()
+    .mat(0).addParallelogram(white, [halftile, 0, halftile], [halftile, tile, halftile], [-halftile, tile, -halftile])
+    .mat(1).addParallelogram(white, [-halftile, 0, -halftile], [-halftile, tile, -halftile], [halftile, tile, halftile])
     .convert();
 
-export const paperRoof = new ModelBuilder()
-    .mat(0).addParallelogram(white, [-halftile, 2 * tile, -halftile], [tile, 0, 0], [0, 0, tile])
+//low flat
+export const classicRoof10 = new ModelBuilder()
+    .mat(0).addParallelogram(white, [-roofoverhang, roofcorner, -roofoverhang], [roofoverhang, roofcorner, -roofoverhang], [roofoverhang, roofcorner, roofoverhang])
     .convert();
+
+//edge
+export const classicRoof12 = new ModelBuilder()
+    .mat(0).addParallelogram(white, [-halftile, rooftop, halftile], [-halftile, rooftop, -halftile], [roofoverhang, roofhang, -halftile])
+    .convert();
+
+//diagcorner
+export const classicRoof13 = new ModelBuilder()
+    .mat(0).addTriangle(white, [roofoverhang, roofhang, halftile], [-halftile, roofhang, -roofoverhang], [-halftile, rooftop, halftile])
+    .convert();
+
+//upper convex part
+export const classicRoof14 = new ModelBuilder()
+    .mat(0).addTriangle(white, [-halftile, rooftop, -halftile], [-halftile, rooftop, halftile], [halftile, rooftop, halftile])
+    .mat(0).addTriangle(white, [-halftile, rooftop, -halftile], [halftile, rooftop, halftile], [halftile, roofcorner, -halftile])
+    .convert();
+
+//diagonal center roof
+export const classicRoof15 = new ModelBuilder()
+    .mat(0).addTriangle(white, [halftile, rooftop, halftile], [-halftile, rooftop, -halftile], [-halftile, roofcorner, halftile])
+    .mat(0).addTriangle(white, [-halftile, rooftop, -halftile], [halftile, rooftop, halftile], [halftile, roofcorner, -halftile])
+    .convert();
+
+//corner
+export const classicRoof16 = new ModelBuilder()
+    .mat(0).addTriangle(white, [roofoverhang, roofhang, -roofoverhang], [-halftile, roofhang, -roofoverhang], [-halftile, rooftop, halftile])
+    .mat(0).addTriangle(white, [roofoverhang, roofhang, halftile], [roofoverhang, roofhang, -roofoverhang], [-halftile, rooftop, halftile])
+    .convert();
+
+//flat rooftop
+export const classicRoof17 = new ModelBuilder()
+    .mat(0).addParallelogram(white, [-halftile, rooftop, -halftile], [halftile, rooftop, -halftile], [halftile, rooftop, halftile])
+    .convert();
+
 
 export const topdown2dWallModels = generateTopdown2dWallModels();
 

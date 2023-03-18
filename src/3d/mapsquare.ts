@@ -7,7 +7,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { ModelMeshData, ModelData } from "./rt7model";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial, constModelsIds } from "./modeltothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
@@ -504,7 +504,7 @@ export class TileGrid implements TileGridSource {
 		this.xstep = 1;
 		this.zstep = this.xstep * area.xsize;
 		this.levelstep = this.zstep * area.zsize;
-		this.tiles = [];
+		this.tiles = new Array(this.levelstep * this.levels).fill(undefined);
 	}
 
 	getHeightCollisionFile(x: number, z: number, level: number, xsize: number, zsize: number) {
@@ -860,7 +860,7 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 					zsize: squareSize
 				};
 			} else {
-				let mapdata = await getClassicMapData(engine, rect.x + x, rect.z + z, 0);
+				let mapdata = await getClassicMapData(engine, rect.x + x, rect.z + z);
 				if (!mapdata) { continue; }
 				tiles = mapdata.tiles;
 				tilerect = mapdata.rect;
@@ -885,10 +885,10 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 			chunks.push(chunk);
 		}
 	}
-	grid.blendUnderlays();
 	if (engine.classicData) {
 		classicModifyTileGrid(grid);
 	}
+	grid.blendUnderlays();
 	for (let chunk of chunks) {
 		chunk.locs = await mapsquareObjects(engine, grid, chunk.rawlocs, chunk.tilerect.x, chunk.tilerect.z, !!opts?.collision);
 	}
