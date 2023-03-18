@@ -75,8 +75,9 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	constructor(meta: Openrs2CacheMeta) {
 		super(false);
 		this.meta = meta;
-		if (meta.builds.length != 0) {
-			this.buildnr = meta.builds[0].major;
+		let buildnrentry = meta.builds.find(q => q.major != 0);
+		if (buildnrentry) {
+			this.buildnr = buildnrentry.major;
 		} else {
 			console.warn("using historic cache for which the build number is not available, treating it as current.");
 			this.buildnr = latestBuildNumber;
@@ -85,7 +86,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	getCacheMeta() {
 		return {
 			name: `openrs2:${this.meta.id}`,
-			descr: `build: ${this.meta.builds[0].major}`
+			descr: `build: ${this.buildnr}`
 				+ `\ndate: ${new Date(this.meta.timestamp ?? "").toDateString()}`
 				+ `\nHistoric cache loaded from openrs2 cache repository.`
 		};
