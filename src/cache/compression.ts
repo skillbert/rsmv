@@ -76,12 +76,12 @@ export function legacybz2(input: Buffer) {
 var _zlib = function (input: Buffer, key?: Uint32Array) {
 	var zlib = require("zlib") as typeof import("zlib");
 	try {
+		let compressedsize = input.readUint32BE(1);
 		if (key) {
-			let compressedsize = input.readUint32BE(1);
 			let compressedData = simplexteadecrypt(input.slice(5, 5 + 4 + compressedsize), key);
 			return zlib.gunzipSync(compressedData.slice(4, 4 + compressedsize));
 		} else {
-			let compressedData = input.slice(9);
+			let compressedData = input.slice(9, 9 + compressedsize);
 			return zlib.gunzipSync(compressedData);
 		}
 	} catch (e) {

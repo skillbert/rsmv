@@ -1,10 +1,10 @@
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
-import { FileRange } from "../cliparser";
+import { FileRange } from "../utils";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { cacheFileDecodeModes, DecodeMode, DecodeModeFactory } from "./filetypes";
 
-export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange, edit: boolean, keepbuffers: boolean }) {
+export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange[], edit: boolean, keepbuffers: boolean }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
 	let flags: Record<string, string> = {};

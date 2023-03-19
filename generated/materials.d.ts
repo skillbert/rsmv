@@ -48,8 +48,8 @@ export type materials = {
 			unk09_bool: boolean,
 			unk0a_bool: boolean,
 			specular: number,
-			ignoreVertexColors: number,
-			colorint: number,
+			baseColorFraction: number,
+			baseColor: number,
 		} | null,
 	} | null,
 	v1: {

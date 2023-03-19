@@ -14,8 +14,8 @@ export type MaterialData = {
 	texmodes: TextureRepeatMode,
 	texmodet: TextureRepeatMode,
 	uvAnim: { u: number, v: number } | undefined,
-	vertexColorWhitening: number
-	reflectionColor: [number, number, number],//TODO currently unused
+	baseColorFraction: number
+	baseColor: [number, number, number],
 	alphamode: "opaque" | "cutoff" | "blend",
 	alphacutoff: number,
 	stripDiffuseAlpha: boolean,
@@ -28,8 +28,8 @@ export function defaultMaterial(): MaterialData {
 		texmodes: "repeat",
 		texmodet: "repeat",
 		uvAnim: undefined,
-		vertexColorWhitening: 0,
-		reflectionColor: [1, 1, 1],
+		baseColorFraction: 0,
+		baseColor: [1, 1, 1],
 		alphamode: "opaque",
 		alphacutoff: 0.1,
 		stripDiffuseAlpha: false,
@@ -67,16 +67,17 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 			let scale = 1 / (1 << 15);
 			mat.uvAnim = { u: (raw.animtexU ?? 0) * scale, v: (raw.animtexV ?? 0) * scale };
 		}
-		mat.vertexColorWhitening = (raw.extra ? raw.extra.ignoreVertexColors / 255 : 0);
+		mat.baseColorFraction = (raw.extra ? raw.extra.baseColorFraction / 255 : 0);
 		if (raw.extra) {
-			mat.reflectionColor = HSL2RGBfloat(packedHSL2HSL(raw.extra.colorint));
+			//seems like 0 is a special case, but unclear
+			mat.baseColor = (raw.extra.baseColor == 0 ? [255, 255, 255] : HSL2RGBfloat(packedHSL2HSL(raw.extra.baseColor)));
 		}
 		mat.stripDiffuseAlpha = (mat.alphamode == "opaque");
 	} else if (rawparsed.v1) {
 		let raw = rawparsed.v1;
 		//this is very wrong
 		mat.alphamode = (raw.opaque_2 && !raw.hasUVanimU ? "cutoff" : "blend");
-		mat.vertexColorWhitening = 1;//!flags.ignore_vertexcol_17;
+		mat.baseColorFraction = 1;
 		if (raw.diffuse) { mat.textures.diffuse = raw.diffuse.texture; }
 		if (raw.normal) { mat.textures.normal = raw.normal.texture; }
 		if (raw.compound) { mat.textures.compound = raw.compound.texture; }

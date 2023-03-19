@@ -143,7 +143,7 @@ export class EngineCache extends CachingFileSource {
 					this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
 				}
 			}
-			if (this.getBuildNr() <= 498) {
+			if (this.getBuildNr() <= 471) {
 				for (let file of await this.getArchiveById(cacheMajors.texturesOldPng, 0)) {
 					this.materialArchive.set(file.fileid, file.buffer);
 				}
@@ -193,11 +193,11 @@ export class EngineCache extends CachingFileSource {
 					cached = defaultMaterial();
 					if (id != -1) {
 						cached.textures.diffuse = id;
-						cached.vertexColorWhitening = (id == 0 ? 0 : 1);
+						cached.baseColorFraction = (id == 0 ? 0 : 1);
 						cached.texmodes = "mirror";
 						cached.texmodet = "mirror";
 					}
-				} else if (this.getBuildNr() <= 498) {
+				} else if (this.getBuildNr() <= 471) {
 					let file = this.materialArchive.get(id);
 					if (!file) { throw new Error("material " + id + " not found"); }
 					let matprops = parse.oldproctexture.read(file, this);
@@ -272,7 +272,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 		textureMode = (texindex ? "legacy" : "legacytga");
 	} else if (source.getBuildNr() <= lastLegacyBuildnr) {
 		textureMode = "legacy";
-	} else if (source.getBuildNr() <= 498) {
+	} else if (source.getBuildNr() <= 471) {
 		textureMode = "oldproc";
 	} else if (source.getBuildNr() <= 736) {
 		textureMode = "none";//uses old procedural textures in index 9
@@ -351,7 +351,8 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			mat.emissiveMap.wrapS = wraptypes;
 			mat.emissiveMap.wrapT = wraptypet;
 			mat.emissiveMap.magFilter = THREE.LinearFilter;
-			mat.emissive.setRGB(material.reflectionColor[0], material.reflectionColor[1], material.reflectionColor[2]);
+			//TODO this is contradictory with the other interpreration of basecolor
+			mat.emissive.setRGB(material.baseColor[0], material.baseColor[1], material.baseColor[2]);
 		}
 		if (material.textures.compound) {
 			let compound = await (await source.getTextureFile("compound", material.textures.compound, false)).toImageData();
@@ -373,7 +374,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			mat.metalness = 1;
 		}
 	}
-	mat.vertexColors = material.vertexColorWhitening != 1 || hasVertexAlpha;
+	mat.vertexColors = material.baseColorFraction != 1 || hasVertexAlpha;
 
 	mat.userData = material;
 	if (material.uvAnim) {
@@ -518,23 +519,23 @@ export class ThreejsSceneCache {
 	}
 }
 
+function clamp(num: number) {
+	return (num > 255 ? 255 : num < 0 ? 0 : num);
+}
 
 export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
 	let oldcol = mesh.geometry.getAttribute("color");
 	let hasVertexAlpha = !!oldcol && oldcol.itemSize == 4;
 	mesh.material = parsedmat.mat;
-	let needsvertexcolors = parsedmat.matmeta.vertexColorWhitening != 1 || hasVertexAlpha;
+	let needsvertexcolors = parsedmat.matmeta.baseColorFraction != 1 || hasVertexAlpha;
 	if (needsvertexcolors) {
-		if (parsedmat.matmeta.vertexColorWhitening != 0) {
+		if (parsedmat.matmeta.baseColorFraction != 0) {
 			let vertcount = mesh.geometry.getAttribute("position").count;
 			let oldcol = mesh.geometry.getAttribute("color");
-			let oldfrac = 1 - parsedmat.matmeta.vertexColorWhitening;
-			// let newrcomp = parsedmat.matmeta.vertexColorWhitening * parsedmat.matmeta.reflectionColor[0];
-			// let newgcomp = parsedmat.matmeta.vertexColorWhitening * parsedmat.matmeta.reflectionColor[1];
-			// let newbcomp = parsedmat.matmeta.vertexColorWhitening * parsedmat.matmeta.reflectionColor[2];
-			let newrcomp = 1;//This should be blended using like code above i think, but still missing something
-			let newgcomp = 1;//most models use white anyway, but there are some ~2011 models that use other colors
-			let newbcomp = 1;
+			let oldfrac = 1 - parsedmat.matmeta.baseColorFraction;
+			let newrcomp = parsedmat.matmeta.baseColorFraction * parsedmat.matmeta.baseColor[0];
+			let newgcomp = parsedmat.matmeta.baseColorFraction * parsedmat.matmeta.baseColor[1];
+			let newbcomp = parsedmat.matmeta.baseColorFraction * parsedmat.matmeta.baseColor[2];
 			let stride = hasVertexAlpha ? 4 : 3;
 			let buf = new Uint8Array(stride * vertcount);
 			if (hasVertexAlpha && !oldcol) {
@@ -544,9 +545,9 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
 				let oldr = (oldcol ? oldcol.getX(i) : 1);
 				let oldg = (oldcol ? oldcol.getY(i) : 1);
 				let oldb = (oldcol ? oldcol.getZ(i) : 1);
-				buf[i * stride + 0] = (oldr * oldfrac + newrcomp) * 255;
-				buf[i * stride + 1] = (oldg * oldfrac + newgcomp) * 255;
-				buf[i * stride + 2] = (oldb * oldfrac + newbcomp) * 255;
+				buf[i * stride + 0] = clamp((oldr * oldfrac + newrcomp) * 255);
+				buf[i * stride + 1] = clamp((oldg * oldfrac + newgcomp) * 255);
+				buf[i * stride + 2] = clamp((oldb * oldfrac + newbcomp) * 255);
 				if (hasVertexAlpha) {
 					buf[i * stride + 3] = oldcol.getW(i) * 255;
 				}

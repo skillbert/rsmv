@@ -1949,7 +1949,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 						texdata = atlas.map.get(mat.textures.diffuse)!;
 					}
 					//TODO use linear scale here instead of bool
-					whitemix = mat.vertexColorWhitening;
+					whitemix = mat.baseColorFraction;
 				}
 				if (texdata) {
 					//TODO is the 128px per tile a constant?
