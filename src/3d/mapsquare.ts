@@ -51,6 +51,29 @@ export function mapRectContains(rect: MapRect, x: number, z: number) {
 	return true;
 }
 
+let scratchbuffers = new Map<string, ArrayBuffer>();
+let scratchbuffersinuse = new Set<string>();
+function borrowScratchbuffer(size: number, key = "default") {
+	if (scratchbuffersinuse.has(key)) {
+		console.error("scratchbuffer hasn't been returned since last use, leaking memory by creating new buffer.");
+		scratchbuffersinuse.delete(key);
+		scratchbuffers.delete(key);
+	}
+	let buf = scratchbuffers.get(key);
+	if (!buf || buf && buf.byteLength < size) {
+		buf = new ArrayBuffer(size);
+		scratchbuffers.set(key, buf);
+		console.log("allocating new scratchbuf mb:", (size / 1e6).toFixed(2));
+	}
+	scratchbuffersinuse.add(key);
+	let exit = (copysize: number) => {
+		scratchbuffersinuse.delete(key);
+		if (copysize > size) { throw new Error("larger slice of scratchbuffer requested than was reserved"); }
+		return buf!.slice(0, copysize);
+	}
+	return [buf, exit] as const;
+}
+
 type CollisionData = {
 	settings: number,
 	//center,left,bot,right,top,topleft,botleft,botright,topright
@@ -127,37 +150,104 @@ export type ModelExtras = ModelExtrasLocation | ModelExtrasOverlay | {
 
 export type MeshTileInfo = { tile: mapsquare_tiles["tiles"][number], x: number, z: number, level: number };
 
-export type TileProps = {
-	raw: mapsquare_tiles["tiles"][number],
-	rawOverlay: mapsquare_overlays | undefined,
-	rawUnderlay: mapsquare_underlays | undefined,
-	next01: TileProps | undefined,
-	next10: TileProps | undefined,
-	next11: TileProps | undefined,
-	x: number,
-	y: number,
-	z: number,
-	y10: number,
-	y01: number,
-	y11: number,
-	playery00: number,
-	playery01: number,
-	playery10: number,
-	playery11: number,
-	shape: TileShape,
-	visible: boolean,
-	normalX: number,
-	normalZ: number,
-	bleedsOverlayMaterial: boolean,
-	//0 botleft,1 botmid,2 leftmid,3 midmid
-	vertexprops: TileVertex[],
-	overlayprops: TileVertex,
-	originalUnderlayColor: number[],
-	underlayprops: TileVertex,
-	rawCollision: CollisionData | undefined,
-	effectiveCollision: CollisionData | undefined,
-	effectiveLevel: number,
-	effectiveVisualLevel: number
+
+export class TileProps {
+	raw: mapsquare_tiles["tiles"][number];
+	rawOverlay: mapsquare_overlays | undefined;
+	rawUnderlay: mapsquare_underlays | undefined;
+	next01: TileProps | undefined;
+	next10: TileProps | undefined;
+	next11: TileProps | undefined;
+	x: number;
+	y: number;
+	z: number;
+	y10: number;
+	y01: number;
+	y11: number;
+	playery00: number;
+	playery01: number;
+	playery10: number;
+	playery11: number;
+	shape: TileShape;
+	visible: boolean;
+	normalX: number;
+	normalZ: number;
+	bleedsOverlayMaterial: boolean;
+	//0 botleft,1 botmid,2 leftmid,3 midmi;
+	vertexprops: TileVertex[];
+	overlayprops: TileVertex;
+	originalUnderlayColor: number[];
+	underlayprops: TileVertex;
+	rawCollision: CollisionData | undefined;
+	effectiveCollision: CollisionData | undefined;
+	effectiveLevel: number;
+	effectiveVisualLevel: number;
+
+	constructor(engine: EngineCache, height: number, tile: mapsquare_tiles["tiles"][number], tilex: number, tilez: number, level: number, docollision: boolean) {
+		let visible = false;
+		let shape = (tile.shape == undefined ? defaulttileshape : tileshapes[tile.shape]);
+		let bleedsOverlayMaterial = false;
+		let underlayprop: TileVertex | undefined = undefined;
+		let overlayprop: TileVertex | undefined = undefined;
+		//TODO bound checks
+		let underlay = (tile.underlay != undefined ? engine.mapUnderlays[tile.underlay - 1] : undefined);
+		if (underlay) {
+			if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
+				visible = true;
+			}
+			underlayprop = {
+				material: underlay.material ?? -1,
+				materialTiling: underlay.material_tiling ?? 128,
+				color: underlay.color ?? [255, 0, 255]
+			};
+		}
+		let overlay = (tile.overlay != undefined ? engine.mapOverlays[tile.overlay - 1] : undefined);
+		if (overlay) {
+			overlayprop = {
+				material: overlay.materialbyte ?? overlay.material ?? -1,
+				materialTiling: overlay.material_tiling ?? 128,
+				color: overlay.color ?? (overlay.materialbyte != null ? [255, 255, 255] : [255, 0, 255])
+			};
+			bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
+		}
+		let y = height * tiledimensions * heightScale;
+		//need to clone here since its colors will be modified
+		underlayprop ??= { ...defaultVertexProp };
+		overlayprop ??= { ...defaultVertexProp };
+		let collision: CollisionData | undefined = undefined;
+		if (docollision) {
+			let blocked = ((tile.settings ?? 0) & 1) != 0;
+			collision = {
+				settings: tile.settings ?? 0,
+				walk: [blocked, false, false, false, false, false, false, false, false],
+				sight: [false, false, false, false, false, false, false, false, false]
+			}
+		}
+		this.raw = tile;
+		this.rawOverlay = overlay;
+		this.rawUnderlay = underlay;
+		this.next01 = undefined;
+		this.next10 = undefined;
+		this.next11 = undefined;
+		this.x = tilex;
+		this.y = y;
+		this.z = tilez;
+		this.y01 = y; this.y10 = y; this.y11 = y;
+		this.playery00 = y, this.playery01 = y; this.playery10 = y; this.playery11 = y;
+		this.shape = shape;
+		this.visible = visible;
+		this.normalX = 0;
+		this.normalZ = 0;
+		this.bleedsOverlayMaterial = bleedsOverlayMaterial;
+		this.vertexprops = [underlayprop, underlayprop, underlayprop, underlayprop];
+		this.underlayprops = underlayprop;
+		this.overlayprops = overlayprop;
+		this.originalUnderlayColor = underlayprop.color;
+		this.rawCollision = collision;
+		this.effectiveCollision = collision;
+		this.effectiveLevel = level;
+		this.effectiveVisualLevel = 0
+	}
 }
 
 type FloorMorph = {
@@ -704,73 +794,8 @@ export class TileGrid implements TileGridSource {
 						//TODO this is a guess that sort of fits
 						height += 30;
 					}
-					let visible = false;
-					let shape = (tile.shape == undefined ? defaulttileshape : tileshapes[tile.shape]);
-					let bleedsOverlayMaterial = false;
-					let underlayprop: TileVertex | undefined = undefined;
-					let overlayprop: TileVertex | undefined = undefined;
-					//TODO bound checks
-					let underlay = (tile.underlay != undefined ? this.engine.mapUnderlays[tile.underlay - 1] : undefined);
-					if (underlay) {
-						if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
-							visible = true;
-						}
-						underlayprop = {
-							material: underlay.material ?? -1,
-							materialTiling: underlay.material_tiling ?? 128,
-							color: underlay.color ?? [255, 0, 255]
-						};
-					}
-					let overlay = (tile.overlay != undefined ? this.engine.mapOverlays[tile.overlay - 1] : undefined);
-					if (overlay) {
-						overlayprop = {
-							material: overlay.materialbyte ?? overlay.material ?? -1,
-							materialTiling: overlay.material_tiling ?? 128,
-							color: overlay.color ?? (overlay.materialbyte != null ? [255, 255, 255] : [255, 0, 255])
-						};
-						bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
-					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
-					//let newindex = this.levelstep * level + (z + chunk.zoffset - this.zoffset) * this.zstep + (x + chunk.xoffset - this.xoffset) * this.xstep
-					let y = height * tiledimensions * heightScale;
-					//need to clone here since its colors will be modified
-					underlayprop ??= { ...defaultVertexProp };
-					overlayprop ??= { ...defaultVertexProp };
-					let collision: CollisionData | undefined = undefined;
-					if (docollision) {
-						let blocked = ((tile.settings ?? 0) & 1) != 0;
-						collision = {
-							settings: tile.settings ?? 0,
-							walk: [blocked, false, false, false, false, false, false, false, false],
-							sight: [false, false, false, false, false, false, false, false, false]
-						}
-					}
-					let parsedTile: TileProps = {
-						raw: tile,
-						rawOverlay: overlay,
-						rawUnderlay: underlay,
-						next01: undefined,
-						next10: undefined,
-						next11: undefined,
-						x: tilex,
-						y: y,
-						z: tilez,
-						y01: y, y10: y, y11: y,
-						playery00: y, playery01: y, playery10: y, playery11: y,
-						shape,
-						visible,
-						normalX: 0, normalZ: 0,
-						bleedsOverlayMaterial,
-						vertexprops: [underlayprop, underlayprop, underlayprop, underlayprop],
-						underlayprops: underlayprop,
-						overlayprops: overlayprop,
-						originalUnderlayColor: underlayprop.color,
-						rawCollision: collision,
-						effectiveCollision: collision,
-						effectiveLevel: level,
-						effectiveVisualLevel: 0
-					}
-					this.tiles[newindex] = parsedTile;
+					this.tiles[newindex] = new TileProps(this.engine, height, tile, tilex, tilez, level, docollision);
 					tileindex += chunkrect.xsize * chunkrect.zsize;
 				}
 			}
@@ -803,7 +828,7 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 			let levelcount = squareLevels;
 
 			if (engine.getBuildNr() > lastClassicBuildnr) {
-				let tilefile: Buffer;
+				let tilefile: Buffer | null = null;
 				let locsfile: Buffer | null = null;
 				if (engine.getBuildNr() >= 759) {
 					let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
@@ -844,8 +869,16 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 					if (!info) {
 						continue;
 					}
-					tilefile = await engine.getFile(legacyMajors.map, info.map);
-					locsfile = await engine.getFile(legacyMajors.map, info.loc);
+					try {
+						tilefile = await engine.getFile(legacyMajors.map, info.map);
+						locsfile = await engine.getFile(legacyMajors.map, info.loc);
+					} catch {
+						console.warn(`map for ${rect.x + x}_${rect.z + z} declared but file did not exist`);
+					}
+				}
+				if (!tilefile) {
+					//should only happen when files are missing
+					continue;
 				}
 				let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
 				tiles = tiledata.tiles;
@@ -916,6 +949,20 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 }
 
 export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
+	let floors = await mapsquareFloors(scene, grid, chunk);
+	let models = mapsquareObjectModels(chunk.locs);
+	let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
+	let r: ChunkModelData = {
+		chunk,
+		floors,
+		models,
+		grid,
+		overlays
+	}
+	return r;
+}
+
+async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
 	let floors: FloorMeshData[] = [];
 	let matids = grid.gatherMaterials(chunk.tilerect.x, chunk.tilerect.z, chunk.tilerect.xsize + 1, chunk.tilerect.zsize + 1);
 	let textures = new Map<number, { tex: CanvasImage, repeat: number }>();
@@ -952,16 +999,7 @@ export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, 
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, true));
 		}
 	}
-	let models = mapsquareObjectModels(chunk.locs);
-	let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
-	let r: ChunkModelData = {
-		chunk,
-		floors,
-		models,
-		grid,
-		overlays
-	}
-	return r;
+	return floors
 }
 
 export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkModelData, placedlocs: PlacedModel[]) {
@@ -972,11 +1010,14 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 
 	let rootx = chunk.chunk.tilerect.x * tiledimensions;
 	let rootz = chunk.chunk.tilerect.z * tiledimensions;
+
 	if (placedlocs.length != 0) { node.add(...placedlocs.map(q => meshgroupsToThree(grid, q, rootx, rootz))); }
 	let chunkoverlays = chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(grid, q, rootx, rootz));
 	if (chunkoverlays.length != 0) { node.add(...chunkoverlays); }
+
 	let floors = (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any;
 	if (floors.length != 0) { node.add(...floors); }
+
 	for (let level = 0; level < squareLevels; level++) {
 		let boxes = mapsquareCollisionToThree(chunk, level);
 		if (boxes) { node.add(boxes); }
@@ -984,29 +1025,6 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 		if (rawboxes) { node.add(rawboxes); }
 	}
 	return node;
-}
-
-function copyImageData(dest: ImageData, src: ImageData, destx: number, desty: number, srcx = 0, srcy = 0, width?: number, height?: number) {
-	const targetStride = 4 * dest.width;
-	const srcStride = 4 * src.width;
-	const targetdata = dest.data;
-	const srcdata = src.data;
-	if (typeof width == "undefined") { width = src.width; }
-	if (typeof height == "undefined") { height = src.height; }
-	for (let dy = 0; dy < height; dy++) {
-		for (let dx = 0; dx < width; dx++) {
-			let isrc = (dx + srcx) * 4 + (dy + srcy) * srcStride;
-			let itarget = (dx + destx) * 4 + (dy + desty) * targetStride;
-			targetdata[itarget + 0] = srcdata[isrc + 0];
-			targetdata[itarget + 1] = srcdata[isrc + 1];
-			targetdata[itarget + 2] = srcdata[isrc + 2];
-			targetdata[itarget + 3] = srcdata[isrc + 3];
-		}
-	}
-}
-
-function copyCanvasImage(ctx: CanvasRenderingContext2D, src: CanvasImage, destx: number, desty: number, srcx = 0, srcy = 0, width = src.width, height = src.height) {
-	ctx.drawImage(src, srcx, srcy, width, height, destx, desty, width, height);
 }
 
 type CanvasImage = Exclude<CanvasImageSource, SVGImageElement>;
@@ -1064,6 +1082,11 @@ class SimpleTexturePacker {
 		let cnv = document.createElement("canvas");
 		cnv.width = this.size; cnv.height = this.size;
 		let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
+
+		let drawSubimg = (src: CanvasImage, destx: number, desty: number, srcx = 0, srcy = 0, width = src.width, height = src.height) => {
+			ctx.drawImage(src, srcx, srcy, width, height, destx, desty, width, height);
+		}
+
 		console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
 		for (let alloc of this.allocs) {
 			let xx1 = -this.padsize;
@@ -1076,7 +1099,7 @@ class SimpleTexturePacker {
 				for (let x = xx1; x < xx2; x = nextx) {
 					var nextx = Math.min(xx2, Math.ceil((x + 1) / alloc.img.width) * alloc.img.width);
 
-					copyCanvasImage(ctx, alloc.img,
+					drawSubimg(alloc.img,
 						alloc.x + x,
 						alloc.y + y,
 						posmod(x, alloc.img.width),
@@ -1591,8 +1614,9 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 	let stride = 16;
 	const posstride = stride / 4 | 0;
 	const colorstride = stride;
-	let buf = new ArrayBuffer(stride * maxtriangles * 3);
-	let indexbuf = new Uint32Array(maxtriangles * 3);
+	let [buf, slicebuf] = borrowScratchbuffer(stride * maxtriangles * 3);
+	let [indexbufdata, sliceindexbuf] = borrowScratchbuffer(maxtriangles * 3 * 4, "index");
+	let indexbuf = new Uint32Array(indexbufdata);
 	let posbuffer = new Float32Array(buf);
 	let colorbuffer = new Uint8Array(buf);
 
@@ -1693,10 +1717,15 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 		level
 	}
 
+	// console.log(`using ${vertexindex * stride}/${buf.byteLength} of collision buf`);
+
+	let bufslice = slicebuf(vertexindex * stride);
+	let indexslice = sliceindexbuf(indexpointer * 4);
+
 	return {
-		pos: new Float32Array(buf, 0, vertexindex * posstride),
-		color: new Uint8Array(buf, 0, vertexindex * colorstride),
-		indices: new Uint32Array(indexbuf.buffer, 0, indexpointer),
+		pos: new Float32Array(bufslice),
+		color: new Uint8Array(bufslice),
+		indices: new Uint32Array(indexslice),
 		posstride,
 		colorstride,
 		posoffset,
@@ -1841,10 +1870,11 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 	const texweightoffset = 32;// 32/1
 	const texuvoffset = 18;// 36/2
 	const vertexstride = 52;
-	//overalloce worst case scenario
-	let vertexbuffer = new ArrayBuffer(maxtiles * vertexstride * maxVerticesPerTile);
+	//write to oversized static buffer, then copy out what we actually used
+	let [vertexbuffer, slicebuffer] = borrowScratchbuffer(maxtiles * vertexstride * maxVerticesPerTile);
+	let [indexbufferdata, sliceindexbuffer] = borrowScratchbuffer(maxtiles * maxVerticesPerTile * 4, "index");
 	//TODO get rid of indexbuffer since we're not actually using it and it doesn't fit in uint16 anyway
-	let indexbuffer = new Uint32Array(maxtiles * maxVerticesPerTile);
+	let indexbuffer = new Uint32Array(indexbufferdata);
 	let posbuffer = new Float32Array(vertexbuffer);//size 12 bytes
 	let normalbuffer = new Float32Array(vertexbuffer);//size 12 bytes
 	let colorbuffer = new Uint8Array(vertexbuffer);//4 bytes
@@ -1856,7 +1886,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 	const colorstride = vertexstride | 0;//color indices to skip per vertex (cast to int32)
 	const texusescolorstride = vertexstride | 0;//wether each texture uses vertex colors or not
 	const texweightstride = vertexstride | 0;
-	const textuvstride = vertexstride / 2 | 0;
+	const texuvstride = vertexstride / 2 | 0;
 
 	let vertexindex = 0;
 	let indexpointer = 0;
@@ -1874,7 +1904,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		const colpointer = vertexindex * colorstride + coloroffset;
 		const texweightpointer = vertexindex * texweightstride + texweightoffset;
 		const texusescolorpointer = vertexindex * texusescolorstride + texusescoloroffset;
-		const texuvpointer = vertexindex * textuvstride + texuvoffset;
+		const texuvpointer = vertexindex * texuvstride + texuvoffset;
 
 		const w00 = (1 - subx) * (1 - subz);
 		const w01 = subx * (1 - subz);
@@ -1901,34 +1931,40 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		colorbuffer[colpointer + 2] = polyprops[currentmat].color[2];
 		colorbuffer[colpointer + 3] = 255;//4 alpha channel because of gltf
 
-		for (let i = 0; i < polyprops.length; i++) {
-			const subprop = polyprops[i];
-			let texdata: SimpleTexturePackerAlloc | undefined = undefined;
-			let whitemix = 0;
-			if (subprop && subprop.material != -1) {
-				let mat = grid.engine.getMaterialData(subprop.material);
-				if (mat.textures.diffuse) {
-					texdata = atlas.map.get(mat.textures.diffuse)!;
-				}
-				//TODO use linear scale here instead of bool
-				whitemix = mat.vertexColorWhitening;
-			}
-			if (!texdata) {
-				//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
-				//not writing anything simple leaves the weight for this texture at 0
-				continue;
-			}
-			//TODO is the 128px per tile a constant?
-			//definitely not, there are also 64px textures
-			let gridsize = subprop.materialTiling / 128;
-			let ubase = (tile.x / tiledimensions) % gridsize;
-			let vbase = (tile.z / tiledimensions) % gridsize;
-			const maxuv = 0x10000;
-			texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + subx) / gridsize) * maxuv;
-			texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + subz) / gridsize) * maxuv;
+		for (let i = 0; i < 4; i++) {
+			//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
+			//not writing anything simple leaves the weight for this texture at 0
+			texuvbuffer[texuvpointer + 2 * i + 0] = 0;
+			texuvbuffer[texuvpointer + 2 * i + 1] = 0;
+			texweightbuffer[texweightpointer + i] = 0;
+			texusescolorbuffer[texusescolorpointer + i] = 0;
 
-			texweightbuffer[texweightpointer + i] = (i == currentmat ? 255 : 0);
-			texusescolorbuffer[texusescolorpointer + i] = 255 - whitemix * 255;
+			if (i < polyprops.length) {
+				const subprop = polyprops[i];
+				let texdata: SimpleTexturePackerAlloc | undefined = undefined;
+				let whitemix = 0;
+				if (subprop && subprop.material != -1) {
+					let mat = grid.engine.getMaterialData(subprop.material);
+					if (mat.textures.diffuse) {
+						texdata = atlas.map.get(mat.textures.diffuse)!;
+					}
+					//TODO use linear scale here instead of bool
+					whitemix = mat.vertexColorWhitening;
+				}
+				if (texdata) {
+					//TODO is the 128px per tile a constant?
+					//definitely not, there are also 64px textures
+					let gridsize = subprop.materialTiling / 128;
+					let ubase = (tile.x / tiledimensions) % gridsize;
+					let vbase = (tile.z / tiledimensions) % gridsize;
+					const maxuv = 0x10000;
+					texuvbuffer[texuvpointer + 2 * i + 0] = (texdata.u + texdata.usize * (ubase + subx) / gridsize) * maxuv;
+					texuvbuffer[texuvpointer + 2 * i + 1] = (texdata.v + texdata.vsize * (vbase + subz) / gridsize) * maxuv;
+
+					texweightbuffer[texweightpointer + i] = (i == currentmat ? 255 : 0);
+					texusescolorbuffer[texusescolorpointer + i] = 255 - whitemix * 255;
+				}
+			}
 		}
 
 		return vertexindex++;
@@ -2059,6 +2095,16 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		subranges: tileindices
 	};
 
+	// console.log(`using ${vertexindex * vertexstride}/${vertexbuffer.byteLength} bytes of floor buffer`);
+
+	//copy the part of the buffer that we actually used
+	let vertexslice = slicebuffer(vertexindex * vertexstride);
+	let indexslice = sliceindexbuffer(indexpointer * 4);
+
+	let vertexfloat = new Float32Array(vertexslice);
+	let vertexubyte = new Uint8Array(vertexslice);
+	let vertexushort = new Uint16Array(vertexslice);
+
 	return {
 		chunk,
 		level,
@@ -2066,20 +2112,19 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		tileinfos,
 		worldmap,
 
-		buffer: new Uint8Array(vertexbuffer, 0, vertexindex * vertexstride),
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
-		indices: indexbuffer.subarray(0, indexpointer),
+		indices: new Uint32Array(indexslice),
 		nvertices: vertexindex,
 		atlas,
 
-		pos: { src: posbuffer.subarray(0, vertexindex * posstride) as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
-		normal: { src: normalbuffer.subarray(0, vertexindex * normalstride), offset: normaloffset, vecsize: 3, normalized: false },
-		color: { src: colorbuffer.subarray(0, vertexindex * colorstride), offset: coloroffset, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_UV01: { src: texuvbuffer.subarray(0, vertexindex * textuvstride), offset: texuvoffset + 0, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_UV23: { src: texuvbuffer.subarray(0, vertexindex * textuvstride), offset: texuvoffset + 4, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_WEIGHTS: { src: texweightbuffer.subarray(0, vertexindex * texweightstride), offset: texweightoffset, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_USESCOLOR: { src: texusescolorbuffer.subarray(0, vertexindex * texusescolorstride), offset: texusescoloroffset, vecsize: 4, normalized: true },
+		pos: { src: vertexfloat as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
+		normal: { src: vertexfloat, offset: normaloffset, vecsize: 3, normalized: false },
+		color: { src: vertexubyte, offset: coloroffset, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_UV01: { src: vertexushort, offset: texuvoffset + 0, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_UV23: { src: vertexushort, offset: texuvoffset + 4, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_WEIGHTS: { src: vertexubyte, offset: texweightoffset, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_USESCOLOR: { src: vertexubyte, offset: texusescoloroffset, vecsize: 4, normalized: true },
 
 		posmax: [maxx, maxy, maxz],
 		posmin: [minx, miny, minz],
