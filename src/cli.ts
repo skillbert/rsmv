@@ -92,7 +92,7 @@ const filehist = command({
 
 		let id = args.id.split(".").map(q => +q);
 		if (id.length == 0 || id.some(q => isNaN(q))) { throw new Error("invalid id"); }
-		await output.run(fileHistory, outdir, args.mode as any, id, null);
+		await output.run(fileHistory, outdir, args.mode as any, id, null, null);
 	}
 });
 

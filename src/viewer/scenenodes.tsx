@@ -1843,16 +1843,16 @@ function ExtractFilesScript(p: UiScriptProps) {
 function ExtractHistoricScript(p: UiScriptProps) {
 	let [initmode, initfilestext, initcacheids] = p.initialArgs.split(":");
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
-	let [cacheids, setcacheids] = React.useState(initcacheids ?? "");
+	let [buildnrs, setbuildnrs] = React.useState(initcacheids ?? "");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
 
 	let run = () => {
-		let ids = (!cacheids ? null : cacheids.split(",").map(q => parseInt(q)));
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
+		let builds = stringToFileRange(buildnrs);
 		let files = stringToFileRange(filestext);
-		output.run(fileHistory, outdir, mode, files[0].start, null, ids);
-		p.onRun(output, `${mode}:${filestext}:${cacheids}`);
+		output.run(fileHistory, outdir, mode, files[0].start, null, builds);
+		p.onRun(output, `${mode}:${filestext}:${buildnrs}`);
 	}
 
 	return (
@@ -1866,8 +1866,8 @@ function ExtractHistoricScript(p: UiScriptProps) {
 			<LabeledInput label="File ranges">
 				<InputCommitted type="text" onChange={e => setFilestext(e.currentTarget.value)} value={filestext} />
 			</LabeledInput>
-			<LabeledInput label="Cache ids (empty for all)">
-				<input type="text" value={cacheids} onChange={e => setcacheids(e.currentTarget.value)} />
+			<LabeledInput label="Build numbers (empty for all)">
+				<input type="text" value={buildnrs} onChange={e => setbuildnrs(e.currentTarget.value)} />
 			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>

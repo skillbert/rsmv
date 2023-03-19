@@ -3,10 +3,10 @@ import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./filetypes";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { FileParser, parse } from "../opdecoder";
-import { FileRange } from "../cliparser";
 import { compareCacheMajors } from "./cachediff";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
+import { FileRange } from "../utils";
 
 
 export type DecodeErrorJson = {
@@ -131,7 +131,7 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 	}
 }
 
-export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, ranges: FileRange, opts: ReturnType<typeof defaultTestDecodeOpts>) {
+export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, ranges: FileRange[], opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
 	let memuse = 0;
 	let errminors: number[] = [];

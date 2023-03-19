@@ -1,5 +1,10 @@
 import type { Texture } from "three";
 
+export type FileRange = {
+	start: [number, number, number],
+	end: [number, number, number]
+}
+
 export type ModelModifications = {
 	replaceColors?: [from: number, to: number][];
 	replaceMaterials?: [from: number, to: number][];
@@ -53,7 +58,7 @@ export function stringToMapArea(str: string) {
 
 export function stringToFileRange(str: string) {
 	let parts = str.split(",");
-	let ranges = parts.map(q => {
+	let ranges = parts.map<FileRange>(q => {
 		let ends = q.split("-");
 		let start = ends[0] ? ends[0].split(".") : [];
 		let end = (ends[0] || ends[1]) ? (ends[1] ?? ends[0]).split(".") : [];

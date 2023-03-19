@@ -63,6 +63,11 @@ export function validOpenrs2Caches() {
 	return cachelist;
 }
 
+export function openrs2GetEffectiveBuildnr(cachemeta: Openrs2CacheMeta) {
+	let match = cachemeta.builds.find(q => q.major != 0);
+	return (match ? match.major : -1);
+}
+
 export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
@@ -75,9 +80,9 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	constructor(meta: Openrs2CacheMeta) {
 		super(false);
 		this.meta = meta;
-		let buildnrentry = meta.builds.find(q => q.major != 0);
-		if (buildnrentry) {
-			this.buildnr = buildnrentry.major;
+		let buildnr = openrs2GetEffectiveBuildnr(meta);
+		if (buildnr != -1) {
+			this.buildnr = buildnr;
 		} else {
 			console.warn("using historic cache for which the build number is not available, treating it as current.");
 			this.buildnr = latestBuildNumber;

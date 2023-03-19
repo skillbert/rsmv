@@ -7,7 +7,7 @@ import { GameCacheLoader } from "./cache/sqlite";
 import { RawFileLoader } from "./cache/rawfiles";
 import { Openrs2CacheSource } from "./cache/openrs2loader";
 import type { MapRect } from "./3d/mapsquare";
-import { stringToFileRange, stringToMapArea } from "./utils";
+import { FileRange, stringToFileRange, stringToMapArea } from "./utils";
 import { selectFsCache } from "./cache/autocache";
 import { CLIScriptFS } from "./viewer/scriptsui";
 
@@ -48,8 +48,7 @@ export const ReadCacheSource: cmdts.Type<string, (opts?: { writable?: boolean })
 	description: "Where to get game files from, can be 'live', 'cache[:rscachedir]' or openrs2[:ors2cacheid]"
 };
 
-export type FileRange = { start: [number, number, number], end: [number, number, number] }[];
-const FileRange: cmdts.Type<string, FileRange> = {
+const FileRange: cmdts.Type<string, FileRange[]> = {
 	async from(str) { return stringToFileRange(str); },
 	description: "A file range with possible multiple components. '10', '10-20', '10,12' or '5.10-5.20' etc"
 };
@@ -72,7 +71,7 @@ export var filesource = literal({
 	source: cmdts.option({ long: "source", short: "o", type: ReadCacheSource })
 });
 export var filerange = literal({
-	files: cmdts.option({ long: "ids", short: "i", type: FileRange, defaultValue: () => [{ start: [0, 0, 0], end: [Infinity, Infinity, Infinity] }] as FileRange })
+	files: cmdts.option({ long: "ids", short: "i", type: FileRange, defaultValue: () => [{ start: [0, 0, 0], end: [Infinity, Infinity, Infinity] }] as FileRange[] })
 });
 export var mapareasource = literal({
 	area: cmdts.option({ long: "area", short: "a", type: MapRectangle })

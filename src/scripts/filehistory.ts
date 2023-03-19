@@ -1,6 +1,7 @@
 import { CacheFileSource, CacheIndexFile } from "../cache";
-import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
+import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
+import { FileRange } from "../utils";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { cacheFileDecodeModes } from "./filetypes";
 import { testDecodeFile } from "./testdecode";
@@ -15,10 +16,13 @@ type HistoricVersion = {
     decodedname: string
 }
 
-export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: keyof typeof cacheFileDecodeModes, id: number[], basecache: CacheFileSource | null, openrs2ids?: number[] | null) {
+export async function fileHistory(output: ScriptOutput, outdir: ScriptFS, mode: keyof typeof cacheFileDecodeModes, id: number[], basecache: CacheFileSource | null, buildnrs: FileRange[] | null) {
     let histsources = await validOpenrs2Caches();
-    if (openrs2ids) {
-        histsources = histsources.filter(q => openrs2ids.includes(q.id));
+    if (buildnrs) {
+        histsources = histsources.filter(q => {
+            let build = openrs2GetEffectiveBuildnr(q);
+            return buildnrs.some(q => build >= q.start[0] && build <= q.end[0]);
+        });
     }
     let decoder = cacheFileDecodeModes[mode]({});
 
