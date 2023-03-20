@@ -123,7 +123,7 @@ export class ParsedTexture {
 		let res = this.cachedDrawables[subimg];
 		if (!res) {
 			if (this.type == "png") {
-				this.cachedDrawables[subimg] = new Promise((resolve, reject) => {
+				res = new Promise((resolve, reject) => {
 					let img = new Image();
 					img.onload = () => {
 						URL.revokeObjectURL(img.src);
@@ -132,14 +132,13 @@ export class ParsedTexture {
 					img.onerror = reject;
 					let blob = new Blob([this.imagefiles[subimg]], { type: "image/png" });
 					img.src = URL.createObjectURL(blob);
-				})
+				});
 			} else {
-				let img = this.toImageData(subimg);
-				res = img.then(i => createImageBitmap(i));
+				res = this.toImageData(subimg).then(q => createImageBitmap(q));
 			}
 			this.cachedDrawables[subimg] = res;
 		}
-		return this.cachedDrawables[subimg]!;
+		return res;
 	}
 }
 

@@ -5,7 +5,7 @@ import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids,
 import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
+import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { ModelData } from "../3d/rt7model";
@@ -226,8 +226,13 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				if (node instanceof Mesh && node.material instanceof Material) {
 					let uvExt = node.material.userData.gltfExtensions?.RA_materials_uvanim;
 					if (uvExt) {
-						let tex = (node.material as MeshBasicMaterial).map!;
-						matUvAnims.push({ tex, v: new Vector2(uvExt.uvAnim[0], uvExt.uvAnim[1]) });
+						let mat = (node.material as MeshStandardMaterial);
+						let animvec = new Vector2(uvExt.uvAnim[0], uvExt.uvAnim[1]);
+						if (mat.map) { matUvAnims.push({ tex: mat.map, v: animvec }); }
+						if (mat.normalMap) { matUvAnims.push({ tex: mat.normalMap, v: animvec }); }
+						if (mat.emissiveMap) { matUvAnims.push({ tex: mat.emissiveMap, v: animvec }); }
+						if (mat.metalnessMap) { matUvAnims.push({ tex: mat.metalnessMap, v: animvec }); }
+						if (mat.roughnessMap) { matUvAnims.push({ tex: mat.roughnessMap, v: animvec }); }
 					}
 				}
 			});

@@ -27,11 +27,12 @@
 		["alphaBuffer",["opt",["hasVertexAlpha",1],["buffer",["ref","faceCount"],"ubyte"]]],
 		["faceboneidBuffer",["opt",["hasFaceBones",1],["buffer",["ref","faceCount"],"ushort"]]],
 
+		//the length field for the indexbuffer can overflow when the model has >22k faces!!
+		//unclear if the the client has some alternative way to get it
 		["indexBuffers",["array","ubyte",["buffer","ushort le","ushort"]]],
 
 		["vertexCount",["match",["ref","hasVertices"],{"=1":"ushort le","=0":0}]],
 		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
-		//currently wrong, but makes it parse
 		["normalBuffer",["opt",["hasVertices",1],["match","buildnr",{
 			">=887":["buffer",["ref","vertexCount"],"byte",3],
 			">=0":["buffer",["ref","vertexCount"],"short",3]
@@ -60,5 +61,5 @@
 	// ]]],
 	["unk1Buffer",["array",["ref","unkCount1"],["buffer",["match","buildnr",{">=923":39,">=0":37}],"hex"]]],
 	["unk2Buffer",["array",["ref","unkCount2"],["buffer",["match","buildnr",{">=923":50,">=0":44}],"hex"]]],
-	["unk3Buffer",["array",["ref","unkCount3"],["buffer",18,"hex"]]]
+	["unk3Buffer",["array",["ref","unkCount3"],["buffer",["match","buildnr",{">=923":18,">=0":16}],"hex"]]]
 ]

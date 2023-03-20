@@ -49,11 +49,24 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 
 	if (rawparsed.v0) {
 		let raw = rawparsed.v0;
-		mat.textures.diffuse = raw.arr.find(q => q.op == 1)?.value;
-		if (raw.diffuse) { mat.textures.diffuse = raw.diffuse; }
-		else if (raw.textureflags & 0x11) { mat.textures.diffuse = materialid; }
-		if (raw.normal) { mat.textures.normal = raw.normal; }
-		else if (raw.textureflags & 0x0a) { mat.textures.normal = materialid; }
+		let olddiffuse = raw.arr.find(q => q.op == 1);
+		if (olddiffuse) {
+			//in caches after this the diffuse prop exists, but is ignored...
+			if (source.getBuildNr() <= 838) {
+				mat.textures.diffuse = olddiffuse.value;
+			} else {
+				mat.textures.diffuse = materialid;
+			}
+		} else if (raw.diffuse) {
+			mat.textures.diffuse = raw.diffuse;
+		} else if (raw.textureflags & 0x11) {
+			mat.textures.diffuse = materialid;
+		}
+		if (raw.normal) {
+			mat.textures.normal = raw.normal;
+		} else if (raw.textureflags & 0x0a) {
+			mat.textures.normal = materialid;
+		}
 
 		let repeatu = raw.texrepeatflags & 0x7;
 		let repeatv = (raw.textureflags >> 2) & 0x7;
@@ -67,8 +80,8 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 			let scale = 1 / (1 << 15);
 			mat.uvAnim = { u: (raw.animtexU ?? 0) * scale, v: (raw.animtexV ?? 0) * scale };
 		}
-		mat.baseColorFraction = (raw.extra ? raw.extra.baseColorFraction / 255 : 0);
 		if (raw.extra) {
+			mat.baseColorFraction = raw.extra.baseColorFraction / 255;
 			//seems like 0 is a special case, but unclear
 			mat.baseColor = (raw.extra.baseColor == 0 ? [255, 255, 255] : HSL2RGBfloat(packedHSL2HSL(raw.extra.baseColor)));
 		}

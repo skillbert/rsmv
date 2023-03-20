@@ -161,11 +161,20 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     let materialbuffer: Uint16Array | null = modeldata.material;
     let colorbuffer = modeldata.colors;
     let uvids: number[] = [];
-    let uvstream = new Stream(modeldata.uvs);
-    while (!uvstream.eof()) {
-        uvids.push(uvstream.readUShortSmart());
+
+    //not sure why this was ever needed, supposedly there is some modelversion/buildnr where the format is like this
+    let usenewuvkey: number;
+    if (modeldata.modelversion >= 16) {
+        usenewuvkey = 0x7fff
+        let uvstream = new Stream(modeldata.uvs);
+        while (!uvstream.eof()) {
+            uvids.push(uvstream.readUShortSmart());
+        }
+        if (!uvstream.eof()) { throw new Error("stream not used to completion"); }
+    } else {
+        usenewuvkey = 0xff;
+        uvids = Array.from(modeldata.uvs);
     }
-    if (!uvstream.eof()) { throw new Error("stream not used to completion"); }
     if (modeldata.mode_2) {
         materialbuffer = new Uint16Array(modeldata.facecount);
         colorbuffer = colorbuffer.slice();
@@ -246,7 +255,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             let matarg = materialbuffer[i];
             if (matarg == 0) { continue; }//TODO is this now obsolete?
             let mapid = uvids[texindex++];
-            if (mapid != 0 && mapid != 0x7fff) {
+            if (mapid != 0 && mapid != usenewuvkey) {
                 let mapping = textureMappings[mapid - 1];
                 srcindex0 = vertexindex[i * 3 + 0];
                 srcindex1 = vertexindex[i * 3 + 1];
@@ -263,6 +272,8 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         }
     }
 
+
+    let hadbaduvscale = false;
     //build material maps
     if (modeldata.texflags) {
         let mtmp = new Matrix4();
@@ -321,7 +332,14 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
                     scalez = proj.scale[2] / 1024;
                 }
 
+                if (!isFinite(scalex)) { scalex = 1; hadbaduvscale = true; }
+                if (!isFinite(scaley)) { scaley = 1; hadbaduvscale = true; }
+                if (!isFinite(scalez)) { scalez = 1; hadbaduvscale = true; }
+
                 let space = jagexOldNormalSpace(proj.normal[0], proj.normal[1], proj.normal[2], proj.rotation, scalex, scaley, scalez);
+                // if (space.some(q => isNaN(q)) || isNaN(v0.x) || isNaN(v0.y) || isNaN(v0.z)) {
+                //     debugger;
+                // }
                 mapping.texspace.set(
                     space[0], -space[1], space[2], 0,
                     space[3], -space[4], space[5], 0,
@@ -354,6 +372,9 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
                 debugmeshes.push(mesh, arrowmesh);
             }
         }
+    }
+    if (hadbaduvscale) {
+        console.warn("nonfinite texture scale");
     }
 
     let vertexuvids: Uint16Array | null = null;
@@ -429,7 +450,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             if (mapid == 0) {
                 // debugger;
                 //TODO just default [0,1] uvs?
-            } else if (mapid == 0x7fff) {
+            } else if (mapid == usenewuvkey) {
                 //TODO still missing something
                 uvattr.setXY(vertbase + 0, modeldata.texuvs!.udata[vertexuvids![srcindex0]] / 4096, modeldata.texuvs!.vdata[vertexuvids![srcindex0]] / 4096);
                 uvattr.setXY(vertbase + 1, modeldata.texuvs!.udata[vertexuvids![srcindex1]] / 4096, modeldata.texuvs!.vdata[vertexuvids![srcindex1]] / 4096);

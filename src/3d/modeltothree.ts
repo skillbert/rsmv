@@ -693,7 +693,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 			mesh = new THREE.Mesh(geo);
 		}
 		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha));
-		mesh.geometry.computeVertexNormals();//TODO remove, only used for classic models atm
+		// mesh.geometry.computeVertexNormals();//TODO remove, only used for classic models atm
 		rootnode.add(mesh);
 	}
 	if (model.debugmeshes && model.debugmeshes.length != 0) {

@@ -1857,7 +1857,7 @@ function ExtractHistoricScript(p: UiScriptProps) {
 
 	return (
 		<React.Fragment>
-			<p>Extract files from the cache.<br />The ranges field uses logical file id's for JSON based files, {"<major>.<minor>"} notation for bin mode, or {"<x>.<z>"} for map based files.</p>
+			<p>Tracks a single file's update history using openrs2 caches. Each known cache will be compared and all changes are shown. {"<major>.<minor>"} notation for bin mode, or {"<x>.<z>"} for map based files.</p>
 			<LabeledInput label="Mode">
 				<select value={mode} onChange={e => setMode(e.currentTarget.value as any)}>
 					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
