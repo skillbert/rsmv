@@ -87,6 +87,7 @@
 	"0xB6": { "name":                          "unknown_B6", "read": "true" },
 	"0xB7": { "name":                          "unknown_B7", "read": "unsigned byte" },//might be wrong and part of other op
 	"0xB8": { "name":                          "unknown_B8", "read": "unsigned byte" },
+	"0xB9": { "name":                          "unknown_B9", "read": "unsigned byte" },//might be longer, but parses for the 1 npc that has it
 	"0xDB": { "name":                          "unknown_DB", "read": "ubyte" },//might be wrong and part of other op
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }
