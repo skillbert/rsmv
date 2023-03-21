@@ -4,7 +4,8 @@ import { ModelData, parseOb3Model } from '../3d/rt7model';
 import { parseRT5Model } from "../3d/rt5model";
 import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import * as THREE from "three";
-import { archiveToFileId, CachedObject, CacheFileSource, CacheIndex, CachingFileSource, SubFile } from "../cache";
+import { CacheFileSource, CacheIndex, SubFile } from "../cache";
+import { CachedObject, CachingFileSource } from "../cache/memorycache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh, Texture } from "three";
 import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -121,8 +122,7 @@ export class EngineCache extends CachingFileSource {
 	classicData: ClassicConfig | null = null;
 
 	static create(source: CacheFileSource) {
-		let ret = new EngineCache(source);
-		return ret.preload();
+		return new EngineCache(source).preload();
 	}
 
 	private constructor(source: CacheFileSource) {
