@@ -2,6 +2,7 @@ import * as cache from "./index";
 import { decompress, legacyGzip } from "./compression";
 import { cacheMajors, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import fetch from "node-fetch";
+import { FileSourceFsCache } from "./fscache";
 
 const endpoint = `https://archive.openrs2.org`;
 var downloadedBytes = 0;
@@ -72,6 +73,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
 	xteaKeysLoaded = false;
+	fscache: FileSourceFsCache | null = null;// new FileSourceFsCache();
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
@@ -118,37 +120,10 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 		//yep, i used regex on html, sue me
 		let rootindexhtml = await fetch(`${endpoint}/caches/runescape/${cacheid}`).then(q => q.text());
 
-		// let tabletextmatch = rootindexhtml.match(/<h2>Master index[\s\S]*?<table([\s\S]*?)<\/table>/i);
-		// if (!tabletextmatch) { throw new Error("failed to parse root index"); }
 		let sourcetextmatch = rootindexhtml.match(/<h2>Sources[\s\S]*?<table([\s\S]*?)<\/table>/i);
 		if (!sourcetextmatch) { throw new Error("failed to parse source table"); }
 		let metatextmatch = rootindexhtml.match(/<h1>Cache[\s\S]*?<table([\s\S]*?)<\/table>/i);
 		if (!metatextmatch) { throw new Error("failed to parse meta table"); }
-
-		// let majors: CacheIndex[] = [];
-		// let rowmatches = [...tabletextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].slice(1);
-		// for (let rowmatch of rowmatches) {
-		// 	let fields = [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)];
-		// 	if (fields.length == 6) {
-		// 		let major = +fields[0][1];
-		// 		let version = +fields[1][1].replace(/[,\.]/g, "");
-		// 		if (isNaN(major) || isNaN(version)) { throw new Error("invalid major or version field"); }
-		// 		//versoin 0 means it doesn't exist
-		// 		if (version == 0) { continue; }
-		// 		majors[major] = {
-		// 			major: cacheMajors.index,
-		// 			minor: major,
-		// 			crc: 0,
-		// 			size: 0,
-		// 			name: null,
-		// 			subindexcount: 1,
-		// 			subindices: [0],
-		// 			version: version,
-		// 			uncompressed_crc: 0,
-		// 			uncompressed_size: 0
-		// 		}
-		// 	}
-		// }
 
 		let sourcerows = [...sourcetextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].map(rowmatch => [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)]).slice(1);
 		let metarows = [...metatextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].map(rowmatch => [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)]);
@@ -201,7 +176,6 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 
 	async downloadFile(major: number, minor: number) {
 		let url = `${endpoint}/caches/runescape/${this.meta.id}/archives/${major}/groups/${minor}.dat`;
-		// console.log(url);
 		const req = await fetch(url);
 		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor} from openrs2 ${this.meta.id}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
@@ -214,7 +188,14 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
-		let rawfile = await this.downloadFile(major, minor);
+		let cachedfile: Buffer | null = null
+		if (this.fscache && typeof crc != "undefined" && crc != 0) {//TODO fix places that use a magic 0 crc
+			cachedfile = await this.fscache.getFile(major, minor, crc);
+		}
+		let rawfile = cachedfile ?? await this.downloadFile(major, minor);
+		if (this.fscache && !cachedfile && typeof crc != "undefined" && crc != 0) {
+			this.fscache.addFile(major, minor, crc, rawfile);
+		}
 		if (this.buildnr <= lastLegacyBuildnr) {
 			if (major == 0) {
 				return rawfile;
