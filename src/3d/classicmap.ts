@@ -6,6 +6,7 @@ import { objects } from "../../generated/objects";
 import { ChunkData, MapRect, PlacedMesh, tiledimensions, TileGrid, TileGridSource, TileProps, tileshapes } from "../3d/mapsquare";
 import { ClassicConfig, classicGroups } from "../cache/classicloader";
 import { combineLegacyTexture } from "../cache/legacycache";
+import { crc32 } from "../libs/crc32util";
 import { HSL2packHSL, RGB2HSL, Stream } from "../utils";
 import { constModelsIds, EngineCache } from "./modeltothree";
 
@@ -42,6 +43,7 @@ type ClassicTileDef = {
 
 export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z: number) {
     let isunderground = rs2z > 100;
+    let mapfilehash = 0;
 
     const config = engine.classicData!;
     let chunkx = 100 - rs2x;
@@ -78,8 +80,10 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
         let leveldata = leveldatas[level];
         if (leveldata.jm) {
             grid.loadJmFile(leveldata.jm, level);
+            mapfilehash = crc32(leveldata.jm, mapfilehash);
         } else if (leveldata.hei) {
             grid.loadHeiFile(leveldata.hei, level);
+            mapfilehash = crc32(leveldata.hei, mapfilehash);
         }
     }
 
@@ -89,9 +93,11 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
         if (!leveldata.jm) {
             if (leveldata.dat) {
                 grid.loadDatfile(leveldata.dat, level);
+                mapfilehash = crc32(leveldata.dat, mapfilehash);
             }
             if (leveldata.loc) {
                 grid.loadLocFile(leveldata.loc, level);
+                mapfilehash = crc32(leveldata.loc, mapfilehash);
             }
         }
     }
@@ -100,6 +106,7 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
 
     return {
         rect,
+        mapfilehash,
         tiles: grid.convertTiles(),
         locs: grid.locs,
         levels: nlevels

@@ -191,6 +191,8 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 		let cachedfile: Buffer | null = null
 		if (this.fscache && typeof crc != "undefined" && crc != 0) {//TODO fix places that use a magic 0 crc
 			cachedfile = await this.fscache.getFile(major, minor, crc);
+		} else {
+			console.log("uncachable", major, minor, crc);
 		}
 		let rawfile = cachedfile ?? await this.downloadFile(major, minor);
 		if (this.fscache && !cachedfile && typeof crc != "undefined" && crc != 0) {

@@ -17,6 +17,7 @@ import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUt
 import { legacyMajors } from "../cache/legacycache";
 import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
 import { MeshBuilder, topdown2dWallModels } from "./modelutils";
+import { crc32addInt } from "../scripts/dependencies";
 
 
 export const tiledimensions = 512;
@@ -104,6 +105,8 @@ export type ChunkData = {
 	levelcount: number,
 	mapsquarex: number,
 	mapsquarez: number,
+	chunkfilehash: number,
+	chunkfileversion: number,
 	tiles: mapsquare_tiles["tiles"],
 	extra: mapsquare_tiles["extra"],
 	rawlocs: mapsquare_locations["locations"],
@@ -806,6 +809,116 @@ export class TileGrid implements TileGridSource {
 export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, skybox?: boolean, mask?: MapRect[] };
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
+export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
+	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+	let squareindex = chunkx + chunkz * worldStride;
+
+	let tiles: mapsquare_tiles["tiles"];
+	let tilesextra: mapsquare_tiles["extra"] = {};
+	let locs: mapsquare_locations["locations"] = [];
+	let tilerect: MapRect;
+	let levelcount = squareLevels;
+	let filehash = 0;
+	let fileversion = 0;
+
+	if (engine.getBuildNr() > lastClassicBuildnr) {
+		let tilefile: Buffer | null = null;
+		let locsfile: Buffer | null = null;
+		if (engine.getBuildNr() >= 759) {
+			let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
+			let selfindex = mapunderlaymeta[squareindex];
+			if (!selfindex) {
+				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
+				return null;
+			}
+			filehash = selfindex.crc;
+			fileversion = selfindex.version;
+			let selfarchive = await engine.getFileArchive(selfindex);
+
+			let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
+			if (tileindex == -1) { return null; }
+			tilefile = selfarchive[tileindex].buffer;
+			let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
+			if (locsindex != -1) {
+				locsfile = selfarchive[locsindex].buffer;
+			}
+		} else if (engine.getBuildNr() > lastLegacyBuildnr) {
+			try {
+				let index = await engine.findFileByName(cacheMajors.mapsquares, `m${chunkx}_${chunkz}`);
+				if (!index) { return null; }
+				filehash = index.crc;
+				fileversion = index.version;
+				tilefile = await engine.getFile(index.major, index.minor, index.crc);
+			} catch (e) {
+				//missing xtea
+				return null;
+			}
+			try {
+				let index = await engine.findFileByName(cacheMajors.mapsquares, `l${chunkx}_${chunkz}`);
+				if (index) {
+					filehash = crc32addInt(index.crc, filehash);
+					fileversion = Math.max(fileversion, index.version);
+					locsfile = await engine.getFile(index.major, index.minor, index.crc);
+				}
+			} catch (e) {
+				//ignore
+			}
+		} else {
+			let index = chunkx * 256 + chunkx;
+			let info = engine.legacyData?.mapmeta.get(index);
+			if (!info) {
+				return null
+			}
+			try {
+				filehash = info.crc;
+				fileversion = info.version;
+				tilefile = await engine.getFile(legacyMajors.map, info.map);
+				locsfile = await engine.getFile(legacyMajors.map, info.loc);
+			} catch {
+				console.warn(`map for ${chunkx}_${chunkz} declared but file did not exist`);
+			}
+		}
+		if (!tilefile) {
+			//should only happen when files are missing
+			return null
+		}
+		let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
+		tiles = tiledata.tiles;
+		tilesextra = tiledata.extra;
+		if (locsfile) {
+			locs = parse.mapsquareLocations.read(locsfile, engine.rawsource).locations;
+		}
+		tilerect = {
+			x: chunkx * squareSize,
+			z: chunkz * squareSize,
+			xsize: squareSize,
+			zsize: squareSize
+		};
+	} else {
+		let mapdata = await getClassicMapData(engine, chunkx, chunkz);
+		if (!mapdata) { return null }
+		tiles = mapdata.tiles;
+		tilerect = mapdata.rect;
+		levelcount = mapdata.levels;
+		locs = mapdata.locs;
+		filehash = mapdata.mapfilehash;
+
+	}
+	let chunk: ChunkData = {
+		tilerect,
+		levelcount,
+		mapsquarex: chunkx,
+		mapsquarez: chunkz,
+		chunkfilehash: filehash,
+		chunkfileversion: fileversion,
+		tiles: tiles,
+		extra: tilesextra,
+		rawlocs: locs,
+		locs: []
+	};
+	return chunk;
+}
+
 export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
 	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -819,97 +932,10 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 	let chunks: ChunkData[] = [];
 	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
 		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
-			let squareindex = (rect.x + x) + (rect.z + z) * worldStride;
-
-			let tiles: mapsquare_tiles["tiles"];
-			let tilesextra: mapsquare_tiles["extra"] = {};
-			let locs: mapsquare_locations["locations"] = [];
-			let tilerect: MapRect;
-			let levelcount = squareLevels;
-
-			if (engine.getBuildNr() > lastClassicBuildnr) {
-				let tilefile: Buffer | null = null;
-				let locsfile: Buffer | null = null;
-				if (engine.getBuildNr() >= 759) {
-					let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
-					let selfindex = mapunderlaymeta[squareindex];
-					if (!selfindex) {
-						// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
-						continue;
-					}
-					let selfarchive = (await engine.getFileArchive(selfindex));
-
-					let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
-					if (tileindex == -1) { continue; }
-					tilefile = selfarchive[tileindex].buffer;
-					let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
-					if (locsindex != -1) {
-						locsfile = selfarchive[locsindex].buffer;
-					}
-				} else if (engine.getBuildNr() > lastLegacyBuildnr) {
-					try {
-						let index = await engine.findFileByName(cacheMajors.mapsquares, `m${rect.x + x}_${rect.z + z}`);
-						if (!index) { continue; }
-						tilefile = await engine.getFile(index.major, index.minor, index.crc);
-					} catch (e) {
-						//missing xtea
-						continue;
-					}
-					try {
-						let index = await engine.findFileByName(cacheMajors.mapsquares, `l${rect.x + x}_${rect.z + z}`);
-						if (index) {
-							locsfile = await engine.getFile(index.major, index.minor, index.crc);
-						}
-					} catch (e) {
-						//ignore
-					}
-				} else {
-					let index = (rect.x + x) * 256 + (rect.z + z);
-					let info = engine.legacyData?.mapmeta.get(index);
-					if (!info) {
-						continue;
-					}
-					try {
-						tilefile = await engine.getFile(legacyMajors.map, info.map);
-						locsfile = await engine.getFile(legacyMajors.map, info.loc);
-					} catch {
-						console.warn(`map for ${rect.x + x}_${rect.z + z} declared but file did not exist`);
-					}
-				}
-				if (!tilefile) {
-					//should only happen when files are missing
-					continue;
-				}
-				let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
-				tiles = tiledata.tiles;
-				tilesextra = tiledata.extra;
-				if (locsfile) {
-					locs = parse.mapsquareLocations.read(locsfile, engine.rawsource).locations;
-				}
-				tilerect = {
-					x: (rect.x + x) * squareSize,
-					z: (rect.z + z) * squareSize,
-					xsize: squareSize,
-					zsize: squareSize
-				};
-			} else {
-				let mapdata = await getClassicMapData(engine, rect.x + x, rect.z + z);
-				if (!mapdata) { continue; }
-				tiles = mapdata.tiles;
-				tilerect = mapdata.rect;
-				levelcount = mapdata.levels;
-				locs = mapdata.locs;
+			let chunk = await getMapsquareData(engine, rect.x + x, rect.z + z);
+			if (!chunk) {
+				continue;
 			}
-			let chunk: ChunkData = {
-				tilerect,
-				levelcount,
-				mapsquarex: rect.x + x,
-				mapsquarez: rect.z + z,
-				tiles: tiles,
-				extra: tilesextra,
-				rawlocs: locs,
-				locs: []
-			};
 			grid.addMapsquare(chunk.tiles, chunk.tilerect, chunk.levelcount, !!opts?.collision);
 
 			//only add the actual ones we need to the queue
@@ -1011,8 +1037,8 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 	let rootx = chunk.chunk.tilerect.x * tiledimensions;
 	let rootz = chunk.chunk.tilerect.z * tiledimensions;
 
-	if (placedlocs.length != 0) { node.add(...placedlocs.map(q => meshgroupsToThree(grid, q, rootx, rootz))); }
-	let chunkoverlays = chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(grid, q, rootx, rootz));
+	if (placedlocs.length != 0) { node.add(...await Promise.all(placedlocs.map(q => meshgroupsToThree(scene, grid, q, rootx, rootz)))); }
+	let chunkoverlays = await Promise.all(chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(scene, grid, q, rootx, rootz)));
 	if (chunkoverlays.length != 0) { node.add(...chunkoverlays); }
 
 	let floors = (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any;
@@ -1126,7 +1152,8 @@ export type PlacedMesh = {
 
 type PlacedModel = {
 	models: PlacedMesh[],
-	material: ParsedMaterial,
+	materialId: number,
+	hasVertexAlpha: boolean,
 	overlayIndex: number,
 	groupid: string
 }
@@ -1177,7 +1204,8 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 		let wallgroup: PlacedModel = {
 			models: [],
 			groupid: "walls" + level,
-			material: { mat, matmeta: { ...defaultMaterial(), alphamode: "blend" } },
+			hasVertexAlpha: false,
+			materialId: 0,
 			overlayIndex: 1
 		}
 
@@ -1214,25 +1242,31 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 
 	let addMapscene = async (loc: WorldLocation, sceneid: number) => {
 		let group = floors[loc.effectiveLevel].mapscenes.get(sceneid);
-		if (!group) {
-			let mapscene = grid.engine.mapMapscenes[sceneid];
-			if (mapscene.sprite_id == undefined) { return; }
-			let spritefile = await engine.getFileById(cacheMajors.sprites, mapscene.sprite_id);
-			let sprite = parseSprite(spritefile);
-			let mat = new THREE.MeshBasicMaterial();
-			mat.map = new THREE.DataTexture(sprite[0].img.data, sprite[0].img.width, sprite[0].img.height, THREE.RGBAFormat);
-			mat.depthTest = false;
-			mat.transparent = true;
-			mat.needsUpdate = true;
-			group = {
-				groupid: "mapscenes" + loc.effectiveLevel,
-				material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
-				models: [],
-				overlayIndex: 2
-			};
-			floors[loc.effectiveLevel].mapscenes.set(sceneid, group);
-		}
-		let tex = (group.material.mat as MeshBasicMaterial).map! as DataTexture;
+		// if (!group) {
+		let mapscene = grid.engine.mapMapscenes[sceneid];
+		if (mapscene.sprite_id == undefined) { return; }
+		let spritefile = await engine.getFileById(cacheMajors.sprites, mapscene.sprite_id);
+		let sprite = parseSprite(spritefile);
+		let mat = new THREE.MeshBasicMaterial();
+		mat.map = new THREE.DataTexture(sprite[0].img.data, sprite[0].img.width, sprite[0].img.height, THREE.RGBAFormat);
+		mat.depthTest = false;
+		mat.transparent = true;
+		mat.needsUpdate = true;
+		group = {
+			groupid: "mapscenes" + loc.effectiveLevel,
+			hasVertexAlpha: false,
+			materialId: 0,
+			// material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
+			models: [],
+			overlayIndex: 2
+		};
+		floors[loc.effectiveLevel].mapscenes.set(sceneid, group);
+		// }
+		// let tex = (group.material.mat as MeshBasicMaterial).map! as DataTexture;
+		//TODO add either remove this alltogether or add model combining back
+		console.warn("using very inefficient code path for 3d mapscenes");
+
+		let tex = mat.map;
 
 		const spritescale = 128;
 		let w = tex.image.width * spritescale;
@@ -1513,6 +1547,9 @@ export type WorldLocation = {
 export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, locations: mapsquare_locations["locations"], originx: number, originz: number, collision = false) {
 	let locs: WorldLocation[] = [];
 
+	//prefetch all loc files
+	// locations.map(q => resolveMorphedObject(engine, q.id));
+
 	for (let loc of locations) {
 		let { morphedloc, rawloc } = await resolveMorphedObject(engine, loc.id);
 		if (!morphedloc) { continue; }
@@ -1787,7 +1824,8 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 				let matgroup = group.get(matkey);
 				if (!matgroup) {
 					matgroup = {
-						material: await scene.getMaterial(modified.materialId, modified.hasVertexAlpha),
+						materialId: modified.materialId,
+						hasVertexAlpha: modified.hasVertexAlpha,
 						models: [],
 						groupid: obj.extras.modelgroup,
 						overlayIndex: 0
@@ -1816,7 +1854,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 	return { byMaterial, byLogical };
 }
 
-function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number) {
+async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number) {
 	let geos = meshgroup.models.map(m => {
 		let transformed = transformMesh(m.model, m.morph, grid, m.maxy - m.miny, rootx, rootz);
 		let attrs = transformed.attributes;
@@ -1835,7 +1873,8 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 	});
 	let mergedgeo = mergeBufferGeometries(geos);
 	let mesh = new THREE.Mesh(mergedgeo);
-	applyMaterial(mesh, meshgroup.material);
+	let material = await scene.getMaterial(meshgroup.materialId, meshgroup.hasVertexAlpha);
+	applyMaterial(mesh, material);
 
 	let count = 0;
 	let counts: number[] = [];

@@ -191,21 +191,21 @@ export class EngineCache extends CachingFileSource {
 			} else {
 				if (this.getBuildNr() <= lastLegacyBuildnr) {
 					cached = defaultMaterial();
-					if (id != -1) {
-						cached.textures.diffuse = id;
-						cached.baseColorFraction = (id == 0 ? 0 : 1);
-						cached.texmodes = "mirror";
-						cached.texmodet = "mirror";
-					}
+					cached.textures.diffuse = id;
+					cached.baseColorFraction = 1;
+					cached.texmodes = "mirror";
+					cached.texmodet = "mirror";
 				} else if (this.getBuildNr() <= 471) {
 					let file = this.materialArchive.get(id);
 					if (!file) { throw new Error("material " + id + " not found"); }
 					let matprops = parse.oldproctexture.read(file, this);
 					cached = defaultMaterial();
 					cached.textures.diffuse = matprops.spriteid;
+					cached.baseColorFraction = 1;
 				} else if (this.getBuildNr() < 759) {
 					cached = defaultMaterial();
-					if (id != -1) { cached.textures.diffuse = id; }
+					cached.textures.diffuse = id;
+					cached.baseColorFraction = 1;
 					//TODO other material props
 				} else {
 					let file = this.materialArchive.get(id);
@@ -306,7 +306,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	const wraptypes = material.texmodes == "clamp" ? THREE.ClampToEdgeWrapping : material.texmodes == "repeat" ? THREE.RepeatWrapping : THREE.MirroredRepeatWrapping;
 	const wraptypet = material.texmodet == "clamp" ? THREE.ClampToEdgeWrapping : material.texmodet == "repeat" ? THREE.RepeatWrapping : THREE.MirroredRepeatWrapping;
 
-	if (material.textures.diffuse && source.textureType != "none") {
+	if (typeof material.textures.diffuse != "undefined" && source.textureType != "none") {
 		let diffuse = await (await source.getTextureFile("diffuse", material.textures.diffuse, material.stripDiffuseAlpha)).toImageData();
 		let difftex = new THREE.DataTexture(diffuse.data, diffuse.width, diffuse.height, THREE.RGBAFormat);
 		difftex.needsUpdate = true;

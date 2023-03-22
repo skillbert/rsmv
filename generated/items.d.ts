@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\items.json'
+// This source data is located at '..\src\opcodes\items.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type items = {
@@ -20,9 +20,15 @@ export type items = {
 	unknown_0F?: true | null
 	members?: true | null
 	multiStackSize?: number | null
-	maleModels_0?: (number|number) | null
+	maleModels_0?: {
+		id: (number|number),
+		type: (0|number),
+	} | null
 	maleModels_1?: (number|number) | null
-	femaleModels_0?: (number|number) | null
+	femaleModels_0?: {
+		id: (number|number),
+		type: (0|number),
+	} | null
 	femaleModels_1?: (number|number) | null
 	unknown_1B?: number | null
 	ground_actions_0?: string | null

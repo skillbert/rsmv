@@ -65,6 +65,12 @@ export type npcs = {
 		unk4: number,
 	} | null
 	movementCapabilities?: number | null
+	unknown_78?: [
+		number,
+		number,
+		number,
+		number,
+	] | null
 	translations?: Uint8Array[] | null
 	unk_7A?: number | null
 	iconHeight?: number | null
@@ -138,6 +144,7 @@ export type npcs = {
 	unknown_B6?: true | null
 	unknown_B7?: number | null
 	unknown_B8?: number | null
+	unknown_B9?: number | null
 	unknown_DB?: number | null
 	extra?: {
 		prop: number,

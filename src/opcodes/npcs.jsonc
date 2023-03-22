@@ -44,6 +44,7 @@
 																		["unk3", [ "array",["match","buildnr",{">=910":"varushort",">=0":"ubyte"}], "unsigned short" ]],
 																		["unk4", "unsigned int"] ] },
 	"0x77": { "name":                "movementCapabilities", "read": "byte" },
+	"0x78": { "name":                          "unknown_78", "read": ["tuple","ushort","ushort","ushort","ubyte"] },
 	"0x79": { "name":                        "translations", "read": [ "array", ["buffer",4,"hex"] ] },
 	"0x7A": { "name":                              "unk_7A", "read": "unsigned short" },//removed in 2013
 	"0x7B": { "name":                          "iconHeight", "read": "unsigned short" },

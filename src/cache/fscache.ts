@@ -29,7 +29,7 @@ export class FileSourceFsCache {
         if (!this.isready) {
             await this.ready;
         }
-        console.log("setting", major, minor, crc, "len", file.length);
+        console.log("saving", major, minor, crc, "len", file.length);
         sqliteRunStatement(this.setstatement, [major, minor, crc, file]);
     }
 

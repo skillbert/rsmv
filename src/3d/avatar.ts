@@ -180,11 +180,11 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 
 			let itemmodels: number[] = [];
 			let maleindex = itemmodels.length;
-			if (item.maleModels_0) { itemmodels.push(item.maleModels_0); }
+			if (item.maleModels_0) { itemmodels.push(item.maleModels_0.id); }
 			if (item.maleModels_1) { itemmodels.push(item.maleModels_1); }
 			if (item.maleModels_2) { itemmodels.push(item.maleModels_2); }
 			let femaleindex = itemmodels.length;
-			if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0); }
+			if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0.id); }
 			if (item.femaleModels_1) { itemmodels.push(item.femaleModels_1); }
 			if (item.femaleModels_2) { itemmodels.push(item.femaleModels_2); }
 			let maleheadindex = itemmodels.length;

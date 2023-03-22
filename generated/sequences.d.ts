@@ -9,6 +9,8 @@ export type sequences = {
 		frameidhi: number,
 	}[] | null
 	unknown_02?: number | null
+	unknown_03?: number[] | null
+	unknown_04?: true | null
 	unknown_05?: number | null
 	unknown_06?: number | null
 	unknown_07?: number | null
@@ -16,6 +18,10 @@ export type sequences = {
 	unknown_09?: number | null
 	unknown_0A?: number | null
 	unknown_0B?: number | null
+	unknown_0C?: {
+		framelength: number,
+		frameidlow: number,
+	}[] | null
 	unknown_0D?: {
 		default: number | null,
 		weirdbyte: number | null,

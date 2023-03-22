@@ -1274,25 +1274,23 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 		throw new Error("invalid materialish mode");
 	}
 
-
-	if (matid != -1) {
-		let assetid = constModelsIds.materialCube;
-		let mods: ModelModifications = {
-			replaceMaterials: [[0, matid]],
-			replaceColors: [[
-				HSL2packHSL(...RGB2HSL(255, 255, 255)),
-				HSL2packHSL(...RGB2HSL(...color as [number, number, number]))
-			]]
-		};
-		let mat = sceneCache.engine.getMaterialData(matid);
-		for (let tex in mat.textures) {
-			if (mat.textures[tex] != 0) {
-				await addtex(tex as any, tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
-			}
+	let assetid = constModelsIds.materialCube;
+	let mods: ModelModifications = {
+		replaceMaterials: [[0, matid]],
+		replaceColors: [[
+			HSL2packHSL(...RGB2HSL(255, 255, 255)),
+			HSL2packHSL(...RGB2HSL(...color as [number, number, number]))
+		]]
+	};
+	let mat = sceneCache.engine.getMaterialData(matid);
+	for (let tex in mat.textures) {
+		if (mat.textures[tex] != 0) {
+			await addtex(tex as any, tex, mat.textures[tex], mat.stripDiffuseAlpha && tex == "diffuse");
 		}
-		json = mat;
-		models.push({ modelid: assetid, mods });
 	}
+	json = mat;
+	models.push({ modelid: assetid, mods });
+
 	return {
 		models: models,
 		anims: {},

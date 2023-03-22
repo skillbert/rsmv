@@ -236,6 +236,20 @@ export type FilePosition = {
 	subid: number
 }
 
+export async function* iterateConfigFiles(cache: CacheFileSource, major: number) {
+	if (cache.getBuildNr() <= 488) {
+		let arch = await cache.getArchiveById(cacheMajors.config, oldConfigMaps[major]);
+		yield* arch.map(q => ({ id: q.fileid, file: q.buffer }));
+	} else {
+		let locindices = await cache.getCacheIndex(major);
+		let stride = mappedFileIds[major];
+		for (let index of locindices) {
+			let arch = await cache.getFileArchive(index);
+			yield* arch.map(q => ({ id: index.minor * stride + q.fileid, file: q.buffer }));
+		}
+	}
+}
+
 export function fileIdToArchiveminor(major: number, fileid: number, buildnr: number): FilePosition {
 	if (buildnr < 488) {
 		let page = oldConfigMaps[major];

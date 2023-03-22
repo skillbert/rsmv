@@ -54,6 +54,10 @@ export type objects = {
 	recolourPalette?: number[] | null
 	unknown_2C?: number | null
 	unknown_2D?: number | null
+	unknown_36?: true | null
+	unknown_37?: true | null
+	unknown_38?: true | null
+	unknown_39?: true | null
 	unknown_3c?: number | null
 	mirror?: true | null
 	unknown_40?: true | null

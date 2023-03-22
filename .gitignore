@@ -6,6 +6,7 @@ node_modules/
 /extract/
 *.code-workspace
 .*
+*.sqlite3
 
 
 #################

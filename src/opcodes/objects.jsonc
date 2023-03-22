@@ -49,6 +49,10 @@
 	"0x2A": { "name":                     "recolourPalette", "read": [ "array", "byte" ] },
 	"0x2C": { "name":                          "unknown_2C", "read": "unsigned short" },
 	"0x2D": { "name":                          "unknown_2D", "read": "unsigned short" },
+	"0x36": { "name":                          "unknown_36", "read": "true" },
+	"0x37": { "name":                          "unknown_37", "read": "true" },
+	"0x38": { "name":                          "unknown_38", "read": "true" },
+	"0x39": { "name":                          "unknown_39", "read": "true" },
 	"0x3C": { "name":                          "unknown_3c", "read": "ushort" },//replaced by mapfunction 6B later in ~2010
 	"0x3E": { "name":                              "mirror", "read": "true" },
 	"0x40": { "name":                          "unknown_40", "read": "true" },

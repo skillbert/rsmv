@@ -1,12 +1,14 @@
 // import { filesource, cliArguments } from "../cliparser";
 // import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
-import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
-import { archiveToFileId, CacheFileSource } from "../cache";
-import { defaultMorphId } from "../3d/mapsquare";
+import { archiveToFileId, iterateConfigFiles } from "../cache";
+import { defaultMorphId, getMapsquareData, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
 import { arrayEnum } from "../utils";
+import { EngineCache } from "../3d/modeltothree";
+import { legacyMajors, legacyGroups } from "../cache/legacycache";
 
 const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum"]);
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
@@ -14,7 +16,7 @@ export type DepTypes = typeof depids[number];
 
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
 type HashCallback = (depType: DepTypes, depId: number, hash: number, version: number) => void;
-type DepCollector = (cache: CacheFileSource, addDep: DepCallback, addHash: HashCallback) => Promise<void>;
+type DepCollector = (cache: EngineCache, addDep: DepCallback, addHash: HashCallback) => Promise<void>;
 
 const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 	let mapsquareindices = await cache.getCacheIndex(cacheMajors.mapsquares);
@@ -32,8 +34,25 @@ const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
+const mapsquareDeps2: DepCollector = async (cache, addDep, addHash) => {
+	for (let z = 0; z < 200; z++) {
+		for (let x = 0; x < 100; x++) {
+			let squareindex = x + z * worldStride;
+			let data = await getMapsquareData(cache, x, z);
+			if (data) {
+				addHash("mapsquare", squareindex, data.chunkfilehash, data.chunkfileversion);
+				for (let loc of data.rawlocs) {
+					addDep("loc", loc.id, "mapsquare", squareindex);
+				}
+			}
+		}
+	}
+}
 
 const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
+	if (cache.getBuildNr() <= 484) {//unknown exact buildnr
+		return;
+	}
 	let seqindices = await cache.getCacheIndex(cacheMajors.sequences);
 	for (let index of seqindices) {
 		if (!index) { continue; }
@@ -51,68 +70,57 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 		}
 	}
 }
-const locationDeps: DepCollector = async (cache, addDep, addHash) => {
-	let locindices = await cache.getCacheIndex(cacheMajors.objects);
-	for (let index of locindices) {
-		if (!index) { continue; }
-		let arch = await cache.getFileArchive(index);
 
-		for (let file of arch) {
-			let id = archiveToFileId(index.major, index.minor, file.fileid);
-			addHash("loc", id, crc32(file.buffer), index.version);
-			let loc = parse.object.read(file.buffer, cache);
-			if (loc.probably_animation) {
-				addDep("sequence", loc.probably_animation, "loc", id);
-			}
-			if (loc.models) {
-				for (let group of loc.models) {
-					for (let model of group.values) {
-						addDep("model", model, "loc", id);
-					}
+const locationDeps: DepCollector = async (cache, addDep, addHash) => {
+	for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.objects)) {
+		addHash("loc", id, crc32(file), 0);
+		let loc = parse.object.read(file, cache);
+		if (loc.probably_animation) {
+			addDep("sequence", loc.probably_animation, "loc", id);
+		}
+		if (loc.models) {
+			for (let group of loc.models) {
+				for (let model of group.values) {
+					addDep("model", model, "loc", id);
 				}
 			}
-			if (loc.models_05) {
-				for (let group of loc.models_05.models) {
-					for (let model of group.values) {
-						addDep("model", model, "loc", id);
-					}
+		}
+		if (loc.models_05) {
+			for (let group of loc.models_05.models) {
+				for (let model of group.values) {
+					addDep("model", model, "loc", id);
 				}
 			}
-			if (loc.morphs_1 || loc.morphs_2) {
-				let morphid = defaultMorphId(loc);
-				if (morphid != -1) {
-					addDep("loc", morphid, "loc", id);
-				}
+		}
+		if (loc.morphs_1 || loc.morphs_2) {
+			let morphid = defaultMorphId(loc);
+			if (morphid != -1) {
+				addDep("loc", morphid, "loc", id);
 			}
 		}
 	}
 }
-const itemDeps: DepCollector = async (cache, addDep, addHash) => {
-	let itemindices = await cache.getCacheIndex(cacheMajors.items);
-	for (let index of itemindices) {
-		if (!index) { continue; }
-		let arch = await cache.getFileArchive(index);
 
-		for (let file of arch) {
-			let id = archiveToFileId(index.major, index.minor, file.fileid);
-			addHash("item", id, crc32(file.buffer), index.version);
-			let item = parse.item.read(file.buffer, cache);
-			let models: number[] = ([] as (number | undefined | null)[]).concat(
-				item.baseModel,
-				item.maleModels_0, item.maleModels_1, item.maleModels_2,
-				item.femaleModels_0, item.femaleModels_1, item.femaleModels_2,
-				item.maleHeads_0, item.maleHeads_1, item.femaleHeads_0, item.femaleHeads_1
-			).filter(q => typeof q == "number") as any;
-			for (let model of models) {
-				addDep("model", model, "item", id);
-			}
-			if (item.noteTemplate) {
-				addDep("item", item.noteTemplate, "item", id);
-			}
+const itemDeps: DepCollector = async (cache, addDep, addHash) => {
+	for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.items)) {
+		addHash("item", id, crc32(file), 0);
+		let item = parse.item.read(file, cache);
+		let models: number[] = ([] as (number | undefined | null)[]).concat(
+			item.baseModel,
+			item.maleModels_0?.id, item.maleModels_1, item.maleModels_2,
+			item.femaleModels_0?.id, item.femaleModels_1, item.femaleModels_2,
+			item.maleHeads_0, item.maleHeads_1, item.femaleHeads_0, item.femaleHeads_1
+		).filter(q => typeof q == "number") as any;
+		for (let model of models) {
+			addDep("model", model, "item", id);
+		}
+		if (item.noteTemplate) {
+			addDep("item", item.noteTemplate, "item", id);
 		}
 	}
 }
 const animgroupDeps: DepCollector = async (cache, addDep, addHash) => {
+	if (cache.getBuildNr() < 526) { return; }
 	let animgroupfiles = await cache.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	for (let file of animgroupfiles) {
 		addHash("animgroup", file.fileid, crc32(file.buffer), 0);
@@ -140,6 +148,39 @@ const materialDeps: DepCollector = async (cache, addDep, addHash) => {
 		}
 	}
 }
+
+const materialDeps2: DepCollector = async (cache, addDep, addHash) => {
+	//TODO id=-1 material??
+	if (cache.getBuildNr() <= lastLegacyBuildnr) {
+		let mats = await cache.getArchiveById(legacyMajors.data, legacyGroups.textures);
+		for (let id of mats.map(q => q.fileid)) {
+			addHash("material", id, 0, 0);
+			addDep("texture", id, "material", id);
+		}
+	} else if (cache.getBuildNr() <= 471) {
+		let arch = await cache.getArchiveById(cacheMajors.texturesOldPng, 0);
+		for (let mat of arch) {
+			addHash("material", mat.fileid, crc32(mat.buffer), 0);
+			let matdata = parse.oldproctexture.read(mat.buffer, cache);
+			addDep("texture", matdata.spriteid, "material", mat.fileid);
+		}
+	} else if (cache.getBuildNr() < 759) {
+		//unkown how this works...
+	} else {
+		let arch = await cache.getArchiveById(cacheMajors.materials, 0);
+
+		for (let file of arch) {
+			addHash("material", file.fileid, crc32(file.buffer), 0);
+			let mat = convertMaterial(file.buffer, file.fileid, cache);
+			for (let tex of Object.values(mat.textures)) {
+				if (typeof tex == "number") {
+					addDep("texture", tex, "material", file.fileid)
+				}
+			}
+		}
+	}
+}
+
 const npcDeps: DepCollector = async (cache, addDep, addHash) => {
 	let npcindices = await cache.getCacheIndex(cacheMajors.npcs);
 	for (let index of npcindices) {
@@ -206,7 +247,7 @@ const modelDeps: DepCollector = async (cache, addDep, addHash) => {
 }
 
 export type DependencyGraph = (typeof getDependencies) extends ((...args: any[]) => Promise<infer T>) ? T : never;
-export async function getDependencies(cache: CacheFileSource) {
+export async function getDependencies(cache: EngineCache) {
 	let dependentsMap = new Map<string, string[]>();
 	let dependencyMap = new Map<string, string[]>();
 	let hashes = new Map<string, number>();
@@ -238,13 +279,14 @@ export async function getDependencies(cache: CacheFileSource) {
 	globalThis.dependentsMap = dependentsMap;
 
 	let runs: DepCollector[] = [
-		mapsquareDeps,
+		mapsquareDeps2,
 		sequenceDeps,
 		locationDeps,
 		itemDeps,
 		animgroupDeps,
-		materialDeps,
+		materialDeps2,
 		npcDeps,
+
 		// skeletonDeps,
 		// framesetDeps,
 		// modelDeps
@@ -294,6 +336,8 @@ export async function getDependencies(cache: CacheFileSource) {
 
 	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies };
 }
+//TODO remove
+globalThis.getdeps = getDependencies;
 
 const staticintbuf = Buffer.alloc(4);
 export function crc32addInt(int: number, crc = 0) {
