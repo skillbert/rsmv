@@ -12,7 +12,7 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
     let allocmat = (colorid: number, nverts: number) => {
         if (colorid == 0x7fff) { return; }
         if (nverts < 3) { return; }
-        let matid = (colorid & 0x8000 ? 0 : colorid + 1);
+        let matid = (colorid & 0x8000 ? -1 : colorid + 1);
         let count = matusecount.get(matid);
         if (!count) {
             count = { tris: 0, verts: 0 };
@@ -43,7 +43,7 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
 
     let addvert = (group: WorkingSubmesh, verts: number[], polyindex: number, color: number) => {
         let posindex = verts[polyindex];
-        if (group.matid == 0) {
+        if (group.matid == -1) {
             group.color.setXYZ(
                 group.currentface,
                 ((~color >> 10) & 0x1f) / 31,
@@ -96,7 +96,7 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
 
             //convert n-poly to tris
             //reverse iteration
-            let group = matmeshes.get(face.color & 0x8000 ? 0 : face.color + 1)!;
+            let group = matmeshes.get(face.color & 0x8000 ? -1 : face.color + 1)!;
             let firstvert = addvert(group, face.verts, face.verts.length - 1, face.color);
             let lastvert = addvert(group, face.verts, face.verts.length - 2, face.color);
 
@@ -121,7 +121,7 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
             v2.sub(v0);
             currentNormal.copy(v1).cross(v2).normalize();
 
-            let group = matmeshes.get(face.backcolor & 0x8000 ? 0 : face.backcolor + 1)!;
+            let group = matmeshes.get(face.backcolor & 0x8000 ? -1 : face.backcolor + 1)!;
             let firstvert = addvert(group, face.verts, 0, face.backcolor);
             let lastvert = addvert(group, face.verts, 1, face.backcolor);
             for (let i = 2; i < face.verts.length; i++) {
