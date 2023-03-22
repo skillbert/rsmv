@@ -136,7 +136,8 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
 		const planeMat = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide, });
 		const floormesh = new THREE.Mesh(planeGeo, planeMat);
-		floormesh.rotation.x = Math.PI * -.5;
+		floormesh.rotation.x = Math.PI * -0.5;
+		floormesh.position.y = -0.01;//slight offset to reduce flickering
 		scene.add(floormesh);
 		this.floormesh = floormesh;
 

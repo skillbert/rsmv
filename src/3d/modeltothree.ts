@@ -351,8 +351,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			mat.emissiveMap.wrapS = wraptypes;
 			mat.emissiveMap.wrapT = wraptypet;
 			mat.emissiveMap.magFilter = THREE.LinearFilter;
-			//TODO this is contradictory with the other interpreration of basecolor
-			mat.emissive.setRGB(material.baseColor[0], material.baseColor[1], material.baseColor[2]);
+			mat.emissive.setRGB(1, 1, 1);
 		}
 		if (material.textures.compound) {
 			let compound = await (await source.getTextureFile("compound", material.textures.compound, false)).toImageData();

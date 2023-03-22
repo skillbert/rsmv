@@ -83,7 +83,7 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 		if (raw.extra) {
 			mat.baseColorFraction = raw.extra.baseColorFraction / 255;
 			//seems like 0 is a special case, but unclear
-			mat.baseColor = (raw.extra.baseColor == 0 ? [255, 255, 255] : HSL2RGBfloat(packedHSL2HSL(raw.extra.baseColor)));
+			mat.baseColor = (raw.extra.baseColor == 0 ? [1, 1, 1] : HSL2RGBfloat(packedHSL2HSL(raw.extra.baseColor)));
 		}
 		mat.stripDiffuseAlpha = (mat.alphamode == "opaque");
 	} else if (rawparsed.v1) {
