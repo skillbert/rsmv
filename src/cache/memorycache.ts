@@ -7,7 +7,8 @@ export type CachedObject<T> = {
     usecount: number,
     owner: Map<number, CachedObject<T>>,
     id: number,
-    data: Promise<T>
+    promise: Promise<T> | null,
+    data: T | null
 }
 export class CachingFileSource extends CacheFileSource {
     private archieveCache = new Map<number, CachedObject<SubFile[]>>();
@@ -28,14 +29,21 @@ export class CachingFileSource extends CacheFileSource {
         if (!bucket || globalThis.ignoreCache) {
             let data = create();
             bucket = {
-                data: data,
+                promise: data,
+                data: null,
                 owner: map,
                 id: id,
                 lastuse: 0,
                 size: 0,
                 usecount: 0
             }
-            data.then(obj => bucket!.size = getSize(obj));
+            data.then(obj => {
+                bucket!.size = getSize(obj);
+                //delete the promise since otherwise v8 leaks the internal callback list
+                //not sure why (chromium 110.0.5481.179, electron 23.1.3)
+                bucket!.promise = null;
+                bucket!.data = obj;
+            });
             this.cachedObjects.push(bucket);
             map.set(id, bucket);
             if (++this.cacheAddCounter % 100 == 0) {
@@ -44,7 +52,14 @@ export class CachingFileSource extends CacheFileSource {
         }
         bucket.usecount++;
         bucket.lastuse = this.cacheFetchCounter++;
-        return bucket.data;
+
+        if (bucket.data) {
+            //create a new promise here to prevent memory leak in v8, somehow adding new callback to a resolved promise
+            //results in the promise holding a reference to all of them indefinitely
+            return Promise.resolve(bucket.data);
+        } else {
+            return bucket.promise!;
+        }
     }
 
     sweepCachedObjects() {
