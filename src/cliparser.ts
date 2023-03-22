@@ -22,20 +22,23 @@ function cacheSourceFromString(str: string) {
 		switch (mode) {
 			case "live":
 				return new CacheDownloader();
+			case "auto":
+				let fs = new CLIScriptFS(arg);
+				return selectFsCache(fs, opts);
+			case "nxt":
+			case "cache":
+				return new GameCacheLoader(arg, false);
+			case "openrs":
+			case "openrs2":
+				return Openrs2CacheSource.fromId(+arg);
+			case "extracted":
+				return new RawFileLoader(arg, 0);
 			case "global":
 				let fn = globalThis[arg];
 				if (typeof fn != "function") {
 					throw new Error("the 'global' cache source requires a callback function with name <arg> to be exposed on the global scope");
 				}
 				return new CallbackCacheLoader(fn, false);
-			case "cache":
-				let fs = new CLIScriptFS(arg);
-				return selectFsCache(fs, opts);
-			case "files":
-				return new RawFileLoader(arg, 0);
-			case "openrs":
-			case "openrs2":
-				return Openrs2CacheSource.fromId(+arg);
 			default:
 				throw new Error("unknown mode");
 		}
