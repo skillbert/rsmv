@@ -31,7 +31,7 @@
 	"0x6A": { "name":                            "morphs_1", "read": [ "struct", 
 																		["unk1", "unsigned int"],
 																		["unk2", [ "array", ["match","buildnr",{">=910":"varushort",">=0":"ubyte"}], "unsigned short" ]],
-																		["unk3", "unsigned int"] ] },
+																		["unk3", ["match","buildnr",{">=525":"uint",">=0":"ushort"}]] ] },
 	"0x6B": { "name":                          "unknown_6B", "read": "false" },
 	"0x6D": { "name":                            "slowWalk", "read": "false" },
 	"0x6F": { "name":                         "animateIdle", "read": "false" },

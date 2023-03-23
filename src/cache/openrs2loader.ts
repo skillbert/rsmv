@@ -73,7 +73,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
 	xteaKeysLoaded = false;
-	fscache: FileSourceFsCache | null = null;// new FileSourceFsCache();
+	fscache: FileSourceFsCache | null = new FileSourceFsCache();
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);

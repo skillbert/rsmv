@@ -19,7 +19,8 @@ type Mapconfig = {
 	layers: LayerConfig[],
 	tileimgsize: number,
 	mapsizex: number,
-	mapsizez: number
+	mapsizez: number,
+	area: string
 }
 
 type LayerConfig = {
@@ -116,24 +117,47 @@ class MapRender {
 	}
 }
 
-type TileProgress = "queued" | "rendering" | "imaged" | "sliced";
+type TileProgress = "queued" | "imaging" | "saving" | "done" | "skipped";
+type TileLoadState = "loading" | "loaded" | "unloaded";
 
 class ProgressUI {
 	areas: MapRect[];
-	tiles = new Map<string, { el: HTMLDivElement, x: number, z: number, progress: TileProgress }>();
+	tiles = new Map<string, { el: HTMLDivElement, x: number, z: number, progress: TileProgress, loadstate: TileLoadState }>();
 	props: Record<string, { el: HTMLDivElement, text: string }> = {};
 	root: HTMLElement;
 	proproot: HTMLElement;
+	grid: HTMLElement;
 
+	static renderBackgrounds: Record<TileLoadState, string> = {
+		loaded: "lime",
+		loading: "red",
+		unloaded: "green"
+	}
 	static backgrounds: Record<TileProgress, string> = {
-		sliced: "green",
 		queued: "black",
-		rendering: "yellow",
-		imaged: "orange"
+		imaging: "orange",
+		saving: "yellow",
+		done: "green",
+		skipped: "darkgreen"
 	};
 
-	constructor(areas: MapRect[]) {
+	constructor() {
+		this.areas = [];
+		this.grid = document.createElement("div");
+		this.grid.style.display = "grid";
+
+		this.proproot = document.createElement("div");
+
+		let root = document.createElement("div");
+		root.style.display = "grid";
+		root.style.grid = "'a b'/auto 1fr";
+		root.appendChild(this.grid);
+		root.appendChild(this.proproot);
+		this.root = root;
+	}
+	setAreas(areas: MapRect[]) {
 		this.areas = areas;
+		this.grid.replaceChildren();
 
 		let minx = Infinity, minz = Infinity;
 		let maxx = -Infinity, maxz = -Infinity;
@@ -146,46 +170,45 @@ class ProgressUI {
 					let id = `${area.x + dx}-${area.z + dz}`;
 					if (!this.tiles.has(id)) {
 						let el = document.createElement("div");
-						this.tiles.set(id, { x: area.x + dx, z: area.z + dz, el, progress: "queued" });
+						this.tiles.set(id, { x: area.x + dx, z: area.z + dz, el, progress: "queued", loadstate: "unloaded" });
 					}
 				}
 			}
 		}
 
-		let grid = document.createElement("div");
 		const longsize = 700;
 		let scale = longsize / Math.max(maxx - minx + 1, maxz - minz + 1);
-		grid.style.display = "grid";
-		grid.style.width = `${(maxx - minx + 1) * scale}px`;
-		grid.style.height = `${(maxz - minz + 1) * scale}px`;
-		grid.style.gridTemplateColumns = `repeat(${maxx - minx + 1},1fr)`;
-		grid.style.gridTemplateRows = `repeat(${maxz - minz + 1},1fr)`;
+		this.grid.style.width = `${(maxx - minx + 1) * scale}px`;
+		this.grid.style.height = `${(maxz - minz + 1) * scale}px`;
+		this.grid.style.gridTemplateColumns = `repeat(${maxx - minx + 1},1fr)`;
+		this.grid.style.gridTemplateRows = `repeat(${maxz - minz + 1},1fr)`;
 
+		this.proproot.style.left = `${(maxx - minx + 1) * scale}px`;
 		for (let tile of this.tiles.values()) {
 			tile.el.style.gridColumn = (tile.x - minx + 1) + "";
 			tile.el.style.gridRow = (maxz - minz - (tile.z - minz) + 1) + "";
 			tile.el.style.background = ProgressUI.backgrounds.queued;
-			grid.appendChild(tile.el);
+			this.grid.appendChild(tile.el);
 		}
-
-		let proproot = document.createElement("div");
-		proproot.style.left = `${(maxx - minx + 1) * scale}px`;
-		this.proproot = proproot;
-
-		let root = document.createElement("div");
-		root.style.display = "grid";
-		root.style.grid = "'a b'/auto 1fr";
-		root.appendChild(grid);
-		root.appendChild(proproot);
-		this.root = root;
 	}
-	update(x: number, z: number, state: TileProgress) {
+
+	update(x: number, z: number, state: TileProgress | "", tilestate: TileLoadState | "" = "") {
 		let id = `${x}-${z}`;
 		let tile = this.tiles.get(id);
-		if (!tile) { throw new Error("untrakced tile"); }
-
-		tile.progress = state;
-		tile.el.style.background = ProgressUI.backgrounds[state];
+		if (!tile) { return; }
+		if (state) {
+			tile.progress = state;
+		}
+		if (tilestate) {
+			tile.loadstate = tilestate;
+		}
+		if (tile.progress == "imaging" || tile.progress == "saving") {
+			tile.el.style.background = ProgressUI.backgrounds[tile.progress];
+		} else if (tile.loadstate != "unloaded") {
+			tile.el.style.background = ProgressUI.renderBackgrounds[tile.loadstate]
+		} else {
+			tile.el.style.background = ProgressUI.backgrounds[tile.progress];
+		}
 	}
 	updateProp(propname: string, value: string) {
 		let prop = this.props[propname];
@@ -204,12 +227,26 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, areaArgument: string, endpoint: string, auth: string, uploadmapid: number, overwrite = false) {
+export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, endpoint: string, auth: string, uploadmapid: number, overwrite = false) {
 	let engine = await EngineCache.create(filesource);
 
+	let progress = new ProgressUI();
+	document.body.appendChild(progress.root);
+	output.setUI(progress.root);
+
+	progress.updateProp("deps", "starting dependency graph");
+	let deps = await getDependencies(engine);
+	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
+	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
+
+	let config = await initMapConfig(endpoint, auth, uploadmapid, deps.maxVersion, overwrite);
+	let areaArgument = config.config.area;
 	let areas: MapRect[] = [];
 	let mask: MapRect[] | undefined = undefined;
-	if (areaArgument.match(/^\w+$/)) {
+
+	if (areaArgument == "") {
+		areas = [{ x: 0, z: 0, xsize: 100, zsize: 200 }];
+	} else if (areaArgument.match(/^\w+$/)) {
 		if (areaArgument == "main") {
 
 			//enums 708 seems to be the map select dropdown in-game
@@ -253,10 +290,10 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		}
 		if (areaArgument == "test") {
 			areas = [
-				{ x: 47, z: 48, xsize: 2, zsize: 2 }
+				{ x: 48, z: 48, xsize: 5, zsize: 5 }
 			]
 			mask = [
-				{ x: 3032, z: 3150, xsize: 95, zsize: 100 },
+				{ x: 48 * 64, z: 48 * 64, xsize: 5 * 64, zsize: 5 * 64 }
 			]
 		}
 		if (areaArgument == "gwd3") {
@@ -272,8 +309,6 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 				{ x: 49, z: 51, xsize: 1, zsize: 1 }
 			];
 		}
-	} else if (areaArgument.length == 0) {
-		areas = [{ x: 0, z: 0, xsize: 100, zsize: 200 }];
 	} else {
 		let rect = stringToMapArea(areaArgument);
 		if (!rect) {
@@ -284,21 +319,13 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	if (areas.length == 0) {
 		throw new Error("no map area or map name");
 	}
-
-	let progress = new ProgressUI(areas);
-	document.body.appendChild(progress.root);
-	output.setUI(progress.root);
-
-	progress.updateProp("deps", "starting dependency graph");
-	let deps = await getDependencies(engine);
-	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
-	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
-
-	let config = await initMapConfig(endpoint, auth, uploadmapid, deps.maxVersion, overwrite);
+	progress.setAreas(areas);
 
 	let getRenderer = () => {
 		let cnv = document.createElement("canvas");
-		return new MapRenderer(cnv, engine, { mask });
+		let renderer = new MapRenderer(cnv, engine, { mask });
+		renderer.loadcallback = (x, z, state) => progress.update(x, z, "", state);
+		return renderer;
 	}
 	await downloadMap(output, getRenderer, engine, deps, areas, config, progress);
 	output.log("done");
@@ -310,10 +337,11 @@ export class MapRenderer {
 	renderer: ThreeJsRenderer;
 	engine: EngineCache;
 	scenecache: ThreejsSceneCache | null = null;
-	maxunused = 6;
-	minunused = 3;
+	maxunused = 12;
+	minunused = 7;
 	idcounter = 0;
 	squares: MaprenderSquare[] = [];
+	loadcallback: ((x: number, z: number, state: TileLoadState) => void) | null = null;
 	opts: ParsemapOpts;
 	constructor(cnv: HTMLCanvasElement, engine: EngineCache, opts: ParsemapOpts) {
 		this.engine = engine;
@@ -339,6 +367,7 @@ export class MapRenderer {
 		if (existing) {
 			return existing;
 		} else {
+			this.loadcallback?.(x, z, "loading")
 			let id = this.idcounter++;
 			// if (!this.scenecache || (id % 16 == 0)) {
 			if (!this.scenecache) {
@@ -351,6 +380,7 @@ export class MapRenderer {
 				chunk: new RSMapChunk({ x, z, xsize: 1, zsize: 1 }, this.scenecache, this.opts),
 				id
 			}
+			square.chunk.once("loaded", () => this.loadcallback?.(x, z, "loaded"));
 			this.squares.push(square);
 			return square;
 		}
@@ -372,6 +402,8 @@ export class MapRenderer {
 			removed.forEach(r => {
 				r.chunk.model.then(m => m.chunkmodels.forEach(ch => disposeThreeTree(ch)));
 				r.chunk.cleanup();
+				this.loadcallback?.(r.x, r.z, "unloaded");
+				console.log("removed", r.x, r.z);
 			});
 			this.squares = this.squares.filter(sq => !removed.includes(sq));
 		}
@@ -541,22 +573,32 @@ async function mipCanvas(render: MapRender, files: MipCommand["files"], format: 
 		if (!f) { return null; }
 		let src = render.getFileUrl(f.name, f.hash);
 
-		//use fetch here since we can't prevent cache on redirected images otherwise
-		// let res = await fetch(src, { cache: "reload" });
-		// if (!res.ok) { throw new Error("image no found"); }
-		//imagedecoder API doesn't support svg
-		// //@ts-ignore
-		// let decoder = new ImageDecoder({ data: res.body, type: res.headers.get("content-type"), desiredWidth: subtilesize, desiredHeight: subtilesize });
-		// let frame = await decoder.decode();
+		let usefetch = true;
 
-		let img = new Image(subtilesize, subtilesize);
-		// let blobsrc = URL.createObjectURL(await res.blob());
-		img.crossOrigin = "";
-		img.src = src;
-		// img.src = blobsrc;
-		await img.decode();
+		//use fetch here since we can't prevent cache on redirected images otherwise
+		let img: any;//Image|VideoFrame
+		if (usefetch) {
+			let res = await fetch(src, { cache: "reload" });
+			if (!res.ok) { throw new Error("image no found"); }
+			let mimetype = res.headers.get("content-type");
+			// imagedecoder API doesn't support svg
+			if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
+				let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
+				img = await decoder.decode();
+			} else {
+				let blobsrc = URL.createObjectURL(await res.blob());
+				let img = new Image(subtilesize, subtilesize);
+				img.src = blobsrc;
+				await img.decode();
+				URL.revokeObjectURL(blobsrc);
+			}
+		} else {
+			img = new Image(subtilesize, subtilesize);
+			img.crossOrigin = "";
+			img.src = src;
+			await img.decode();
+		}
 		ctx.drawImage(img, (i % 2) * subtilesize, Math.floor(i / 2) * subtilesize, subtilesize, subtilesize);
-		// URL.revokeObjectURL(blobsrc);
 	}));
 	return canvasToImageFile(cnv, format, quality);
 }
@@ -582,7 +624,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 	let y = config.config.mapsizez - 1 - z;
 
 	let baseimgs: Record<string, ImageData> = {};
-	progress.update(x, z, "rendering");
+	progress.update(x, z, "imaging");
 	let rootdeps = [
 		deps.makeDeptName("mapsquare", (x - 1) + (z - 1) * worldStride),
 		deps.makeDeptName("mapsquare", (x) + (z - 1) * worldStride),
@@ -744,12 +786,12 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 			}
 		}
 	}
-	progress.update(x, z, "imaged");
+	progress.update(x, z, "done");
 	let finish = (async () => {
 		await Promise.all(savetasks);
 		await Promise.all(symlinktasks.map(q => q()));
 		miptasks.forEach(q => q());
-		progress.update(x, z, "sliced");
+		progress.update(x, z, (savetasks.length == 0 ? "skipped" : "done"));
 		console.log("imaged", x, z, "files", savetasks.length, "symlinks", symlinktasks.length);
 	})();
 
@@ -780,4 +822,28 @@ function trickleTasks(name: string, parallel: number, tasks: (() => Promise<any>
 		}
 	})
 }
+// async function trickleTasksTwoStep<ID, V, T>(name: string, parallel: number, args: ID[], load: (id: ID) => Promise<V>, store: (id: ID, v: V) => T) {
+// 	if (name) { console.log(`starting ${name}, ${args.length} tasks`); }
+// 	return new Promise<void>(done => {
+// 		let index = 0;
+// 		let running = 0;
+// 		let active: { id: ID, load: Promise<V> }[]=[];
+// 		let run = () => {
+// 			if (index < tasks.length) {
+// 				tasks[index++]().finally(run);
+// 				if (index % 100 == 0 && name) { console.log(`${name} progress ${index}/${tasks.length}`); }
+// 			} else {
+// 				running--;
+// 				if (running <= 0) {
+// 					if (name) { console.log(`completed ${name}`); }
+// 					done();
+// 				}
+// 			}
+// 		}
+// 		for (let i = 0; i < parallel; i++) {
+// 			running++;
+// 			run();
+// 		}
+// 	})
+// }
 

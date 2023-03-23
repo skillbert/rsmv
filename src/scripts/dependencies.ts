@@ -182,27 +182,20 @@ const materialDeps2: DepCollector = async (cache, addDep, addHash) => {
 }
 
 const npcDeps: DepCollector = async (cache, addDep, addHash) => {
-	let npcindices = await cache.getCacheIndex(cacheMajors.npcs);
-	for (let index of npcindices) {
-		if (!index) { continue; }
-		let arch = await cache.getFileArchive(index);
-
-		for (let file of arch) {
-			let id = archiveToFileId(index.major, index.minor, file.fileid);
-			addHash("npc", id, crc32(file.buffer), index.version);
-			let npc = parse.npc.read(file.buffer, cache);
-			if (npc.animation_group) {
-				addDep("animgroup", npc.animation_group, "npc", id);
+	for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.npcs)) {
+		addHash("npc", id, crc32(file), 0);
+		let npc = parse.npc.read(file, cache);
+		if (npc.animation_group) {
+			addDep("animgroup", npc.animation_group, "npc", id);
+		}
+		if (npc.models) {
+			for (let model of npc.models) {
+				addDep("model", model, "npc", id);
 			}
-			if (npc.models) {
-				for (let model of npc.models) {
-					addDep("model", model, "npc", id);
-				}
-			}
-			if (npc.headModels) {
-				for (let model of npc.headModels) {
-					addDep("model", model, "npc", id);
-				}
+		}
+		if (npc.headModels) {
+			for (let model of npc.headModels) {
+				addDep("model", model, "npc", id);
 			}
 		}
 	}

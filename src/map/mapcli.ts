@@ -8,14 +8,13 @@ let cmd = cmdts.command({
 	name: "download",
 	args: {
 		...filesource,
-		mapname: cmdts.option({ long: "mapname", defaultValue: () => "main" }),
 		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
 		auth: cmdts.option({ long: "auth", short: "p" }),
 		mapid: cmdts.option({ long: "mapid", type: cmdts.number })
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
-		await runMapRender(output, await args.source(), args.mapname, args.endpoint, args.auth, args.mapid, false);
+		await runMapRender(output, await args.source(), args.endpoint, args.auth, args.mapid, false);
 	}
 });
 

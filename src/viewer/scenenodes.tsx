@@ -1880,7 +1880,7 @@ function MaprenderScript(p: UiScriptProps) {
 	let run = () => {
 		let output = new UIScriptOutput();
 		localStorage.rsmv_script_map_endpoint = endpoint;
-		output.run(runMapRender, p.source, "main", endpoint, auth, mapid, false);
+		output.run(runMapRender, p.source, endpoint, auth, mapid, false);
 		p.onRun(output, "");
 	}
 

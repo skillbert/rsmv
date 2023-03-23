@@ -8,7 +8,7 @@
 	"0x06": { "name":                          "rotation_1", "read": "unsigned short" },
 	"0x07": { "name":                    "modelTranslate_0", "read": "short" },
 	"0x08": { "name":                    "modelTranslate_1", "read": "short" },
-	"0x0A": { "name":                          "unknown_0A", "read": "true" },
+	"0x0A": { "name":                          "unknown_0A", "read": "ushort" },
 	"0x0B": { "name":                         "stackable_1", "read": "true" },
 	"0x0C": { "name":                               "value", "read": "int" },
 	"0x0D": { "name":                         "equipSlotId", "read": "unsigned byte" },
