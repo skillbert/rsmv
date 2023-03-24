@@ -391,10 +391,10 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	if (source.type == "sqliteblobs" || source.type == "autohandle") {
 		let wasmcache = new WasmGameCacheLoader();
 		if (source.type == "autohandle") {
-			let fs = new UIScriptFS(null);
-			await fs.setSaveDirHandle(source.handle);
-			cache = await selectFsCache(fs);
-			// await wasmcache.giveFsDirectory(source.handle);
+			// let fs = new UIScriptFS(null);
+			// await fs.setSaveDirHandle(source.handle);
+			// cache = await selectFsCache(fs);
+			await wasmcache.giveFsDirectory(source.handle);
 			navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: source.handle }));
 		} else {
 			wasmcache.giveBlobs(source.blobs);
