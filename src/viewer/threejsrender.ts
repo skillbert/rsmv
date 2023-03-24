@@ -7,7 +7,7 @@ import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, BufferGeometry, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, Texture, Vector3 } from "three";
+import { AnimationClip, AnimationMixer, BufferGeometry, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
@@ -638,6 +638,15 @@ export function exportThreeJsGltf(node: THREE.Object3D) {
 		let anims: AnimationClip[] = [];
 		node.traverseVisible(node => {
 			if (node.animations) { anims.push(...node.animations); }
+			if (node instanceof SkinnedMesh) {
+				let geo = node.geometry as BufferGeometry;
+				let oldbones = !!geo.attributes.RA_skinIndex_bone;
+				//TODO this probably breaks other stuff!!
+				if (!geo.attributes.skinIndex) {
+					geo.attributes.skinIndex = (oldbones ? geo.attributes.RA_skinIndex_bone : geo.attributes.RA_skinIndex_skin);
+					geo.attributes.skinWeight = (oldbones ? geo.attributes.RA_skinWeight_bone : geo.attributes.RA_skinWeight_skin);
+				}
+			}
 		});
 		exporter.parse(node, gltf => resolve(gltf as any), reject, {
 			binary: true,
