@@ -162,7 +162,6 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
     let colorbuffer = modeldata.colors;
     let uvids: number[] = [];
 
-    //not sure why this was ever needed, supposedly there is some modelversion/buildnr where the format is like this
     let usenewuvkey: number;
     if (modeldata.modelversion >= 16) {
         usenewuvkey = 0x7fff
@@ -254,7 +253,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         for (let i = 0; i < modeldata.facecount; i++) {
             let matarg = materialbuffer[i];
             if (matarg == 0) { continue; }//TODO is this now obsolete?
-            let mapid = uvids[texindex++];
+            let mapid = (texindex < uvids.length ? uvids[texindex++] : 0);
             if (mapid != 0 && mapid != usenewuvkey) {
                 let mapping = textureMappings[mapid - 1];
                 srcindex0 = vertexindex[i * 3 + 0];
@@ -448,7 +447,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
 
         if (matargument) {
             //calculate the center of each mapping
-            let mapid = uvids[texmapindex++];
+            let mapid = (texmapindex < uvids.length ? uvids[texmapindex++] : 0);
             if (mapid == 0) {
                 // debugger;
                 //TODO just default [0,1] uvs?

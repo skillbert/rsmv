@@ -440,7 +440,7 @@ export class MapRenderer {
 		let load: MaprenderSquare[] = [];
 		//load topright last to increase chance of cache hit later on
 		for (let dx = 0; dx < xsize; dx++) {
-			for (let dz = zsize - 1; dz >= 0; dz--) {
+			for (let dz = 0; dz < zsize; dz++) {
 				load.push(await this.getChunk(x + dx, z + dz))
 			}
 		}

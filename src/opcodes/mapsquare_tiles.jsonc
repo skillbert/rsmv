@@ -36,7 +36,7 @@
 			["short3","ushort"],
 			["short4","ushort"],
 			["extraflags","ubyte"],
-			["extra08",["match","buildnr",{">=820":"ushort","other":0}]],//always ffff? //TODO no clue at what build it changes
+			["extra08",["match","buildnr",{">=803":"ushort","other":0}]],//always ffff? //TODO no clue at what build it changes
 			["extra1f",["opt",["extraflags",31,"bitand"],"ushort"]]
 		]]},
 		"0x02": { "name": "unk02", "read":["array",3,["match","buildnr",{">=780":"float","other":"byte"}]]},
