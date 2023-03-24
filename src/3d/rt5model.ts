@@ -407,6 +407,8 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         vtmp0.copy(v1).sub(v0);
         vnormal.copy(v2).sub(v0).cross(vtmp0).normalize();
 
+        if (materialbuffer && materialbuffer[i] == 0) { continue; }
+
         let matargument = (materialbuffer ? materialbuffer[i] : 0);
         let submesh = matmesh.get(matargument)!;
         let dstfaceindex = submesh.currentface++;
@@ -550,10 +552,13 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
 
     //old model format stores with lower presicion
     if (modeldata.modelversion == 0) {
+        const scale = 4;
+        maxy *= scale;
+        miny *= scale;
         for (let mesh of meshes) {
             let arr = mesh.attributes.pos.array as number[];
             for (let i = 0; i < arr.length; i++) {
-                arr[i] *= 4;
+                arr[i] *= scale;
             }
         }
     }

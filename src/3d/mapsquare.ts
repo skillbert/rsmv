@@ -975,7 +975,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 }
 
 export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
-	let floors = await mapsquareFloors(scene, grid, chunk);
+	let floors = await mapsquareFloors(scene, grid, chunk, opts);
 	let models = mapsquareObjectModels(chunk.locs);
 	let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
 	let r: ChunkModelData = {

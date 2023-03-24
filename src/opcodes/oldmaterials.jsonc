@@ -2,26 +2,24 @@
     ["$idcount",0],
     ["mats",["chunkedarray","ushort",
         [["id",["accum","$idcount",1,"postadd"]]],
-        [["unk0","ubyte"]],//always 1
-        [["unk1","ubyte"]],//1 or 0
-        [["unk2","ubyte"]],//1 or 0
-        [["unk3","ubyte"]],//always 0
-        [["unk4","ushort"]],//might be [[ubyte,ubyte] probably normalized
-        [["unk5","ubyte"]],//0-7
-        [["unk6","ubyte"]],//0-3
-        [["unk7","ushort"]],//lots <0x100, but also some full range
-        [["unk8","ubyte"]],//mostly 0, some >0xf0
-        [["unk9","ubyte"]],//mostly 0, some >0xf0, some <0x20
-        [["unk10","ubyte"]],//1 or 0
-        [["unk11","ubyte"]],//1 or 0
-        [["unk12","ubyte"]],//mostly 2, some 0
-        [["unk13","ubyte"]],//1 or 0
-        [["unk14","ubyte"]],//1 or 0
-        [["unk15","ubyte"]],//1 or 0
-        [["unk16","ubyte"]],//always 0
-        [["unk17","ubyte"]],//always 0
-        [["unk18","ubyte"]],//mostly 0, some 20xx, 30xx
-        [["unk19","ushort"]],//always 0
-        [["unk20","ubyte"]]//0-2
+        [["hasprops","ubyte"]],//always 1, rarely 0
+        [["unk1",["opt",["hasprops",0,"eqnot"],"ubyte"]]],//1 or 0
+        [["unk2",["opt",["hasprops",0,"eqnot"],"ubyte"]]],//1 or 0       
+        [["unk3",["match","buildnr",{">627":null,"other":["opt",["hasprops",0,"eqnot"],"ubyte"]}]]],//mostly 00, 1x 0001 1x 0080
+        [["unk4",["opt",["hasprops",0,"eqnot"],"ushort"]]],//mostly 00, 1x 0001 1x 0080
+        [["basecolorfraction",["opt",["hasprops",0,"eqnot"],"ubyte"]]],//00, or ff, some in between
+        [["unk6",["opt",["hasprops",0,"eqnot"],"ubyte"]]],//0-5
+        [["unk7",["opt",["hasprops",0,"eqnot"],"ubyte"]]],//0-4 1x 82
+        [["basecolor",["opt",["hasprops",0,"eqnot"],"ushort"]]],
+        [["unk10",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk11",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk20",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk21",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk30",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk31",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk32",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk33",["match","buildnr",{">554":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]],
+        [["unk40",["match","buildnr",{">578":["opt",["hasprops",0,"eqnot"],["buffer",5,"hex"]],"other":null}]]],
+        [["unk41",["match","buildnr",{">597":["opt",["hasprops",0,"eqnot"],"ubyte"],"other":null}]]]
     ]]
 ]

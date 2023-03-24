@@ -55,6 +55,7 @@ export function validOpenrs2Caches() {
 
 				905,//missing textures
 				1256,//missing materials
+				1003,//missing materials
 
 				//large gaps in files according to openrs2ids command
 				621, 623, 620, 617, 618, 619,

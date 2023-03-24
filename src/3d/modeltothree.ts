@@ -22,6 +22,7 @@ import { classicConfig, ClassicConfig, classicGroups } from "../cache/classicloa
 import { parseRT2Model } from "./rt2model";
 import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof17, classicRoof12, materialPreviewCube, classicWall, classicWallDiag, classicRoof15 } from "./modelutils";
 import { classicOverlays, classicUnderlays } from "./classicmap";
+import { HSL2RGB, HSL2RGBfloat, packedHSL2HSL } from "../utils";
 
 const constModelOffset = 1000000;
 
@@ -143,11 +144,15 @@ export class EngineCache extends CachingFileSource {
 					this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
 				}
 			}
+
 			if (this.getBuildNr() <= 471) {
 				for (let file of await this.getArchiveById(cacheMajors.texturesOldPng, 0)) {
 					this.materialArchive.set(file.fileid, file.buffer);
 				}
-			} else if (this.getBuildNr() >= 754) {
+			} else if (this.getBuildNr() <= 753) {
+				let file = await this.getFile(cacheMajors.materials, 0);
+				this.materialArchive.set(0, file);
+			} else {
 				for (let file of await this.getArchiveById(cacheMajors.materials, 0)) {
 					this.materialArchive.set(file.fileid, file.buffer);
 				}
@@ -202,10 +207,17 @@ export class EngineCache extends CachingFileSource {
 					cached = defaultMaterial();
 					cached.textures.diffuse = matprops.spriteid;
 					cached.baseColorFraction = 1;
-				} else if (this.getBuildNr() < 759) {
+				} else if (this.getBuildNr() <= 753) {
+					let matlist = parse.oldmaterials.read(this.materialArchive.get(0)!, this);
+					let matdata = matlist.mats[id];
 					cached = defaultMaterial();
-					cached.textures.diffuse = id;
-					cached.baseColorFraction = 1;
+					//builds 736-759 tecnically do have usable textures, this depends on scenecache.texturemode!="none"
+					//textures should be moved to enginecache
+					// cached.textures.diffuse = id;
+					if (matdata.hasprops) {
+						cached.baseColorFraction = matdata.basecolorfraction! / 255;
+						cached.baseColor = HSL2RGBfloat(packedHSL2HSL(matdata.basecolor!));
+					}
 					//TODO other material props
 				} else {
 					let file = this.materialArchive.get(id);
@@ -373,7 +385,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			mat.metalness = 1;
 		}
 	}
-	mat.vertexColors = material.baseColorFraction != 1 || hasVertexAlpha;
+	mat.vertexColors = material.baseColorFraction != 1 || !material.textures.diffuse || hasVertexAlpha;
 
 	mat.userData = material;
 	if (material.uvAnim) {
@@ -526,7 +538,7 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
 	let oldcol = mesh.geometry.getAttribute("color");
 	let hasVertexAlpha = !!oldcol && oldcol.itemSize == 4;
 	mesh.material = parsedmat.mat;
-	let needsvertexcolors = parsedmat.matmeta.baseColorFraction != 1 || hasVertexAlpha;
+	let needsvertexcolors = parsedmat.matmeta.baseColorFraction != 1 || !parsedmat.matmeta.textures.diffuse || hasVertexAlpha;
 	if (needsvertexcolors) {
 		if (parsedmat.matmeta.baseColorFraction != 0) {
 			let vertcount = mesh.geometry.getAttribute("position").count;
