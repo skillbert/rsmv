@@ -9,6 +9,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	worker: Worker;
 	msgidcounter = 1;
 	callbacks = new Map<number, { resolve: (res: any) => void, reject: (err: Error) => void, reqpacket: WorkerPackets }>();
+	timestamp = new Date();
 	constructor() {
 		super();
 		//@ts-ignore this whole line gets consumed by webpack, turns to static string in webpack
@@ -36,7 +37,8 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	getCacheMeta() {
 		return {
 			name: `sqlitewasm`,
-			descr: "Direclty loads NXT cache files from the disk, in browser compatible environment."
+			descr: "Direclty loads NXT cache files from the disk, in browser compatible environment.",
+			timestamp: this.timestamp
 		}
 	}
 

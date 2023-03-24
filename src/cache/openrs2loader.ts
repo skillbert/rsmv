@@ -47,10 +47,20 @@ export function validOpenrs2Caches() {
 				693,//wrong timestamp?
 				621, 619, 618, 620, 617,//wrong timestamp/osrs?
 				840,//multiple builds
-				734, 736, 733,//don't have items index
+				734, 736, 733, 732, 731,//don't have items index
 				20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
 
+				2,//missing basically everything
 				1255,//missing files and invalid compression?
+
+				905,//missing textures
+				1256,//missing materials
+
+				//large gaps in files according to openrs2ids command
+				621, 623, 620, 617, 618, 619,
+				734, 733, 20, 10, 9, 8, 7, 2,
+				666, 729, 730, 728,
+
 			];
 			let allcaches: Openrs2CacheMeta[] = await fetch(`${endpoint}/caches.json`).then(q => q.json());
 			let checkedcaches = allcaches.filter(q =>
@@ -95,7 +105,8 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 			name: `openrs2:${this.meta.id}`,
 			descr: `build: ${this.buildnr}`
 				+ `\ndate: ${new Date(this.meta.timestamp ?? "").toDateString()}`
-				+ `\nHistoric cache loaded from openrs2 cache repository.`
+				+ `\nHistoric cache loaded from openrs2 cache repository.`,
+			timestamp: new Date(this.meta.timestamp ?? 0)
 		};
 	}
 	getBuildNr() {

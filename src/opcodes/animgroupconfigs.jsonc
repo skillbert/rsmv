@@ -27,7 +27,7 @@
 	"0x34": { "name":                           "idleVariations", "read": ["array","ubyte",["struct",
 													["animid","animid"],
 													["probably_chance","ubyte"],
-													["always0",["match","buildnr",{">=925":"ubyte","other":0}]]
+													["always0",["match","buildnr",{">=916":"ubyte","other":0}]]
 												]] },
 	"0x35": { "name":                           "unknown_35", "read": "true" },
 	"0x36": { "name":                           "unknown_36", "read": ["tuple","ubyte","ubyte"] }

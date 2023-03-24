@@ -12,7 +12,7 @@ export type items = {
 	rotation_1?: number | null
 	modelTranslate_0?: number | null
 	modelTranslate_1?: number | null
-	unknown_0A?: true | null
+	unknown_0A?: number | null
 	stackable_1?: true | null
 	value?: number | null
 	equipSlotId?: number | null

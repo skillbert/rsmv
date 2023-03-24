@@ -20,6 +20,7 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	cachedir: string;
 	writable: boolean;
 	opentables = new Map<number, CacheTable>();
+	timestamp = new Date();
 
 	constructor(cachedir?: string, writable?: boolean) {
 		super();
@@ -30,7 +31,8 @@ export class GameCacheLoader extends cache.CacheFileSource {
 	getCacheMeta() {
 		return {
 			name: `sqlite:${this.cachedir}`,
-			descr: "Directly reads NXT cache files."
+			descr: "Directly reads NXT cache files.",
+			timestamp: this.timestamp
 		}
 	}
 

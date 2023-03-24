@@ -18,12 +18,12 @@
 																		["type","ubyte"],
 																		["values",["array","ubyte","item_modelid"]]
 																	]]],
-																	["unktail",["array","ubyte","uint"]]],
+																	["unktail",["array","ubyte",["tuple","item_modelid","item_modelid"]]]],
 																"other":["struct",
 																	["models",["array",1,["struct",
 																		["type",10],
 																		["values",["array","ubyte","item_modelid"]],
-																		["unktail",["array",0,"uint"]]
+																		["unktail",["array",0,["tuple","item_modelid","item_modelid"]]]
 																	]]]]
 																}]},
 	"0x0E": { "name":                               "width", "read": "unsigned byte" },
@@ -86,7 +86,7 @@
 																["unk4", "item_modelid"] ] },
 	"0x5D": { "name":                             "tilt_xz", "read": [ "tuple", "byte", "byte"] },
 	"0x5E": { "name":                         "under_water", "read": "true" },
-	"0x5F": { "name":         "probably_morphCeilingOffset", "read": ["match","buildnr",{">=600":"short","other":0}]},//TODO buildnr somewhere between 580-728
+	"0x5F": { "name":         "probably_morphCeilingOffset", "read": ["match","buildnr",{">=596":"short","other":0}]},//TODO buildnr somewhere between 580-728
 	"0x60": { "name":                          "unknown_60", "read": "true" },
 	"0x61": { "name":        "ground_decoration_related_61", "read": "true" },
 	"0x62": { "name":                "has_animated_texture", "read": "true" },

@@ -18,6 +18,7 @@ export type mapsquare_tiles = {
 			underlay: number | null,
 			height: number | null,
 		})[],
+	olddata: (null|Uint8Array),
 	nonmembarea: (Uint8Array|null),
 	extra: {
 		unk00?: {

@@ -34,7 +34,8 @@ export class RawFileLoader extends CacheFileSource {
 	getCacheMeta() {
 		return {
 			name: `files:${this.cachedir}`,
-			descr: `Only index ${this.virtualMajor}, loaded from unpacked cache files in ${this.cachedir}.`
+			descr: `Only index ${this.virtualMajor}, loaded from unpacked cache files in ${this.cachedir}.`,
+			timestamp: new Date(0)
 		}
 	}
 

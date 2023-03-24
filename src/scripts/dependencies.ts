@@ -10,7 +10,7 @@ import { arrayEnum } from "../utils";
 import { EngineCache } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 
-const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum"]);
+const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
 export type DepTypes = typeof depids[number];
 
@@ -44,8 +44,42 @@ const mapsquareDeps2: DepCollector = async (cache, addDep, addHash) => {
 				for (let loc of data.rawlocs) {
 					addDep("loc", loc.id, "mapsquare", squareindex);
 				}
+
+				for (let tile of data.tiles) {
+					if (tile.overlay != null) {
+						addDep("overlay", tile.overlay, "mapsquare", squareindex);
+					}
+					if (tile.underlay != null) {
+						addDep("underlay", tile.underlay, "mapsquare", squareindex);
+					}
+				}
 			}
 		}
+	}
+}
+
+const mapUnderlayDeps: DepCollector = async (cache, addDep, addHash) => {
+	for (let [id, underlay] of cache.mapUnderlays.entries()) {
+		if (!underlay) { continue; }
+		//the original underlay file may not even exist in some versions, just rebuild one for the hash
+		let rebuiltfile = parse.mapsquareUnderlays.write(underlay);
+		let crc = crc32(rebuiltfile);
+		addHash("underlay", id, crc, 0);
+		if (underlay.material) {
+			addDep("material", underlay.material, "underlay", id);
+		}
+	}
+}
+const mapOverlayDeps: DepCollector = async (cache, addDep, addHash) => {
+	for (let [id, overlay] of cache.mapOverlays.entries()) {
+		if (!overlay) { continue; }
+		//the original overlay file may not even exist in some versions, just rebuild one for the hash
+		let rebuiltfile = parse.mapsquareOverlays.write(overlay);
+		let crc = crc32(rebuiltfile);
+		if (overlay.material) {
+			addDep("material", overlay.material, "underlay", id);
+		}
+		addHash("underlay", id, crc, 0);
 	}
 }
 
@@ -273,23 +307,30 @@ export async function getDependencies(cache: EngineCache) {
 
 	let runs: DepCollector[] = [
 		mapsquareDeps2,
-		sequenceDeps,
 		locationDeps,
 		itemDeps,
 		animgroupDeps,
 		materialDeps2,
 		npcDeps,
+		mapOverlayDeps,
+		mapUnderlayDeps,
 
+		// sequenceDeps,
 		// skeletonDeps,
 		// framesetDeps,
 		// modelDeps
 	];
 
-	for (let run of runs) {
-		console.log(`starting ${run.name}`);
-		let t = Date.now();
-		await run(cache, addDep, addHash);
-		console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
+	try {
+		for (let run of runs) {
+			console.log(`starting ${run.name}`);
+			let t = Date.now();
+			await run(cache, addDep, addHash);
+			console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
+		}
+	} catch (e) {
+		debugger;
+		throw e;
 	}
 
 	let makeDeptName = (deptType: DepTypes, id: number) => {

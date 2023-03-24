@@ -27,6 +27,7 @@
 	"0x0E": { "name":                          "unknown_0E", "read": "true" },
 	"0x0F": { "name":                          "unknown_0F", "read": "true" },
 	"0x10": { "name":                          "unknown_10", "read": "true" },
+	"0x11": { "name":                          "unknown_11", "read": "ubyte" },
 	"0x12": { "name":                          "unknown_12", "read": "true" },
 	"0x13": { "name":                          "unknown_13", "read": "unsigned short" },
 	"0x14": { "name":                          "unknown_14", "read": ["buffer",5,"hex"] },

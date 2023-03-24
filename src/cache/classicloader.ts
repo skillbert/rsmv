@@ -160,11 +160,12 @@ export class ClassicFileSource extends CacheFileSource {
 
     getCacheMeta() {
         if (!this.usingversion) {
-            return { name: "Classic", descr: "no files loaded" };
+            return { name: "Classic", descr: "no files loaded", timestamp: new Date(0) };
         }
         return {
             name: `Classic ${this.getBuildNr()}`,
-            descr: `${Object.entries(this.usingversion.foundjag).map(([key, v]) => `${key}: ${v}`).join("\n")}`
+            descr: `${Object.entries(this.usingversion.foundjag).map(([key, v]) => `${key}: ${v}`).join("\n")}`,
+            timestamp: new Date(0)
         }
     }
 

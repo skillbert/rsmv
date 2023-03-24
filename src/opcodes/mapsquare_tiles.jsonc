@@ -12,6 +12,7 @@
 			"other":["legacy_maptile"]
 		}]
 	]],
+	["olddata",["match","buildnr",{">=498":null,"other":["buffer",["bytesleft"],"hex"]}]],
 	//1 bit per 8x8 subarea, starting southwest, going north and wrapping east
 	["nonmembarea",["match","buildnr",{">=765":["buffer",8,"hex"],"other":null}]],
 	["extra",{

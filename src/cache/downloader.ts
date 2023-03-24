@@ -235,6 +235,7 @@ export class CacheDownloader extends DirectCacheFileSource {
 	configPromise: Promise<ParsedClientconfig>;
 	socket: DownloadSocket | null = null;
 	socketPromise: Promise<DownloadSocket> | null = null;
+	timestamp = new Date();
 
 	constructor() {
 		super(true);
@@ -242,7 +243,7 @@ export class CacheDownloader extends DirectCacheFileSource {
 	}
 
 	getCacheMeta() {
-		return { name: "live", descr: "Download live data from jagex server" };
+		return { name: "live", descr: "Download live data from jagex server", timestamp: this.timestamp };
 	}
 
 	async getSocket(): Promise<DownloadSocket> {

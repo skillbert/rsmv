@@ -17,12 +17,18 @@ export type objects = {
 				type: number,
 				values: (number|number)[],
 			}[],
-			unktail: number[],
+			unktail: [
+				(number|number),
+				(number|number),
+			][],
 		}|{
 			models: {
 				type: 10,
 				values: (number|number)[],
-				unktail: number[],
+				unktail: [
+					(number|number),
+					(number|number),
+				][],
 			}[],
 		}) | null
 	width?: number | null

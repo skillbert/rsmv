@@ -41,7 +41,7 @@ export type npcs = {
 	morphs_1?: {
 		unk1: number,
 		unk2: number[],
-		unk3: number,
+		unk3: (number|number),
 	} | null
 	unknown_6B?: false | null
 	slowWalk?: false | null

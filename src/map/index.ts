@@ -15,6 +15,16 @@ import prettyJson from "json-stringify-pretty-compact";
 import { chunkSummary } from "./chunksummary";
 import { RSMapChunk } from "../3d/modelnodes";
 
+type RenderedMapMeta = {
+	buildnr: number,
+	timestamp: string,
+	areas: MapRect[],
+	version: number,
+	errorcount: number,
+	running: boolean,
+	rendertimestamp: string
+}
+
 type Mapconfig = {
 	layers: LayerConfig[],
 	tileimgsize: number,
@@ -94,26 +104,29 @@ class MapRender {
 		});
 		if (!send.ok) { throw new Error("file upload failed"); }
 	}
-	async symlink(name: string, hash: number, target: string) {
-		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&mapid=${this.uploadmapid}&symlink=${target}`, {
+	async symlink(name: string, hash: number, targetname: string, targetversion = this.version) {
+		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&mapid=${this.uploadmapid}&symlink=${targetname}&symlinkbuildnr=${targetversion}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
 		});
 		if (!send.ok) { throw new Error("file symlink failed"); }
 	}
-	async getMetas(names: string[]) {
+	async getMetas(names: UniqueMapFile[]) {
 		if (this.overwrite) {
 			return [];
 		} else {
-			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.join(","))}&mapid=${this.uploadmapid}`, {
+			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}`, {
 				headers: { "Authorization": this.auth },
 			});
 			if (!req.ok) { throw new Error("req failed"); }
-			return await req.json() as { hash: number, file: string, time: number }[]
+			return await req.json() as { hash: number, file: string, time: number, buildnr: number }[]
 		}
 	}
 	getFileUrl(name: string, hash: number) {
 		return `${this.endpoint}/getfile?file=${encodeURIComponent(name)}&hash=${+hash}&mapid=${this.uploadmapid}`;
+	}
+	getNamedFileUrl(name: string) {
+		return `${this.endpoint}/getnamed?file=${encodeURIComponent(name)}&version=${this.version}&mapid=${this.uploadmapid}`;
 	}
 }
 
@@ -228,18 +241,56 @@ class ProgressUI {
 }
 
 export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, endpoint: string, auth: string, uploadmapid: number, overwrite = false) {
+	let versionid = filesource.getBuildNr();
+	if (filesource.getBuildNr() > 900) {
+		//use build number for order caches since they wont have version timestamps
+		//for newer caches the timestamp is more reliable since it allows us to mix
+		//openrs2 and sqlite caches at will without 100% knowing the build number
+		//and newer game updates rarely update build nr
+		//do a quick search of common cache indices
+		let maxtime = 0;
+		for (let major of [cacheMajors.mapsquares, cacheMajors.items, cacheMajors.npcs, cacheMajors.objects, cacheMajors.config]) {
+			let index = await filesource.getCacheIndex(major);
+			for (let entry of index) {
+				if (entry && entry.version > maxtime) {
+					maxtime = entry.version;
+				}
+			}
+		}
+		versionid = maxtime;
+	}
+	let config = await initMapConfig(endpoint, auth, uploadmapid, versionid, overwrite);
+
+	let prevconfigreq = await fetch(config.getNamedFileUrl("meta.json"));
+	if (prevconfigreq.ok) {
+		let prevconfig: RenderedMapMeta = await prevconfigreq.json();
+		let prevdate = new Date(prevconfig.rendertimestamp);
+		if (!prevconfig.running && +prevdate > Date.now() - 1000 * 60 * 60 * 24) {
+			//skip is less than 24hr ago
+			output.log("skipping", config.uploadmapid, config.version);
+			return () => { };
+		}
+	}
+
 	let engine = await EngineCache.create(filesource);
 
 	let progress = new ProgressUI();
 	document.body.appendChild(progress.root);
+	let cleanup = () => progress.root.remove();
 	output.setUI(progress.root);
-
+	progress.updateProp("source", filesource.getCacheMeta().name + "\n" + filesource.getCacheMeta().descr);
 	progress.updateProp("deps", "starting dependency graph");
-	let deps = await getDependencies(engine);
+	try {
+		var deps = await getDependencies(engine);
+	} catch (e) {
+		console.error(e);
+		progress.updateProp("deps", "starting dependency graph");
+		return cleanup;
+	}
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
 	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
 
-	let config = await initMapConfig(endpoint, auth, uploadmapid, deps.maxVersion, overwrite);
+
 	let areaArgument = config.config.area;
 	let areas: MapRect[] = [];
 	let mask: MapRect[] | undefined = undefined;
@@ -290,11 +341,8 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		}
 		if (areaArgument == "test") {
 			areas = [
-				{ x: 48, z: 48, xsize: 5, zsize: 5 }
-			]
-			mask = [
-				{ x: 48 * 64, z: 48 * 64, xsize: 5 * 64, zsize: 5 * 64 }
-			]
+				{ x: 45, z: 45, xsize: 11, zsize: 11 }
+			];
 		}
 		if (areaArgument == "gwd3") {
 			areas = [
@@ -329,6 +377,8 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	}
 	await downloadMap(output, getRenderer, engine, deps, areas, config, progress);
 	output.log("done");
+
+	return cleanup;
 }
 
 type MaprenderSquare = { chunk: RSMapChunk, x: number, z: number, id: number };
@@ -337,8 +387,8 @@ export class MapRenderer {
 	renderer: ThreeJsRenderer;
 	engine: EngineCache;
 	scenecache: ThreejsSceneCache | null = null;
-	maxunused = 12;
-	minunused = 7;
+	maxunused = 10;
+	minunused = 5;
 	idcounter = 0;
 	squares: MaprenderSquare[] = [];
 	loadcallback: ((x: number, z: number, state: TileLoadState) => void) | null = null;
@@ -388,8 +438,9 @@ export class MapRenderer {
 
 	async setArea(x: number, z: number, xsize: number, zsize: number) {
 		let load: MaprenderSquare[] = [];
-		for (let dz = 0; dz < zsize; dz++) {
-			for (let dx = 0; dx < xsize; dx++) {
+		//load topright last to increase chance of cache hit later on
+		for (let dx = 0; dx < xsize; dx++) {
+			for (let dz = zsize - 1; dz >= 0; dz--) {
 				load.push(await this.getChunk(x + dx, z + dz))
 			}
 		}
@@ -438,6 +489,18 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	chunks = chunks.filter((v, i, arr) => (i == 0 || v.x != arr[i - 1].x || v.z != arr[i - 1].z));
 	output.log("filtered out dupes", prefilterlen - chunks.length);
 
+	let configjson: RenderedMapMeta = {
+		buildnr: engine.getBuildNr(),
+		timestamp: (isNaN(+engine.getCacheMeta().timestamp) ? "" : engine.getCacheMeta().timestamp.toISOString()),
+		areas: rects,
+		version: config.version,
+		errorcount: 0,
+		running: true,
+		rendertimestamp: new Date().toISOString()
+	};
+
+	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
+
 	let mipper = new MipScheduler(config, progress);
 
 	let completed = 0;
@@ -466,10 +529,15 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		}
 	}
 	await mipper.run(true);
+	configjson.errorcount = errs.length;
+	configjson.running = false;
+	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
 	output.log(errs);
 }
 
-type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: ({ name: string, hash: number } | null)[] };
+type UniqueMapFile = { name: string, hash: number };
+
+type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: (UniqueMapFile | null)[] };
 
 class MipScheduler {
 	render: MapRender;
@@ -503,18 +571,19 @@ class MipScheduler {
 		const maxgroup = 200;
 		let completed = 0;
 		let skipped = 0;
-		let tasks: { file: string, hash: number, run: () => Promise<void>, finally: () => void }[] = [];
+		let tasks: { name: string, hash: number, run: () => Promise<void>, finally: () => void }[] = [];
 		let processTasks = async () => {
-			let oldhashes = await this.render.getMetas(tasks.map(q => q.file));
+			let oldhashes = await this.render.getMetas(tasks);
 			let proms: Promise<void>[] = [];
 			for (let task of tasks) {
-				let old = oldhashes.find(q => q.file == task.file);
+				let old = oldhashes.find(q => q.file == task.name);
 
-				if (!old || old.hash != task.hash) {
-					proms.push(task.run().catch(e => console.warn("mipping", task.file, "failed", e)));
-					completed++;
-				} else {
+				if (task.hash != 0 && old && old.hash == task.hash) {
+					proms.push(this.render.symlink(task.name, task.hash, old.file, old.buildnr));
 					skipped++;
+				} else {
+					proms.push(task.run().catch(e => console.warn("mipping", task.name, "failed", e)));
+					completed++;
 				}
 				task.finally();
 			}
@@ -541,7 +610,7 @@ class MipScheduler {
 				}
 
 				tasks.push({
-					file: out,
+					name: out,
 					hash: crc,
 					run: async () => {
 						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9);
@@ -563,7 +632,7 @@ class MipScheduler {
 	}
 }
 
-async function mipCanvas(render: MapRender, files: MipCommand["files"], format: "png" | "webp", quality: number) {
+async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], format: "png" | "webp", quality: number) {
 	let cnv = document.createElement("canvas");
 	cnv.width = render.config.tileimgsize;
 	cnv.height = render.config.tileimgsize;
@@ -587,7 +656,7 @@ async function mipCanvas(render: MapRender, files: MipCommand["files"], format: 
 				img = await decoder.decode();
 			} else {
 				let blobsrc = URL.createObjectURL(await res.blob());
-				let img = new Image(subtilesize, subtilesize);
+				img = new Image(subtilesize, subtilesize);
 				img.src = blobsrc;
 				await img.decode();
 				URL.revokeObjectURL(blobsrc);
@@ -636,7 +705,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 	let chunktasks: {
 		layer: LayerConfig,
-		file: string,
+		name: string,
 		hash: number,
 		//first callback depends on state and should be series, 2nd is deferred and can be parallel
 		run: () => Promise<{ file?: () => Promise<Buffer>, symlink?: string }>
@@ -664,7 +733,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 						let subtractfilename = (thiscnf.subtractlayer ? config.makeFileName(thiscnf.subtractlayer, zoom, x * subslices + subx, y * subslices + suby, cnf.format ?? "webp") : "")
 						chunktasks.push({
 							layer: thiscnf,
-							file: filename,
+							name: filename,
 							hash: depcrc,
 							async run() {
 								let chunks = await renderer.setArea(x - 1, z - 1, squares + 1, squares + 1);
@@ -690,7 +759,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 			let filename = config.makeFileName(thiscnf.name, zooms.base, x, y, "svg");
 			chunktasks.push({
 				layer: thiscnf,
-				file: filename,
+				name: filename,
 				hash: depcrc,
 				async run() {
 					//TODO try enable 2d map render without loading all the 3d stuff
@@ -717,7 +786,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 			let filename = `${thiscnf.name}/${x}-${z}.bin`;
 			chunktasks.push({
 				layer: thiscnf,
-				file: filename,
+				name: filename,
 				hash: depcrc,
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
@@ -732,7 +801,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 			let filename = `${thiscnf.name}/${x}-${z}.json`;
 			chunktasks.push({
 				layer: thiscnf,
-				file: filename,
+				name: filename,
 				hash: depcrc,
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
@@ -749,7 +818,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 			chunktasks.push({
 				layer: thiscnf,
-				file: filename,
+				name: filename,
 				hash: depcrc,
 				async run() {
 					//TODO try enable 2d map render without loading all the 3d stuff
@@ -773,16 +842,18 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 	let savetasks: Promise<any>[] = [];
 	let symlinktasks: (() => Promise<void>)[] = [];
-	let metas = await config.getMetas(chunktasks.map(q => q.file));
+	let metas = await config.getMetas(chunktasks);
 	for (let task of chunktasks) {
-		let meta = metas.find(q => q.file == task.file);
-		if (!meta || meta.hash != task.hash) {
+		let meta = metas.find(q => q.file == task.name);
+		if (task.hash != 0 && meta && meta.hash == task.hash) {
+			symlinktasks.push(() => config.symlink(task.name, task.hash, meta!.file, meta!.buildnr));
+		} else {
 			// console.log("running", task.file, "old", meta?.hash, "new", task.hash);
 			let data = await task.run();
 			if (data.symlink) {
-				symlinktasks.push(() => config.symlink(task.file, task.hash, data.symlink!));
+				symlinktasks.push(() => config.symlink(task.name, task.hash, data.symlink!, config.version));
 			} else if (data.file) {
-				savetasks.push(data.file().then(buf => config.saveFile(task.file, task.hash, buf)))
+				savetasks.push(data.file().then(buf => config.saveFile(task.name, task.hash, buf)))
 			}
 		}
 	}

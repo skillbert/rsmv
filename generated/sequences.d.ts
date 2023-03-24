@@ -30,7 +30,10 @@ export type sequences = {
 	unknown_0E?: true | null
 	unknown_0F?: true | null
 	unknown_10?: true | null
+	unknown_11?: number | null
 	unknown_12?: true | null
+	unknown_13?: number | null
+	unknown_14?: Uint8Array | null
 	unknown_16?: number | null
 	unknown_18?: number | null
 	skeletal_animation?: number | null
