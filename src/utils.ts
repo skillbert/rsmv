@@ -410,4 +410,56 @@ export class CallbackPromise<T = void> extends Promise<T> {
 	}
 }
 
-globalThis.promhack = CallbackPromise;
+//runs at most [parallel] async tasks at the same time
+export function trickleTasks(name: string, parallel: number, tasks: Iterable<Promise<void>> | (() => Iterable<Promise<void>>)) {
+	let len = (Array.isArray(tasks) ? tasks.length : -1);
+	if (name) { console.log(`starting ${name}, ${len == -1 ? "??" : len} tasks`); }
+	if (typeof tasks == "function") { tasks = tasks(); }
+	let iter = tasks[Symbol.iterator]();
+	return new Promise<void>(done => {
+		let index = 0;
+		let running = 0;
+		let run = () => {
+			let next = iter.next();
+			if (!next.done) {
+				next.value.finally(run);
+				if (index % 100 == 0 && name) { console.log(`${name} progress ${index}/${len == -1 ? "" : len}`); }
+			} else {
+				running--;
+				if (running <= 0) {
+					if (name) { console.log(`completed ${name}`); }
+					done();
+				}
+			}
+		}
+		for (let i = 0; i < parallel; i++) {
+			running++;
+			run();
+		}
+	})
+}
+
+//the second callback is guaranteed to be called in the same order as the tasks were queued
+export async function trickleTasksTwoStep<T>(parallel: number, tasks: () => Iterable<Promise<T>>, steptwo: (v: T) => void) {
+	let writecounter = 0;
+	let completecounter = 0;
+	let queue = new Array(parallel).fill(null);
+
+	for (let prom of tasks()) {
+		let index = writecounter++;
+		queue[index % parallel] = prom;
+
+		if (writecounter >= completecounter + parallel) {
+			if (writecounter >= parallel) {
+				let res = await queue[completecounter % parallel];
+				completecounter++;
+				steptwo(res);
+			}
+		}
+	}
+	while (completecounter < writecounter) {
+		let res = await queue[completecounter % parallel];
+		completecounter++;
+		steptwo(res);
+	}
+}

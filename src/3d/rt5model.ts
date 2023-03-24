@@ -32,6 +32,8 @@ export type WorkingSubmesh = {
     matid: number
 }
 
+let nonfiniteWarnCount = 0;
+
 let tmp_rot = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 let tmp_normspace = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 /**
@@ -372,7 +374,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
             }
         }
     }
-    if (hadbaduvscale) {
+    if (hadbaduvscale && nonfiniteWarnCount++ < 20) {
         console.warn("nonfinite texture scale");
     }
 

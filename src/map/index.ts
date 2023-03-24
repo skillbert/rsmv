@@ -340,9 +340,15 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 			});
 		}
 		if (areaArgument == "test") {
-			areas = [
-				{ x: 45, z: 45, xsize: 11, zsize: 11 }
-			];
+			if (uploadmapid == 19) {//TODO revert
+				areas = [
+					{ x: 45, z: 45, xsize: 11, zsize: 11 }
+				];
+			} else {
+				areas = [
+					{ x: 49, z: 49, xsize: 3, zsize: 3 }
+				];
+			}
 		}
 		if (areaArgument == "gwd3") {
 			areas = [
@@ -451,10 +457,10 @@ export class MapRenderer {
 			obsolete.sort((a, b) => b.id - a.id);
 			let removed = obsolete.slice(this.minunused);
 			removed.forEach(r => {
-				r.chunk.model.then(m => m.chunkmodels.forEach(ch => disposeThreeTree(ch)));
+				//should no longer be necessary since the js mem leak was fixed
+				// r.chunk.model.then(m => m.chunkmodels.forEach(ch => disposeThreeTree(ch)));
 				r.chunk.cleanup();
 				this.loadcallback?.(r.x, r.z, "unloaded");
-				console.log("removed", r.x, r.z);
 			});
 			this.squares = this.squares.filter(sq => !removed.includes(sq));
 		}
@@ -869,52 +875,4 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 	//TODO returning a promise just gets flattened with our currnet async execution
 	return finish;
 }
-
-function trickleTasks(name: string, parallel: number, tasks: (() => Promise<any>)[]) {
-	if (name) { console.log(`starting ${name}, ${tasks.length} tasks`); }
-	return new Promise<void>(done => {
-		let index = 0;
-		let running = 0;
-		let run = () => {
-			if (index < tasks.length) {
-				tasks[index++]().finally(run);
-				if (index % 100 == 0 && name) { console.log(`${name} progress ${index}/${tasks.length}`); }
-			} else {
-				running--;
-				if (running <= 0) {
-					if (name) { console.log(`completed ${name}`); }
-					done();
-				}
-			}
-		}
-		for (let i = 0; i < parallel; i++) {
-			running++;
-			run();
-		}
-	})
-}
-// async function trickleTasksTwoStep<ID, V, T>(name: string, parallel: number, args: ID[], load: (id: ID) => Promise<V>, store: (id: ID, v: V) => T) {
-// 	if (name) { console.log(`starting ${name}, ${args.length} tasks`); }
-// 	return new Promise<void>(done => {
-// 		let index = 0;
-// 		let running = 0;
-// 		let active: { id: ID, load: Promise<V> }[]=[];
-// 		let run = () => {
-// 			if (index < tasks.length) {
-// 				tasks[index++]().finally(run);
-// 				if (index % 100 == 0 && name) { console.log(`${name} progress ${index}/${tasks.length}`); }
-// 			} else {
-// 				running--;
-// 				if (running <= 0) {
-// 					if (name) { console.log(`completed ${name}`); }
-// 					done();
-// 				}
-// 			}
-// 		}
-// 		for (let i = 0; i < parallel; i++) {
-// 			running++;
-// 			run();
-// 		}
-// 	})
-// }
 

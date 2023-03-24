@@ -3,6 +3,7 @@ import { decompress, legacyGzip } from "./compression";
 import { cacheMajors, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import fetch from "node-fetch";
 import { FileSourceFsCache } from "./fscache";
+import { CallbackPromise } from "../utils";
 
 const endpoint = `https://archive.openrs2.org`;
 var downloadedBytes = 0;
@@ -84,6 +85,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	meta: Openrs2CacheMeta;
 	buildnr: number;
 	xteaKeysLoaded = false;
+	xteakeysPromise: Promise<void> | null = null;
 	fscache: FileSourceFsCache | null = new FileSourceFsCache();
 
 	static async fromId(cacheid: number) {
@@ -115,15 +117,18 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	}
 	async getCacheIndex(major) {
 		if (this.buildnr <= 700 && !this.xteaKeysLoaded && major == cacheMajors.mapsquares) {
-			this.xteakeys ??= new Map();
-			let keys: Openrs2XteaKey[] = await fetch(`${endpoint}/caches/runescape/${this.meta.id}/keys.json`).then(q => q.json());
-			for (let key of keys) {
-				//merge into one 31bit int
-				let lookupid = (key.archive << 23) | key.group;
-				this.xteakeys.set(lookupid, new Uint32Array(key.key));
-			}
-			this.xteaKeysLoaded = true;
-			console.log(`loaded ${keys.length} xtea keys`);
+			this.xteakeysPromise ??= (async () => {
+				this.xteakeys ??= new Map();
+				let keys: Openrs2XteaKey[] = await fetch(`${endpoint}/caches/runescape/${this.meta.id}/keys.json`).then(q => q.json());
+				for (let key of keys) {
+					//merge into one 31bit int
+					let lookupid = (key.archive << 23) | key.group;
+					this.xteakeys.set(lookupid, new Uint32Array(key.key));
+				}
+				this.xteaKeysLoaded = true;
+				console.log(`loaded ${keys.length} xtea keys`);
+			})();
+			await this.xteakeysPromise;
 		}
 		return super.getCacheIndex(major);
 	}

@@ -3,10 +3,10 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { archiveToFileId, iterateConfigFiles } from "../cache";
-import { defaultMorphId, getMapsquareData, worldStride } from "../3d/mapsquare";
+import { ChunkData, defaultMorphId, getMapsquareData, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
-import { arrayEnum } from "../utils";
+import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
 import { EngineCache } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 
@@ -35,27 +35,31 @@ const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 }
 
 const mapsquareDeps2: DepCollector = async (cache, addDep, addHash) => {
-	for (let z = 0; z < 200; z++) {
-		for (let x = 0; x < 100; x++) {
-			let squareindex = x + z * worldStride;
-			let data = await getMapsquareData(cache, x, z);
-			if (data) {
-				addHash("mapsquare", squareindex, data.chunkfilehash, data.chunkfileversion);
-				for (let loc of data.rawlocs) {
-					addDep("loc", loc.id, "mapsquare", squareindex);
-				}
-
-				for (let tile of data.tiles) {
-					if (tile.overlay != null) {
-						addDep("overlay", tile.overlay, "mapsquare", squareindex);
-					}
-					if (tile.underlay != null) {
-						addDep("underlay", tile.underlay, "mapsquare", squareindex);
-					}
-				}
+	await trickleTasksTwoStep(20, function* () {
+		for (let z = 0; z < 200; z++) {
+			for (let x = 0; x < 100; x++) {
+				yield getMapsquareData(cache, x, z);;
 			}
 		}
-	}
+	}, data => {
+		if (!data) { return; }
+		let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
+		addHash("mapsquare", squareindex, data.chunkfilehash, data.chunkfileversion);
+		for (let loc of data.rawlocs) {
+			addDep("loc", loc.id, "mapsquare", squareindex);
+		}
+
+		//batch these before adding for performance
+		let overlays = new Set<number>();
+		let underlays = new Set<number>();
+		for (let tile of data.tiles) {
+			if (tile.overlay != null) { overlays.add(tile.overlay); }
+			if (tile.underlay != null) { underlays.add(tile.underlay); }
+		}
+
+		overlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
+		underlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
+	});
 }
 
 const mapUnderlayDeps: DepCollector = async (cache, addDep, addHash) => {

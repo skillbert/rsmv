@@ -1113,7 +1113,7 @@ class SimpleTexturePacker {
 			ctx.drawImage(src, srcx, srcy, width, height, destx, desty, width, height);
 		}
 
-		console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
+		// console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
 		for (let alloc of this.allocs) {
 			let xx1 = -this.padsize;
 			let xx2 = alloc.repeatWidth + this.padsize
