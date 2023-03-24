@@ -88,6 +88,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 				files[file.name] = await file.getFile();
 			}
 		}
+		this.giveBlobs(files);
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
