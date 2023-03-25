@@ -113,50 +113,68 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 }
 
 const locationDeps: DepCollector = async (cache, addDep, addHash) => {
-	for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.objects)) {
-		addHash("loc", id, crc32(file), 0);
-		let loc = parse.object.read(file, cache);
-		if (loc.probably_animation) {
-			addDep("sequence", loc.probably_animation, "loc", id);
-		}
-		if (loc.models) {
-			for (let group of loc.models) {
-				for (let model of group.values) {
-					addDep("model", model, "loc", id);
-				}
+	if (cache.classicData) {
+		for (let [id, loc] of cache.classicData.objects.entries()) {
+			//crc the json, haters be hatin
+			let hash = crc32(Buffer.from(JSON.stringify(loc)));
+			addHash("loc", id, hash, 0);
+			if (loc.model.id != undefined) {
+				addDep("model", loc.model.id, "loc", id);
 			}
 		}
-		if (loc.models_05) {
-			for (let group of loc.models_05.models) {
-				for (let model of group.values) {
-					addDep("model", model, "loc", id);
+	} else {
+		for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.objects)) {
+			addHash("loc", id, crc32(file), 0);
+			let loc = parse.object.read(file, cache);
+			if (loc.probably_animation) {
+				addDep("sequence", loc.probably_animation, "loc", id);
+			}
+			if (loc.models) {
+				for (let group of loc.models) {
+					for (let model of group.values) {
+						addDep("model", model, "loc", id);
+					}
 				}
 			}
-		}
-		if (loc.morphs_1 || loc.morphs_2) {
-			let morphid = defaultMorphId(loc);
-			if (morphid != -1) {
-				addDep("loc", morphid, "loc", id);
+			if (loc.models_05) {
+				for (let group of loc.models_05.models) {
+					for (let model of group.values) {
+						addDep("model", model, "loc", id);
+					}
+				}
+			}
+			if (loc.morphs_1 || loc.morphs_2) {
+				let morphid = defaultMorphId(loc);
+				if (morphid != -1) {
+					addDep("loc", morphid, "loc", id);
+				}
 			}
 		}
 	}
 }
 
 const itemDeps: DepCollector = async (cache, addDep, addHash) => {
-	for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.items)) {
-		addHash("item", id, crc32(file), 0);
-		let item = parse.item.read(file, cache);
-		let models: number[] = ([] as (number | undefined | null)[]).concat(
-			item.baseModel,
-			item.maleModels_0?.id, item.maleModels_1, item.maleModels_2,
-			item.femaleModels_0?.id, item.femaleModels_1, item.femaleModels_2,
-			item.maleHeads_0, item.maleHeads_1, item.femaleHeads_0, item.femaleHeads_1
-		).filter(q => typeof q == "number") as any;
-		for (let model of models) {
-			addDep("model", model, "item", id);
+	if (cache.classicData) {
+		for (let [id, item] of cache.classicData.items.entries()) {
+			let hash = crc32(Buffer.from(JSON.stringify(item)));
+			addHash("item", id, hash, 0);
 		}
-		if (item.noteTemplate) {
-			addDep("item", item.noteTemplate, "item", id);
+	} else {
+		for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.items)) {
+			addHash("item", id, crc32(file), 0);
+			let item = parse.item.read(file, cache);
+			let models: number[] = ([] as (number | undefined | null)[]).concat(
+				item.baseModel,
+				item.maleModels_0?.id, item.maleModels_1, item.maleModels_2,
+				item.femaleModels_0?.id, item.femaleModels_1, item.femaleModels_2,
+				item.maleHeads_0, item.maleHeads_1, item.femaleHeads_0, item.femaleHeads_1
+			).filter(q => typeof q == "number") as any;
+			for (let model of models) {
+				addDep("model", model, "item", id);
+			}
+			if (item.noteTemplate) {
+				addDep("item", item.noteTemplate, "item", id);
+			}
 		}
 	}
 }
@@ -223,24 +241,32 @@ const materialDeps2: DepCollector = async (cache, addDep, addHash) => {
 }
 
 const npcDeps: DepCollector = async (cache, addDep, addHash) => {
-	for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.npcs)) {
-		addHash("npc", id, crc32(file), 0);
-		let npc = parse.npc.read(file, cache);
-		if (npc.animation_group) {
-			addDep("animgroup", npc.animation_group, "npc", id);
+	if (cache.classicData) {
+		for (let [id, npc] of cache.classicData.npcs.entries()) {
+			let hash = crc32(Buffer.from(JSON.stringify(npc)));
+			addHash("npc", id, hash, 0);
 		}
-		if (npc.models) {
-			for (let model of npc.models) {
-				addDep("model", model, "npc", id);
+	} else {
+		for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.npcs)) {
+			addHash("npc", id, crc32(file), 0);
+			let npc = parse.npc.read(file, cache);
+			if (npc.animation_group) {
+				addDep("animgroup", npc.animation_group, "npc", id);
 			}
-		}
-		if (npc.headModels) {
-			for (let model of npc.headModels) {
-				addDep("model", model, "npc", id);
+			if (npc.models) {
+				for (let model of npc.models) {
+					addDep("model", model, "npc", id);
+				}
+			}
+			if (npc.headModels) {
+				for (let model of npc.headModels) {
+					addDep("model", model, "npc", id);
+				}
 			}
 		}
 	}
 }
+
 const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
 	let skelindices = await cache.getCacheIndex(cacheMajors.skeletalAnims);
 	for (let skelindex of skelindices) {

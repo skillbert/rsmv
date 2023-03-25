@@ -32,6 +32,13 @@ type CacheVersion = {
     filter: number
 }
 
+type CacheBuildInfo = {
+    name: string,
+    buildnr: number,
+    haslocs: boolean,
+    versions: CacheVersion
+}
+
 type DetectedVersion = {
     buildnr: number,
     nativelocs: boolean,
@@ -42,90 +49,85 @@ type DetectedVersion = {
     foundmem: CacheVersion,
 };
 
+function cversion(buildnr: number, haslocs: boolean, config: number, maps: number, land: number, media: number, models: number, textures: number, entity: number, sounds: number, filter: number, name: string): CacheBuildInfo {
+    return {
+        buildnr,
+        haslocs,
+        name,
+        versions: { config, maps, land, media, models, textures, entity, sounds, filter }
+    }
+}
+
 //subset of https://classic.runescape.wiki/w/User:Logg#Combined_update,_client,_and_cache_history_table
-const classicBuilds: { name: string, buildnr: number, haslocs: boolean, versions: CacheVersion }[] = [{
-    name: "dec 2001 - last original world data",
-    buildnr: 115,
-    haslocs: true,
-    versions: {
-        config: 48,
-        maps: 27,
-        land: 0,//land data is inside maps
-        media: 28,
-        models: 12,
-        textures: 8,
-        entity: 10,
-        sounds: 0,
-        filter: 0
-    }
-}, {
-    name: "Last version of entered files",
-    buildnr: 230,
-    haslocs: true,
-    versions: {
-        config: 100,
-        maps: 100,
-        land: 100,
-        media: 100,
-        models: 100,
-        textures: 100,
-        entity: 100,
-        sounds: 100,
-        filter: 100
-    }
-}];
+export const classicBuilds: { name: string, buildnr: number, haslocs: boolean, versions: CacheVersion }[] = [
+    cversion(115, true, 48, 27, 0, 28, 12, 8, 10, 0, 0, "dec 2001 - last original world data"),
+    cversion(230, true, 100, 100, 100, 100, 100, 100, 100, 100, 100, "Last version of entered files")
+];
 
 //reverse lookup
 const classicGroupNames = Object.fromEntries(Object.entries(classicGroups)
     .map(([name, id]) => [id, name])) as Record<number, keyof typeof classicGroups>;
 
-export class ClassicFileSource extends CacheFileSource {
-    versions: DetectedVersion[] = [];
-    usingversion: DetectedVersion | null = null;
-    fs: ScriptFS | null = null;
+export function detectClassicVersions(filenames: string[]) {
+    let versions: DetectedVersion[] = [];
+    for (let build of classicBuilds) {
+        versions.push({
+            buildnr: build.buildnr,
+            iscomplete: false,
+            nativelocs: build.haslocs,
+            externallocs: null,
+            target: build.versions,
+            foundjag: Object.fromEntries(Object.entries(build.versions).map(([key]) => [key, 0])) as CacheVersion,
+            foundmem: Object.fromEntries(Object.entries(build.versions).map(([key]) => [key, 0])) as CacheVersion
+        });
+    }
 
-    async loadFiles(files: ScriptFS) {
-        this.fs = files;
-        for (let build of classicBuilds) {
-            this.versions.push({
-                buildnr: build.buildnr,
-                iscomplete: false,
-                nativelocs: build.haslocs,
-                externallocs: null,
-                target: build.versions,
-                foundjag: Object.fromEntries(Object.entries(build.versions).map(([key]) => [key, 0])) as CacheVersion,
-                foundmem: Object.fromEntries(Object.entries(build.versions).map(([key]) => [key, 0])) as CacheVersion
-            });
-        }
-
-        let filenames = await files.readDir(".");
-        for (let filename of filenames) {
-            let namematch = filename.match(/^(?<name>[a-zA-Z]+)(?<version>\d+)\.(?<type>jag|mem)$/);
-            if (namematch) {
-                let version = +namematch.groups!.version;
-                let ismem = namematch.groups!.type == "mem";
-                let cachename = namematch.groups!.name;
-                //just ignore mem for versioning purposes for now
-                for (let cache of this.versions) {
-                    let found = (ismem ? cache.foundmem : cache.foundjag);
-                    if (cache.target[cachename] && version <= cache.target[cachename] && version > found[cachename]) {
-                        found[cachename] = version;
-                    }
+    for (let filename of filenames) {
+        let namematch = filename.match(/^(?<name>[a-zA-Z]+)(?<version>\d+)\.(?<type>jag|mem)$/);
+        if (namematch) {
+            let version = +namematch.groups!.version;
+            let ismem = namematch.groups!.type == "mem";
+            let cachename = namematch.groups!.name;
+            //just ignore mem for versioning purposes for now
+            for (let cache of versions) {
+                let found = (ismem ? cache.foundmem : cache.foundjag);
+                if (cache.target[cachename] && version <= cache.target[cachename] && version > found[cachename]) {
+                    found[cachename] = version;
                 }
             }
         }
+    }
 
-        for (let cache of this.versions) {
-            let complete = true;
-            for (let key in cache.target) {
-                if (cache.foundjag[key] != cache.target[key]) { complete = false; }
-                //TODO only checking mem version, not if they are missing since we don't know if they should exist
-                if (cache.foundmem[key] != 0 && cache.foundmem[key] != cache.target[key]) { complete = false; }
-            }
-            cache.iscomplete = complete;
+    for (let cache of versions) {
+        let complete = true;
+        for (let key in cache.target) {
+            if (cache.foundjag[key] != cache.target[key]) { complete = false; }
+            //TODO only checking mem version, not if they are missing since we don't know if they should exist
+            if (cache.foundmem[key] != 0 && cache.foundmem[key] != cache.target[key]) { complete = false; }
         }
-        let index = localStorage.rsmv_classicversion ?? "-1";
-        this.usingversion = this.versions.at(+index)!;
+        cache.iscomplete = complete;
+    }
+    return versions;
+}
+
+export class ClassicFileSource extends CacheFileSource {
+    usingversion: DetectedVersion;
+    fs: ScriptFS;
+
+    constructor(fs: ScriptFS, version: DetectedVersion) {
+        super();
+        this.fs = fs;
+        this.usingversion = version;
+    }
+
+    static async create(files: ScriptFS, version?: DetectedVersion) {
+        if (!version) {
+            let filenames = await files.readDir(".");
+            let versions = detectClassicVersions(filenames);
+            let index = localStorage.rsmv_classicversion ?? "-1";
+            version = versions.at(+index)!;
+        }
+        return new ClassicFileSource(files, version);
     }
 
     async getFileArchive(meta: CacheIndex) {

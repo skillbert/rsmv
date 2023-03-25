@@ -1,6 +1,6 @@
 
 import { disposeThreeTree, ThreeJsRenderer } from "../viewer/threejsrender";
-import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid } from "../3d/mapsquare";
+import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import { svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
@@ -136,7 +136,7 @@ type TileLoadState = "loading" | "loaded" | "unloaded";
 class ProgressUI {
 	areas: MapRect[];
 	tiles = new Map<string, { el: HTMLDivElement, x: number, z: number, progress: TileProgress, loadstate: TileLoadState }>();
-	props: Record<string, { el: HTMLDivElement, text: string }> = {};
+	props: Record<string, { el: HTMLDivElement, contentel: HTMLElement, text: string }> = {};
 	root: HTMLElement;
 	proproot: HTMLElement;
 	grid: HTMLElement;
@@ -231,12 +231,18 @@ class ProgressUI {
 			return;
 		}
 		if (value && !prop) {
-			prop = { el: document.createElement("div"), text: "" };
+			let titleel = document.createElement("b");
+			let contentel = document.createElement("span");
+			let el = document.createElement("div");
+			el.append(titleel, contentel);
+			titleel.innerText = propname + ": ";
+
+			prop = { el, contentel, text: "" };
 			this.props[propname] = prop;
 			this.proproot.appendChild(prop.el);
 		}
 		prop.text = value;
-		prop.el.innerText = propname + ": " + value;
+		prop.contentel.innerText = value;
 	}
 }
 
@@ -725,7 +731,9 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 	for (let cnf of config.layers) {
 		let squares = 1;//cnf.mapsquares ?? 1;//TODO remove or reimplement
 		if (x % squares != 0 || z % squares != 0) { continue; }
-		let area: MapRect = { x: x * 64 - 16, z: z * 64 - 16, xsize: 64 * squares, zsize: 64 * squares };
+		const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+		const offset = Math.round(chunksize / 4);
+		let area: MapRect = { x: x * chunksize - offset, z: z * chunksize - offset, xsize: chunksize * squares, zsize: chunksize * squares };
 		let zooms = config.getLayerZooms(cnf);
 
 		if (cnf.addmipmaps) {
@@ -802,6 +810,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
 					let { grid } = await chunks[0].chunk.model;
+					//TODO what to do with classic 48x48 chunks?
 					let file = grid.getHeightCollisionFile(x * 64, z * 64, thiscnf.level, 64, 64);
 					return { file: () => Promise.resolve(Buffer.from(file.buffer, file.byteOffset, file.byteLength)) };
 				}

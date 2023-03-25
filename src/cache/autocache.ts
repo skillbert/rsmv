@@ -39,9 +39,7 @@ export async function selectFsCache(fs: ScriptFS, opts?: CacheOpts) {
         //TODO
     }
     if (maxcount == jagcount) {
-        let cache = new ClassicFileSource();
-        await cache.loadFiles(fs);
-        return cache;
+        return await ClassicFileSource.create(fs);
     }
     throw new Error("couldn't detect cache type");
 }
