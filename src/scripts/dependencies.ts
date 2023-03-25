@@ -2,12 +2,12 @@
 // import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
-import { archiveToFileId, iterateConfigFiles } from "../cache";
+import { archiveToFileId } from "../cache";
 import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
 import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
-import { EngineCache } from "../3d/modeltothree";
+import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 
 const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
@@ -68,7 +68,8 @@ const mapUnderlayDeps: DepCollector = async (cache, addDep, addHash) => {
 	for (let [id, underlay] of cache.mapUnderlays.entries()) {
 		if (!underlay) { continue; }
 		//the original underlay file may not even exist in some versions, just rebuild one for the hash
-		let rebuiltfile = parse.mapsquareUnderlays.write(underlay);
+		//its actually an overlay config in legacy caches
+		let rebuiltfile = (cache.legacyData ? parse.mapsquareOverlays : parse.mapsquareUnderlays).write(underlay);
 		let crc = crc32(rebuiltfile);
 		addHash("underlay", id, crc, 0);
 		if (underlay.material) {

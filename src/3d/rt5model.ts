@@ -408,7 +408,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         vtmp0.copy(v1).sub(v0);
         vnormal.copy(v2).sub(v0).cross(vtmp0).normalize();
 
-        if (materialbuffer && materialbuffer[i] == 0) { continue; }
+        if (materialbuffer && materialbuffer[i] == 0 && !colorbuffer || colorbuffer[i] == 0) { continue; }
 
         let matargument = (materialbuffer ? materialbuffer[i] : 0);
         let submesh = matmesh.get(matargument)!;

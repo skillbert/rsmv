@@ -4,7 +4,7 @@ import { ModelData, parseOb3Model } from '../3d/rt7model';
 import { parseRT5Model } from "../3d/rt5model";
 import { convertMaterial, defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import * as THREE from "three";
-import { CacheFileSource, CacheIndex, SubFile } from "../cache";
+import { CacheFileSource, CacheIndex, mappedFileIds, oldConfigMaps, SubFile } from "../cache";
 import { CachedObject, CachingFileSource } from "../cache/memorycache";
 import { Bone, BufferAttribute, BufferGeometry, Matrix4, Mesh, Object3D, Skeleton, SkinnedMesh, Texture } from "three";
 import { parse } from "../opdecoder";
@@ -131,7 +131,7 @@ export class EngineCache extends CachingFileSource {
 	}
 
 	private async preload() {
-		if (this.getBuildNr() >= lastLegacyBuildnr) {
+		if (this.getBuildNr() > lastLegacyBuildnr) {
 			for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapunderlays)) {
 				this.mapUnderlays[subfile.fileid] = parse.mapsquareUnderlays.read(subfile.buffer, this.rawsource);
 			}
@@ -149,6 +149,8 @@ export class EngineCache extends CachingFileSource {
 				for (let file of await this.getArchiveById(cacheMajors.texturesOldPng, 0)) {
 					this.materialArchive.set(file.fileid, file.buffer);
 				}
+			} else if (this.getBuildNr() <= 498) {
+				//no material data
 			} else if (this.getBuildNr() <= 753) {
 				let file = await this.getFile(cacheMajors.materials, 0);
 				this.materialArchive.set(0, file);
@@ -161,7 +163,7 @@ export class EngineCache extends CachingFileSource {
 			let rootindex = await this.getCacheIndex(cacheMajors.index);
 			this.hasNewModels = !!rootindex[cacheMajors.models];
 			this.hasOldModels = !!rootindex[cacheMajors.oldmodels];
-		} else if (this.getBuildNr() >= lastClassicBuildnr) {
+		} else if (this.getBuildNr() > lastClassicBuildnr) {
 			this.legacyData = await legacyPreload(this);
 			let floors = this.legacyData.overlays.map(q => parse.mapsquareOverlays.read(q, this));
 			this.mapOverlays = floors;
@@ -208,17 +210,19 @@ export class EngineCache extends CachingFileSource {
 					cached.textures.diffuse = matprops.spriteid;
 					cached.baseColorFraction = 1;
 				} else if (this.getBuildNr() <= 753) {
-					let matlist = parse.oldmaterials.read(this.materialArchive.get(0)!, this);
-					let matdata = matlist.mats[id];
 					cached = defaultMaterial();
-					//builds 736-759 tecnically do have usable textures, this depends on scenecache.texturemode!="none"
-					//textures should be moved to enginecache
-					// cached.textures.diffuse = id;
-					if (matdata.hasprops) {
-						cached.baseColorFraction = matdata.basecolorfraction! / 255;
-						cached.baseColor = HSL2RGBfloat(packedHSL2HSL(matdata.basecolor!));
+					if (this.getBuildNr() >= 500) {
+						let matlist = parse.oldmaterials.read(this.materialArchive.get(0)!, this);
+						let matdata = matlist.mats[id];
+						//builds 736-759 tecnically do have usable textures, this depends on scenecache.texturemode!="none"
+						//textures should be moved to enginecache
+						// cached.textures.diffuse = id;
+						if (matdata.hasprops) {
+							cached.baseColorFraction = matdata.basecolorfraction! / 255;
+							cached.baseColor = HSL2RGBfloat(packedHSL2HSL(matdata.basecolor!));
+						}
+						//TODO other material props
 					}
-					//TODO other material props
 				} else {
 					let file = this.materialArchive.get(id);
 					if (!file) { throw new Error("material " + id + " not found"); }
@@ -263,6 +267,28 @@ export class EngineCache extends CachingFileSource {
 			this.jsonSearchCache.set(modename, cached);
 		}
 		return cached;
+	}
+}
+
+export async function* iterateConfigFiles(cache: EngineCache, major: number) {
+	if (cache.legacyData) {
+		let files: Buffer[] | null = null;
+		if (major == cacheMajors.items) { files = cache.legacyData.items; }
+		else if (major == cacheMajors.npcs) { files = cache.legacyData.npcs; }
+		else if (major == cacheMajors.objects) { files = cache.legacyData.objects; }
+		else if (major == cacheMajors.spotanims) { files = cache.legacyData.spotanims; }
+		if (!files) { throw new Error(`cache major ${major} can not be iterated`); }
+		yield* files.map((file, id) => ({ id, file }));
+	} else if (cache.getBuildNr() <= 488) {
+		let arch = await cache.getArchiveById(cacheMajors.config, oldConfigMaps[major]);
+		yield* arch.map(q => ({ id: q.fileid, file: q.buffer }));
+	} else {
+		let locindices = await cache.getCacheIndex(major);
+		let stride = mappedFileIds[major];
+		for (let index of locindices) {
+			let arch = await cache.getFileArchive(index);
+			yield* arch.map(q => ({ id: index.minor * stride + q.fileid, file: q.buffer }));
+		}
 	}
 }
 

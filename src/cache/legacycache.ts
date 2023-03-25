@@ -79,7 +79,6 @@ export async function legacyPreload(engine: EngineCache) {
         objects: readLegacySubGroup(configgroup, "LOC"),
         overlays: readLegacySubGroup(configgroup, "FLO"),
         npcs: readLegacySubGroup(configgroup, "NPC"),
-        // underlays: readLegacySubGroup(configgroup, "FLU"),??
         // spotanims: readLegacySubGroup(configgroup, "SPOT")
         underlays: [],
         spotanims: [],

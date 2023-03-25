@@ -211,7 +211,7 @@ export function indexBufferToObject(major: number, buffer: Buffer, source: Cache
 	return linear;
 }
 
-const mappedFileIds = {
+export const mappedFileIds = {
 	[cacheMajors.items]: 256,
 	[cacheMajors.npcs]: 128,
 	[cacheMajors.structs]: 32,
@@ -223,7 +223,7 @@ const mappedFileIds = {
 	[cacheMajors.materials]: Number.MAX_SAFE_INTEGER//is single index
 }
 
-const oldConfigMaps = {
+export const oldConfigMaps = {
 	[cacheMajors.items]: cacheConfigPages.items_old,
 	[cacheMajors.npcs]: cacheConfigPages.npcs_old,
 	[cacheMajors.objects]: cacheConfigPages.locs_old,
@@ -234,20 +234,6 @@ export type FilePosition = {
 	major: number,
 	minor: number,
 	subid: number
-}
-
-export async function* iterateConfigFiles(cache: CacheFileSource, major: number) {
-	if (cache.getBuildNr() <= 488) {
-		let arch = await cache.getArchiveById(cacheMajors.config, oldConfigMaps[major]);
-		yield* arch.map(q => ({ id: q.fileid, file: q.buffer }));
-	} else {
-		let locindices = await cache.getCacheIndex(major);
-		let stride = mappedFileIds[major];
-		for (let index of locindices) {
-			let arch = await cache.getFileArchive(index);
-			yield* arch.map(q => ({ id: index.minor * stride + q.fileid, file: q.buffer }));
-		}
-	}
 }
 
 export function fileIdToArchiveminor(major: number, fileid: number, buildnr: number): FilePosition {

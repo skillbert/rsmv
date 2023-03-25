@@ -864,7 +864,7 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 				//ignore
 			}
 		} else {
-			let index = chunkx * 256 + chunkx;
+			let index = chunkx * 256 + chunkz;
 			let info = engine.legacyData?.mapmeta.get(index);
 			if (!info) {
 				return null
