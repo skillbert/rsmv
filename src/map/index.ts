@@ -275,21 +275,10 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	let engine = await EngineCache.create(filesource);
 
 	let progress = new ProgressUI();
+	progress.updateProp("source", filesource.getCacheMeta().name + "\n" + filesource.getCacheMeta().descr);
 	document.body.appendChild(progress.root);
 	let cleanup = () => progress.root.remove();
 	output.setUI(progress.root);
-	progress.updateProp("source", filesource.getCacheMeta().name + "\n" + filesource.getCacheMeta().descr);
-	progress.updateProp("deps", "starting dependency graph");
-	try {
-		var deps = await getDependencies(engine);
-	} catch (e) {
-		console.error(e);
-		progress.updateProp("deps", "starting dependency graph");
-		return cleanup;
-	}
-	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
-	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
-
 
 	let areaArgument = config.config.area;
 	let areas: MapRect[] = [];
@@ -374,6 +363,22 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		throw new Error("no map area or map name");
 	}
 	progress.setAreas(areas);
+
+	progress.updateProp("deps", "starting dependency graph");
+	try {
+		let deparea: MapRect | undefined = undefined;
+		if (areas.length == 1) {
+			deparea = { x: areas[0].x - 2, z: areas[0].z - 2, xsize: areas[0].xsize + 2, zsize: areas[0].zsize + 2 };
+		}
+		var deps = await getDependencies(engine, { area: deparea });
+	} catch (e) {
+		console.error(e);
+		progress.updateProp("deps", "starting dependency graph");
+		return cleanup;
+	}
+	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
+	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
+
 
 	let getRenderer = () => {
 		let cnv = document.createElement("canvas");

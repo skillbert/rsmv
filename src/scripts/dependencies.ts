@@ -3,7 +3,7 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { archiveToFileId, iterateConfigFiles } from "../cache";
-import { ChunkData, defaultMorphId, getMapsquareData, worldStride } from "../3d/mapsquare";
+import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
 import { crc32 } from "../libs/crc32util";
 import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
@@ -14,9 +14,10 @@ const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequ
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
 export type DepTypes = typeof depids[number];
 
+type DepArgs = { area?: MapRect } | undefined;
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
 type HashCallback = (depType: DepTypes, depId: number, hash: number, version: number) => void;
-type DepCollector = (cache: EngineCache, addDep: DepCallback, addHash: HashCallback) => Promise<void>;
+type DepCollector = (cache: EngineCache, addDep: DepCallback, addHash: HashCallback, args: DepArgs) => Promise<void>;
 
 const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 	let mapsquareindices = await cache.getCacheIndex(cacheMajors.mapsquares);
@@ -34,10 +35,11 @@ const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
-const mapsquareDeps2: DepCollector = async (cache, addDep, addHash) => {
+const mapsquareDeps2: DepCollector = async (cache, addDep, addHash, args) => {
 	await trickleTasksTwoStep(20, function* () {
-		for (let z = 0; z < 200; z++) {
-			for (let x = 0; x < 100; x++) {
+		let rect = args?.area ?? { x: 0, z: 0, xsize: 100, zsize: 200 };
+		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
+			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
 				yield getMapsquareData(cache, x, z);;
 			}
 		}
@@ -278,7 +280,7 @@ const modelDeps: DepCollector = async (cache, addDep, addHash) => {
 }
 
 export type DependencyGraph = (typeof getDependencies) extends ((...args: any[]) => Promise<infer T>) ? T : never;
-export async function getDependencies(cache: EngineCache) {
+export async function getDependencies(cache: EngineCache, args?: DepArgs) {
 	let dependentsMap = new Map<string, string[]>();
 	let dependencyMap = new Map<string, string[]>();
 	let hashes = new Map<string, number>();
@@ -329,7 +331,7 @@ export async function getDependencies(cache: EngineCache) {
 		for (let run of runs) {
 			console.log(`starting ${run.name}`);
 			let t = Date.now();
-			await run(cache, addDep, addHash);
+			await run(cache, addDep, addHash, args);
 			console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
 		}
 	} catch (e) {
