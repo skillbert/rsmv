@@ -48,7 +48,7 @@ export class VR360Render {
 			magFilter: LinearFilter,
 			format: RGBAFormat,
 			encoding: parent.outputEncoding,
-			samples: gl.getParameter(gl.SAMPLES)
+			samples: 0//gl.getParameter(gl.SAMPLES)//three.js crashes if using multisampled here
 		});
 		//threejs always renders non-default render targets in linear, however they programmed in a 
 		//special case for webxr render targets to still render in srgb
