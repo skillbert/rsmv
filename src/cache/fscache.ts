@@ -1,5 +1,5 @@
-import * as sqlite3 from "sqlite3";
 import { sqliteExec, sqliteOpenDatabase, sqlitePrepare, sqliteRunStatement } from "../libs/sqlite3wrap";
+import type * as sqlite3 from "sqlite3";
 
 const dbpath = "./fscache.sqlite3";
 
@@ -10,10 +10,20 @@ export class FileSourceFsCache {
     getstatement!: sqlite3.Statement;
     setstatement!: sqlite3.Statement;
 
-    constructor() {
+    static tryCreate() {
+        if (typeof __non_webpack_require__ == "undefined") { return null; }
+        try {
+            __non_webpack_require__("sqlite3")
+        } catch {
+            return null;
+        }
+        return new FileSourceFsCache(dbpath);
+    }
+
+    constructor(filename: string) {
         this.isready = false;
         this.ready = (async () => {
-            let database = await sqliteOpenDatabase(dbpath, { create: true, write: true });
+            let database = await sqliteOpenDatabase(filename, { create: true, write: true });
 
             await sqliteExec(database, `CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
             await sqliteExec(database, `CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);

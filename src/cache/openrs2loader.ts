@@ -86,7 +86,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	buildnr: number;
 	xteaKeysLoaded = false;
 	xteakeysPromise: Promise<void> | null = null;
-	fscache: FileSourceFsCache | null = new FileSourceFsCache();
+	fscache: FileSourceFsCache | null;
 
 	static async fromId(cacheid: number) {
 		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
@@ -102,6 +102,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 			console.warn("using historic cache for which the build number is not available, treating it as current.");
 			this.buildnr = latestBuildNumber;
 		}
+		this.fscache = FileSourceFsCache.tryCreate();
 	}
 	getCacheMeta() {
 		return {

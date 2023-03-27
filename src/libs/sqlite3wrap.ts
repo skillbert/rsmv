@@ -1,9 +1,10 @@
-import * as sqlite3 from "sqlite3";
+import type * as sqlite3 from "sqlite3";
+
 
 export function sqliteOpenDatabase(filepath: string, opts: { write?: boolean, create?: boolean }) {
     //only actually load the dependency when used
     let sqlite = __non_webpack_require__("sqlite3") as typeof import("sqlite3");
-    let flags = (opts.write ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY) | (opts.create ? sqlite3.OPEN_CREATE : 0);
+    let flags = (opts.write ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY) | (opts.create ? sqlite.OPEN_CREATE : 0);
     return new Promise<sqlite3.Database>((done, err) => {
         let db = new sqlite.Database(filepath, flags, e => e ? err(e) : done(db));
     });
