@@ -3,7 +3,6 @@ import { decompress, legacyGzip } from "./compression";
 import { cacheMajors, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import fetch from "node-fetch";
 import { FileSourceFsCache } from "./fscache";
-import { CallbackPromise } from "../utils";
 
 const endpoint = `https://archive.openrs2.org`;
 var downloadedBytes = 0;

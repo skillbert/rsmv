@@ -104,6 +104,10 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	if (morphedloc) {
 		if (morphedloc.color_replacements) { mods.replaceColors = morphedloc.color_replacements; }
 		if (morphedloc.material_replacements) { mods.replaceMaterials = morphedloc.material_replacements; }
+		if (cache.engine.getBuildNr() < 337) {
+			//old caches just use one prop to replace both somehow
+			mods.replaceMaterials = mods.replaceColors;
+		}
 		models = [
 			...morphedloc.models?.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? [],
 			...morphedloc.models_05?.models.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? []

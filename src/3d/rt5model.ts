@@ -551,8 +551,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         },
     }));
 
-    //old model format stores with lower presicion
-    if (modeldata.modelversion == 0) {
+    if (modeldata.modelversion <= 7) {//possibly also 8 and 9, not 10
         const scale = 4;
         maxy *= scale;
         miny *= scale;

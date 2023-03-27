@@ -18,6 +18,7 @@ import { legacyMajors } from "../cache/legacycache";
 import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
 import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 import { crc32addInt } from "../scripts/dependencies";
+import { CacheFileSource } from "../cache";
 
 
 export const tiledimensions = 512;
@@ -976,7 +977,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 
 export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
 	let floors = await mapsquareFloors(scene, grid, chunk, opts);
-	let models = mapsquareObjectModels(chunk.locs);
+	let models = mapsquareObjectModels(scene.engine, chunk.locs);
 	let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
 	let r: ChunkModelData = {
 		chunk,
@@ -1319,7 +1320,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 	return floors.flatMap(f => [f.wallgroup, ...f.mapscenes.values()]);
 }
 
-function mapsquareObjectModels(locs: WorldLocation[]) {
+function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 	type CachedLoc = {
 		translate: THREE.Vector3,
 		rotate: THREE.Quaternion,
@@ -1340,6 +1341,11 @@ function mapsquareObjectModels(locs: WorldLocation[]) {
 				replaceColors: objectmeta.color_replacements ?? undefined,
 				replaceMaterials: objectmeta.material_replacements ?? undefined
 			};
+			if (cache.getBuildNr() < 337) {
+				//old caches just use one prop to replace both somehow
+				modelmods.replaceMaterials = modelmods.replaceColors;
+			}
+
 			const translatefactor = 4;//no clue why but seems right
 			let translate = new Vector3(
 				(objectmeta.translateX ?? 0) * translatefactor,

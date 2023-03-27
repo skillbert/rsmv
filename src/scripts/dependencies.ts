@@ -14,7 +14,7 @@ const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequ
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
 export type DepTypes = typeof depids[number];
 
-type DepArgs = { area?: MapRect } | undefined;
+type DepArgs = { area?: MapRect, modelMaterials?: boolean } | undefined;
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
 type HashCallback = (depType: DepTypes, depId: number, hash: number, version: number) => void;
 type DepCollector = (cache: EngineCache, addDep: DepCallback, addHash: HashCallback, args: DepArgs) => Promise<void>;
@@ -86,7 +86,7 @@ const mapOverlayDeps: DepCollector = async (cache, addDep, addHash) => {
 		if (overlay.material) {
 			addDep("material", overlay.material, "underlay", id);
 		}
-		addHash("underlay", id, crc, 0);
+		addHash("overlay", id, crc, 0);
 	}
 }
 
@@ -291,16 +291,19 @@ const framesetDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
-const modelDeps: DepCollector = async (cache, addDep, addHash) => {
+const modelDeps: DepCollector = async (cache, addDep, addHash, opts) => {
 	let modelindices = await cache.getCacheIndex(cacheMajors.models);
 	for (let modelindex of modelindices) {
 		if (!modelindex) { continue; }
 		addHash("model", modelindex.minor, modelindex.crc, modelindex.version);
-		let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
-		let model = parse.models.read(file, cache);
-		for (let mesh of model.meshes) {
-			if (mesh.materialArgument != 0) {
-				addDep("material", mesh.materialArgument - 1, "model", modelindex.minor);
+
+		if (opts?.modelMaterials) {
+			let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
+			let model = parse.models.read(file, cache);
+			for (let mesh of model.meshes) {
+				if (mesh.materialArgument != 0) {
+					addDep("material", mesh.materialArgument - 1, "model", modelindex.minor);
+				}
 			}
 		}
 	}
@@ -347,11 +350,11 @@ export async function getDependencies(cache: EngineCache, args?: DepArgs) {
 		npcDeps,
 		mapOverlayDeps,
 		mapUnderlayDeps,
+		// modelDeps,
 
 		// sequenceDeps,
 		// skeletonDeps,
 		// framesetDeps,
-		// modelDeps
 	];
 
 	try {
