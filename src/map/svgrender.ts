@@ -58,7 +58,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 					if (!tile || tile.effectiveLevel > maplevel) {
 						continue;
 					}
-					if (tile.visible) {
+					if (tile.underlayVisible) {
 						underlaycolor = tile.underlayprops.color;
 						occluded = true;
 					}
@@ -67,7 +67,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 						let vertices = tile.shape.overlay;
 						let colint = getOverlayColor(tile);
 						if (colint == transparent) {
-							if (tile.visible) {
+							if (tile.underlayVisible) {
 								vertices = tile.shape.underlay;
 								colint = coltoint(tile.underlayprops.color);
 								underlaycolor = [0, 0, 0];
@@ -158,7 +158,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 		for (let level = loc.plane + 1; level < squareLevels; level++) {
 			let tile = grid.getTile(loc.x, loc.z, level);
 			if (!tile || tile?.effectiveLevel != loc.effectiveLevel) { break; }
-			if (tile.effectiveLevel == maplevel && (getOverlayColor(tile) != transparent || tile.visible)) { occluded = true; }
+			if (tile.effectiveLevel == maplevel && (getOverlayColor(tile) != transparent || tile.underlayVisible)) { occluded = true; }
 		}
 		if (loc.location.mapscene == undefined) {
 			if (drawwalls && !occluded) {

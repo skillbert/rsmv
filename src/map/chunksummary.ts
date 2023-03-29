@@ -107,7 +107,7 @@ type ChunkTileDependencies = {
 
 export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph, chunk: ChunkData) {
 	let groups: ChunkTileDependencies[] = [];
-	const groupsize = 4;
+	const groupsize = 2;
 	for (let x = 0; x < chunk.tilerect.xsize; x += groupsize) {
 		for (let z = 0; z < chunk.tilerect.zsize; z += groupsize) {
 			let tilehashes = new Array(grid.levels).fill(0);
@@ -119,6 +119,7 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 					for (let level = 0; level < grid.levels; level++) {
 						let tile = grid.getTile(chunk.tilerect.x + x + dx, chunk.tilerect.z + z + dz, level);
 						if (!tile) { throw new Error("missing tile"); }
+						if (!tile.underlayVisible && !tile.overlayVisible) { continue; }
 						let tilehash = tilehashes[tile.effectiveVisualLevel];
 
 						tilehash = crc32addInt(tile.raw.flags, tilehash);
@@ -156,7 +157,7 @@ function compareChunkLoc(a: ChunkLocDependencies["instances"][number], b: ChunkL
 	return a.plane - b.plane || a.x - b.x || a.z - b.z || a.rotation - b.rotation || a.type - b.type;
 }
 
-export function mapsquareDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], rect: MapRect) {
+export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], rect: MapRect) {
 	let locgroups = new Map<number, PlacedMeshBase<ModelExtrasLocation>[][]>();
 	for (let models of locs) {
 		let first = models[0]
@@ -222,6 +223,52 @@ export function mapsquareDependencies(grid: TileGrid, deps: DependencyGraph, loc
 	}
 	outlocgroups.sort((a, b) => a.id - b.id);
 	return outlocgroups;
+}
+
+export function compareFloorDependencies(tilesa: ChunkTileDependencies[], tilesb: ChunkTileDependencies[], levela: number, levelb: number) {
+	let vertsets: number[][] = [];
+	let addtile = (tile: ChunkTileDependencies) => {
+		let x0 = tile.x * tiledimensions;
+		let x1 = x0 + tile.xzsize * tiledimensions;
+		let z0 = tile.z * tiledimensions;
+		let z1 = z0 + tile.xzsize * tiledimensions;
+		let y0 = 0;
+		let y1 = tile.maxy;
+		vertsets.push([
+			x0, y0, z0,
+			x0, y0, z1,
+			x0, y1, z0,
+			x0, y1, z1,
+			x1, y0, z0,
+			x1, y0, z1,
+			x1, y1, z0,
+			x1, y1, z1,
+		]);
+	}
+	for (let i = 0; i < tilesa.length; i++) {
+		let tilea = tilesa[i];
+		let tileb = tilesb[i];
+		let maxfloor = Math.max(levela, levelb);
+		let mismatch = false;
+		if (tilea.dephash != tileb.dephash) {
+			mismatch = true;
+		} else if (tilea.tilehashes.length <= maxfloor || tileb.tilehashes.length <= maxfloor) {
+			mismatch = true;
+		} else {
+			for (let level = 0; level <= maxfloor; level++) {
+				let hasha = level <= levela ? tilea.tilehashes[level] : 0;
+				let hashb = level <= levelb ? tileb.tilehashes[level] : 0;
+				if (hasha != hashb) {
+					mismatch = true
+				}
+			}
+		}
+		if (mismatch) {
+			addtile(tilea);
+			addtile(tileb);
+		}
+	}
+	return vertsets;
 }
 
 export function compareLocDependencies(chunka: ChunkLocDependencies[], chunkb: ChunkLocDependencies[], levela: number, levelb: number) {
@@ -329,8 +376,6 @@ type KMeansBucket = {
 };
 
 export function calculateDiffArea(projection: Matrix4, points: number[][]) {
-	projection = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(globalThis.model.matrixWorld);
-
 	let gridsize = 64;
 	let grid = new Uint8Array(gridsize * gridsize);
 	for (let group of points) {
@@ -448,27 +493,12 @@ export function calculateDiffArea(projection: Matrix4, points: number[][]) {
 		}
 	}
 
-	let rects: Box2[] = [];
-	for (let i = 0; i < grid.length; i++) {
-		if (grid[i]) {
-			let x = i % gridsize;
-			let y = Math.floor(i / gridsize);
-			rects.push(new Box2(new Vector2(
-				-1 + 2 * x / gridsize,
-				-1 + 2 * y / gridsize
-			), new Vector2(
-				-1 + 2 * (x + 1) / gridsize,
-				-1 + 2 * (y + 1) / gridsize
-			)));
-		}
-	}
-
-	rendermeans(rects, buckets);
-	requestAnimationFrame(() => calculateDiffArea(null!, points));
+	let res = buckets.map(q => q.runningbounds);
+	//TODO remove everything other than res
+	return { res, buckets, grid, gridsize };
 }
 
 function rendermeans(rects: Box2[], buckets: KMeansBucket[]) {
-
 	let cnv = globalThis.cnv as HTMLCanvasElement;
 	if (!cnv) {
 		cnv = document.createElement("canvas");
@@ -513,19 +543,50 @@ function rendermeans(rects: Box2[], buckets: KMeansBucket[]) {
 }
 
 //TODO remove
-globalThis.lochash = mapsquareDependencies;
+globalThis.lochash = mapsquareLocDependencies;
 globalThis.floorhash = mapsquareFloorDependencies;
 globalThis.comparehash = compareLocDependencies;
 globalThis.diffmodel = mapdiffmesh;
 globalThis.diffrects = calculateDiffArea;
 globalThis.test = async (low: number, high: number) => {
-	globalThis.zlib = require("zlib");
-	globalThis.q ??= await globalThis.getdeps(globalThis.engine, { area: { x: 49, z: 49, xsize: 3, zsize: 3 } });
-	globalThis.e = globalThis.lochash(globalThis.chunk.loaded.grid, globalThis.q, globalThis.chunk.loaded.modeldata, globalThis.chunk.rect);
-	globalThis.p = globalThis.comparehash(globalThis.e, globalThis.e, low, high);
-	globalThis.m = await globalThis.diffmodel(globalThis.sceneCache, globalThis.p);
-	globalThis.render.modelnode.add(globalThis.m);
-	globalThis.diffrects(null, globalThis.p);
+	globalThis.deps ??= await globalThis.getdeps(globalThis.engine, { area: { x: 49, z: 49, xsize: 3, zsize: 3 } });
+
+	let locdeps = mapsquareLocDependencies(globalThis.chunk.loaded.grid, globalThis.deps, globalThis.chunk.loaded.modeldata, globalThis.chunk.rect);
+	let locdifs = compareLocDependencies(locdeps, locdeps, low, high);
+	let locdifmesh = await mapdiffmesh(globalThis.sceneCache, locdifs);
+	globalThis.render.modelnode.add(locdifmesh);
+
+	let floordeps = mapsquareFloorDependencies(globalThis.chunk.loaded.grid, globalThis.deps, globalThis.chunk.loaded.chunks[0]);
+	let floordifs = compareFloorDependencies(floordeps, floordeps, low, high);
+	let floordifmesh = await mapdiffmesh(globalThis.sceneCache, floordifs);
+	globalThis.render.modelnode.add(floordifmesh);
+
+	let frame = () => {
+		let floorproj = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(floordifmesh.matrixWorld);
+		let locproj = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(locdifmesh.matrixWorld);
+
+		// let { grid, gridsize, buckets } = calculateDiffArea(locproj, locdifs);
+		let { grid, gridsize, buckets } = calculateDiffArea(floorproj, [...floordifs, ...locdifs]);
+		//TODO remove
+		let rects: Box2[] = [];
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i]) {
+				let x = i % gridsize;
+				let y = Math.floor(i / gridsize);
+				rects.push(new Box2(new Vector2(
+					-1 + 2 * x / gridsize,
+					-1 + 2 * y / gridsize
+				), new Vector2(
+					-1 + 2 * (x + 1) / gridsize,
+					-1 + 2 * (y + 1) / gridsize
+				)));
+			}
+		}
+
+		rendermeans(rects, buckets);
+		requestAnimationFrame(frame);
+	}
+	frame();
 }
 
 function modelPlacementHash(loc: WorldLocation) {

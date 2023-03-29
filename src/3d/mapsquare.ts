@@ -173,7 +173,8 @@ export class TileProps {
 	playery10: number;
 	playery11: number;
 	shape: TileShape;
-	visible: boolean;
+	underlayVisible: boolean;
+	overlayVisible: boolean;//these should probably be merged
 	normalX: number;
 	normalZ: number;
 	bleedsOverlayMaterial: boolean;
@@ -188,7 +189,8 @@ export class TileProps {
 	effectiveVisualLevel: number;
 
 	constructor(engine: EngineCache, height: number, tile: mapsquare_tiles["tiles"][number], tilex: number, tilez: number, level: number, docollision: boolean) {
-		let visible = false;
+		let underlayVisible = false;
+		let overlayVisible = false;
 		let shape = (tile.shape == undefined ? defaulttileshape : tileshapes[tile.shape]);
 		let bleedsOverlayMaterial = false;
 		let underlayprop: TileVertex | undefined = undefined;
@@ -197,7 +199,7 @@ export class TileProps {
 		let underlay = (tile.underlay != undefined ? engine.mapUnderlays[tile.underlay - 1] : undefined);
 		if (underlay) {
 			if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
-				visible = true;
+				underlayVisible = true;
 			}
 			underlayprop = {
 				material: underlay.material ?? -1,
@@ -207,6 +209,9 @@ export class TileProps {
 		}
 		let overlay = (tile.overlay != undefined ? engine.mapOverlays[tile.overlay - 1] : undefined);
 		if (overlay) {
+			if (overlay.color && (overlay.color[0] != 255 || overlay.color[1] != 0 || overlay.color[2] != 255)) {
+				overlayVisible = true;
+			}
 			overlayprop = {
 				material: overlay.materialbyte ?? overlay.material ?? -1,
 				materialTiling: overlay.material_tiling ?? 128,
@@ -239,7 +244,8 @@ export class TileProps {
 		this.y01 = y; this.y10 = y; this.y11 = y;
 		this.playery00 = y, this.playery01 = y; this.playery10 = y; this.playery11 = y;
 		this.shape = shape;
-		this.visible = visible;
+		this.underlayVisible = underlayVisible;
+		this.overlayVisible = overlayVisible;
 		this.normalX = 0;
 		this.normalZ = 0;
 		this.bleedsOverlayMaterial = bleedsOverlayMaterial;
@@ -648,7 +654,7 @@ export class TileGrid implements TileGridSource {
 					for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
 						for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
 							let tile = this.getTile(x + dx, z + dz, level);
-							if (!tile || !tile.visible) { continue; }
+							if (!tile || !tile.underlayVisible) { continue; }
 							let col = tile.underlayprops.color;
 							r += col[0];
 							g += col[1];
@@ -2091,7 +2097,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 						}
 					}
 				}
-				if (hasneighbours && shape.underlay.length != 0 && (tile.visible || showhidden)) {
+				if (hasneighbours && shape.underlay.length != 0 && (tile.underlayVisible || showhidden)) {
 					let props: TileVertex[];
 					if (!worldmap) {
 						props = shape.underlay.map(vertex => {
