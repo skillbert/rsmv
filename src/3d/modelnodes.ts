@@ -430,6 +430,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 				}
 			});
 
+			//TODO remove
+			globalThis.chunk = this;
+
 			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
 			let chunkmodels = processedChunks.map(q => q.group);
 			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize };

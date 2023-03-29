@@ -121,7 +121,7 @@ export type ClickableMesh<T> = {
 	subobjects: T[]
 }
 
-type ModelExtrasLocation = {
+export type ModelExtrasLocation = {
 	modeltype: "location",
 	isclickable: false,
 	modelgroup: string,
@@ -131,7 +131,7 @@ type ModelExtrasLocation = {
 	rotation: number,
 	mirror: boolean,
 	level: number,
-	locationInstance: unknown
+	locationInstance: WorldLocation
 }
 
 type ModelExtrasOverlay = {
@@ -1143,13 +1143,15 @@ class SimpleTexturePacker {
 	}
 }
 
-export type PlacedMesh = {
+export type PlacedMeshBase<T> = {
 	model: ModelMeshData,
 	morph: FloorMorph,
 	miny: number,
 	maxy: number,
-	extras: ModelExtrasLocation | ModelExtrasOverlay
+	extras: T
 }
+
+export type PlacedMesh = PlacedMeshBase<ModelExtrasLocation> | PlacedMeshBase<ModelExtrasOverlay>;
 
 type PlacedModel = {
 	models: PlacedMesh[],

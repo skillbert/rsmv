@@ -411,6 +411,6 @@ globalThis.getdeps = getDependencies;
 
 const staticintbuf = Buffer.alloc(4);
 export function crc32addInt(int: number, crc = 0) {
-	staticintbuf.writeUInt32BE(int);
+	staticintbuf.writeUInt32BE(int >>> 0);
 	return crc32(staticintbuf, crc);
 }

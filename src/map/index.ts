@@ -826,7 +826,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				async run() {
 					let chunks = await renderer.setArea(x, z, 1, 1);
 					let { grid, modeldata, chunkSize } = await chunks[0].chunk.model;
-					let res = await chunkSummary(engine, grid, modeldata, { x: x * chunkSize, z: z * chunkSize, xsize: chunkSize, zsize: chunkSize });
+					let res = await chunkSummary(grid, modeldata, { x: x * chunkSize, z: z * chunkSize, xsize: chunkSize, zsize: chunkSize });
 					let textual = prettyJson(res, { indent: "\t" });
 					return { file: () => Promise.resolve(Buffer.from(textual, "utf8")) };
 				}
@@ -842,7 +842,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 				hash: depcrc,
 				async run() {
 					//TODO try enable 2d map render without loading all the 3d stuff
-					//TODO locs that cross chun boundaries currently don't show up
+					//TODO locs that cross chunk boundaries currently don't show up
 					let chunks = await renderer.setArea(x - 1, z - 1, squares + 1, squares + 1);
 					let grid = new CombinedTileGrid(chunks.map(ch => ({
 						src: ch.chunk.loaded!.grid,
