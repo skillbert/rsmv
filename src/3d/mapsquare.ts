@@ -1493,7 +1493,7 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 				addmodel(4, {
 					...morph,
 					rotation,
-					translate: new THREE.Vector3(dx, 0, 0).add(morph.translate).applyQuaternion(rotation)
+					translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(rotation).add(morph.translate)
 				});
 			}
 			if (inst.type == 7 || inst.type == 8) {
@@ -1503,7 +1503,7 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 				addmodel(4, {
 					...morph,
 					rotation,
-					translate: new THREE.Vector3(dx, 0, 0).add(morph.translate).applyQuaternion(rotation)
+					translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(rotation).add(morph.translate)
 				});
 			}
 		} else if (inst.type == 2) {
