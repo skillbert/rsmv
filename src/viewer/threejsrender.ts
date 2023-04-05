@@ -112,7 +112,8 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		globalThis.scene = this.scene;
 		scene.add(camera);
 
-		renderer.physicallyCorrectLights = true;
+		//three typings are outdated
+		(renderer as any).useLegacyLights = false;
 		renderer.outputEncoding = THREE.sRGBEncoding;
 
 		const planeSize = 11;
@@ -450,16 +451,16 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		cam.projectionMatrix.transpose();
 		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
 
-		let res: ImageData | null = null
+		let img: ImageData | null = null
 		await this.guaranteeGlCalls(() => {
 			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
-			res = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
+			img = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
 		});
 
-		return res!;
+		return { img: img!, cam };
 	}
 
 	setCameraPosition(pos: Vector3) {

@@ -17,7 +17,7 @@ const d0 = new Vector2();
 const d1 = new Vector2();
 const d2 = new Vector2();
 
-export async function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
+export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
 	let sum = new Vector3();
 	let tmp = new Vector3();
 
@@ -80,7 +80,7 @@ export async function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect:
 	};
 }
 
-type ChunkLocDependencies = {
+export type ChunkLocDependencies = {
 	id: number,
 	dependencyhash: number,
 	instances: {
@@ -96,7 +96,7 @@ type ChunkLocDependencies = {
 	}[]
 }
 
-type ChunkTileDependencies = {
+export type ChunkTileDependencies = {
 	x: number,
 	z: number,
 	xzsize: number,
@@ -375,128 +375,150 @@ type KMeansBucket = {
 	samples: number
 };
 
-export function calculateDiffArea(projection: Matrix4, points: number[][]) {
-	let gridsize = 64;
-	let grid = new Uint8Array(gridsize * gridsize);
-	for (let group of points) {
-		for (let i = 0; i < group.length; i += 3) {
-			v2.set(group[i + 0], group[i + 1], group[i + 2]);
-			v2.applyMatrix4(projection);
-			if (i == 0) {
-				v0.copy(v2);
-				v1.copy(v2);
-			} else {
-				v0.min(v2);
-				v1.max(v2);
-			}
-		}
-		if (v0.z < 0 && v1.z < 0) {
-			//fully behind camera
-			continue;
-		}
+export class ImageDiffGrid {
+	gridsize = 64;
+	grid = new Uint8Array(this.gridsize * this.gridsize);
 
-		let x1 = Math.max(0, Math.floor((v0.x + 1) / 2 * gridsize));
-		let y1 = Math.max(0, Math.floor((v0.y + 1) / 2 * gridsize));
-		let x2 = Math.min(gridsize, Math.ceil((v1.x + 1) / 2 * gridsize));
-		let y2 = Math.min(gridsize, Math.ceil((v1.y + 1) / 2 * gridsize));
-		for (let y = y1; y < y2; y++) {
-			for (let x = x1; x < x2; x++) {
-				grid[x + y * gridsize] = 1;
-			}
-		}
-	}
-
-	//K-means algo to group rects
-	let nmeans = 4;
-	let filteriters = 2;
-	let niter = globalThis.itercount ?? 10;//TODO remove
-	let buckets: KMeansBucket[] = [];
-	for (let y = 0; y < nmeans; y++) {
-		for (let x = 0; x < nmeans; x++) {
-			let center = new Vector2(
-				(x + 0.5) / nmeans * gridsize,
-				(y + 0.5) / nmeans * gridsize
-			);
-			buckets.push({
-				center: center,
-				bounds: new Box2(center.clone(), center.clone()),
-				sum: new Vector2(),
-				runningbounds: new Box2(),
-				samples: 0
-			});
-		}
-	}
-	for (let iter = 0; iter < niter; iter++) {
-		for (let y = 0; y < gridsize; y++) {
-			for (let x = 0; x < gridsize; x++) {
-				if (!grid[x + y * gridsize]) { continue; }
-				let mindist = 0;
-				d0.set(x + 0.5, y + 0.5);
-				boxtemp.min.set(x, y);
-				boxtemp.max.set(x + 1, y + 1);
-				let bestbucket: typeof buckets[number] | null = null;
-				for (let mean of buckets) {
-					let dist = mean.bounds.distanceToPoint(d0);
-					if (!bestbucket || dist < mindist) {
-						mindist = dist;
-						bestbucket = mean;
-					}
-				}
-				if (!bestbucket) { throw new Error("unexpected"); }
-				if (bestbucket.samples == 0) {
-					bestbucket.runningbounds.copy(boxtemp);
+	addPolygons(projection: Matrix4, points: number[][]) {
+		for (let group of points) {
+			for (let i = 0; i < group.length; i += 3) {
+				v2.set(group[i + 0], group[i + 1], group[i + 2]);
+				v2.applyMatrix4(projection);
+				if (i == 0) {
+					v0.copy(v2);
+					v1.copy(v2);
 				} else {
-					bestbucket.runningbounds.union(boxtemp);
-				}
-				bestbucket.sum.add(d0);
-				bestbucket.samples++;
-			}
-		}
-		buckets = buckets.filter(q => q.samples != 0);
-
-		if (iter >= niter - filteriters && !globalThis.nofilter) {
-			for (let ia = 0; ia < buckets.length; ia++) {
-				for (let ib = ia + 1; ib < buckets.length;) {
-					let bucketa = buckets[ia];
-					let bucketb = buckets[ib];
-
-					bucketa.runningbounds.getSize(d0);
-					bucketb.runningbounds.getSize(d1);
-					boxtemp.copy(bucketa.runningbounds).union(bucketb.runningbounds).getSize(d2);
-
-					let area_a = d0.x * d0.y;
-					let area_b = d1.x * d1.y;
-					let area_c = d2.x * d2.y;
-
-					if (area_a + area_b > area_c * 0.9) {
-						bucketa.runningbounds.union(bucketb.runningbounds);
-						bucketa.sum.add(bucketb.sum);
-						bucketa.samples += bucketb.samples;
-
-						buckets.splice(ib, 1);
-						ib = ia + 1;
-						iter = niter - filteriters;
-					} else {
-						ib++;
-					}
+					v0.min(v2);
+					v1.max(v2);
 				}
 			}
-		}
-		for (let bucket of buckets) {
-			bucket.center.copy(bucket.sum).multiplyScalar(1 / bucket.samples);
-			let area = bucket.samples;
-			let prevsize = bucket.runningbounds.getSize(d0);
-			let prevarea = prevsize.x * prevsize.y;
-			bucket.bounds.setFromCenterAndSize(bucket.center, prevsize.multiplyScalar(area / prevarea));
-			bucket.samples = 0;
-			bucket.sum.set(0, 0);
+			// if (v0.z < 0 && v1.z < 0) {
+			// 	//fully behind camera
+			// 	continue;
+			// }
+
+			let x1 = Math.max(0, Math.floor((v0.x + 1) / 2 * this.gridsize));
+			let y1 = Math.max(0, Math.floor((v0.y + 1) / 2 * this.gridsize));
+			let x2 = Math.min(this.gridsize, Math.ceil((v1.x + 1) / 2 * this.gridsize));
+			let y2 = Math.min(this.gridsize, Math.ceil((v1.y + 1) / 2 * this.gridsize));
+			for (let y = y1; y < y2; y++) {
+				for (let x = x1; x < x2; x++) {
+					this.grid[x + y * this.gridsize] = 1;
+				}
+			}
 		}
 	}
 
-	let res = buckets.map(q => q.runningbounds);
-	//TODO remove everything other than res
-	return { res, buckets, grid, gridsize };
+	coverage() {
+		let count = 0;
+		for (let i = 0; i < this.grid.length; i++) {
+			count += this.grid[i];
+		}
+		return count / this.gridsize / this.gridsize;
+	}
+
+	calculateDiffArea(imgwidth: number, imgheight: number) {
+		const gridsize = this.gridsize;
+		const grid = this.grid;
+
+		//K-means algo to group rects
+		let nmeans = 4;
+		let filteriters = 2;
+		let niter = globalThis.itercount ?? 10;//TODO remove
+		let buckets: KMeansBucket[] = [];
+		for (let y = 0; y < nmeans; y++) {
+			for (let x = 0; x < nmeans; x++) {
+				let center = new Vector2(
+					(x + 0.5) / nmeans * gridsize,
+					(y + 0.5) / nmeans * gridsize
+				);
+				buckets.push({
+					center: center,
+					bounds: new Box2(center.clone(), center.clone()),
+					sum: new Vector2(),
+					runningbounds: new Box2(),
+					samples: 0
+				});
+			}
+		}
+		for (let iter = 0; iter < niter; iter++) {
+			for (let y = 0; y < gridsize; y++) {
+				for (let x = 0; x < gridsize; x++) {
+					if (!grid[x + y * gridsize]) { continue; }
+					let mindist = 0;
+					d0.set(x + 0.5, y + 0.5);
+					boxtemp.min.set(x, y);
+					boxtemp.max.set(x + 1, y + 1);
+					let bestbucket: typeof buckets[number] | null = null;
+					for (let mean of buckets) {
+						let dist = mean.bounds.distanceToPoint(d0);
+						if (!bestbucket || dist < mindist) {
+							mindist = dist;
+							bestbucket = mean;
+						}
+					}
+					if (!bestbucket) { throw new Error("unexpected"); }
+					if (bestbucket.samples == 0) {
+						bestbucket.runningbounds.copy(boxtemp);
+					} else {
+						bestbucket.runningbounds.union(boxtemp);
+					}
+					bestbucket.sum.add(d0);
+					bestbucket.samples++;
+				}
+			}
+			buckets = buckets.filter(q => q.samples != 0);
+
+			if (iter >= niter - filteriters && !globalThis.nofilter) {
+				for (let ia = 0; ia < buckets.length; ia++) {
+					for (let ib = ia + 1; ib < buckets.length;) {
+						let bucketa = buckets[ia];
+						let bucketb = buckets[ib];
+
+						bucketa.runningbounds.getSize(d0);
+						bucketb.runningbounds.getSize(d1);
+						boxtemp.copy(bucketa.runningbounds).union(bucketb.runningbounds).getSize(d2);
+
+						let area_a = d0.x * d0.y;
+						let area_b = d1.x * d1.y;
+						let area_c = d2.x * d2.y;
+
+						if (area_a + area_b > area_c * 0.9) {
+							bucketa.runningbounds.union(bucketb.runningbounds);
+							bucketa.sum.add(bucketb.sum);
+							bucketa.samples += bucketb.samples;
+
+							buckets.splice(ib, 1);
+							ib = ia + 1;
+							iter = niter - filteriters;
+						} else {
+							ib++;
+						}
+					}
+				}
+			}
+			for (let bucket of buckets) {
+				bucket.center.copy(bucket.sum).multiplyScalar(1 / bucket.samples);
+				let area = bucket.samples;
+				let prevsize = bucket.runningbounds.getSize(d0);
+				let prevarea = prevsize.x * prevsize.y;
+				bucket.bounds.setFromCenterAndSize(bucket.center, prevsize.multiplyScalar(area / prevarea));
+				bucket.samples = 0;
+				bucket.sum.set(0, 0);
+			}
+		}
+
+		let rects = buckets.map(q => ({
+			x: q.runningbounds.min.x / this.gridsize * imgwidth,
+			y: q.runningbounds.min.y / this.gridsize * imgheight,
+			width: (q.runningbounds.max.x - q.runningbounds.min.x) / this.gridsize * imgwidth,
+			height: (q.runningbounds.max.y - q.runningbounds.min.y) / this.gridsize * imgheight
+		}));
+		//TODO remove buckets from res
+		return { rects, buckets };
+	}
 }
+
 
 function rendermeans(rects: Box2[], buckets: KMeansBucket[]) {
 	let cnv = globalThis.cnv as HTMLCanvasElement;
@@ -547,7 +569,6 @@ globalThis.lochash = mapsquareLocDependencies;
 globalThis.floorhash = mapsquareFloorDependencies;
 globalThis.comparehash = compareLocDependencies;
 globalThis.diffmodel = mapdiffmesh;
-globalThis.diffrects = calculateDiffArea;
 globalThis.test = async (low: number, high: number) => {
 	globalThis.deps ??= await globalThis.getdeps(globalThis.engine, { area: { x: 49, z: 49, xsize: 3, zsize: 3 } });
 
@@ -565,25 +586,28 @@ globalThis.test = async (low: number, high: number) => {
 		let floorproj = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(floordifmesh.matrixWorld);
 		let locproj = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(locdifmesh.matrixWorld);
 
+		let grid = new ImageDiffGrid();
+		grid.addPolygons(floorproj, floordifs);
+		grid.addPolygons(locproj, locdifs);
 		// let { grid, gridsize, buckets } = calculateDiffArea(locproj, locdifs);
-		let { grid, gridsize, buckets } = calculateDiffArea(floorproj, [...floordifs, ...locdifs]);
+		let res = grid.calculateDiffArea(512, 512);
 		//TODO remove
 		let rects: Box2[] = [];
-		for (let i = 0; i < grid.length; i++) {
-			if (grid[i]) {
-				let x = i % gridsize;
-				let y = Math.floor(i / gridsize);
+		for (let i = 0; i < grid.grid.length; i++) {
+			if (grid.grid[i]) {
+				let x = i % grid.gridsize;
+				let y = Math.floor(i / grid.gridsize);
 				rects.push(new Box2(new Vector2(
-					-1 + 2 * x / gridsize,
-					-1 + 2 * y / gridsize
+					-1 + 2 * x / grid.gridsize,
+					-1 + 2 * y / grid.gridsize
 				), new Vector2(
-					-1 + 2 * (x + 1) / gridsize,
-					-1 + 2 * (y + 1) / gridsize
+					-1 + 2 * (x + 1) / grid.gridsize,
+					-1 + 2 * (y + 1) / grid.gridsize
 				)));
 			}
 		}
 
-		rendermeans(rects, buckets);
+		rendermeans(rects, res.buckets);
 		requestAnimationFrame(frame);
 	}
 	frame();

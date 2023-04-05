@@ -1036,13 +1036,13 @@ async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: 
 }
 
 export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkModelData, placedlocs: PlacedModel[]) {
-	let node = new THREE.Group();
-	node.matrixAutoUpdate = false;
-	node.position.set(chunk.chunk.tilerect.x * tiledimensions, 0, chunk.chunk.tilerect.z * tiledimensions);
-	node.updateMatrix();
-
 	let rootx = chunk.chunk.tilerect.x * tiledimensions;
 	let rootz = chunk.chunk.tilerect.z * tiledimensions;
+
+	let node = new THREE.Group();
+	node.matrixAutoUpdate = false;
+	node.position.set(rootx, 0, rootz);
+	node.updateMatrix();
 
 	if (placedlocs.length != 0) { node.add(...await Promise.all(placedlocs.map(q => meshgroupsToThree(scene, grid, q, rootx, rootz)))); }
 	let chunkoverlays = await Promise.all(chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(scene, grid, q, rootx, rootz)));

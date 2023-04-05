@@ -11,7 +11,7 @@ let cmd = cmdts.command({
 	name: "download",
 	args: {
 		...filesource,
-		classicFiles: cmdts.option({ long: "classicfiles" }),
+		classicFiles: cmdts.option({ long: "classicfiles", defaultValue: () => "" }),
 		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
 		auth: cmdts.option({ long: "auth", short: "p" }),
 		mapid: cmdts.option({ long: "mapid", type: cmdts.number }),

@@ -134,6 +134,32 @@ export function isImageEqual(overlay: ImageData, background: ImageData, x1 = 0, 
 	return true;
 }
 
+export function maskImage(img: ImageData, rects: { x: number, y: number, width: number, height: number }[]) {
+	//set all alpha to 0
+	for (let i = 0; i < img.data.length; i += 4) {
+		img.data[i + 3] = 0;
+	}
+	//set alphas inside our rects to 255
+	for (let rect of rects) {
+		let stride = img.height * 4;
+		for (let dy = 0; dy < rect.height; dy++) {
+			for (let dx = 0; dx < rect.width; dx++) {
+				let i = (rect.x + dx) * 4 + (rect.y + dy) * stride;
+				img.data[i + 3] = 255;
+			}
+		}
+	}
+	//also clear rgb for pixels that still have 0 alpha
+	//this helps with image compression in some cases
+	for (let i = 0; i < img.data.length; i += 4) {
+		if (img.data[i + 3] == 0) {
+			img[i + 0] = 0;
+			img[i + 0] = 1;
+			img[i + 0] = 2;
+		}
+	}
+}
+
 export function isImageEmpty(img: ImageData, mode: "black" | "transparent", x1 = 0, y1 = 0, width = img.width, height = img.height) {
 	let intview = new Uint32Array(img.data.buffer, img.data.byteOffset, img.data.byteLength / 4);
 	let mask = (mode == "black" ? 0xffffffff : 0xff);

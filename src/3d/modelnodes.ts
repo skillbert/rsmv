@@ -328,8 +328,8 @@ export type RSMapChunkData = {
 	chunkmodels: Group[]
 }
 
-export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements ThreeJsSceneElementSource {
-	model: Promise<RSMapChunkData>;
+export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> implements ThreeJsSceneElementSource {
+	chunkdata: Promise<RSMapChunkData>;
 	loaded: RSMapChunkData | null = null;
 	cache: ThreejsSceneCache;
 	rootnode = new THREE.Group();
@@ -342,7 +342,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		this.listeners = {};
 
 		//only clear vertex memory for now, materials might be reused and are up to the scenecache
-		this.model.then(q => q.chunkmodels.forEach(node => {
+		this.chunkdata.then(q => q.chunkmodels.forEach(node => {
 			node.traverse(obj => {
 				if (obj instanceof Mesh) { obj.geometry.dispose(); }
 			});
@@ -352,7 +352,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 	}
 
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
-		let { chunks, grid, chunkSize } = await this.model;
+		let { chunks, grid, chunkSize } = await this.chunkdata;
 		let rect: MapRect = { x: this.rect.x * chunkSize, z: this.rect.z * chunkSize, xsize: this.rect.xsize * chunkSize, zsize: this.rect.zsize * chunkSize };
 		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
 	}
@@ -372,7 +372,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 
 	onModelLoaded() {
 		this.setToggles(this.toggles);
-		this.emit("loaded", undefined);
+		this.emit("loaded", this.loaded!);
 		this.renderscene?.sceneElementsChanged();
 		// this.renderscene?.setCameraLimits();//TODO fix this, current bounding box calc is too large
 	}
@@ -393,7 +393,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: undefined }> implements T
 		super();
 		this.rect = rect;
 		this.cache = cache;
-		this.model = (async () => {
+		this.chunkdata = (async () => {
 			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
 			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
