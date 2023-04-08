@@ -58,6 +58,8 @@ export function validOpenrs2Caches() {
 				1003,//missing materials
 				638,//missing materials
 
+				542,//missing models
+
 				//large gaps in files according to openrs2ids command
 				621, 623, 620, 617, 618, 619,
 				734, 733, 20, 10, 9, 8, 7, 2,

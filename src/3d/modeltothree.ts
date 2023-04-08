@@ -286,6 +286,7 @@ export async function* iterateConfigFiles(cache: EngineCache, major: number) {
 		let locindices = await cache.getCacheIndex(major);
 		let stride = mappedFileIds[major];
 		for (let index of locindices) {
+			if (!index) { continue; }
 			let arch = await cache.getFileArchive(index);
 			yield* arch.map(q => ({ id: index.minor * stride + q.fileid, file: q.buffer }));
 		}

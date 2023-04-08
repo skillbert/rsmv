@@ -112,8 +112,9 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 		for (let z = 0; z < chunk.tilerect.zsize; z += groupsize) {
 			let tilehashes = new Array(grid.levels).fill(0);
 			let maxy = 0;
-			let overlays = new Set<number>();
-			let underlays = new Set<number>();
+			//can't use Set here since we need determinisitic order
+			let overlays: number[] = [];
+			let underlays: number[] = [];
 			for (let dx = 0; dx < groupsize; dx++) {
 				for (let dz = 0; dz < groupsize; dz++) {
 					for (let level = 0; level < grid.levels; level++) {
@@ -129,8 +130,8 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 						tilehash = crc32addInt(tile.raw.shape ?? -1, tilehash);
 						tilehash = crc32addInt(tile.raw.underlay ?? -1, tilehash);
 
-						if (tile.raw.overlay != null) { overlays.add(tile.raw.overlay); }
-						if (tile.raw.underlay != null) { underlays.add(tile.raw.underlay); }
+						if (tile.raw.overlay != null && overlays.indexOf(tile.raw.overlay) == -1) { overlays.push(tile.raw.overlay); }
+						if (tile.raw.underlay != null && underlays.indexOf(tile.raw.underlay) == -1) { underlays.push(tile.raw.underlay); }
 
 						maxy = Math.max(maxy, tile.y, tile.y01, tile.y10, tile.y11);
 						tilehashes[tile.effectiveVisualLevel] = tilehash;
@@ -139,8 +140,8 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 			}
 
 			let dephash = 0;
-			overlays.forEach(id => deps.hashDependencies(deps.makeDeptName("overlay", id), dephash));
-			underlays.forEach(id => deps.hashDependencies(deps.makeDeptName("underlay", id), dephash));
+			overlays.forEach(id => dephash = deps.hashDependencies(deps.makeDeptName("overlay", id), dephash));
+			underlays.forEach(id => dephash = deps.hashDependencies(deps.makeDeptName("underlay", id), dephash));
 			groups.push({
 				x, z,
 				xzsize: groupsize,

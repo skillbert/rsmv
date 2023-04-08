@@ -1811,7 +1811,10 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 	let loadproms: Promise<any>[] = [];
 	for (let loc of locs) {
 		for (let model of loc.models) {
-			loadproms.push(scene.getModelData(model.model).then(m => loadedmodels.set(model.model, m)));
+			loadproms.push(scene.getModelData(model.model).catch(e => {
+				console.warn("ignoring missing model", model.model, "in loc", loc.extras.locationInstance.location.name ?? loc.extras.locationid);
+				return { bonecount: 0, skincount: 0, miny: 0, maxy: 0, meshes: [] } as ModelData;
+			}).then(m => loadedmodels.set(model.model, m)));
 		}
 	}
 	await Promise.all(loadproms);
