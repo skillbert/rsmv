@@ -23,6 +23,7 @@ type RenderedMapMeta = {
 	version: number,
 	errorcount: number,
 	running: boolean,
+	workerid: string,
 	rendertimestamp: string
 }
 
@@ -67,11 +68,14 @@ async function initMapConfig(endpoint: string, auth: string, uploadmapid: number
 	let config: Mapconfig = await res.json();
 	let rendermetaname = config.layers.find(q => q.mode == "rendermeta");
 
+	let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
+	localStorage.map_workerid ??= workerid;
+
 	let versions: number[] = await fetch(`${endpoint}/mapversions?mapid=${uploadmapid}`, {
 		headers: { "Authorization": auth }
 	}).then(r => r.json());
 
-	return new MapRender(endpoint, auth, uploadmapid, config, version, versions, rendermetaname, overwrite);
+	return new MapRender(endpoint, auth, workerid, uploadmapid, config, version, versions, rendermetaname, overwrite);
 }
 
 //The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
@@ -82,6 +86,7 @@ class MapRender {
 	config: Mapconfig;
 	layers: LayerConfig[];
 	endpoint: string;
+	workerid: string;
 	uploadmapid: number;
 	auth: string;
 	version: number;
@@ -89,9 +94,10 @@ class MapRender {
 	minzoom: number;
 	rendermetaLayer: LayerConfig | undefined;
 	existingVersions: number[];
-	constructor(endpoint: string, auth: string, uploadmapid: number, config: Mapconfig, version: number, existingversions: number[], rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
+	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, version: number, existingversions: number[], rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
 		this.endpoint = endpoint;
 		this.auth = auth;
+		this.workerid = workerid;
 		this.config = config;
 		this.layers = config.layers;
 		this.version = version;
@@ -293,7 +299,8 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	if (prevconfigreq.ok) {
 		let prevconfig: RenderedMapMeta = await prevconfigreq.json();
 		let prevdate = new Date(prevconfig.rendertimestamp);
-		if (!prevconfig.running && +prevdate > Date.now() - 1000 * 60 * 60 * 24) {
+		let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
+		if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 10) {
 			//skip is less than 24hr ago
 			output.log("skipping", config.uploadmapid, config.version);
 			return () => { };
@@ -574,6 +581,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		version: config.version,
 		errorcount: 0,
 		running: true,
+		workerid: config.workerid,
 		rendertimestamp: new Date().toISOString()
 	};
 
@@ -849,7 +857,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 								let parentFile: null | { name: string, version: number } = null;
 
-								for (let parentoption of parentCandidates) {
+								findparent: for (let parentoption of parentCandidates) {
 									for (let versionMatch of await forked.findMatches(this.datarect, parentoption.name)) {
 										let diff = new ImageDiffGrid();
 										for (let chunk of chunks) {
@@ -867,8 +875,6 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 											diff.addPolygons(proj, locs);
 											diff.addPolygons(proj, floor);
-
-											let qq = 10;
 										}
 
 										let area = diff.coverage();
@@ -877,6 +883,7 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 												name: parentoption.name,
 												version: versionMatch.file.buildnr
 											};
+											break findparent;
 										}
 										// if (area < 0.2) {
 										// 	if (area > 0) {
@@ -892,14 +899,16 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 								// isImageEmpty(img, "black");
 
 								//keep reference to dedupe similar renders
-								baseimgs[filename] = img;
-								chunks.forEach(chunk => forked.addLocalSquare(chunk.loaded.rendermeta));
-								forked.addLocalFile({
-									file: this.name,
-									buildnr: config.version,
-									hash: depcrc,
-									time: Date.now()
-								});
+								if (!parentFile) {
+									baseimgs[filename] = img;
+									chunks.forEach(chunk => forked.addLocalSquare(chunk.loaded.rendermeta));
+									forked.addLocalFile({
+										file: this.name,
+										buildnr: config.version,
+										hash: depcrc,
+										time: Date.now()
+									});
+								}
 
 								return {
 									file: () => pixelsToImageFile(img, thiscnf.format ?? "webp", 0.9),
@@ -1006,7 +1015,6 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 		if (cnf.mode == "rendermeta") {
 			let thiscnf = cnf;
 			let filename = `${thiscnf.name}/${x}-${z}.${cnf.usegzip ? "json.gz" : "json"}`;
-			thiscnf.format
 			chunktasks.push({
 				layer: thiscnf,
 				name: filename,
@@ -1125,7 +1133,12 @@ class RenderDepsTracker {
 	}
 
 	async forkDeps(names: string[]) {
-		let allFiles = await this.config.getRelatedFiles(names, this.targetversions);
+		//TODO turn this request into a post because url is too long
+		let allFiles: KnownMapFile[] = [];
+		const maxgroup = 100;
+		for (let i = 0; i + maxgroup < names.length; i += maxgroup) {
+			allFiles.push(... await this.config.getRelatedFiles(names.slice(i, i + maxgroup), this.targetversions));
+		}
 		let localmetas: ChunkRenderMeta[] = [];
 		let localfiles: KnownMapFile[] = [];
 
@@ -1148,8 +1161,8 @@ class RenderDepsTracker {
 			if (localfile) {
 				let haslocalchunks = true;
 				let localchunks: ChunkRenderMeta[] = []
-				for (let z = 0; z < chunkRect.zsize; z++) {
-					for (let x = 0; x < chunkRect.xsize; x++) {
+				for (let z = chunkRect.z; z < chunkRect.z + chunkRect.zsize; z++) {
+					for (let x = chunkRect.x; x < chunkRect.x + chunkRect.xsize; x++) {
 						let meta = localmetas.find(q => q.x == x && q.z == z);
 						if (!meta) {
 							haslocalchunks = false;

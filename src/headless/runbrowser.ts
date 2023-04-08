@@ -1,4 +1,5 @@
 import { app, BrowserWindow, powerSaveBlocker, ipcMain } from "electron";
+import * as path from "path";
 
 //don't use browser behavoir of blocking gpu access after an opengl crash
 app.disableDomainBlockingFor3DAPIs();
@@ -87,8 +88,10 @@ console.error=function(...args){
 window.onerror=e=>console.error(e);
 window.onunhandledrejection=e=>console.error(e);
 
-require("${entry}");
+require(${JSON.stringify(path.resolve(process.cwd(), entry))});
 `;
+
+console.log(path.resolve(process.cwd(), entry));
 
 (async () => {
 	await app.whenReady();
@@ -111,7 +114,7 @@ require("${entry}");
 		show: !hidden
 	});
 	index.webContents.openDevTools();
-	index.loadURL(`about:blank`);
+	index.loadFile(`assets/headless.html`);
 	// index.webContents.openDevTools();
 	index.webContents.on("did-finish-load", () => {
 		index.webContents.executeJavaScript(js);
