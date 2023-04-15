@@ -15,8 +15,9 @@ import prettyJson from "json-stringify-pretty-compact";
 import { ChunkLocDependencies, chunkSummary, ChunkTileDependencies, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies } from "./chunksummary";
 import { RSMapChunk, RSMapChunkData } from "../3d/modelnodes";
 import * as zlib from "zlib";
+import { Matrix4 } from "three";
 
-type RenderedMapMeta = {
+type RenderedMapVersionMeta = {
 	buildnr: number,
 	timestamp: string,
 	areas: MapRect[],
@@ -25,6 +26,15 @@ type RenderedMapMeta = {
 	running: boolean,
 	workerid: string,
 	rendertimestamp: string
+}
+
+type RenderedMapMeta = {
+	versions: {
+		version: number,
+		date: number,
+		build: number,
+		source: string
+	}[]
 }
 
 type Mapconfig = {
@@ -71,11 +81,99 @@ async function initMapConfig(endpoint: string, auth: string, uploadmapid: number
 	let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
 	localStorage.map_workerid ??= workerid;
 
-	let versions: number[] = await fetch(`${endpoint}/mapversions?mapid=${uploadmapid}`, {
-		headers: { "Authorization": auth }
-	}).then(r => r.json());
+	return new MapRender(endpoint, auth, workerid, uploadmapid, config, version, rendermetaname, overwrite);
+}
 
-	return new MapRender(endpoint, auth, workerid, uploadmapid, config, version, versions, rendermetaname, overwrite);
+async function getVersionsFile(source: CacheFileSource, config: MapRender, writeversion = false) {
+	//make sure versions file is updated
+	let versionsres = await fetch(config.getNamedFileUrl("versions.json", 0));
+	let mapversionsinfo: RenderedMapMeta;
+	if (!versionsres.ok) {
+		mapversionsinfo = {
+			versions: []
+		}
+	} else {
+		mapversionsinfo = await versionsres.json();
+	}
+	if (writeversion && !mapversionsinfo.versions.some(q => q.version == config.version)) {
+		mapversionsinfo.versions.push({
+			version: config.version,
+			build: source.getBuildNr(),
+			date: +source.getCacheMeta().timestamp,
+			source: source.getCacheMeta().name
+		});
+		mapversionsinfo.versions.sort((a, b) => b.version - a.version);
+		//no lock this is technically a race condition when using multiple renderers
+		console.log("updating versions file");
+		await config.saveFile("versions.json", 0, Buffer.from(JSON.stringify(mapversionsinfo)), 0);
+	}
+	return mapversionsinfo;
+}
+
+async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) {
+	let areas: MapRect[] = [];
+	let mask: MapRect[] | undefined = undefined;
+
+	if (areaArgument == "" || areaArgument == "full") {
+		areas = [{ x: 0, z: 0, xsize: 100, zsize: 200 }];
+	} else if (areaArgument.match(/^\w+$/)) {
+		if (areaArgument == "main") {
+
+			//enums 708 seems to be the map select dropdown in-game
+			let file = await filesource.getFileById(cacheMajors.enums, 708);
+			let mapenum = parse.enums.read(file, filesource);
+
+			let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
+			mask = mapenum.intArrayValue2!.values
+				.map(q => parse.mapZones.read(files[q[1]].buffer, filesource))
+				// .filter(q => q.show && q.name)
+				.flatMap(q => q.bounds)
+				.map(q => {
+					let x = q.src.xstart;
+					let z = q.src.zstart;
+					//add +1 since the zones are inclusive of their end coord
+					return { x, z, xsize: q.src.xend - x + 1, zsize: q.src.zend - z + 1 } as MapRect
+				});
+
+			//hardcoded extra bits
+			mask.push({ x: 2176, z: 3456, xsize: 64, zsize: 64 });//prif top ocean doesn't exist on any map
+			mask.push({ x: 2432, z: 2624, xsize: 128, zsize: 128 });//use the original ashdale and hope for the best
+
+			//hardcoded areas that aren't on any normal map
+			mask.push({ x: 59 * 64, z: 109 * 64, xsize: 128, zsize: 128 });//telos
+			mask.push({ x: 47 * 64, z: 93 * 64, xsize: 2 * 64, zsize: 4 * 64 });//vorago
+			mask.push({ x: 14 * 64, z: 4 * 64, xsize: 3 * 64, zsize: 4 * 64 });//zuk
+			mask.push({ x: 23 * 64, z: 24 * 64, xsize: 4 * 64, zsize: 4 * 64 });//zamorak
+			mask.push({ x: 70 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed1
+			mask.push({ x: 76 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed2
+			mask.push({ x: 82 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed3
+			mask.push({ x: 69 * 64, z: 96 * 64, xsize: 6 * 64, zsize: 4 * 64 });//araxxor
+			mask.push({ x: 5 * 64, z: 2 * 64, xsize: 1 * 64, zsize: 1 * 64 });//kerapac
+			mask.push({ x: 43 * 64, z: 27 * 64, xsize: 3 * 64, zsize: 3 * 64 });//kerapac
+
+			areas = mask.map(q => {
+				let x = Math.floor(q.x / 64);
+				let z = Math.floor(q.z / 64);
+				return { x, z, xsize: Math.ceil((q.x + q.xsize) / 64) - x + 1, zsize: Math.ceil((q.z + q.zsize) / 64) - z + 1 };
+			});
+		}
+		if (areaArgument == "test") {
+			areas = [
+				{ x: 49, z: 49, xsize: 3, zsize: 3 }
+			];
+		}
+	} else {
+		let rect = stringToMapArea(areaArgument);
+		if (!rect) {
+			throw new Error("map area argument did not match a preset name and did not resolve to a rectangle");
+		}
+		areas = [rect];
+	}
+	if (areas.length == 0) {
+		throw new Error("no map area or map name");
+	}
+
+	return { areas, mask };
 }
 
 //The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
@@ -93,15 +191,13 @@ class MapRender {
 	overwrite: boolean;
 	minzoom: number;
 	rendermetaLayer: LayerConfig | undefined;
-	existingVersions: number[];
-	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, version: number, existingversions: number[], rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
+	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, version: number, rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
 		this.endpoint = endpoint;
 		this.auth = auth;
 		this.workerid = workerid;
 		this.config = config;
 		this.layers = config.layers;
 		this.version = version;
-		this.existingVersions = existingversions;
 		this.overwrite = overwrite;
 		this.rendermetaLayer = rendermetaLayer;
 		this.uploadmapid = uploadmapid;
@@ -116,8 +212,8 @@ class MapRender {
 		const base = Math.log2(this.config.tileimgsize / 64);
 		return { min, max, base };
 	}
-	async saveFile(name: string, hash: number, data: Buffer) {
-		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&mapid=${this.uploadmapid}`, {
+	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
+		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${version}&mapid=${this.uploadmapid}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
 			body: data
@@ -125,6 +221,10 @@ class MapRender {
 		if (!send.ok) { throw new Error("file upload failed"); }
 	}
 	async symlink(name: string, hash: number, targetname: string, targetversion = this.version) {
+		if (name == targetname && this.version == targetversion) {
+			//symlinking to self, noop
+			return;
+		}
 		let send = await fetch(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${this.version}&mapid=${this.uploadmapid}&symlink=${targetname}&symlinkbuildnr=${targetversion}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
@@ -134,8 +234,10 @@ class MapRender {
 	async getMetas(names: UniqueMapFile[]) {
 		if (this.overwrite) {
 			return [];
+		} else if (names.length == 0) {
+			return [];
 		} else {
-			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}`, {
+			let req = await fetch(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}&buildnr=${this.version}`, {
 				headers: { "Authorization": this.auth },
 			});
 			if (!req.ok) { throw new Error("req failed"); }
@@ -297,14 +399,14 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 
 	let prevconfigreq = await fetch(config.getNamedFileUrl("meta.json"));
 	if (prevconfigreq.ok) {
-		let prevconfig: RenderedMapMeta = await prevconfigreq.json();
+		let prevconfig: RenderedMapVersionMeta = await prevconfigreq.json();
 		let prevdate = new Date(prevconfig.rendertimestamp);
 		let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
-		if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 10) {
-			//skip is less than 24hr ago
-			output.log("skipping", config.uploadmapid, config.version);
-			return () => { };
-		}
+		// if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 10) {
+		// 	//skip is less than 10*24hr ago
+		// 	output.log("skipping", config.uploadmapid, config.version);
+		// 	return () => { };
+		// }
 	}
 
 	let engine = await EngineCache.create(filesource);
@@ -315,88 +417,8 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	let cleanup = () => progress.root.remove();
 	output.setUI(progress.root);
 
-	let areaArgument = config.config.area;
-	let areas: MapRect[] = [];
-	let mask: MapRect[] | undefined = undefined;
+	let { areas, mask } = await mapAreaPreset(filesource, config.config.area);
 
-	if (areaArgument == "") {
-		areas = [{ x: 0, z: 0, xsize: 100, zsize: 200 }];
-	} else if (areaArgument.match(/^\w+$/)) {
-		if (areaArgument == "main") {
-
-			//enums 708 seems to be the map select dropdown in-game
-			let file = await filesource.getFileById(cacheMajors.enums, 708);
-			let mapenum = parse.enums.read(file, filesource);
-
-			let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
-			mask = mapenum.intArrayValue2!.values
-				.map(q => parse.mapZones.read(files[q[1]].buffer, filesource))
-				// .filter(q => q.show && q.name)
-				.flatMap(q => q.bounds)
-				.map(q => {
-					let x = q.src.xstart;
-					let z = q.src.zstart;
-					//add +1 since the zones are inclusive of their end coord
-					return { x, z, xsize: q.src.xend - x + 1, zsize: q.src.zend - z + 1 } as MapRect
-				});
-
-			//hardcoded extra bits
-			mask.push({ x: 2176, z: 3456, xsize: 64, zsize: 64 });//prif top ocean doesn't exist on any map
-			mask.push({ x: 2432, z: 2624, xsize: 128, zsize: 128 });//use the original ashdale and hope for the best
-
-			//hardcoded areas that aren't on any normal map
-			mask.push({ x: 59 * 64, z: 109 * 64, xsize: 128, zsize: 128 });//telos
-			mask.push({ x: 47 * 64, z: 93 * 64, xsize: 2 * 64, zsize: 4 * 64 });//vorago
-			mask.push({ x: 14 * 64, z: 4 * 64, xsize: 3 * 64, zsize: 4 * 64 });//zuk
-			mask.push({ x: 23 * 64, z: 24 * 64, xsize: 4 * 64, zsize: 4 * 64 });//zamorak
-			mask.push({ x: 70 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed1
-			mask.push({ x: 76 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed2
-			mask.push({ x: 82 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed3
-			mask.push({ x: 69 * 64, z: 96 * 64, xsize: 6 * 64, zsize: 4 * 64 });//araxxor
-			mask.push({ x: 5 * 64, z: 2 * 64, xsize: 1 * 64, zsize: 1 * 64 });//kerapac
-			mask.push({ x: 43 * 64, z: 27 * 64, xsize: 3 * 64, zsize: 3 * 64 });//kerapac
-
-
-			areas = mask.map(q => {
-				let x = Math.floor(q.x / 64);
-				let z = Math.floor(q.z / 64);
-				return { x, z, xsize: Math.ceil((q.x + q.xsize) / 64) - x + 1, zsize: Math.ceil((q.z + q.zsize) / 64) - z + 1 };
-			});
-		}
-		if (areaArgument == "test") {
-			if (uploadmapid == 19) {//TODO revert
-				areas = [
-					{ x: 45, z: 45, xsize: 11, zsize: 11 }
-				];
-			} else {
-				areas = [
-					{ x: 49, z: 49, xsize: 3, zsize: 3 }
-				];
-			}
-		}
-		if (areaArgument == "gwd3") {
-			areas = [
-				{ x: 31, z: 20, xsize: 1, zsize: 1 }
-			];
-			mask = [
-				{ x: 1984, z: 1280, xsize: 64, zsize: 64 }
-			]
-		}
-		if (areaArgument == "tower") {
-			areas = [
-				{ x: 49, z: 51, xsize: 1, zsize: 1 }
-			];
-		}
-	} else {
-		let rect = stringToMapArea(areaArgument);
-		if (!rect) {
-			throw new Error("map area argument did not match a preset name and did not resolve to a rectangle");
-		}
-		areas = [rect];
-	}
-	if (areas.length == 0) {
-		throw new Error("no map area or map name");
-	}
 	progress.setAreas(areas);
 
 	progress.updateProp("deps", "starting dependency graph");
@@ -506,10 +528,10 @@ export class MapRenderer {
 			square.chunk.chunkdata.then(async (chunkdata) => {
 				square.loaded = {
 					rendermeta: {
-						x: chunkdata.chunks[0].mapsquarex,
-						z: chunkdata.chunks[0].mapsquarez,
+						x: chunkdata.rect.x,
+						z: chunkdata.rect.z,
 						version: this.config.version,
-						floor: mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunks[0]),
+						floor: (chunkdata.chunks.length == 0 ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunks[0])),
 						locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, square.chunk.rect)
 					},
 					grid: chunkdata.grid,
@@ -574,7 +596,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	chunks = chunks.filter((v, i, arr) => (i == 0 || v.x != arr[i - 1].x || v.z != arr[i - 1].z));
 	output.log("filtered out dupes", prefilterlen - chunks.length);
 
-	let configjson: RenderedMapMeta = {
+	let configjson: RenderedMapVersionMeta = {
 		buildnr: engine.getBuildNr(),
 		timestamp: (isNaN(+engine.getCacheMeta().timestamp) ? "" : engine.getCacheMeta().timestamp.toISOString()),
 		areas: rects,
@@ -587,8 +609,10 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 
 	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
 
+	let versionsFile = await getVersionsFile(engine, config, true);
+
 	let mipper = new MipScheduler(config, progress);
-	let depstracker = new RenderDepsTracker(config, deps);
+	let depstracker = new RenderDepsTracker(engine, config, deps, versionsFile);
 
 	let completed = 0;
 	for (let chunk of chunks) {
@@ -737,12 +761,12 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 		let img: any;//Image|VideoFrame
 		if (usefetch) {
 			let res = await fetch(src, { cache: "reload" });
-			if (!res.ok) { throw new Error("image no found"); }
+			if (!res.ok) { throw new Error("image not found"); }
 			let mimetype = res.headers.get("content-type");
 			// imagedecoder API doesn't support svg
 			if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
 				let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
-				img = await decoder.decode();
+				img = (await decoder.decode()).image;
 			} else {
 				let blobsrc = URL.createObjectURL(await res.blob());
 				img = new Image(subtilesize, subtilesize);
@@ -781,7 +805,6 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 	let y = config.config.mapsizez - 1 - z;
 
-	let baseimgs: Record<string, ImageData> = {};
 	progress.update(x, z, "imaging");
 	let rootdeps = [
 		depstracker.deps.makeDeptName("mapsquare", (x - 1) + (z - 1) * worldStride),
@@ -858,21 +881,28 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 								let parentFile: null | { name: string, version: number } = null;
 
 								findparent: for (let parentoption of parentCandidates) {
-									for (let versionMatch of await forked.findMatches(this.datarect, parentoption.name)) {
+									optloop: for (let versionMatch of await forked.findMatches(this.datarect, parentoption.name)) {
 										let diff = new ImageDiffGrid();
 										for (let chunk of chunks) {
 											let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
 											if (!other) { throw new Error("unexpected"); }
 
-											//TODO store this at a proper spot instead of reaching deep inside
-											let modelmatrix = chunk.chunk.loaded!.chunkmodels[0].matrixWorld;
+											let modelmatrix = new Matrix4().makeTranslation(
+												chunk.chunk.rect.x * tiledimensions * chunk.chunk.loaded!.chunkSize,
+												0,
+												chunk.chunk.rect.z * tiledimensions * chunk.chunk.loaded!.chunkSize,
+											).premultiply(chunk.chunk.rootnode.matrixWorld);
+
 											let proj = cam.projectionMatrix.clone()
 												.multiply(cam.matrixWorldInverse)
 												.multiply(modelmatrix);
 
 											let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, thiscnf.level, parentoption.level);
-											let floor = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, thiscnf.level, parentoption.level);
+											let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, thiscnf.level, parentoption.level);
 
+											if (locs.length + floor.length > 400) {
+												continue optloop;
+											}
 											diff.addPolygons(proj, locs);
 											diff.addPolygons(proj, floor);
 										}
@@ -900,7 +930,6 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 								//keep reference to dedupe similar renders
 								if (!parentFile) {
-									baseimgs[filename] = img;
 									chunks.forEach(chunk => forked.addLocalSquare(chunk.loaded.rendermeta));
 									forked.addLocalFile({
 										file: this.name,
@@ -1052,6 +1081,10 @@ export async function renderMapsquare(engine: EngineCache, config: MapRender, re
 
 	for (let task of chunktasks) {
 		let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize);
+		if (chunks.length == 0) {
+			//TODO better place to skip empty chunks, currently still tried to load parentcandidates
+			continue;
+		}
 		await Promise.all(chunks.map(q => q.loadprom));
 		// console.log("running", task.file, "old", meta?.hash, "new", task.hash);
 		let data = await task.run(chunks as MaprenderSquareLoaded[]);
@@ -1091,13 +1124,15 @@ class RenderDepsTracker {
 	cachedMetas: RenderDepsEntry[] = [];
 	readonly cacheSize = 15;
 
-	constructor(config: MapRender, deps: DependencyGraph) {
+	constructor(source: CacheFileSource, config: MapRender, deps: DependencyGraph, rendermeta: RenderedMapMeta) {
 		this.config = config;
 		this.deps = deps;
-		this.targetversions = this.config.existingVersions
+		let versiontime = +source.getCacheMeta().timestamp;
+		this.targetversions = rendermeta.versions
 			.slice()
-			.sort((a, b) => Math.abs(a - this.config.version) - Math.abs(b - this.config.version))
-			.slice(0, 10);
+			.sort((a, b) => Math.abs(a.date - versiontime) - Math.abs(b.date - versiontime))
+			.slice(0, 10)
+			.map(q => q.version)
 	}
 
 	getEntry(x: number, z: number) {

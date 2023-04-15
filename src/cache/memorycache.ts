@@ -110,4 +110,7 @@ export class CachingFileSource extends CacheFileSource {
     getBuildNr() {
         return this.rawsource.getBuildNr();
     }
+    getCacheMeta() {
+        return this.rawsource.getCacheMeta();
+    }
 }

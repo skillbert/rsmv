@@ -325,7 +325,8 @@ export type RSMapChunkData = {
 	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
 	modeldata: PlacedMesh[][],
-	chunkmodels: Group[]
+	chunkmodels: Group[],
+	rect: MapRect
 }
 
 export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> implements ThreeJsSceneElementSource {
@@ -435,7 +436,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 
 			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
 			let chunkmodels = processedChunks.map(q => q.group);
-			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize };
+			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize, rect };
 			this.onModelLoaded();
 			return this.loaded;
 		})();

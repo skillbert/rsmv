@@ -60,6 +60,8 @@ export function validOpenrs2Caches() {
 
 				542,//missing models
 
+				463,//wrong build number?
+
 				//large gaps in files according to openrs2ids command
 				621, 623, 620, 617, 618, 619,
 				734, 733, 20, 10, 9, 8, 7, 2,
