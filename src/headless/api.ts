@@ -114,7 +114,7 @@ export async function renderAppearance(scene: ThreejsSceneCache, mode: "player" 
 	let render = getRenderer(width, height);
 	render.addSceneElement({
 		getSceneElements() {
-			return { options: { autoFrames: false, hideFloor: true } };
+			return { options: { autoFrames: "never", hideFloor: true } };
 		}
 	});
 

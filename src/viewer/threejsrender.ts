@@ -45,12 +45,13 @@ export type ThreeJsSceneElement = {
 		hideFog?: boolean,
 		camMode?: RenderCameraMode,
 		camControls?: CameraControlMode,
-		autoFrames?: boolean | undefined,
+		autoFrames?: AutoFrameMode | "auto",
 		aspect?: number
 	}
 }
 
 type CameraControlMode = "free" | "world";
+type AutoFrameMode = "forced" | "continuous" | "never";
 export type RenderCameraMode = "standard" | "vr360" | "item" | "topdown";
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
@@ -63,7 +64,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private modelnode: THREE.Group;
 	private floormesh: THREE.Mesh;
 	private queuedFrameId = 0;
-	private automaticFrames = false;
+	private autoFrameMode: AutoFrameMode = "forced";
 	private contextLossCount = 0;
 	private contextLossCountLastRender = 0;
 	private clock = new Clock(true);
@@ -203,7 +204,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let controls: CameraControlMode = "free";
 		let hideFog = false;
 		let showfloor = true;
-		let autoframes: boolean | undefined = undefined;
+		let autoframes: AutoFrameMode | "auto" = "auto";
 		let nodeDeleteList = new Set(this.modelnode.children);
 		this.animationCallbacks.clear();
 		for (let source of this.sceneElements) {
@@ -219,7 +220,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			if (el.options?.camMode) { cammode = el.options.camMode; }
 			if (el.options?.camControls) { controls = el.options.camControls; }
 			if (el.options?.aspect) { aspect = el.options.aspect; }
-			if (typeof el.options?.autoFrames == "boolean") { autoframes = el.options.autoFrames; }
+			if (el.options?.autoFrames) { autoframes = el.options.autoFrames }
 			if (el.modelnode) {
 				nodeDeleteList.delete(el.modelnode);
 				if (el.modelnode.parent != this.modelnode) {
@@ -231,7 +232,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
 		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
-		this.automaticFrames = autoframes ?? animated;
+		this.autoFrameMode = (autoframes == "auto" ? "continuous" : "forced");
 		this.floormesh.visible = showfloor;
 		this.camMode = cammode;
 		this.controls.screenSpacePanning = controls == "free";
@@ -347,7 +348,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			this.renderer.clearColor();
 			cam.render(this.renderer);
 		}
-		if (this.automaticFrames) {
+		if (this.autoFrameMode == "continuous") {
 			this.forceFrame();
 		}
 	}
@@ -391,7 +392,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 	@boundMethod
 	forceFrame() {
-		if (!this.queuedFrameId) {
+		if (!this.queuedFrameId && this.autoFrameMode != "never") {
 			this.queuedFrameId = compatRequestAnimationFrame(() => this.render());
 		}
 	}

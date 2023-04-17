@@ -404,7 +404,11 @@ export async function getDependencies(cache: EngineCache, args?: DepArgs) {
 		return crc;
 	}
 
-	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies };
+	let hasEntry = (depname: string) => {
+		return hashes.has(depname);
+	}
+
+	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies, hasEntry };
 }
 //TODO remove
 globalThis.getdeps = getDependencies;

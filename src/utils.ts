@@ -411,7 +411,7 @@ export class CallbackPromise<T = void> extends Promise<T> {
 }
 
 //runs at most [parallel] async tasks at the same time
-export function trickleTasks(name: string, parallel: number, tasks: Iterable<Promise<void>> | (() => Iterable<Promise<void>>)) {
+export function trickleTasks(name: string, parallel: number, tasks: Iterable<Promise<any>> | (() => Iterable<Promise<any>>)) {
 	let len = (Array.isArray(tasks) ? tasks.length : -1);
 	if (name) { console.log(`starting ${name}, ${len == -1 ? "??" : len} tasks`); }
 	if (typeof tasks == "function") { tasks = tasks(); }
@@ -462,4 +462,40 @@ export async function trickleTasksTwoStep<T>(parallel: number, tasks: () => Iter
 		completecounter++;
 		steptwo(res);
 	}
+}
+
+export class FetchThrottler {
+	private reqQueue: (() => void)[] = [];
+	private activeReqs = 0;
+	private maxParallelReqs: number;
+
+	constructor(maxParallelReqs: number) {
+		this.maxParallelReqs = maxParallelReqs;
+	}
+
+	//prevent overloading the server by using to many parallel requests
+	async apiRequest<T>(url: string, init?: RequestInit, retrycount = 5, retrydelay = 1000): Promise<Response> {
+		if (this.activeReqs >= this.maxParallelReqs) {
+			let prom = new CallbackPromise();
+			this.reqQueue.push(prom.done);
+			await prom;
+		}
+
+		this.activeReqs++;
+		try {
+			var res = await fetch(url, init);
+		} finally {
+			this.activeReqs--;
+			let stalled = this.reqQueue.shift();
+			stalled?.();
+		}
+		if (res.status == 503 || res.status == 429) {
+			let retryheader = res.headers.get("retry-after");
+			let delaytime = retryheader && !isNaN(+ retryheader) ? +retryheader : retrydelay;
+			await delay(delaytime);
+			return this.apiRequest(url, init, retrycount - 1, delaytime * 2);
+		}
+		return res;
+	}
+
 }
