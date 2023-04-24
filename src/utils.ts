@@ -474,7 +474,7 @@ export class FetchThrottler {
 	}
 
 	//prevent overloading the server by using to many parallel requests
-	async apiRequest<T>(url: string, init?: RequestInit, retrycount = 5, retrydelay = 1000): Promise<Response> {
+	async apiRequest(url: string, init?: RequestInit, retrycount = 5, retrydelay = 1000): Promise<Response> {
 		if (this.activeReqs >= this.maxParallelReqs) {
 			let prom = new CallbackPromise();
 			this.reqQueue.push(prom.done);
@@ -482,15 +482,19 @@ export class FetchThrottler {
 		}
 
 		this.activeReqs++;
+		let res: Response | null = null;
 		try {
-			var res = await fetch(url, init);
+			//TODO get right typescript lib version for abortsignal.timeout
+			res = await fetch(url, { signal: (AbortSignal as any).timeout(1000 * 60), ...init });
+		} catch (e) {
+			//handled later
 		} finally {
 			this.activeReqs--;
 			let stalled = this.reqQueue.shift();
 			stalled?.();
 		}
-		if (res.status == 503 || res.status == 429) {
-			let retryheader = res.headers.get("retry-after");
+		if (!res || res.status == 503 || res.status == 429) {
+			let retryheader = res?.headers.get("retry-after");
 			let delaytime = retryheader && !isNaN(+ retryheader) ? +retryheader : retrydelay;
 			await delay(delaytime);
 			return this.apiRequest(url, init, retrycount - 1, delaytime * 2);

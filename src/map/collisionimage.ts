@@ -2,7 +2,7 @@ import { canvasToImageFile } from "../imgutils";
 import { MapRect, tiledimensions, TileGridSource, TileProps } from "../3d/mapsquare";
 
 
-export function drawCollision(grid: TileGridSource, rect: MapRect, maplevel: number, pxpertile: number, wallpx: number) {
+export function drawCollision(grids: TileGridSource[], rect: MapRect, maplevel: number, pxpertile: number, wallpx: number) {
 	let cnv = document.createElement("canvas");
 	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	cnv.width = rect.xsize * pxpertile;
@@ -14,13 +14,19 @@ export function drawCollision(grid: TileGridSource, rect: MapRect, maplevel: num
 	let wallcol = "red";
 	let walkcol = "orange";
 
-	let colcheck = (tile: TileProps, index: number, lowx: boolean, lowz: boolean, highx: boolean, highz: boolean) => {
-		let col = tile.effectiveCollision;
-		if (col && col.walk[index]) {
-			ctx.fillStyle = (col.sight[index] ? wallcol : walkcol);
+	let colcheck = (tiles: TileProps[], index: number, lowx: boolean, lowz: boolean, highx: boolean, highz: boolean) => {
+		let walk = false;
+		let sight = false;
+		for (let tile of tiles) {
+			walk ||= !!tile.effectiveCollision && tile.effectiveCollision.walk[index];
+			sight ||= !!tile.effectiveCollision && tile.effectiveCollision.sight[index];
+		}
+
+		if (walk) {
+			ctx.fillStyle = (sight ? wallcol : walkcol);
 			ctx.fillRect(
-				tile.x / tiledimensions * pxpertile + (lowx ? 0 : pxpertile - wallpx),
-				tile.z / tiledimensions * pxpertile + (lowz ? 0 : pxpertile - wallpx),
+				tiles[0].x / tiledimensions * pxpertile + (lowx ? 0 : pxpertile - wallpx),
+				tiles[0].z / tiledimensions * pxpertile + (lowz ? 0 : pxpertile - wallpx),
 				(lowx && highx ? pxpertile : wallpx),
 				(lowz && highz ? pxpertile : wallpx)
 			);
@@ -29,22 +35,28 @@ export function drawCollision(grid: TileGridSource, rect: MapRect, maplevel: num
 
 	for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 		for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-			let tile = grid.getTile(x, z, maplevel);
-			if (!tile || !tile.effectiveCollision) { continue; }
+			//some collision might spill over from neighbouring chunks
+			//check for the tile on every grid and OR them together
+			let tiles: TileProps[] = [];
+			for (let grid of grids) {
+				let tile = grid.getTile(x, z, maplevel);
+				if (tile) { tiles.push(tile); }
+			}
+			if (tiles.length == 0) { continue; }
 			//center
-			colcheck(tile, 0, true, true, true, true);
+			colcheck(tiles, 0, true, true, true, true);
 
 			//walls
-			colcheck(tile, 1, true, true, false, true);
-			colcheck(tile, 2, true, false, true, true);
-			colcheck(tile, 3, false, true, true, true);
-			colcheck(tile, 4, true, true, true, false);
+			colcheck(tiles, 1, true, true, false, true);
+			colcheck(tiles, 2, true, false, true, true);
+			colcheck(tiles, 3, false, true, true, true);
+			colcheck(tiles, 4, true, true, true, false);
 
 			//corners
-			colcheck(tile, 5, true, false, false, true);
-			colcheck(tile, 6, false, false, true, true);
-			colcheck(tile, 7, false, true, true, false);
-			colcheck(tile, 8, true, true, false, false);
+			colcheck(tiles, 5, true, false, false, true);
+			colcheck(tiles, 6, false, false, true, true);
+			colcheck(tiles, 7, false, true, true, false);
+			colcheck(tiles, 8, true, true, false, false);
 		}
 	}
 

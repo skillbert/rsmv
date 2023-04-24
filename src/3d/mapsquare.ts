@@ -1919,6 +1919,7 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
 	const maxtiles = chunk.tilerect.xsize * chunk.tilerect.zsize * grid.levels;
 	const maxVerticesPerTile = 8;
+	//TODO can be compacted since we got rid of uv3
 	const posoffset = 0;// 0/4
 	const normaloffset = 3;// 12/4
 	const coloroffset = 24;// 24/1
@@ -1987,7 +1988,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		colorbuffer[colpointer + 2] = polyprops[currentmat].color[2];
 		colorbuffer[colpointer + 3] = 255;//4 alpha channel because of gltf
 
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < 3; i++) {
 			//a weight sum of below 1 automatically fils in with vertex color in the fragment shader
 			//not writing anything simple leaves the weight for this texture at 0
 			texuvbuffer[texuvpointer + 2 * i + 0] = 0;
@@ -2177,10 +2178,11 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		pos: { src: vertexfloat as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
 		normal: { src: vertexfloat, offset: normaloffset, vecsize: 3, normalized: false },
 		color: { src: vertexubyte, offset: coloroffset, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_UV01: { src: vertexushort, offset: texuvoffset + 0, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_UV23: { src: vertexushort, offset: texuvoffset + 4, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_WEIGHTS: { src: vertexubyte, offset: texweightoffset, vecsize: 4, normalized: true },
-		_RA_FLOORTEX_USESCOLOR: { src: vertexubyte, offset: texusescoloroffset, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_UV0: { src: vertexushort, offset: texuvoffset + 0, vecsize: 2, normalized: true },
+		_RA_FLOORTEX_UV1: { src: vertexushort, offset: texuvoffset + 2, vecsize: 2, normalized: true },
+		_RA_FLOORTEX_UV2: { src: vertexushort, offset: texuvoffset + 4, vecsize: 2, normalized: true },
+		_RA_FLOORTEX_WEIGHTS: { src: vertexubyte, offset: texweightoffset, vecsize: 3, normalized: true },
+		_RA_FLOORTEX_USESCOLOR: { src: vertexubyte, offset: texusescoloroffset, vecsize: 3, normalized: true },
 
 		posmax: [maxx, maxy, maxz],
 		posmin: [minx, miny, minz],
@@ -2204,10 +2206,11 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	geo.setAttribute("position", makeAttribute(floor.pos));
 	geo.setAttribute("color", makeAttribute(floor.color));
 	geo.setAttribute("normal", makeAttribute(floor.normal));
-	geo.setAttribute("_ra_floortex_uv01", makeAttribute(floor._RA_FLOORTEX_UV01));
-	geo.setAttribute("_ra_floortex_uv23", makeAttribute(floor._RA_FLOORTEX_UV23));
-	geo.setAttribute("_ra_floortex_weights", makeAttribute(floor._RA_FLOORTEX_WEIGHTS));
-	geo.setAttribute("_ra_floortex_usescolor", makeAttribute(floor._RA_FLOORTEX_USESCOLOR));
+	geo.setAttribute("texcoord_0", makeAttribute(floor._RA_FLOORTEX_UV0));
+	geo.setAttribute("texcoord_1", makeAttribute(floor._RA_FLOORTEX_UV1));
+	geo.setAttribute("texcoord_2", makeAttribute(floor._RA_FLOORTEX_UV2));
+	geo.setAttribute("color_1", makeAttribute(floor._RA_FLOORTEX_WEIGHTS));
+	geo.setAttribute("color_2", makeAttribute(floor._RA_FLOORTEX_USESCOLOR));
 	let mat = (!floor.worldmap ? new THREE.MeshPhongMaterial({ shininess: 0 }) : new THREE.MeshBasicMaterial());
 	mat.vertexColors = true;
 	if (!floor.showhidden) {

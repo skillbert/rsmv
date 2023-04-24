@@ -63,30 +63,34 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 	mat.onBeforeCompile = (shader, renderer) => {
 		shader.vertexShader =
 			`#ifdef USE_MAP\n`
-			+ `attribute vec4 _ra_floortex_uv01;\n`
-			+ `attribute vec4 _ra_floortex_uv23;\n`
-			+ `attribute vec4 _ra_floortex_weights;\n`
-			+ `attribute vec4 _ra_floortex_usescolor;\n`
-			+ `varying vec4 v_ra_floortex_01;\n`
-			+ `varying vec4 v_ra_floortex_23;\n`
-			+ `varying vec4 v_ra_floortex_weights;\n`
-			+ `varying vec4 v_ra_floortex_usescolor;\n`
+			+ `attribute vec2 texcoord_0;\n`
+			+ `attribute vec2 texcoord_1;\n`
+			+ `attribute vec2 texcoord_2;\n`
+			+ `attribute vec3 color_1;\n`
+			+ `attribute vec3 color_2;\n`
+			+ `varying vec2 v_ra_floortex_0;\n`
+			+ `varying vec2 v_ra_floortex_1;\n`
+			+ `varying vec2 v_ra_floortex_2;\n`
+			+ `varying vec3 v_ra_floortex_weights;\n`
+			+ `varying vec3 v_ra_floortex_usescolor;\n`
 			+ `#endif\n`
 			+ shader.vertexShader.replace("#include <uv_vertex>",
 				`#ifdef USE_MAP\n`
-				+ `v_ra_floortex_01 = _ra_floortex_uv01;\n`
-				+ `v_ra_floortex_23 = _ra_floortex_uv23;\n`
-				+ `v_ra_floortex_weights = _ra_floortex_weights;\n`
-				+ `v_ra_floortex_usescolor = _ra_floortex_usescolor;\n`
+				+ `v_ra_floortex_0 = texcoord_0;\n`
+				+ `v_ra_floortex_1 = texcoord_1;\n`
+				+ `v_ra_floortex_2 = texcoord_2;\n`
+				+ `v_ra_floortex_weights = color_1;\n`
+				+ `v_ra_floortex_usescolor = color_2;\n`
 				+ `#endif\n`
 				+ "#include <uv_vertex>"
 			);
 		shader.fragmentShader =
 			`#ifdef USE_MAP\n`
-			+ `varying vec4 v_ra_floortex_01;\n`
-			+ `varying vec4 v_ra_floortex_23;\n`
-			+ `varying vec4 v_ra_floortex_weights;\n`
-			+ `varying vec4 v_ra_floortex_usescolor;\n`
+			+ `varying vec2 v_ra_floortex_0;\n`
+			+ `varying vec2 v_ra_floortex_1;\n`
+			+ `varying vec2 v_ra_floortex_2;\n`
+			+ `varying vec3 v_ra_floortex_weights;\n`
+			+ `varying vec3 v_ra_floortex_usescolor;\n`
 			+ `#endif\n`
 			+ shader.fragmentShader
 				.replace("#include <color_fragment>", "")
@@ -94,12 +98,11 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 					`#include <color_fragment>\n`
 					+ `#ifdef USE_MAP\n`
 					+ `vec4 texelColor = \n`
-					+ `   texture2D( map, v_ra_floortex_01.rg ) * v_ra_floortex_weights.r * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.r)\n`
-					+ ` + texture2D( map, v_ra_floortex_01.ba ) * v_ra_floortex_weights.g * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.g)\n`
-					+ ` + texture2D( map, v_ra_floortex_23.rg ) * v_ra_floortex_weights.b * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.b)\n`
-					+ ` + texture2D( map, v_ra_floortex_23.ba ) * v_ra_floortex_weights.a * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.a);\n`
+					+ `   texture2D( map, v_ra_floortex_0 ) * v_ra_floortex_weights.r * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.r)\n`
+					+ ` + texture2D( map, v_ra_floortex_1 ) * v_ra_floortex_weights.g * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.g)\n`
+					+ ` + texture2D( map, v_ra_floortex_2 ) * v_ra_floortex_weights.b * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.b);\n`
 					//TODO is this needed?
-					+ `texelColor = mix( diffuseColor,texelColor,dot(vec4(1.0),v_ra_floortex_weights));\n`
+					+ `texelColor = mix( diffuseColor,texelColor,dot(vec3(1.0),v_ra_floortex_weights));\n`
 					+ `#endif\n`
 					+ `diffuseColor = texelColor;\n`
 				);

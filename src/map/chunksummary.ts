@@ -376,9 +376,33 @@ type KMeansBucket = {
 	samples: number
 };
 
+
+/**
+ * this class is wayyy overkill for what is currently used
+ */
 export class ImageDiffGrid {
 	gridsize = 64;
 	grid = new Uint8Array(this.gridsize * this.gridsize);
+
+	anyInside(projection: Matrix4, points: number[][]) {
+		for (let group of points) {
+			for (let i = 0; i < group.length; i += 3) {
+				v2.set(group[i + 0], group[i + 1], group[i + 2]);
+				v2.applyMatrix4(projection);
+				if (i == 0) {
+					v0.copy(v2);
+					v1.copy(v2);
+				} else {
+					v0.min(v2);
+					v1.max(v2);
+				}
+			}
+			if (v0.x < 1 && v1.x > -1 && v0.y > -1 && v1.y < 1) {
+				return true;
+			}
+		}
+		return false;
+	}
 
 	addPolygons(projection: Matrix4, points: number[][]) {
 		for (let group of points) {

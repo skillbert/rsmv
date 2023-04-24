@@ -7,7 +7,7 @@ import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, BufferGeometry, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
+import { AnimationClip, AnimationMixer, BufferGeometry, Camera, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
 
 //TODO remove
@@ -438,21 +438,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return r;
 	}
 
-	async takeMapPicture(x: number, z: number, ntiles: number, pxpertile = 32, dxdy: number, dzdy: number) {
-		let framesize = ntiles * pxpertile;
-		let scale = 2 / ntiles;
-		let cam = new THREE.Camera();
-		cam.projectionMatrix.elements = [
-			scale, scale * dxdy, 0, -x * scale - 1,
-			0, scale * dzdy, -scale, -z * scale - 1,
-			0, -0.001, 0, 0,
-			0, 0, 0, 1
-		];
-		this.renderer.setSize(framesize, framesize);
-		cam.projectionMatrix.transpose();
-		cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
-
-		let img: ImageData | null = null
+	async takeMapPicture(cam: Camera, framesizex: number, framesizey: number) {
+		this.renderer.setSize(framesizex, framesizey);
+		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
 			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
@@ -460,8 +448,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
 			img = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
 		});
-
-		return { img: img!, cam };
+		return img!;
 	}
 
 	setCameraPosition(pos: Vector3) {
