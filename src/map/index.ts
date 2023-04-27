@@ -704,7 +704,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 
 type UniqueMapFile = { name: string, hash: number };
 
-type KnownMapFile = { hash: number, file: string, time: number, buildnr: number };
+type KnownMapFile = { hash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
 
 type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: (UniqueMapFile | null)[] };
 
@@ -1013,6 +1013,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 									parentinfo.addLocalFile({
 										file: this.name,
 										buildnr: config.version,
+										firstbuildnr: config.version,
 										hash: depcrc,
 										time: Date.now()
 									});
@@ -1216,7 +1217,7 @@ function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy
 type RenderDepsEntry = {
 	x: number,
 	z: number,
-	metas: Promise<Map<number, ChunkRenderMeta>>
+	metas: Promise<{ buildnr: number, firstbuildnr: number, meta: ChunkRenderMeta }[]>
 }
 
 type RenderDepsVersionInstance = Awaited<ReturnType<RenderDepsTracker["forkDeps"]>>;
@@ -1247,8 +1248,12 @@ class RenderDepsTracker {
 				let filename = `${this.config.rendermetaLayer!.name}/${x}-${z}.${this.config.rendermetaLayer!.usegzip ? "json.gz" : "json"}`;
 				let urls = await this.config.getRelatedFiles([filename], this.targetversions);
 				urls = urls.filter(q => q.buildnr != this.config.version);
-				let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => [q.buildnr, await w.json()] as [number, ChunkRenderMeta]));
-				return new Map(await Promise.all(fetches));
+				let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
+					buildnr: q.buildnr,
+					firstbuildnr: q.firstbuildnr,
+					meta: await w.json() as ChunkRenderMeta
+				})));
+				return Promise.all(fetches)
 			})();
 
 			match = { x, z, metas };
@@ -1318,11 +1323,11 @@ class RenderDepsTracker {
 			matchloop: for (let file of namedversions) {
 				let metas: ChunkRenderMeta[] = [];
 				for (let chunk of chunkmetas) {
-					let meta = chunk.get(file.buildnr);
+					let meta = chunk.find(q => q.buildnr >= file.firstbuildnr && q.firstbuildnr <= file.buildnr);
 					if (!meta) {
 						continue matchloop;
 					} else {
-						metas.push(meta);
+						metas.push(meta.meta);
 					}
 				}
 				matches.push({ file, metas });

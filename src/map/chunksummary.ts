@@ -385,6 +385,10 @@ export class ImageDiffGrid {
 	grid = new Uint8Array(this.gridsize * this.gridsize);
 
 	anyInside(projection: Matrix4, points: number[][]) {
+		//make them local vars to prevent writing into old space
+		const v0 = new Vector3();
+		const v1 = new Vector3();
+		const v2 = new Vector3();
 		for (let group of points) {
 			for (let i = 0; i < group.length; i += 3) {
 				v2.set(group[i + 0], group[i + 1], group[i + 2]);
