@@ -346,7 +346,7 @@ class ProgressUI {
 
 		const maxheight = 930;
 		const maxwidth = 700;
-		let scale = Math.min(maxheight / (maxx - minx + 1), maxwidth / (maxz - minz + 1));
+		let scale = Math.min(maxwidth / (maxx - minx + 1), maxheight / (maxz - minz + 1));
 		this.grid.style.width = `${(maxx - minx + 1) * scale}px`;
 		this.grid.style.height = `${(maxz - minz + 1) * scale}px`;
 		this.grid.style.gridTemplateColumns = `repeat(${maxx - minx + 1},1fr)`;
