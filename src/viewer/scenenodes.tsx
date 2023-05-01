@@ -1136,7 +1136,7 @@ export function RendererControls(p: { ctx: UIContext }) {
 
 	let [showsettings, setshowsettings] = React.useState(localStorage.rsmv_showsettings == "true");
 	let [showexport, setshowexport] = React.useState(false);
-	let [hideFog, sethidefog] = React.useState(false);
+	let [hideFog, sethidefog] = React.useState(true);
 	let [hideFloor, sethidefloor] = React.useState(false);
 	let [camMode, setcammode] = React.useState<"standard" | "vr360">("standard");
 	let [camControls, setcamcontrols] = React.useState<"free" | "world">("free");

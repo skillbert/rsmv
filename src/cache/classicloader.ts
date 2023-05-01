@@ -1,5 +1,5 @@
-import { CacheFileSource, CacheIndex } from ".";
-import { cacheFilenameHash } from "../utils";
+import { CacheFileSource, CacheIndex, SubFile } from ".";
+import { cacheFilenameHash, Stream } from "../utils";
 import { ScriptFS } from "../viewer/scriptsui";
 import { parseLegacyArchive } from "./legacycache";
 
@@ -35,33 +35,40 @@ type CacheVersion = {
 type CacheBuildInfo = {
     name: string,
     buildnr: number,
-    haslocs: boolean,
+    locsjson: string | null,
     versions: CacheVersion
 }
 
 type DetectedVersion = {
     buildnr: number,
-    nativelocs: boolean,
+    locsjson: string | null,
     iscomplete: boolean,
-    externallocs: {}[] | null,
     target: CacheVersion,
     foundjag: CacheVersion,
     foundmem: CacheVersion,
 };
 
-function cversion(buildnr: number, haslocs: boolean, config: number, maps: number, land: number, media: number, models: number, textures: number, entity: number, sounds: number, filter: number, name: string): CacheBuildInfo {
+type ExternalLocJson = {
+    id: number,
+    dir: number,
+    x: number,
+    z: number,
+    level: number
+};
+
+function cversion(buildnr: number, config: number, maps: number, land: number, media: number, models: number, textures: number, entity: number, sounds: number, filter: number, locsjson: string | null, name: string): CacheBuildInfo {
     return {
         buildnr,
-        haslocs,
+        locsjson,
         name,
         versions: { config, maps, land, media, models, textures, entity, sounds, filter }
     }
 }
 
 //subset of https://classic.runescape.wiki/w/User:Logg#Combined_update,_client,_and_cache_history_table
-export const classicBuilds: { name: string, buildnr: number, haslocs: boolean, versions: CacheVersion }[] = [
-    cversion(115, true, 48, 27, 0, 28, 12, 8, 10, 0, 0, "dec 2001 - last original world data"),
-    cversion(230, true, 100, 100, 100, 100, 100, 100, 100, 100, 100, "Last version of entered files")
+export const classicBuilds: CacheBuildInfo[] = [
+    cversion(115, 48, 27, 0, 28, 12, 8, 10, 0, 0, null, "dec 2001 - last original world data"),
+    cversion(230, 100, 100, 100, 100, 100, 100, 100, 100, 100, "SceneryLocs.json", "Last version of entered files")
 ];
 
 //reverse lookup
@@ -74,8 +81,7 @@ export function detectClassicVersions(filenames: string[]) {
         versions.push({
             buildnr: build.buildnr,
             iscomplete: false,
-            nativelocs: build.haslocs,
-            externallocs: null,
+            locsjson: build.locsjson,
             target: build.versions,
             foundjag: Object.fromEntries(Object.entries(build.versions).map(([key]) => [key, 0])) as CacheVersion,
             foundmem: Object.fromEntries(Object.entries(build.versions).map(([key]) => [key, 0])) as CacheVersion
@@ -188,7 +194,7 @@ function mapprops<T extends Record<string, any>>(count: number, template: { [key
 
 export type ClassicConfig = Awaited<ReturnType<typeof classicConfig>>;
 
-export async function classicConfig(source: CacheFileSource, buildnr: number) {
+export async function classicConfig(source: ClassicFileSource, buildnr: number) {
     let modelarchive = await source.getArchiveById(0, classicGroups.models);
 
     let stringsbuf = (await source.findSubfileByName(0, classicGroups.config, "STRING.DAT"))!.buffer;
@@ -318,5 +324,22 @@ export async function classicConfig(source: CacheFileSource, buildnr: number) {
 
     console.log(`decoded rsc config, ints ${intcursor}/${intbuf.length}, strings ${stringcursor}/${stringsbuf.length}`);
 
-    return { items, npcs, textures, anims, objects, wallobjects, roofs, tiles, projectile, spells, prayers }
+    let jsonlocs: ExternalLocJson[] = [];
+    if (source.usingversion.locsjson) {
+        try {
+            let raw = JSON.parse(await source.fs.readFileText(source.usingversion.locsjson)) as { sceneries: { id: number, direction: number, pos: { X: number, Y: number } }[] };
+            let levelstride = 20 * 48 - 16;//???
+            jsonlocs = raw.sceneries.map<ExternalLocJson>(q => ({
+                id: q.id,
+                dir: q.direction,
+                level: Math.floor(q.pos.Y / levelstride),
+                x: 48 * 48 + q.pos.X,
+                z: 37 * 48 + q.pos.Y % levelstride,
+            }));
+        } catch (e) {
+            console.warn("failed to load external classic locs");
+        }
+    }
+
+    return { items, npcs, textures, anims, objects, wallobjects, roofs, tiles, projectile, spells, prayers, jsonlocs };
 }

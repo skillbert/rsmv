@@ -19,13 +19,13 @@ const classicLocIdRoof = 2000000;
 type LocPlacementExtra = mapsquare_locations["locations"][number]["uses"][number]["extra"];
 
 
-let indexToPos = (i: number) => {
+function indexToPos(i: number) {
     const last = chunkSize - 1;
     let x = last - (i / chunkSize | 0);
     let z = last - i % chunkSize;
     return { rs2index: x * chunkSize + z, x, z };
 }
-let posToIndex = (x: number, z: number) => {
+function posToIndex(x: number, z: number) {
     return (chunkSize - 1 - x) * chunkSize + (chunkSize - 1 - z);
 }
 
@@ -42,7 +42,7 @@ type ClassicTileDef = {
 };
 
 export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z: number) {
-    let isunderground = rs2z > 100;
+    let isunderground = rs2z >= 100;
     let mapfilehash = 0;
 
     const config = engine.classicData!;
@@ -98,6 +98,10 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
             if (leveldata.loc) {
                 grid.loadLocFile(leveldata.loc, level);
                 mapfilehash = crc32(leveldata.loc, mapfilehash);
+            } else {
+                let locs = loadLocJsonBuffer(config, chunkx, chunkz, level);
+                mapfilehash = crc32(Buffer.from(locs.buffer), mapfilehash);
+                grid.addLocBuffer(locs, level);
             }
         }
     }
@@ -547,8 +551,8 @@ class ClassicMapBuilder {
                     for (let dz = 0; dz < obj.zsize; dz++) {
                         if (dx == 0 && dz == 0) { continue; }
                         //TODO are there >1x1 locs in classic accros chunk borders? this will break
-                        if (pos.x - dx < 0 || pos.z - dz < 0) { continue; }
-                        let otherindex = posToIndex(pos.x - dx, pos.z - dz);
+                        if (pos.x + dx >= chunkSize || pos.z + dz >= chunkSize) { continue; }
+                        let otherindex = posToIndex(pos.x + dx, pos.z + dz);
                         if (locids[otherindex] == locid) {
                             isoverflow = true;
                         }
@@ -557,9 +561,18 @@ class ClassicMapBuilder {
                 if (!isoverflow) {
                     let tile = this.getTileClassic(level, tileindex);
                     if (tile) {
-                        let rotation = (4 + tile?.locrotation) % 8;
+                        let rotation = (4 + tile.locrotation) % 8;
                         let type = (rotation % 2 == 0 ? 10 : 11);
-                        this.placeLoc(locid - 1, type, Math.floor(rotation / 2), level, pos.x, pos.z);
+                        let x = pos.x;
+                        let z = pos.z;
+                        if (rotation % 4 != 0) {
+                            x -= obj.zsize - 1;
+                            z -= obj.xsize - 1;
+                        } else {
+                            x -= obj.xsize - 1;
+                            z -= obj.zsize - 1;
+                        }
+                        this.placeLoc(locid - 1, type, Math.floor(rotation / 2), level, x, z);
                     }
                 }
             }
@@ -775,4 +788,18 @@ export function classicUnderlays() {
     underlays.forEach(q => { q.color![0] /= 2; q.color![1] /= 2; q.color![2] /= 2 })
 
     return underlays;
+}
+
+function loadLocJsonBuffer(config: ClassicConfig, chunkx: number, chunkz: number, level: number) {
+    let minx = chunkx * chunkSize, minz = chunkz * chunkSize;
+    let maxx = minx + chunkSize, maxz = minz + chunkSize;
+
+    let locids = new Uint32Array(chunkTileCount);
+    let locs = config.jsonlocs.filter(q => q.level == level && q.x >= minx && q.x < maxx && q.z >= minz && q.z < maxz);
+    for (let loc of locs) {
+        let x = loc.x - minx;
+        let z = loc.z - minz;
+        locids[x * chunkSize + z] = loc.id + 1;
+    }
+    return locids;
 }

@@ -1349,7 +1349,7 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 				replaceColors: objectmeta.color_replacements ?? undefined,
 				replaceMaterials: objectmeta.material_replacements ?? undefined
 			};
-			if (cache.getBuildNr() < 337) {
+			if (cache.getBuildNr() > lastClassicBuildnr && cache.getBuildNr() < 377) {
 				//old caches just use one prop to replace both somehow
 				modelmods.replaceMaterials = modelmods.replaceColors;
 			}

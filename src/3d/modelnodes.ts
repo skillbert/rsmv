@@ -7,7 +7,7 @@ import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
-import { cacheConfigPages, cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
 import { ModelData } from "../3d/rt7model";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
 import { svgfloor } from "../map/svgrender";
@@ -104,7 +104,7 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	if (morphedloc) {
 		if (morphedloc.color_replacements) { mods.replaceColors = morphedloc.color_replacements; }
 		if (morphedloc.material_replacements) { mods.replaceMaterials = morphedloc.material_replacements; }
-		if (cache.engine.getBuildNr() < 337) {
+		if (cache.engine.getBuildNr() > lastClassicBuildnr && cache.engine.getBuildNr() < 377) {
 			//old caches just use one prop to replace both somehow
 			mods.replaceMaterials = mods.replaceColors;
 		}
