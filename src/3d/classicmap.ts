@@ -50,7 +50,7 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
     let chunkz = 100 - (isunderground ? rs2z - 100 : rs2z);
     let chunknum = `${chunkx.toString().padStart(2, "0")}${chunkz.toString().padStart(2, "0")}`;
 
-    let leveldatas: { hei: Buffer | undefined, jm: Buffer | undefined, loc: Buffer | undefined, dat: Buffer | undefined }[] = [];
+    let leveldatas: { hei: Buffer | undefined, jm: Buffer | undefined, loc: Buffer | undefined, dat: Buffer | undefined, sourcelevel: number }[] = [];
     let nlevels = (isunderground ? 1 : 3);
 
     for (let level = 0; level < nlevels; level++) {
@@ -61,15 +61,14 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
             //return before allocating all kinda of stuff if chunk doesn't exist
             return null;
         }
-        leveldatas.push({ hei: heifile?.buffer, jm: jmfile?.buffer, loc: undefined, dat: undefined });
+        leveldatas.push({ sourcelevel, hei: heifile?.buffer, jm: jmfile?.buffer, loc: undefined, dat: undefined });
     }
     let grid = new ClassicMapBuilder(config, nlevels);
     for (let level = 0; level < nlevels; level++) {
-        let sourcelevel = (isunderground ? 3 : level);
         let leveldata = leveldatas[level];
         if (!leveldata.jm) {
-            let datfile = await engine.findSubfileByName(0, classicGroups.maps, `M${sourcelevel}${chunknum}.DAT`);
-            let locfile = await engine.findSubfileByName(0, classicGroups.maps, `M${sourcelevel}${chunknum}.LOC`);
+            let datfile = await engine.findSubfileByName(0, classicGroups.maps, `M${leveldata.sourcelevel}${chunknum}.DAT`);
+            let locfile = await engine.findSubfileByName(0, classicGroups.maps, `M${leveldata.sourcelevel}${chunknum}.LOC`);
             leveldata.dat = datfile?.buffer;
             leveldata.loc = locfile?.buffer;
         }
@@ -99,7 +98,7 @@ export async function getClassicMapData(engine: EngineCache, rs2x: number, rs2z:
                 grid.loadLocFile(leveldata.loc, level);
                 mapfilehash = crc32(leveldata.loc, mapfilehash);
             } else {
-                let locs = loadLocJsonBuffer(config, chunkx, chunkz, level);
+                let locs = loadLocJsonBuffer(config, chunkx, chunkz, leveldata.sourcelevel);
                 mapfilehash = crc32(Buffer.from(locs.buffer), mapfilehash);
                 grid.addLocBuffer(locs, level);
             }
