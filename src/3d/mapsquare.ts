@@ -355,68 +355,6 @@ function generateTileShapes() {
 	return { tileshapes, defaulttileshape, defaulttileshapeflipped };
 }
 
-function boxMesh(width: number, length: number, height: number) {
-	const steps = 20;
-	const ysteps = 5;
-	let pos = new Float32Array(4 * 3 * steps * steps * (ysteps + 1));
-	let col = new Uint8Array(4 * 3 * steps * steps * (ysteps + 1));
-	let index = new Uint16Array(6 * steps * steps * (ysteps + 1));
-	let vertexindex = 0;
-	let indexoffset = 0;
-	for (let yindex = 0; yindex <= ysteps; yindex++) {
-		let y = height / ysteps * yindex;
-		for (let zindex = 0; zindex < steps; zindex++) {
-			let z = -length / 2 + length / steps * zindex;
-			for (let xindex = 0; xindex < steps; xindex++) {
-				let x = -width / 2 + width / steps * xindex;
-				let vertexoffset = vertexindex * 3;
-				pos[vertexoffset + 0] = x;
-				pos[vertexoffset + 1] = y;
-				pos[vertexoffset + 2] = z;
-
-				pos[vertexoffset + 3] = x + width / steps;
-				pos[vertexoffset + 4] = y;
-				pos[vertexoffset + 5] = z;
-
-				pos[vertexoffset + 6] = x;
-				pos[vertexoffset + 7] = y;
-				pos[vertexoffset + 8] = z + length / steps;
-
-				pos[vertexoffset + 9] = x + width / steps;
-				pos[vertexoffset + 10] = y;
-				pos[vertexoffset + 11] = z + length / steps;
-
-				index[indexoffset + 0] = vertexindex + 0;
-				index[indexoffset + 1] = vertexindex + 2;
-				index[indexoffset + 2] = vertexindex + 1;
-
-				index[indexoffset + 3] = vertexindex + 1;
-				index[indexoffset + 4] = vertexindex + 2;
-				index[indexoffset + 5] = vertexindex + 3;
-
-				vertexindex += 4;
-				indexoffset += 6;
-			}
-		}
-	}
-	let r = Math.random() * 255 | 0;
-	let g = Math.random() * 255 | 0;
-	let b = Math.random() * 255 | 0;
-	for (let i = 0; i < col.length; i += 3) { col[i + 0] = r; col[i + 1] = g; col[i + 2] = b; }
-
-	let res: ModelMeshData = {
-		attributes: {
-			pos: new THREE.BufferAttribute(pos, 3),
-			color: new THREE.BufferAttribute(col, 3)
-		},
-		needsNormalBlending: false,
-		indices: new THREE.BufferAttribute(index, 1),
-		hasVertexAlpha: false,
-		materialId: -1
-	}
-	return res;
-}
-
 export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 	let newmat = mods.replaceMaterials?.find(q => q[0] == mesh.materialId)?.[1];
 	let newmesh = { ...mesh };

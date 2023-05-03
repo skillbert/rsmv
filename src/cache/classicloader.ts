@@ -36,7 +36,8 @@ type CacheBuildInfo = {
     name: string,
     buildnr: number,
     locsjson: string | null,
-    versions: CacheVersion
+    versions: CacheVersion,
+    date: Date
 }
 
 type DetectedVersion = {
@@ -56,19 +57,20 @@ type ExternalLocJson = {
     level: number
 };
 
-function cversion(buildnr: number, config: number, maps: number, land: number, media: number, models: number, textures: number, entity: number, sounds: number, filter: number, locsjson: string | null, name: string): CacheBuildInfo {
+function cversion(buildnr: number, date: Date, config: number, maps: number, land: number, media: number, models: number, textures: number, entity: number, sounds: number, filter: number, locsjson: string | null, name: string): CacheBuildInfo {
     return {
         buildnr,
         locsjson,
         name,
+        date,
         versions: { config, maps, land, media, models, textures, entity, sounds, filter }
     }
 }
 
 //subset of https://classic.runescape.wiki/w/User:Logg#Combined_update,_client,_and_cache_history_table
 export const classicBuilds: CacheBuildInfo[] = [
-    cversion(115, 48, 27, 0, 28, 12, 8, 10, 0, 0, null, "dec 2001 - last original world data"),
-    cversion(230, 100, 100, 100, 100, 100, 100, 100, 100, 100, "SceneryLocs.json", "Last version of entered files")
+    cversion(115, new Date("2001-12-24 20:28"), 48, 27, 0, 28, 12, 8, 10, 0, 0, null, "dec 2001 - last original world data"),
+    cversion(230, new Date("2004-02-18 11:43"), 100, 100, 100, 100, 100, 100, 100, 100, 100, "SceneryLocs.json", "Last version of entered files")
 ];
 
 //reverse lookup

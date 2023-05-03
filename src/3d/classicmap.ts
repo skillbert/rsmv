@@ -544,6 +544,10 @@ class ClassicMapBuilder {
             if (locid) {
                 let pos = indexToPos(tileindex);
                 let obj = this.config.objects[locid - 1];
+                if (!obj) {
+                    console.warn(`loc for ${locid - 1} is missing`);
+                    continue;
+                }
                 //make sure we are the calling tile for this loc
                 let isoverflow = false;
                 for (let dx = 0; dx < obj.xsize; dx++) {
@@ -607,6 +611,8 @@ export function classicModifyTileGrid(grid: TileGrid) {
                 let tile = grid.getTile(grid.xoffset + x, grid.zoffset + z, level);
                 let overlay = getoverlay(tile);
                 if (tile && (overlay?.type.autoconnect || overlay?.type.indoors)) {
+                    //TODO indoors only merges if there is a diagonal wall on it
+                    //this logic needs to be in the classic mapbuild, which in turn needs acces to neighbouring chunks
                     if (overlay.blocked) {
                         if (tile.rawCollision) { tile.rawCollision.walk[0] = true; }
                         if (tile.effectiveCollision) { tile.effectiveCollision.walk[0] = true; }
