@@ -446,7 +446,8 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 export function serializeAnimset(group: animgroupconfigs) {
 	let anims: Record<string, number> = {};
 	let addanim = (name: string, id: number) => {
-		if (Object.values(anims).indexOf(id) == -1) {
+		//TODO this is wrong and hides anim 32767, need a seperate data type for "nullable varuint" in parser code
+		if (id != 0x7fff && Object.values(anims).indexOf(id) == -1) {
 			anims[name] = id;
 		}
 	}
@@ -461,7 +462,7 @@ export function serializeAnimset(group: animgroupconfigs) {
 	if (group.idleVariations) {
 		let totalchance = group.idleVariations.reduce((a, v) => a + v.probably_chance, 0);
 		for (let [i, variation] of group.idleVariations.entries()) {
-			addanim(`idle${i}_${variation.probably_chance}/${totalchance}`, variation.animid);
+			addanim(i == 0 ? "default" : `idle${i}_${variation.probably_chance}/${totalchance}`, variation.animid);
 		}
 	}
 	//TODO yikes, this object is not a map
