@@ -1347,6 +1347,34 @@ const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s:
 		},
 		min: 0, max: 2 ** 31 - 1
 	},
+	varnullint: {
+		read(s) {
+			let firstWord = s.buffer.readUInt16BE(s.scan);
+			s.scan += 2;
+			if (firstWord == 0x7fff) {
+				return -1;
+			} else if ((firstWord & 0x8000) == 0) {
+				return firstWord;
+			} else {
+				let secondWord = s.buffer.readUInt16BE(s.scan);
+				s.scan += 2;
+				return ((firstWord & 0x7fff) << 16) | secondWord;
+			}
+		},
+		write(s, v) {
+			if (v == -1) {
+				s.buffer.writeUint16BE(0x7fff, s.scan);
+				s.scan += 2;
+			} else if (v < 0x8000) {
+				s.buffer.writeUInt16BE(v, s.scan);
+				s.scan += 2;
+			} else {
+				s.buffer.writeUint32BE(v | 0x80000000, s.scan);
+				s.scan += 4;
+			}
+		},
+		min: -1, max: 2 ** 31 - 1
+	},
 	varint: {
 		read(s) {
 			let firstWord = s.buffer.readUInt16BE(s.scan);
