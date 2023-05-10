@@ -32,6 +32,16 @@ export type Stream = {
 	tee(): Stream
 }
 
+export function checkObject<T extends { [key: string]: "string" | "number" | "boolean" }>(obj: unknown, props: T) {
+	if (!obj || typeof obj != "object") { return null; }
+	let res: { [key in keyof T]: T[key] extends "string" ? string : T[key] extends "number" ? T[key] extends "boolean" ? boolean : number : never } = {} as any;
+	for (let [key, type] of Object.entries(props)) {
+		if (!(key in obj) && typeof obj[key] != type) { return null; }
+		res[key as keyof T] = obj[key];
+	}
+	return res;
+}
+
 export function cacheFilenameHash(name: string, oldhash: boolean) {
 	let hash = 0;
 	if (oldhash) {
@@ -94,6 +104,7 @@ export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource
 	cnv.style.cssText = "position:absolute;top:0px;left:0px;border:1px solid red;background:purple;";
 	document.body.appendChild(cnv);
 	cnv.onclick = e => cnv.remove();
+	return cnv;
 }
 globalThis.dumptex = dumpTexture;
 

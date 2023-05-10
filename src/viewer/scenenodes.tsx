@@ -1,5 +1,5 @@
 import { ThreejsSceneCache, EngineCache, constModelsIds } from '../3d/modeltothree';
-import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture, ModelModifications, stringToFileRange, stringToMapArea } from '../utils';
+import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture, ModelModifications, stringToFileRange, stringToMapArea, checkObject } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize } from '../3d/mapsquare';
@@ -11,7 +11,7 @@ import { appearanceUrl, avatarStringToBytes, EquipCustomization, EquipSlot, slot
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
 import { cacheFileJsonModes, cacheFileDecodeModes } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
-import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS } from "./scriptsui";
+import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { runMapRender } from "../map";
@@ -30,6 +30,7 @@ import { assertSchema, customModelDefSchema, parseJsonOrDefault, scenarioStateSc
 import { fileHistory } from '../scripts/filehistory';
 import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
+import { debugProcTexture } from '../3d/proceduraltexture';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -1241,7 +1242,8 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 	return [visible, loadedModel, loadedId, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
 }
 
-async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: "mat" | "underlay" | "overlay" | "texture", id: number }) {
+type MaterialIshId = { mode: "mat" | "underlay" | "overlay" | "texture", id: number };
+async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: MaterialIshId) {
 
 	let matid = -1;
 	let color = [255, 0, 255];
@@ -1302,8 +1304,9 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: { mode: 
 function SceneMaterialIsh(p: LookupModeProps) {
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialIshToModel);
 
-	let initid = id ?? { mode: "mat", id: 0 };
+	let initid = id ?? checkObject(p.initialId, { mode: "string", id: "number" }) as MaterialIshId ?? { mode: "mat", id: 0 };
 	let modechange = (v: React.FormEvent<HTMLInputElement>) => setId({ mode: v.currentTarget.value as any, id: initid.id });
+	let isproc = p.ctx?.sceneCache.textureType == "fullproc";
 	return (
 		<React.Fragment>
 			<IdInput onChange={v => setId({ ...initid, id: v })} initialid={initid.id} />
@@ -1322,7 +1325,14 @@ function SceneMaterialIsh(p: LookupModeProps) {
 			<div className="mv-sidebar-scroll">
 				{data && Object.entries(data.info.texs).map(([name, img]) => (
 					<div key={name}>
-						<div>{name} - {img.texid} - {img.filesize / 1024 | 0}kb - {img.img0.width}x{img.img0.height}</div>
+						{isproc && data && p.ctx && (
+							<input type="button" className="sub-btn" value="Debug proc" onClick={async () => {
+								let el = await debugProcTexture(p.ctx!.sceneCache.engine, img.texid);
+								el.style.position = "initial";
+								showModal({ title: "proc texture " + img.texid, maxWidth: "unset" }, <DomWrap el={el} />);
+							}} />
+						)}
+						<div>{name} - {img.texid} - {img.filesize > 10000 ? `${img.filesize / 1024 | 0}kb` : `${img.filesize} bytes`} - {img.img0.width}x{img.img0.height}</div>
 						<ImageDataView img={img.img0} />
 					</div>
 				))}
@@ -1335,8 +1345,8 @@ function SceneMaterialIsh(p: LookupModeProps) {
 }
 
 function SceneRawModel(p: LookupModeProps) {
-	let initid = (typeof p.initialId == "number" ? p.initialId : 0);
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, modelToModel);
+	let initid = (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
 			<IdInput onChange={setId} initialid={id ?? initid} />
@@ -1509,16 +1519,15 @@ function SceneItem(p: LookupModeProps) {
 function SceneNpc(p: LookupModeProps) {
 	const [data, model, id, setId] = useAsyncModelData(p.ctx, npcToModel);
 	const forceUpdate = useForceUpdate();
-	const initid = id?.id ?? (p.initialId && typeof p.initialId == "object" && (typeof p.initialId as any).id == "number" ? (p.initialId as any).id : 0);
-	const head = id?.head ?? false;
+	const initid = id ?? checkObject(p.initialId, { id: "number", head: "boolean" }) ?? { id: 0, head: false };
 
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="npcs" onChange={v => setId({ id: v, head })} initialid={initid} />}
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="npcs" onChange={v => setId({ id: v, head: initid.head })} initialid={initid.id} />}
 			{id == null && (
 				<p>Enter an NPC id or search by name.</p>
 			)}
-			{model && data && (<label><input type="checkbox" checked={head} onChange={e => setId({ id: initid, head: e.currentTarget.checked })} />Head</label>)}
+			{model && data && (<label><input type="checkbox" checked={initid.head} onChange={e => setId({ id: initid.id, head: e.currentTarget.checked })} />Head</label>)}
 			{model && data && (
 				<LabeledInput label="Animation">
 					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>

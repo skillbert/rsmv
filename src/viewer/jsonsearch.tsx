@@ -6,10 +6,10 @@ import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-sc
 import { cacheFileJsonModes } from "../scripts/filetypes";
 import { UIContext, UIContextReady } from "./maincomponents";
 
-function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, onClose: () => void }) {
+function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, maxWidth: string, onClose: () => void }) {
 	return (
 		<div className="mv-modal-container">
-			<div className="mv-modal">
+			<div className="mv-modal" style={{ maxWidth: p.maxWidth }}>
 				<div className="mv-modal-head">
 					<span>{p.title}</span>
 					<span onClick={p.onClose}>X</span>
@@ -33,7 +33,7 @@ export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileJs
 	));
 }
 
-export function showModal(config: { title: string }, children: React.ReactNode) {
+export function showModal(config: { title: string, maxWidth?: string }, children: React.ReactNode) {
 	let rootel = document.createElement("div");
 	rootel.classList.add("mv-style");
 	document.body.appendChild(rootel);
@@ -48,7 +48,7 @@ export function showModal(config: { title: string }, children: React.ReactNode) 
 	}
 
 	root.render((
-		<ModalFrame onClose={close} title={config.title}>
+		<ModalFrame onClose={close} title={config.title} maxWidth={config.maxWidth ?? ""}>
 			{children}
 		</ModalFrame>
 	));

@@ -23,6 +23,7 @@ import { parseRT2Model } from "./rt2model";
 import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof17, classicRoof12, materialPreviewCube, classicWall, classicWallDiag, classicRoof15 } from "./modelutils";
 import { classicOverlays, classicUnderlays } from "./classicmap";
 import { HSL2RGB, HSL2RGBfloat, packedHSL2HSL } from "../utils";
+import { loadProcTexture } from "./proceduraltexture";
 
 const constModelOffset = 1000000;
 
@@ -223,10 +224,11 @@ export class EngineCache extends CachingFileSource {
 						//builds 736-759 tecnically do have usable textures, this depends on scenecache.texturemode!="none"
 						//textures should be moved to enginecache
 						// cached.textures.diffuse = id;
-						if (matdata.hasprops) {
-							cached.baseColorFraction = matdata.basecolorfraction! / 255;
-							cached.baseColor = HSL2RGBfloat(packedHSL2HSL(matdata.basecolor!));
+						if (matdata.basecolorfraction != null && matdata.basecolor != null) {
+							cached.baseColorFraction = matdata.basecolorfraction / 255;
+							cached.baseColor = HSL2RGBfloat(packedHSL2HSL(matdata.basecolor));
 						}
+						cached.textures.diffuse = matdata.id;
 						//TODO other material props
 					}
 				} else {
@@ -320,7 +322,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 	} else if (source.getBuildNr() <= 471) {
 		textureMode = "oldproc";
 	} else if (source.getBuildNr() <= 736) {
-		textureMode = "none";//uses old procedural textures in index 9
+		textureMode = "fullproc";//uses old procedural textures in index 9
 	} else {
 		let numbmp = await detectmajor(cacheMajors.texturesBmp);
 		let numdds = await detectmajor(cacheMajors.texturesDds);
@@ -431,7 +433,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 }
 
 type ModelModes = "nxt" | "old" | "classic";
-type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc" | "legacy" | "legacytga";
+type TextureModes = "png" | "dds" | "bmp" | "ktx" | "oldpng" | "png2014" | "dds2014" | "none" | "oldproc" | "fullproc" | "legacy" | "legacytga";
 type TextureTypes = keyof MaterialData["textures"];
 
 export class ThreejsSceneCache {
@@ -452,6 +454,7 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015Dds,
 			oldpng: cacheMajors.texturesOldPng,
 			oldproc: cacheMajors.sprites,
+			fullproc: cacheMajors.texturesOldPng,
 			legacy: legacyMajors.data,
 			legacytga: 0
 		},
@@ -465,6 +468,7 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015CompoundDds,
 			oldpng: cacheMajors.texturesOldCompoundPng,
 			oldproc: 0,
+			fullproc: 0,
 			legacy: 0,
 			legacytga: 0
 		},
@@ -478,6 +482,7 @@ export class ThreejsSceneCache {
 			dds2014: cacheMajors.textures2015CompoundDds,
 			oldpng: cacheMajors.texturesOldCompoundPng,
 			oldproc: 0,
+			fullproc: 0,
 			legacy: 0,
 			legacytga: 0
 		}
@@ -507,7 +512,12 @@ export class ThreejsSceneCache {
 		let texmode = this.textureType;
 
 		return this.engine.fetchCachedObject(this.threejsTextureCache, cachekey, async () => {
-			if (texmode == "legacytga" || texmode == "legacy") {
+			if (texmode == "fullproc") {
+				let tex = await loadProcTexture(this.engine, texid);
+				let parsed = new ParsedTexture(tex.img, false, false);
+				parsed.filesize = tex.filesize;
+				return parsed;
+			} else if (texmode == "legacytga" || texmode == "legacy") {
 				let img: SubImageData;
 				if (this.engine.classicData) {
 					let texmeta = this.engine.classicData.textures[texid - 1];
