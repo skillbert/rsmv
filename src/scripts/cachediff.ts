@@ -57,6 +57,7 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.texturesBmp]: { name: "texturesBmp", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.texturesDds]: { name: "texturesDds", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.texturesPng]: { name: "texturesPng", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
+	[cacheMajors.texturesKtx]: { name: "texturesKtx", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.sprites]: { name: "sprites", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.config]: (major, minor) => configmap[minor]
 }

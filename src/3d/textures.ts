@@ -144,7 +144,8 @@ export class ParsedTexture {
 
 function loadBmp(bmpdata: Buffer, inwidth: number, inheight: number, padsize = -1, forceOpaque = true) {
 	if (padsize == -1) {
-		throw new Error("cannot infer padding size on bmp textures");
+		padsize = 0;
+		console.warn("cannot infer padding size on bmp textures");
 	}
 	const instride = inwidth * 4;
 	const inoffset = padsize * instride + padsize * 4;
