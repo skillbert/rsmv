@@ -215,6 +215,14 @@ class MapRender {
 		const base = Math.log2(this.config.tileimgsize / 64);
 		return { min, max, base };
 	}
+	async beginMapVersion() {
+		let send = await this.postThrottler.apiRequest(`${this.endpoint}/assurebuildnr?mapid=${this.uploadmapid}&buildnr=${this.version}`, {
+			method: "post",
+			headers: { "Authorization": this.auth },
+			timeout: 1000 * 60 * 15
+		});
+		if (!send.ok) { throw new Error("failed to init map"); }
+	}
 	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
 		let send = await this.postThrottler.apiRequest(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${version}&mapid=${this.uploadmapid}`, {
 			method: "post",
@@ -224,11 +232,11 @@ class MapRender {
 		if (!send.ok) { throw new Error("file upload failed"); }
 	}
 	async symlink(name: string, hash: number, targetname: string, targetversion = this.version) {
-		return this.symlinkBatch([{ file: name, hash, buildnr: this.version, symlink: targetname, symlinkbuildnr: targetversion }]);
+		return this.symlinkBatch([{ file: name, hash, buildnr: this.version, symlink: targetname, symlinkbuildnr: targetversion, symlinkfirstbuildnr: targetversion }]);
 	}
 	async symlinkBatch(files: SymlinkCommand[]) {
 		let version = this.version;
-		let filtered = files.filter(q => q.file != q.symlink || q.symlinkbuildnr != version);
+		let filtered = files.filter(q => q.file != q.symlink || version > q.symlinkbuildnr || version < q.symlinkfirstbuildnr);
 		if (filtered.length == 0) {
 			return;
 		}
@@ -435,13 +443,14 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		versionid = maxtime;
 	}
 	let config = await initMapConfig(endpoint, auth, uploadmapid, versionid, overwrite);
+	await config.beginMapVersion();
 
 	let prevconfigreq = await config.getFileResponse("meta.json");
 	if (prevconfigreq.ok) {
 		let prevconfig: RenderedMapVersionMeta = await prevconfigreq.json();
 		let prevdate = new Date(prevconfig.rendertimestamp);
 		let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
-		if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 10) {
+		if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 200) {
 			//skip if less than x*24hr ago
 			output.log("skipping", config.uploadmapid, config.version);
 			return () => { };
@@ -708,7 +717,7 @@ type KnownMapFile = { hash: number, file: string, time: number, buildnr: number,
 
 type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: (UniqueMapFile | null)[] };
 
-type SymlinkCommand = { file: string, buildnr: number, hash: number, symlink: string, symlinkbuildnr: number };
+type SymlinkCommand = { file: string, buildnr: number, hash: number, symlink: string, symlinkbuildnr: number, symlinkfirstbuildnr: number };
 
 class MipScheduler {
 	render: MapRender;
@@ -750,7 +759,7 @@ class MipScheduler {
 				let old = oldhashes.find(q => q.file == task.name);
 
 				if (task.hash != 0 && old && old.hash == task.hash) {
-					symlinks.push({ file: task.name, hash: task.hash, buildnr: this.render.version, symlink: old.file, symlinkbuildnr: old.buildnr });
+					symlinks.push({ file: task.name, hash: task.hash, buildnr: this.render.version, symlink: old.file, symlinkbuildnr: old.buildnr, symlinkfirstbuildnr: old.firstbuildnr });
 					skipped++;
 				} else {
 					proms.push(task.run().catch(e => console.warn("mipping", task.name, "failed", e)));
@@ -1176,7 +1185,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 				}
 			}
 			if (existingfile) {
-				symlinkcommands.push({ file: task.name, hash: task.hash, buildnr: config.version, symlink: existingfile.file, symlinkbuildnr: existingfile.buildnr });
+				symlinkcommands.push({ file: task.name, hash: task.hash, buildnr: config.version, symlink: existingfile.file, symlinkbuildnr: existingfile.buildnr, symlinkfirstbuildnr: existingfile.firstbuildnr });
 			}
 			if (task.mippable) {
 				miptasks.push(() => {

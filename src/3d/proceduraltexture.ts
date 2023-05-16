@@ -120,6 +120,7 @@ export async function debugProcTexture(engine: EngineCache, id: number, size = 1
     rootel.style.display = "flex";
     rootel.style.flexDirection = "column";
     rootel.style.alignItems = "center";
+    rootel.style.width = "fit-content";
     debugsub(tex.colorOp, rootel);
 
     return rootel;

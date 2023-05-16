@@ -15,7 +15,8 @@ let cmd = cmdts.command({
 		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
 		auth: cmdts.option({ long: "auth", short: "p" }),
 		mapid: cmdts.option({ long: "mapid", type: cmdts.number }),
-		builds: cmdts.option({ long: "builds", type: cmdts.string, defaultValue: () => "" })
+		builds: cmdts.option({ long: "builds", type: cmdts.string, defaultValue: () => "" }),
+		ascending: cmdts.flag({ long: "ascending", short: "a" })
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
@@ -26,20 +27,14 @@ let cmd = cmdts.command({
 		} else {
 			let ranges = stringToFileRange(args.builds);
 
-			let cacheiterator = async function* () {
-				let caches = await validOpenrs2Caches();
-				for (let cache of caches) {
-					let buildnr = openrs2GetEffectiveBuildnr(cache);
-					if (!ranges.some(q => q.start[0] <= buildnr && q.end[0] >= buildnr)) {
-						continue;
-					}
-					yield new Openrs2CacheSource(cache);
-				}
-
+			let classicIterator = async function* (ascending: boolean) {
 				if (args.classicFiles) {
 					let fs = new CLIScriptFS(args.classicFiles);
 					let versions = detectClassicVersions(await fs.readDir("."));
-					versions.reverse();//high to low
+					if (!ascending) {
+						//defaults to heigh->low
+						versions.reverse();
+					}
 					for (let version of versions) {
 						if (!ranges.some(q => q.start[0] <= version.buildnr && q.end[0] >= version.buildnr)) {
 							continue;
@@ -48,8 +43,31 @@ let cmd = cmdts.command({
 					}
 				}
 			}
+			let rs2Iterator = async function* (ascending: boolean) {
+				let caches = await validOpenrs2Caches();
+				if (ascending) {
+					caches.reverse();
+				}
+				for (let cache of caches) {
+					let buildnr = openrs2GetEffectiveBuildnr(cache);
+					if (!ranges.some(q => q.start[0] <= buildnr && q.end[0] >= buildnr)) {
+						continue;
+					}
+					yield new Openrs2CacheSource(cache);
+				}
+			}
 
-			for await (let source of cacheiterator()) {
+			let cacheiterator = async function* (ascending: boolean) {
+				if (ascending) {
+					yield* classicIterator(ascending);
+					yield* rs2Iterator(ascending);
+				} else {
+					yield* rs2Iterator(ascending);
+					yield* classicIterator(ascending);
+				}
+			}
+
+			for await (let source of cacheiterator(args.ascending)) {
 				output.log(`Starting '${source.getCacheMeta().name}', build: ${source.getBuildNr()}`);
 				let cleanup = await runMapRender(output, source, args.endpoint, args.auth, args.mapid, false);
 				cleanup();
