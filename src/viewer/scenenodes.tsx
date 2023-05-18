@@ -21,7 +21,7 @@ import { findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
 import { items } from "../../generated/items";
-import { itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
+import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
@@ -435,7 +435,8 @@ function modeldefJsonToModel(cache: any, json: string): SimpleModelInfo<null, st
 		id: json,
 		info: null,
 		models: models,
-		anims: {}
+		anims: {},
+		name: "custom"
 	}
 }
 
@@ -577,7 +578,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 		if (newcomp) {
 			if (!newmodel) {
 				if (newcomp.type == "simple") {
-					newmodel = new RSModel(newcomp.simpleModel, uictx.sceneCache);
+					newmodel = new RSModel(uictx.sceneCache, newcomp.simpleModel, newcomp.name);
 				} else if (newcomp.type == "custom") {
 					let mappedmodel = newcomp.simpleModel.map<SimpleModelDef[number]>(model => ({
 						...model,
@@ -586,7 +587,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 							replaceMaterials: (model.mods.replaceMaterials ?? []).concat(newcomp.globalMods.replaceMaterials)
 						}
 					}))
-					newmodel = new RSModel(mappedmodel, uictx.sceneCache);
+					newmodel = new RSModel(uictx.sceneCache, mappedmodel, newcomp.name);
 				} else if (newcomp.type == "map") {
 					newmodel = new RSMapChunk(newcomp.mapRect, uictx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
 					newmodel.on("loaded", this.updateGrids);
@@ -1224,7 +1225,7 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 	}, [ctx]);
 	React.useLayoutEffect(() => {
 		if (visible && ctx) {
-			let model = new RSModel(visible.models, ctx.sceneCache);
+			let model = new RSModel(ctx.sceneCache, visible.models, visible.name);
 			if (visible.anims.default) {
 				model.setAnimation(visible.anims.default);
 			}
@@ -1242,9 +1243,8 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 	return [visible, loadedModel, loadedId, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
 }
 
-type MaterialIshId = { mode: "mat" | "underlay" | "overlay" | "texture", id: number };
+type MaterialIshId = { mode: "material" | "underlay" | "overlay" | "texture", id: number };
 async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: MaterialIshId) {
-
 	let matid = -1;
 	let color = [255, 0, 255];
 	let json: any = null;
@@ -1267,7 +1267,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 		underlay = sceneCache.engine.mapUnderlays[reqid.id];
 		if (underlay.material) { matid = underlay.material; }
 		if (underlay.color) { color = underlay.color; }
-	} else if (reqid.mode == "mat") {
+	} else if (reqid.mode == "material") {
 		matid = reqid.id;
 	} else if (reqid.mode == "texture") {
 		await addtex("diffuse", "original", reqid.id, false);
@@ -1293,25 +1293,26 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 	json = mat;
 	models.push({ modelid: assetid, mods });
 
-	return {
+	return castModelInfo({
 		models: models,
 		anims: {},
 		info: { overlay, underlay, texs, obj: json },
-		id: reqid
-	};
+		id: reqid,
+		name: `${reqid.mode}:${reqid.id}`
+	});
 }
 
 function SceneMaterialIsh(p: LookupModeProps) {
 	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialIshToModel);
 
-	let initid = id ?? checkObject(p.initialId, { mode: "string", id: "number" }) as MaterialIshId ?? { mode: "mat", id: 0 };
+	let initid = id ?? checkObject(p.initialId, { mode: "string", id: "number" }) as MaterialIshId ?? { mode: "material", id: 0 };
 	let modechange = (v: React.FormEvent<HTMLInputElement>) => setId({ mode: v.currentTarget.value as any, id: initid.id });
 	let isproc = p.ctx?.sceneCache.textureType == "fullproc";
 	return (
 		<React.Fragment>
 			<IdInput onChange={v => setId({ ...initid, id: v })} initialid={initid.id} />
 			<div >
-				<label><input type="radio" name="mattype" value="mat" checked={initid.mode == "mat"} onChange={modechange} />Material</label>
+				<label><input type="radio" name="mattype" value="material" checked={initid.mode == "material"} onChange={modechange} />Material</label>
 				<label><input type="radio" name="mattype" value="underlay" checked={initid.mode == "underlay"} onChange={modechange} />Underlay</label>
 				<label><input type="radio" name="mattype" value="overlay" checked={initid.mode == "overlay"} onChange={modechange} />Overlay</label>
 				<label><input type="radio" name="mattype" value="texture" checked={initid.mode == "texture"} onChange={modechange} />Texture</label>
@@ -1948,13 +1949,13 @@ function CacheDiffScript(p: UiScriptProps) {
 				for (let diff of result!) {
 					if (diff.major == cacheMajors.models) {
 						if (diff.before) {
-							let model = new RSModel([{ modelid: diff.minor, mods: {} }], oldscene);
+							let model = new RSModel(oldscene, [{ modelid: diff.minor, mods: {} }], `before ${diff.minor}`);
 							model.rootnode.position.set(modelcount * xstep, 0, zstep);
 							models.push(model);
 							model.addToScene(p.ctx.renderer!);
 						}
 						if (diff.after) {
-							let model = new RSModel([{ modelid: diff.minor, mods: {} }], p.ctx.sceneCache!);
+							let model = new RSModel(p.ctx.sceneCache!, [{ modelid: diff.minor, mods: {} }], `after ${diff.minor}`);
 							model.rootnode.position.set(modelcount * xstep, 0, 0);
 							models.push(model);
 							model.addToScene(p.ctx.renderer!);

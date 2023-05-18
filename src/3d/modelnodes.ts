@@ -28,7 +28,13 @@ export type SimpleModelInfo<T = object, ID = string> = {
 	models: SimpleModelDef,
 	anims: Record<string, number>,
 	info: T,
-	id: ID
+	id: ID,
+	name: string
+}
+
+//typescript helper to force type inference
+export function castModelInfo<T, ID>(info: SimpleModelInfo<T, ID>) {
+	return info;
 }
 
 export async function modelToModel(cache: ThreejsSceneCache, id: number) {
@@ -44,20 +50,34 @@ export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	} else if (cache.modelType == "nxt") {
 		info = parse.models.read(await cache.engine.getFileById(cacheMajors.models, id), cache.engine.rawsource);
 	}
-	return { models: [{ modelid: id, mods: {} }], anims: {}, info: { modeldata, info }, id };
+	return castModelInfo({
+		models: [{ modelid: id, mods: {} }],
+		anims: {},
+		info: { modeldata, info },
+		id,
+		name: `model:${id}`
+	});
 }
 
 export async function playerDataToModel(cache: ThreejsSceneCache, modeldata: { player: string, head: boolean, data: Buffer }) {
-	let avainfo = await avatarToModel(null, cache, modeldata.data, "", modeldata.head);
-	return { ...avainfo, id: modeldata };
+	let avainfo = await avatarToModel(null, cache, modeldata.data, modeldata.head);
+	return castModelInfo({
+		...avainfo,
+		id: modeldata,
+		name: modeldata.player
+	});
 }
 
 export async function playerToModel(cache: ThreejsSceneCache, name: string) {
 	let url = appearanceUrl(name);
 	let data = await fetch(url).then(q => q.text());
 	if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
-	let avainfo = await avatarToModel(null, cache, avatarStringToBytes(data), "", false);
-	return { ...avainfo, id: name };
+	let avainfo = await avatarToModel(null, cache, avatarStringToBytes(data), false);
+	return castModelInfo({
+		...avainfo,
+		id: name,
+		name: name
+	});
 }
 
 export async function npcBodyToModel(cache: ThreejsSceneCache, id: number) {
@@ -77,12 +97,13 @@ export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, hea
 	if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
 	if (npc.material_replacements) { mods.replaceMaterials = npc.material_replacements; }
 	let models = modelids.map(q => ({ modelid: q, mods }));
-	return {
+	return castModelInfo({
 		info: npc,
 		models,
 		anims,
-		id
-	};
+		id,
+		name: npc.name ?? `npc:${id.id}`
+	});
 }
 
 export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
@@ -93,7 +114,13 @@ export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 	let models = (animdata.model ? [{ modelid: animdata.model, mods }] : []);
 	let anims: Record<string, number> = {};
 	if (animdata.sequence) { anims.default = animdata.sequence; }
-	return { models, anims, info: animdata, id };
+	return castModelInfo({
+		models,
+		anims,
+		info: animdata,
+		id,
+		name: `spotanim:${id}`
+	});
 }
 
 export async function locToModel(cache: ThreejsSceneCache, id: number) {
@@ -116,7 +143,13 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	if (morphedloc?.probably_animation) {
 		anims.default = morphedloc.probably_animation;
 	}
-	return { models, anims, info: morphedloc, id };
+	return castModelInfo({
+		models,
+		anims,
+		info: morphedloc,
+		id,
+		name: morphedloc.name ?? `loc:${id}`
+	});
 }
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	let item = parse.item.read(await cache.engine.getGameFile("items", id), cache.engine.rawsource);
@@ -128,15 +161,21 @@ export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
 	let models = (item.baseModel ? [{ modelid: item.baseModel, mods }] : [])
 
-	return { models, anims: {}, info: item, id };
+	return castModelInfo({
+		models,
+		anims: {},
+		info: item,
+		id,
+		name: item.name ?? `item:${id}`
+	});
 }
 
-export async function materialToModel(sceneCache: ThreejsSceneCache, modelid: number) {
+export async function materialToModel(sceneCache: ThreejsSceneCache, id: number) {
 	let assetid = constModelsIds.materialCube;
 	let mods: ModelModifications = {
-		replaceMaterials: [[0, modelid]]
+		replaceMaterials: [[0, id]]
 	};
-	let mat = sceneCache.engine.getMaterialData(modelid);
+	let mat = sceneCache.engine.getMaterialData(id);
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let addtex = async (type: keyof MaterialData["textures"], name: string, texid: number) => {
 		let tex = await sceneCache.getTextureFile(type, texid, mat.stripDiffuseAlpha && name == "diffuse");
@@ -149,12 +188,13 @@ export async function materialToModel(sceneCache: ThreejsSceneCache, modelid: nu
 			await addtex(tex as keyof MaterialData["textures"], tex, mat.textures[tex]);
 		}
 	}
-	return {
+	return castModelInfo({
 		models: [{ modelid: assetid, mods }],
 		anims: {},
 		info: { texs, obj: mat },
-		id: modelid
-	};
+		id: id,
+		name: `material:${id}`
+	});
 }
 
 export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: number }> implements ThreeJsSceneElementSource {
@@ -203,7 +243,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		this.loaded?.matUvAnims.forEach(q => q.tex.offset.copy(q.v).multiplyScalar(epochtime));
 	}
 
-	constructor(models: SimpleModelDef, cache: ThreejsSceneCache) {
+	constructor(cache: ThreejsSceneCache, models: SimpleModelDef, name = "") {
 		super();
 		this.cache = cache;
 		this.model = (async () => {
@@ -218,6 +258,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 			let modeldata = mergeModelDatas(meshdatas);
 			mergeNaiveBoneids(modeldata);
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
+			mesh.name = name;
 
 			let nullbones: Object3D[] = [];
 			for (let i = 0; i < Math.max(modeldata.bonecount, modeldata.skincount); i++) { nullbones.push(mesh); }

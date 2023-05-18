@@ -8,7 +8,7 @@ import { avataroverrides } from "../../generated/avataroverrides";
 import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { testDecodeFile } from "../scripts/testdecode";
 import { avatars } from "../../generated/avatars";
-import { SimpleModelDef, serializeAnimset } from "./modelnodes";
+import { SimpleModelDef, serializeAnimset, SimpleModelInfo, castModelInfo } from "./modelnodes";
 
 export function avatarStringToBytes(text: string) {
 	let base64 = text.replace(/\*/g, "+").replace(/-/g, "/");
@@ -130,7 +130,7 @@ export type EquipSlot = {
 }
 
 //TODO remove output and name args
-export async function avatarToModel(output: ScriptFS | null, scene: ThreejsSceneCache, avadata: Buffer, name = "", head = false) {
+export async function avatarToModel(output: ScriptFS | null, scene: ThreejsSceneCache, avadata: Buffer, head = false) {
 	let kitdata = await loadKitData(scene.engine);
 	let avabase = parse.avatars.read(avadata, scene.engine.rawsource);
 	let models: SimpleModelDef = [];
@@ -290,7 +290,13 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 		}
 	}
 
-	return { models, anims, info: { avatar, gender: avabase.gender, npc: avabase.npc, kitcolors: kitdata } };
+	return castModelInfo({
+		models,
+		anims,
+		info: { avatar, gender: avabase.gender, npc: avabase.npc, kitcolors: kitdata },
+		id: avadata,
+		name: "player"
+	});
 }
 
 export function writeAvatar(avatar: avataroverrides | null, gender: number, npc: avatars["npc"]) {

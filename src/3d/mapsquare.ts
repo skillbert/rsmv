@@ -995,6 +995,7 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 		let rawboxes = mapsquareCollisionToThree(chunk, level, true);
 		if (rawboxes) { node.add(rawboxes); }
 	}
+	node.name = `mapsquare ${chunk.chunk.mapsquarex},${chunk.chunk.mapsquarez}`;
 	return node;
 }
 
@@ -1737,6 +1738,7 @@ function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number, raw
 	mat.vertexColors = true;
 	let model = new THREE.Mesh(geo, mat);
 	model.userData = extra;
+	model.name = `${rawmode ? "raw " : ""}collision ${modeldata.chunk.mapsquarex},${modeldata.chunk.mapsquarez} (${level})`;
 	return model;
 }
 
@@ -1850,6 +1852,7 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 
 	mesh.matrixAutoUpdate = false;
 	mesh.updateMatrix();
+	mesh.name = "merged locs";
 	return mesh;
 }
 
@@ -2173,5 +2176,6 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	}
 	let model = new THREE.Mesh(geo, mat);
 	model.userData = floor.extra;
+	model.name = `floor ${floor.chunk.mapsquarex},${floor.chunk.mapsquarez} (${floor.level})`;
 	return model;
 }
