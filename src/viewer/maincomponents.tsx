@@ -389,10 +389,10 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, sta
 export async function openSavedCache(source: SavedCacheSource, remember: boolean) {
 	let cache: CacheFileSource | null = null;
 	if (source.type == "sqliteblobs" || source.type == "autohandle") {
-		let wasmcache = new WasmGameCacheLoader();
 		if (source.type == "autohandle") {
 			let perm = await source.handle.queryPermission({ mode: "read" });
 			if (perm == "granted") {
+				let wasmcache = new WasmGameCacheLoader();
 				// let fs = new UIScriptFS(null);
 				// await fs.setSaveDirHandle(source.handle);
 				// cache = await selectFsCache(fs);
@@ -401,6 +401,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 				cache = wasmcache;
 			}
 		} else {
+			let wasmcache = new WasmGameCacheLoader();
 			wasmcache.giveBlobs(source.blobs);
 			cache = wasmcache;
 		}

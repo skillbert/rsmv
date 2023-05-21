@@ -110,6 +110,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 		this.props.ctx.off("openfile", this.openFile);
 		this.props.ctx.off("statechange", this.stateChanged);
 		window.removeEventListener("resize", this.resized);
+		this.closeCache();
 	}
 
 	@boundMethod
