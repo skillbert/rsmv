@@ -9,10 +9,17 @@ import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { testDecodeFile } from "../scripts/testdecode";
 import { avatars } from "../../generated/avatars";
 import { SimpleModelDef, serializeAnimset, SimpleModelInfo, castModelInfo } from "./modelnodes";
+import { EngineCache } from "./modeltothree";
+import { npcs } from "../../generated/npcs";
 
 export function avatarStringToBytes(text: string) {
 	let base64 = text.replace(/\*/g, "+").replace(/-/g, "/");
 	return Buffer.from(base64, "base64");
+}
+
+export function bytesToAvatarString(buf: Buffer) {
+	let base64 = buf.toString("base64");
+	return base64.replace(/\+/g, "*").replace(/\//g, "-").replace(/=/g, "");
 }
 
 export function lowname(name: string) {
@@ -126,97 +133,118 @@ export type EquipSlot = {
 	indexMaleHead: [number, number],
 	indexFemaleHead: [number, number],
 	replaceMaterials: [number, number][],
-	replaceColors: [number, number][]
+	replaceColors: [number, number][],
+	animStruct: number
 }
 
-//TODO remove output and name args
-export async function avatarToModel(output: ScriptFS | null, scene: ThreejsSceneCache, avadata: Buffer, head = false) {
-	let kitdata = await loadKitData(scene.engine);
-	let avabase = parse.avatars.read(avadata, scene.engine.rawsource);
-	let models: SimpleModelDef = [];
+type ReadOption = {
+	buffer: Buffer,
+	offset: number,
+	slot: EquipSlot | null,
+	penalty: number,
+	slotindex: number,
+	parent: ReadOption | null,
+	usesBackup: boolean
+}
+export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: boolean) {
+	let addOpt = (parent: ReadOption, offset: number, penalty: number, usesBackup: boolean, slot: EquipSlot | null) => {
+		activelist.push({
+			buffer: parent.buffer,
+			offset: offset,
+			parent: parent,
+			penalty: parent.penalty + penalty,
+			slot: slot,
+			slotindex: parent.slotindex + 1,
+			usesBackup: parent.usesBackup || usesBackup
+		});
+	}
 
-	let playerkitarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
-	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parse.identitykit.read(q.buffer, scene.engine.rawsource)]));
+	let addNumberOpt = async (parent: ReadOption, offset: number, isBackup: boolean, slot: number) => {
+		let slotindex = parent.slotindex + 1;
+		if (slot < 0x4000) {
+			let kitid = slot - 0x100;
+			let kit = playerkit[kitid];
+			if (kit?.models) {
+				let models = [...kit.models];
+				if (kit.headmodel) { models.push(kit.headmodel); }
 
-	let slots: (EquipSlot | null)[] = [];
-	let avatar: avataroverrides | null = null;
-	let anims: Record<string, number> = { none: -1 };
+				//add penalty if kit is worn in wrong slot
+				let bodypart = kit.bodypart ?? -1;
+				let targetpart = (isFemale ? slotToKitFemale : slotToKitMale)[slotindex] ?? -2;
+				let penalty = (bodypart == targetpart ? 0 : 1);
 
-	if (avabase.player) {
-		slots = avabase.player.slots.map(() => null);
-		let isfemale = (avabase.gender & 1) != 0;
-		let animstruct = -1;
-		for (let [index, slot] of avabase.player.slots.entries()) {
-			if (slot == 0 || slot == 0x3fff) { continue; }
-			if (slot < 0x4000) {
-				let kitid = slot - 0x100;
-				let kit = playerkit[kitid];
-				if (kit?.models) {
-					let models = [...kit.models];
-					if (kit.headmodel) { models.push(kit.headmodel); }
-					slots[index] = {
-						name: slotNames[index] + "_" + kitid,
-						type: "kit",
-						id: kitid,
-						models: models,
-						indexMale: [0, kit.models.length],
-						indexFemale: [0, kit.models.length],
-						indexMaleHead: [kit.models.length, kit.models.length + (kit.headmodel ? 1 : 0)],
-						indexFemaleHead: [kit.models.length, kit.models.length + (kit.headmodel ? 1 : 0)],
-						replaceColors: kit.recolor ?? [],
-						replaceMaterials: []
-					}
-					continue;
-				}
+				addOpt(parent, offset, penalty, isBackup, {
+					name: slotNames[slotindex] + "_" + kitid,
+					type: "kit",
+					id: kitid,
+					models: models,
+					indexMale: [0, kit.models.length],
+					indexFemale: [0, kit.models.length],
+					indexMaleHead: [kit.models.length, kit.models.length + (kit.headmodel ? 1 : 0)],
+					indexFemaleHead: [kit.models.length, kit.models.length + (kit.headmodel ? 1 : 0)],
+					replaceColors: kit.recolor ?? [],
+					replaceMaterials: [],
+					animStruct: -1
+				});
 			}
-			//have to do some guessing here since the format overflowed and is corrupted
-			let itemid = (slot - 0x4000) & 0xffff;
-			//this still messes up if the wrapped id ends up being 0x00.. , the first 0 byte is parsed as empty slot
-			let file = await scene.engine.getGameFile("items", itemid);
-			let item = parse.item.read(file, scene.engine.rawsource);
-
-			let animprop = item.extra?.find(q => q.prop == 686);
-			if (animprop) { animstruct = animprop.intvalue!; }
-
-			let itemmodels: number[] = [];
-			let maleindex = itemmodels.length;
-			if (item.maleModels_0) { itemmodels.push(item.maleModels_0.id); }
-			if (item.maleModels_1) { itemmodels.push(item.maleModels_1); }
-			if (item.maleModels_2) { itemmodels.push(item.maleModels_2); }
-			let femaleindex = itemmodels.length;
-			if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0.id); }
-			if (item.femaleModels_1) { itemmodels.push(item.femaleModels_1); }
-			if (item.femaleModels_2) { itemmodels.push(item.femaleModels_2); }
-			let maleheadindex = itemmodels.length;
-			if (item.maleHeads_0) { itemmodels.push(item.maleHeads_0); }
-			if (item.maleHeads_1) { itemmodels.push(item.maleHeads_1); }
-			let femaleheadindex = itemmodels.length;
-			if (item.femaleHeads_0) { itemmodels.push(item.femaleHeads_0); }
-			if (item.femaleHeads_1) { itemmodels.push(item.femaleHeads_1); }
-			let endindex = itemmodels.length;
-
-
-			slots[index] = {
-				name: (item.name ? item.name : "item_" + itemid),
-				type: "item",
-				id: itemid,
-				models: itemmodels,
-				indexMale: [maleindex, femaleindex],
-				indexFemale: [femaleindex, maleheadindex],
-				indexMaleHead: [maleheadindex, femaleheadindex],
-				indexFemaleHead: [femaleheadindex, endindex],
-				replaceColors: item.color_replacements ?? [],
-				replaceMaterials: item.material_replacements ?? []
-			};
 		}
+		//have to do some guessing here since the format overflowed and is corrupted
+		let itemid = (slot - 0x4000) & 0xffff;
+		let iswrapped = (slot < 0x4000);
+		let file = await engine.getGameFile("items", itemid);
+		let item = parse.item.read(file, engine.rawsource);
 
-		let res = testDecodeFile(parse.avatarOverrides, Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
-		if (!res.success) {
-			if (!output) { throw new Error(); }
-			output.writeFile(name + ".hexerr.json", res.getDebugFile("json"));
+		let animStruct = item.extra?.find(q => q.prop == 686)?.intvalue ?? -1;
+
+		let itemmodels: number[] = [];
+		let maleindex = itemmodels.length;
+		if (item.maleModels_0) { itemmodels.push(item.maleModels_0.id); }
+		if (item.maleModels_1) { itemmodels.push(item.maleModels_1); }
+		if (item.maleModels_2) { itemmodels.push(item.maleModels_2); }
+		let femaleindex = itemmodels.length;
+		if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0.id); }
+		if (item.femaleModels_1) { itemmodels.push(item.femaleModels_1); }
+		if (item.femaleModels_2) { itemmodels.push(item.femaleModels_2); }
+		let maleheadindex = itemmodels.length;
+		if (item.maleHeads_0) { itemmodels.push(item.maleHeads_0); }
+		if (item.maleHeads_1) { itemmodels.push(item.maleHeads_1); }
+		let femaleheadindex = itemmodels.length;
+		if (item.femaleHeads_0) { itemmodels.push(item.femaleHeads_0); }
+		if (item.femaleHeads_1) { itemmodels.push(item.femaleHeads_1); }
+		let endindex = itemmodels.length;
+
+		let penalty = (item.equipSlotId != slotindex ? 1 : 0);
+		addOpt(parent, offset, penalty, isBackup || iswrapped, {
+			name: (item.name ? item.name : "item_" + itemid),
+			type: "item",
+			id: itemid,
+			models: itemmodels,
+			indexMale: [maleindex, femaleindex],
+			indexFemale: [femaleindex, maleheadindex],
+			indexMaleHead: [maleheadindex, femaleheadindex],
+			indexFemaleHead: [femaleheadindex, endindex],
+			replaceColors: item.color_replacements ?? [],
+			replaceMaterials: item.material_replacements ?? [],
+			animStruct
+		});
+	}
+
+	let finalizeNode = async (opt: ReadOption) => {
+		let slots: (EquipSlot | null)[] = [];
+		let parent: ReadOption = opt;
+		//skip last (root) node
+		while (parent.parent) {
+			slots.push(parent.slot);
+			parent = parent.parent;
 		}
-		avatar = parse.avatarOverrides.read(Buffer.from(avabase.player.rest), scene.engine.rawsource, { slots });
+		slots.reverse();
 
+		let custbuf = opt.buffer.slice(opt.offset);
+		try {
+			var avatar = parse.avatarOverrides.read(custbuf, engine.rawsource, { slots });
+		} catch (e) {
+			return false;
+		}
 		let globalrecolors: [number, number][] = [
 			[defaultcols.hair0, kitdata.hair[avatar.haircol0]],
 			[defaultcols.hair1, kitdata.hair[avatar.haircol0]],//TODO figure out when the second hair color is actually used
@@ -235,9 +263,12 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			[defaultcols.boots1, kitdata.feet[avatar.bootscol]],
 		];
 
+		let models: SimpleModelDef = [];
+		let anims: Record<string, number> = { none: -1 };
+
 		avatar.slots.forEach(slot => {
 			const equip: EquipSlot = slot.slot;
-			if (slot.slot) {
+			if (equip) {
 				let mods: ModelModifications = {
 					replaceColors: [...equip.replaceColors],
 					replaceMaterials: [...equip.replaceMaterials]
@@ -255,7 +286,7 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 					for (let i in slot.cust.model) { equip.models[i] = slot.cust.model[i]; }
 				}
 				mods.replaceColors!.push(...globalrecolors);
-				let range = (isfemale ?
+				let range = (isFemale ?
 					(head ? equip.indexFemaleHead : equip.indexFemale) :
 					(head ? equip.indexMaleHead : equip.indexMale));
 				equip.models.forEach((id, i) => i >= range[0] && i < range[1] && models.push({ modelid: id, mods }));
@@ -266,35 +297,103 @@ export async function avatarToModel(output: ScriptFS | null, scene: ThreejsScene
 			anims = humanheadanims;
 		} else {
 			let animgroup = 2699;
-			if (animstruct != -1) {
-				let file = await scene.engine.getFileById(cacheMajors.structs, animstruct);
-				let animfile = parse.structs.read(file, scene.engine.rawsource);
+			let animslot = slots.find(q => q && q.animStruct != -1);
+			if (animslot) {
+				let file = await engine.getFileById(cacheMajors.structs, animslot.animStruct);
+				let animfile = parse.structs.read(file, engine.rawsource);
 				//2954 for combat stance
 				let noncombatset = animfile.extra?.find(q => q.prop == 2954);
 				if (noncombatset) { animgroup = noncombatset.intvalue!; }
 			}
-			anims = await animGroupToAnims(scene, animgroup);
+			anims = await animGroupToAnims(engine, animgroup);
 		}
-	} else if (avabase.npc) {
-		let file = await scene.engine.getGameFile("npcs", avabase.npc.id);
-		let npc = parse.npc.read(file, scene.engine.rawsource);
+		return { models, avatar, anims };
+	}
+
+	let solveNode = async (parent: ReadOption) => {
+		let offset = parent.offset;
+		if (offset >= parent.buffer.length - 2) {
+			return;
+		}
+		let byte0 = parent.buffer.readUint8(offset++);
+		if (byte0 == 0) {
+			addOpt(parent, offset, 0, false, null);
+		}
+		let byte1 = parent.buffer.readUint8(offset++);
+		if (byte0 != 0 || byte1 != 0) {
+			let value = (byte0 << 8) | byte1;
+			await addNumberOpt(parent, offset, byte0 == 0, value);
+		}
+	}
+
+	//parser state and caches values
+	let activelist: ReadOption[] = [];
+
+	let kitdata = await loadKitData(engine);
+	let playerkitarch = await engine.getArchiveById(cacheMajors.config, cacheConfigPages.identityKit);
+	let playerkit = Object.fromEntries(playerkitarch.map(q => [q.fileid, parse.identitykit.read(q.buffer, engine.rawsource)]));
+
+	let models: SimpleModelDef;
+	let avatar = null as avataroverrides | null;
+	let npc = null as npcs | null;
+	let anims: Record<string, number> = { none: -1 };
+	//start parsing
+	let gender = buffer.readUint8(0);
+	let isFemale = !!(gender & 1);
+	let npcbuzz = buffer.readUint16BE(1);
+	if (npcbuzz == 0xffff) {
+		let npcid = buffer.readUint16BE(3);
+		let file = await engine.getGameFile("npcs", npcid);
+		let npc = parse.npc.read(file, engine.rawsource);
 		let mods: ModelModifications = {
 			replaceColors: npc.color_replacements ?? [],
 			replaceMaterials: npc.color_replacements ?? []
 		};
+		let models: SimpleModelDef = [];
 		if (!head) {
 			if (npc.models) { models.push(...npc.models.map(q => ({ modelid: q, mods: mods }))) }
-			if (npc.animation_group) { anims = await animGroupToAnims(scene, npc.animation_group); }
+			if (npc.animation_group) { anims = await animGroupToAnims(engine, npc.animation_group); }
 		} else {
 			if (npc.headModels) { models.push(...npc.headModels.map(q => ({ modelid: q, mods: mods }))); }
 		}
+	} else {
+		//need to do a tree search here since the model format is corrupted and can be
+		//different lengths. main problem is that 00xx can mean either a 1 byte empty slot
+		//or item 100xx wrapped around in 2 bytes
+		activelist.push({
+			buffer: buffer,
+			offset: 1,
+			parent: null,
+			penalty: 0,
+			slot: null,
+			slotindex: -1,
+			usesBackup: false
+		});
+		for (let stepcount = 0; true; stepcount++) {
+			//lowest penalty with highest index in the back
+			activelist.sort((a, b) => b.penalty - a.penalty || a.slotindex - b.slotindex);
+			let node = activelist.pop();
+			if (!node) { throw new Error("no avatar read solution found"); }
+			stepcount++;
+			if (node.slotindex == 15) {
+				let res = await finalizeNode(node);
+				if (res) {
+					models = res.models;
+					anims = res.anims;
+					avatar = res.avatar;
+					console.log(`solved player avatar in ${stepcount} steps, ${activelist.length} nodes left, ${node.penalty} penalty. ${node.usesBackup ? "used backup" : "did not use backup"}`);
+					break;
+				}
+			} else {
+				await solveNode(node);
+			}
+		}
 	}
-
 	return castModelInfo({
-		models,
+		models: models!,
 		anims,
-		info: { avatar, gender: avabase.gender, npc: avabase.npc, kitcolors: kitdata },
-		id: avadata,
+		info: { avatar, gender, npc: npc, kitcolors: kitdata, buffer },
+		id: buffer,
 		name: "player"
 	});
 }
@@ -319,10 +418,10 @@ export function writeAvatar(avatar: avataroverrides | null, gender: number, npc:
 	return parse.avatars.write(base);
 }
 
-async function animGroupToAnims(scene: ThreejsSceneCache, groupid: number) {
-	let animsetarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
+async function animGroupToAnims(engine: EngineCache, groupid: number) {
+	let animsetarch = await engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
 	let animsetfile = animsetarch[groupid];
-	let animset = parse.animgroupConfigs.read(animsetfile.buffer, scene.engine.rawsource);
+	let animset = parse.animgroupConfigs.read(animsetfile.buffer, engine.rawsource);
 
 	return serializeAnimset(animset);
 }

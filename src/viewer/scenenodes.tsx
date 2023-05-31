@@ -7,7 +7,7 @@ import { Euler, Quaternion, Vector3 } from "three";
 import { cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
-import { appearanceUrl, avatarStringToBytes, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
+import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
 import { cacheFileJsonModes, cacheFileDecodeModes } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
@@ -802,15 +802,25 @@ function ScenePlayer(p: LookupModeProps) {
 		if (id) { setId({ player: id.player, data: id.data, head: e.currentTarget.checked }); }
 	}
 	const nameChange = async (v: string) => {
-		let url = appearanceUrl(v);
-		let data = await fetch(url).then(q => q.text());
-		if (data.indexOf("404 - Page not found") != -1) {
-			seterrtext(`Player avatar not found for '${v}'.`)
-			return;
+		if (v.length <= 20) {
+			let url = appearanceUrl(v);
+			let data = await fetch(url).then(q => q.text());
+			if (data.indexOf("404 - Page not found") != -1) {
+				seterrtext(`Player avatar not found for '${v}'.`)
+				return;
+			}
+			let buf = avatarStringToBytes(data);
+			setId({ player: v, data: buf, head });
+			seterrtext("");
+		} else {
+			try {
+				let buf = avatarStringToBytes(v);
+				setId({ player: "", data: buf, head: head });
+				seterrtext("");
+			} catch (e) {
+				seterrtext("invalid avatar base64 string");
+			}
 		}
-		let buf = avatarStringToBytes(data);
-		setId({ player: v, data: buf, head });
-		seterrtext("");
 	}
 
 	const equipChanged = (index: number, type: "item" | "kit" | "none", equipid: number) => {
@@ -853,7 +863,6 @@ function ScenePlayer(p: LookupModeProps) {
 	}
 
 	const colorDropdown = (id: keyof avataroverrides, v: number, opts: Record<number, number>) => {
-		data?.info.kitcolors.clothes
 		return (
 			<LabeledInput label={id}>
 				<select value={v} onChange={e => changeColor(id, +e.currentTarget.value)} style={{ backgroundColor: hsl2hex(opts[v]) }}>
@@ -904,6 +913,14 @@ function ScenePlayer(p: LookupModeProps) {
 				{data?.info.avatar && colorDropdown("bootscol", data.info.avatar.bootscol, data.info.kitcolors.feet)}
 				{data?.info.avatar && colorDropdown("skincol0", data.info.avatar.skincol0, data.info.kitcolors.skin)}
 				{data?.info.avatar && colorDropdown("skincol1", data.info.avatar.skincol1, data.info.kitcolors.skin)}
+				{data && (
+					<React.Fragment>
+						<h2>Export</h2>
+						<p>Use the export button at the top of the sidebar to export the model.</p>
+						<p>Use this button to copy the customized avatar for later use. You can paste it in the name field</p>
+						<CopyButton text={bytesToAvatarString(data.info.buffer)} />
+					</React.Fragment>
+				)}
 			</div>
 		</React.Fragment>
 	);

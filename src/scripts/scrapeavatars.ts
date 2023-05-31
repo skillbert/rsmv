@@ -33,7 +33,7 @@ export async function scrapePlayerAvatars(output: ScriptOutput, outdir: ScriptFS
 	}
 	for await (let file of fetchPlayerAvatars(skip, max)) {
 		if (parsed) {
-			let data = await avatarToModel(null, scene!, file.buf);
+			let data = await avatarToModel(scene!.engine, file.buf, false);
 			await outdir.writeFile(`playerdata_${file.name}.json`, prettyJson(data.info.avatar));
 		} else {
 			outdir.writeFile(`playerdata_${file.name}.bin`, file.buf);

@@ -60,7 +60,7 @@ export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 export async function playerDataToModel(cache: ThreejsSceneCache, modeldata: { player: string, head: boolean, data: Buffer }) {
-	let avainfo = await avatarToModel(null, cache, modeldata.data, modeldata.head);
+	let avainfo = await avatarToModel(cache.engine, modeldata.data, modeldata.head);
 	return castModelInfo({
 		...avainfo,
 		id: modeldata,
@@ -72,7 +72,7 @@ export async function playerToModel(cache: ThreejsSceneCache, name: string) {
 	let url = appearanceUrl(name);
 	let data = await fetch(url).then(q => q.text());
 	if (data.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
-	let avainfo = await avatarToModel(null, cache, avatarStringToBytes(data), false);
+	let avainfo = await avatarToModel(cache.engine, avatarStringToBytes(data), false);
 	return castModelInfo({
 		...avainfo,
 		id: name,

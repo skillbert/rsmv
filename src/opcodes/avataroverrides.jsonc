@@ -1,6 +1,6 @@
 ["struct",
 	["flags","ushort"],
-	//can't use array since i have a way to ref array index in the flag...
+	//can't use array since i don't have a way to ref array index in the flag...
 	["slots",["tuple",
 		["struct",
 			["slot",["itemvar","ref"]],

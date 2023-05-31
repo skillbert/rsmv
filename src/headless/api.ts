@@ -127,7 +127,7 @@ export async function renderAppearance(scene: ThreejsSceneCache, mode: "player" 
 			if (appearance.indexOf("404 - Page not found") != -1) { throw new Error("player avatar not found"); }
 		}
 		console.log(appearance);
-		let ava = await avatarToModel(null, scene, avatarStringToBytes(appearance), headmodel);
+		let ava = await avatarToModel(scene.engine, avatarStringToBytes(appearance), headmodel);
 		meshdata = { ...ava, id: argument };
 	} else if (mode == "item") {
 		if (isNaN(+argument)) { throw new Error("number expected"); }
