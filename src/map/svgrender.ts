@@ -160,6 +160,9 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 			if (!tile || tile?.effectiveLevel != loc.effectiveLevel) { break; }
 			if (tile.effectiveLevel == maplevel && (getOverlayColor(tile) != transparent || tile.underlayVisible)) { occluded = true; }
 		}
+
+		if (wallsonly && loc.effectiveLevel != maplevel) { occluded = true; }
+
 		if (loc.location.mapscene == undefined) {
 			if (drawwalls && !occluded) {
 				if (loc.type == 0) {
