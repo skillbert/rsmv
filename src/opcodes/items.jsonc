@@ -97,5 +97,7 @@
 	"0xA5": { "name":                      "neverStackable", "read": "true" },
 	"0xA7": { "name":                          "unknown_A7", "read": "true" },
 	"0xA8": { "name":                          "unknown_A8", "read": "true" },
+	"0xB2": { "name":                          "unknown_B2", "read": "true" },//seems to always be set when config has a "big_Value"
+	"0xB5": { "name":                           "big_value", "read": ["tuple","int","int"] },//to be comfirmed if this is int64, or int32*1e9+int32 like the coin pouch is
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }
