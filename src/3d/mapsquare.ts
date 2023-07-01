@@ -1,4 +1,4 @@
-import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
+import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod, CanvasImage } from "../utils";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -999,7 +999,6 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 	return node;
 }
 
-type CanvasImage = Exclude<CanvasImageSource, SVGImageElement>;
 type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, repeatWidth: number, repeatHeight: number, img: CanvasImage }
 
 class SimpleTexturePacker {

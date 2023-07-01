@@ -1,5 +1,7 @@
 import type { Texture } from "three";
 
+export type CanvasImage = Exclude<CanvasImageSource, SVGImageElement | VideoFrame>;
+
 export type FileRange = {
 	start: [number, number, number],
 	end: [number, number, number]
@@ -80,7 +82,7 @@ export function stringToFileRange(str: string) {
 	return ranges;
 }
 
-export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | CanvasImage) {
 	const cnv = ctx.canvas;
 	if ("data" in img) {
 		cnv.width = img.width;
@@ -97,7 +99,7 @@ export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Text
 	}
 }
 
-export function dumpTexture(img: ImageData | Texture | Exclude<CanvasImageSource, SVGImageElement>) {
+export function dumpTexture(img: ImageData | Texture | CanvasImage) {
 	let cnv = document.createElement("canvas");
 	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	drawTexture(ctx, img);
