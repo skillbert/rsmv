@@ -327,6 +327,14 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 		}
 	}
 
+	//expose the fs to script, but make sure we don't leak it after it's gone from ui
+	useEffect(() => {
+		globalThis.scriptfs = p.fs;
+		return () => {
+			globalThis.scriptfs = null;
+		}
+	})
+
 	if (!files) {
 		return <div />;
 	}

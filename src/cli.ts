@@ -11,6 +11,7 @@ import { quickChatLookup } from "./scripts/quickchatlookup";
 import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
 import { fileHistory } from "./scripts/filehistory";
 import { openrs2Ids } from "./scripts/openrs2ids";
+import { cluecoords } from "./scripts/cluecoords";
 
 const testdecode = command({
 	name: "testdecode",
@@ -190,7 +191,7 @@ const openrs2ids = command({
 
 let subcommands = cmdts.subcommands({
 	name: "cache tools cli",
-	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist }
+	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist,  cluecoords }
 });
 
 cmdts.run(subcommands, cliArguments());

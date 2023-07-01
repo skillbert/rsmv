@@ -7,7 +7,7 @@ import { parse } from "../opdecoder";
 
 type Coord = { x: number, z: number, level: number };
 
-let cmd = command({
+export const cluecoords = command({
 	name: "download",
 	args: {
 		...filesource,
@@ -83,5 +83,3 @@ let cmd = command({
 		console.log("done");
 	}
 });
-
-run(cmd, cliArguments());

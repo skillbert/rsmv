@@ -8,7 +8,7 @@
 	]],
 	["skeleton",["chunkedarray","ushort",
 		[
-			["parentbone","ubyte"],
+			["parentbone","ubyte"],//TODO this is wrong, this byte is part of dataq from the previous bone
 			["nonskinboneid","ushort"],
 			["bonematrix",["array",16,"float"]],
 			//unknown, always the same for all bones in a skeleton
