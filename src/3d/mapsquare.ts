@@ -24,7 +24,7 @@ import { CacheFileSource } from "../cache";
 export const tiledimensions = 512;
 export const rs2ChunkSize = 64;
 export const classicChunkSize = 48;
-export const squareLevels = 4;
+export const squareLevels = 4;//TODO get rid of this and use grid.levels instead
 export const worldStride = 128;
 const heightScale = 1 / 16;
 
@@ -130,6 +130,7 @@ export type ModelExtrasLocation = {
 	worldz: number,
 	rotation: number,
 	mirror: boolean,
+	type: number,
 	level: number,
 	locationInstance: WorldLocation
 }
@@ -616,8 +617,8 @@ export class TileGrid implements TileGridSource {
 					//cross product of two line connecting adjectent tiles
 					//[1,dydx,0]' x [0,dydz,1]' = [dydx,1,dydz]
 					let len = Math.hypot(dydx, dydz, 1);
-					currenttile.normalZ = dydx / len;
-					currenttile.normalX = dydz / len;
+					currenttile.normalZ = -dydx / len;
+					currenttile.normalX = -dydz / len;
 
 					//corners
 					let xznext = this.getTile(x + 1, z + 1, level);
@@ -751,7 +752,7 @@ export class TileGrid implements TileGridSource {
 	}
 }
 
-export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, skybox?: boolean, mask?: MapRect[] };
+export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, minimap?: boolean, skybox?: boolean, mask?: MapRect[] };
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
 export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
@@ -962,7 +963,19 @@ async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: 
 	}
 
 	for (let level = 0; level < squareLevels; level++) {
-		floors.push(mapsquareMesh(grid, chunk, level, atlas, false, true, false));
+		let base = mapsquareMesh(grid, chunk, level, atlas, false, true, false);
+		floors.push(base);
+		if (opts?.minimap) {
+			let mini = {
+				...base,
+				extra: {
+					...base.extra,
+					modelgroup: "minimap" + level
+				},
+				minimap: true
+			};
+			floors.push(mini);
+		}
 		if (opts?.map2d) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
 		}
@@ -1378,6 +1391,7 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 			worldz: inst.z,
 			rotation: inst.rotation,
 			mirror: !!objectmeta.mirror,
+			type: inst.type,
 			level: inst.visualLevel,
 			locationInstance: inst
 		};
@@ -1942,11 +1956,12 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				let whitemix = 0;
 				if (subprop && subprop.material != -1) {
 					let mat = grid.engine.getMaterialData(subprop.material);
+					//TODO use linear scale here instead of bool
+					whitemix = mat.baseColorFraction;
+
 					if (mat.textures.diffuse) {
 						texdata = atlas.map.get(mat.textures.diffuse)!;
 					}
-					//TODO use linear scale here instead of bool
-					whitemix = mat.baseColorFraction;
 				}
 				if (texdata) {
 					//TODO is the 128px per tile a constant?
@@ -2108,6 +2123,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		showhidden,
 		tileinfos,
 		worldmap,
+		minimap: false,
 
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
@@ -2155,7 +2171,7 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	mat.vertexColors = true;
 	if (!floor.showhidden) {
 		if (!floor.worldmap) {
-			augmentThreeJsFloorMaterial(mat);
+			augmentThreeJsFloorMaterial(mat, floor.minimap);
 			let img = floor.atlas.convert();
 
 			//no clue why this doesn't work

@@ -59,8 +59,8 @@ export type ParsedMaterial = {
 	matmeta: MaterialData
 }
 
-export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
-	mat.customProgramCacheKey = () => "floortex";
+export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: boolean) {
+	mat.customProgramCacheKey = () => (isminimap ? "minimaptex" : "floortex");
 	mat.onBeforeCompile = (shader, renderer) => {
 		shader.vertexShader =
 			`#ifdef USE_MAP\n`
@@ -99,9 +99,15 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material) {
 					`#include <color_fragment>\n`
 					+ `#ifdef USE_MAP\n`
 					+ `vec4 texelColor = \n`
-					+ `   texture2D( map, v_ra_floortex_0 ) * v_ra_floortex_weights.r * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.r)\n`
-					+ ` + texture2D( map, v_ra_floortex_1 ) * v_ra_floortex_weights.g * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.g)\n`
-					+ ` + texture2D( map, v_ra_floortex_2 ) * v_ra_floortex_weights.b * mix(vec4(1.0),diffuseColor,v_ra_floortex_usescolor.b);\n`
+					+ (isminimap ?
+						`   v_ra_floortex_weights.r * mix(texture2D( map, v_ra_floortex_0 ), diffuseColor * 0.5, v_ra_floortex_usescolor.r)\n`
+						+ ` + v_ra_floortex_weights.g * mix(texture2D( map, v_ra_floortex_1 ), diffuseColor * 0.5, v_ra_floortex_usescolor.g)\n`
+						+ ` + v_ra_floortex_weights.b * mix(texture2D( map, v_ra_floortex_2 ), diffuseColor * 0.5, v_ra_floortex_usescolor.b);\n`
+						:
+						`   texture2D( map, v_ra_floortex_0 ) * v_ra_floortex_weights.r * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.r)\n`
+						+ ` + texture2D( map, v_ra_floortex_1 ) * v_ra_floortex_weights.g * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.g)\n`
+						+ ` + texture2D( map, v_ra_floortex_2 ) * v_ra_floortex_weights.b * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.b);\n`
+					)
 					//TODO is this needed?
 					+ `texelColor = mix( diffuseColor,texelColor,dot(vec3(1.0),v_ra_floortex_weights));\n`
 					+ `#endif\n`

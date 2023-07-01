@@ -1157,7 +1157,7 @@ export function RendererControls(p: { ctx: UIContext }) {
 	let [showexport, setshowexport] = React.useState(false);
 	let [hideFog, sethidefog] = React.useState(true);
 	let [hideFloor, sethidefloor] = React.useState(false);
-	let [camMode, setcammode] = React.useState<"standard" | "vr360">("standard");
+	let [camMode, setcammode] = React.useState<"standard" | "vr360" | "topdown">("standard");
 	let [camControls, setcamcontrols] = React.useState<"free" | "world">("free");
 
 	const render = p.ctx?.renderer;
@@ -1195,7 +1195,13 @@ export function RendererControls(p: { ctx: UIContext }) {
 					<label><input type="checkbox" checked={hideFog} onChange={e => sethidefog(e.currentTarget.checked)} />Hide fog</label>
 					<label><input type="checkbox" checked={hideFloor} onChange={e => sethidefloor(e.currentTarget.checked)} />Hide floor</label>
 					<label><input type="checkbox" checked={camControls == "world"} onChange={e => setcamcontrols(e.currentTarget.checked ? "world" : "free")} />Flat panning</label>
-					<label><input type="checkbox" checked={camMode == "vr360"} onChange={e => setcammode(e.currentTarget.checked ? "vr360" : "standard")} />360 camera</label>
+					<label>
+						<select value={camMode} onChange={e => setcammode(e.currentTarget.value as any)}>
+							<option value="standard">Standard camera</option>
+							<option value="topdown">Orthogonal camera</option>
+							<option value="vr360">360 Camera</option>
+						</select>
+					</label>
 				</div>
 			)}
 			{showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} renderopts={newopts} />}

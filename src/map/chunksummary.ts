@@ -161,7 +161,7 @@ function compareChunkLoc(a: ChunkLocDependencies["instances"][number], b: ChunkL
 export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], rect: MapRect) {
 	let locgroups = new Map<number, PlacedMeshBase<ModelExtrasLocation>[][]>();
 	for (let models of locs) {
-		let first = models[0]
+		let first = models[0];//TODO why only index 0, i forgot
 		if (first.extras.modeltype == "location") {
 			let group = locgroups.get(first.extras.locationid);
 			if (!group) {

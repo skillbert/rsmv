@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize } from '../3d/mapsquare';
+import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize, tiledimensions, ModelExtras } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
@@ -379,6 +379,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
 	rect: MapRect;
+	minimapmode = false;
 
 	cleanup() {
 		this.listeners = {};
@@ -413,19 +414,34 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 	}
 
 	onModelLoaded() {
-		this.setToggles(this.toggles);
+		this.setToggles(this.toggles, this.minimapmode);
 		this.emit("loaded", this.loaded!);
 		this.renderscene?.sceneElementsChanged();
 		// this.renderscene?.setCameraLimits();//TODO fix this, current bounding box calc is too large
 	}
 
-	setToggles(toggles: Record<string, boolean>) {
+	setToggles(toggles: Record<string, boolean>, minimap = this.minimapmode) {
 		this.toggles = toggles;
 		this.rootnode.traverse(node => {
 			if (node.userData.modelgroup) {
 				let newvis = toggles[node.userData.modelgroup] ?? true;
 				node.traverse(child => {
-					if (child instanceof THREE.Mesh) { child.visible = newvis; }
+					if (child instanceof THREE.Mesh) {
+						// let extra = child.userData as ModelExtras | undefined;
+						// if (extra?.modeltype == "location" || extra?.modeltype == "locationgroup") {
+						// 	child.position.y = (minimap ? -0.1 : 0) * tiledimensions;
+						// 	child.updateMatrix();
+						// 	child.updateMatrixWorld();
+						// } else if (extra?.modeltype == "floor") {
+						// 	let qq=child.material as Material;
+						// 	qq
+						// 	//
+						// } else {
+						// 	//
+						// }
+
+						child.visible = newvis;
+					}
 				});
 			}
 		});
@@ -436,7 +452,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 		this.rect = rect;
 		this.cache = cache;
 		this.chunkdata = (async () => {
-			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
+			let opts: ParsemapOpts = { invisibleLayers: true, minimap: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
 			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
 				let chunk = await mapsquareModels(cache, grid, chunkdata, opts);

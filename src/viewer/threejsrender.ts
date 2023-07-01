@@ -16,7 +16,7 @@ globalThis.THREE = THREE;
 globalThis.logclicks = false;
 globalThis.speed = 100;
 
-//nodejs compatiable animframe calls
+//nodejs compatible animframe calls
 //should in theory be able to get rid of these completely by enforcing autoframes=false
 function compatRequestAnimationFrame(cb: (timestamp: number) => void) {
 	if (typeof requestAnimationFrame != "undefined") { return requestAnimationFrame(cb); }
@@ -59,8 +59,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private canvas: HTMLCanvasElement;
 	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
 	private scene: THREE.Scene;
-	private camera: THREE.PerspectiveCamera;
-	private controls: OrbitControls;
 	private modelnode: THREE.Group;
 	private floormesh: THREE.Mesh;
 	private queuedFrameId = 0;
@@ -72,10 +70,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private sceneElements = new Set<ThreeJsSceneElementSource>();
 	private animationCallbacks = new Set<NonNullable<ThreeJsSceneElement["updateAnimation"]>>();
 	private vr360cam: VR360Render | null = null;
-	private itemcam = new THREE.PerspectiveCamera();
-	private topdowncam = new THREE.OrthographicCamera();
-	private camMode: RenderCameraMode = "standard";
 	private forceAspectRatio: number | null = null;
+
+	private camMode: RenderCameraMode = "standard";
+	private camera: THREE.PerspectiveCamera;
+	private topdowncam: THREE.OrthographicCamera;
+	private standardControls: OrbitControls;
+	private orthoControls: OrbitControls;
+	private itemcam = new THREE.PerspectiveCamera();
 
 	constructor(canvas: HTMLCanvasElement, params?: THREE.WebGLRendererParameters) {
 		super();
@@ -94,24 +96,28 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
 		canvas.onmousedown = this.mousedown;
 
-		const fov = 45;
-		const aspect = 2;
-		const near = 0.1;
-		const far = 1000;
-		const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-		camera.position.set(0, 10, 20);
-		this.camera = camera;
+		this.camera = new THREE.PerspectiveCamera(45, 2, 0.1, 1000);
+		this.camera.position.set(0, 10, 20);
 
-		const controls = new OrbitControls(camera, canvas);
-		controls.target.set(0, 5, 0);
-		controls.update();
-		controls.addEventListener("change", this.forceFrame);
-		this.controls = controls;
+		this.standardControls = new OrbitControls(this.camera, canvas);
+		this.standardControls.target.set(0, 5, 0);
+		this.standardControls.update();
+		this.standardControls.addEventListener("change", this.forceFrame);
+
+		this.topdowncam = new THREE.OrthographicCamera(-10, 10, 10, -10, -500, 500);
+		this.topdowncam.position.copy(this.camera.position);
+
+		this.orthoControls = new OrbitControls(this.topdowncam, canvas);
+		this.orthoControls.target.set(0, 5, 0);
+		this.orthoControls.screenSpacePanning = false;
+		this.orthoControls.update();
+		this.orthoControls.addEventListener("change", this.forceFrame);
 
 		const scene = new THREE.Scene();
 		this.scene = scene;
 		globalThis.scene = this.scene;
-		scene.add(camera);
+		scene.add(this.camera);
+		scene.add(this.topdowncam);
 
 		//three typings are outdated
 		(renderer as any).useLegacyLights = false;
@@ -197,7 +203,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 	sceneElementsChanged() {
 		let sky: ThreeJsSceneElement["sky"] = null;
-		let animated = false;
 		let opaqueBackground = false;
 		let aspect: number | null = null;
 		let cammode: RenderCameraMode = "standard";
@@ -211,7 +216,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			let el = source.getSceneElements();
 			if (el.sky) { sky = el.sky; }
 			if (el.updateAnimation) {
-				animated = true;
 				this.animationCallbacks.add(el.updateAnimation);
 			}
 			if (el.options?.hideFog) { hideFog = true; }
@@ -232,10 +236,23 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
 		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
-		this.autoFrameMode = (autoframes == "auto" ? "continuous" : "forced");
+		this.autoFrameMode = (autoframes == "auto" ? (this.animationCallbacks.size == 0 ? "forced" : "continuous") : autoframes);
 		this.floormesh.visible = showfloor;
+		if (this.camMode == "topdown" && cammode == "standard") {
+			this.camera.position.copy(this.topdowncam.position);
+			this.camera.rotation.copy(this.topdowncam.rotation);
+			this.standardControls.update();
+		}
+		if (this.camMode == "standard" && cammode == "topdown") {
+			this.topdowncam.position.copy(this.camera.position);
+			this.topdowncam.rotation.copy(this.camera.rotation);
+			this.orthoControls.update();
+		}
 		this.camMode = cammode;
-		this.controls.screenSpacePanning = controls == "free";
+		this.standardControls.enabled = this.camMode != "topdown";
+		this.orthoControls.enabled = this.camMode == "topdown";
+		this.standardControls.screenSpacePanning = controls == "free";
+		this.orthoControls.screenSpacePanning = controls == "free";
 		this.forceAspectRatio = aspect;
 
 		//fog/skybox
@@ -283,6 +300,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		const needResize = canvas.width !== width || canvas.height !== height;
 		if (needResize) {
 			this.renderer.setSize(width, height, false);
+			let camscaling = width / height * (this.topdowncam.top - this.topdowncam.bottom) / (this.topdowncam.right - this.topdowncam.left);
+			this.topdowncam.left *= camscaling;
+			this.topdowncam.right *= camscaling;
+			this.topdowncam.updateProjectionMatrix();
 		}
 		return needResize;
 	}
@@ -466,9 +487,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		// update the Trackball controls to handle the new size
 		// this.controls.maxDistance = Math.min(500, boxSize * 10 + 10);
-		this.controls.target.copy(target);
-		this.controls.update();
-		this.controls.screenSpacePanning = true;
+		this.standardControls.target.copy(target);
+		this.standardControls.update();
+		this.standardControls.screenSpacePanning = true;
 
 		// this.floormesh.position.setY(Math.min(0, box.min.y - 0.005));
 	}
