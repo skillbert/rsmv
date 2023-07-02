@@ -24,6 +24,7 @@ import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof
 import { classicOverlays, classicUnderlays } from "./classicmap";
 import { HSL2RGB, HSL2RGBfloat, packedHSL2HSL } from "../utils";
 import { loadProcTexture } from "./proceduraltexture";
+import { maplabels } from "../../generated/maplabels";
 
 const constModelOffset = 1000000;
 
@@ -103,6 +104,7 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 						`   v_ra_floortex_weights.r * mix(texture2D( map, v_ra_floortex_0 ), diffuseColor * 0.5, v_ra_floortex_usescolor.r)\n`
 						+ ` + v_ra_floortex_weights.g * mix(texture2D( map, v_ra_floortex_1 ), diffuseColor * 0.5, v_ra_floortex_usescolor.g)\n`
 						+ ` + v_ra_floortex_weights.b * mix(texture2D( map, v_ra_floortex_2 ), diffuseColor * 0.5, v_ra_floortex_usescolor.b);\n`
+						+ `texelColor = texelColor * 10.0;\n`
 						:
 						`   texture2D( map, v_ra_floortex_0 ) * v_ra_floortex_weights.r * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.r)\n`
 						+ ` + texture2D( map, v_ra_floortex_1 ) * v_ra_floortex_weights.g * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.g)\n`
@@ -127,6 +129,7 @@ export class EngineCache extends CachingFileSource {
 	mapUnderlays: (mapsquare_underlays | mapsquare_overlays)[] = [];
 	mapOverlays: mapsquare_overlays[] = [];
 	mapMapscenes: mapscenes[] = [];
+	mapMaplabels: maplabels[] = [];
 	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 
 	legacyData: LegacyData | null = null;
@@ -152,6 +155,9 @@ export class EngineCache extends CachingFileSource {
 			if (this.getBuildNr() >= 527) {
 				for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes)) {
 					this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
+				}
+				for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.maplabels)) {
+					this.mapMaplabels[subfile.fileid] = parse.maplabels.read(subfile.buffer, this.rawsource);
 				}
 			}
 

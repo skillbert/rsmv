@@ -20,6 +20,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 
 	let underlay = "";
 	let mapscenes = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
+	let maplabels = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
 	let overlays: Map<number, Set<{ x: number, z: number }[]>>[] = [new Map(), new Map(), new Map(), new Map()];
 	let whitelines: { x: number, z: number }[][] = [];
 	let redlines: { x: number, z: number }[][] = [];
@@ -163,6 +164,28 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 
 		if (wallsonly && loc.effectiveLevel != maplevel) { occluded = true; }
 
+		if (loc.location.mapFunction) {
+			let group = mapscenes.get(loc.location.mapFunction);
+			if (!group) {
+				let maplabel = engine.mapMaplabels[loc.location.mapFunction];
+				if (maplabel.legacy_switch) {
+					maplabel = engine.mapMaplabels[maplabel.legacy_switch.default_ref];
+				}
+				let src = "";
+				let width = 0;
+				let height = 0;
+				if (maplabel.sprite != undefined) {
+					let spritefile = await engine.getFileById(cacheMajors.sprites, maplabel.sprite);
+					let sprite = parseSprite(spritefile);
+					src = await pixelsToDataUrl(sprite[0].img);
+					width = sprite[0].img.width;
+					height = sprite[0].img.height;
+				}
+				group = { src: src, width, height, uses: [] };
+				maplabels.set(loc.location.mapFunction, group);
+			}
+			group.uses.push({ x: loc.x - rect.x, z: loc.z - rect.z });
+		}
 		if (loc.location.mapscene == undefined) {
 			if (drawwalls && !occluded) {
 				if (loc.type == 0) {
@@ -202,7 +225,10 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	r += `<g transform="scale(1,-1) translate(0,-${rect.zsize})">\n`;
 	r += `<defs>\n`;
 	for (let [id, scene] of mapscenes) {
-		r += `<image id="mapscene-${id}" width="${scene.width / 4}" height="${scene.height / 4}" href="${scene.src}" style="image-rendering: pixelated;" transform="scale(1,-1)"/>\n`;
+		r += `<image id="mapscene-${id}" class="mapscene" width="${scene.width / 4}" height="${scene.height / 4}" href="${scene.src}" style="image-rendering: pixelated;" transform="scale(1,-1)"/>\n`;
+	}
+	for (let [id, scene] of maplabels) {
+		r += `<image id="maplabel-${id}" class="maplabel" width="${scene.width / 4}" height="${scene.height / 4}" x="${-scene.width / 4 / 2}" y="${0}" href="${scene.src}" style="image-rendering: pixelated;" transform="scale(1,-1)"/>\n`;
 	}
 	r += `</defs>\n`;
 
@@ -267,6 +293,11 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	for (let [id, scene] of mapscenes) {
 		for (let use of scene.uses) {
 			r += `<use href="#mapscene-${id}" x="${use.x}" y="${use.z + scene.height / 4}"/>\n`;
+		}
+	}
+	for (let [id, scene] of maplabels) {
+		for (let use of scene.uses) {
+			r += `<use href="#maplabel-${id}" x="${use.x}" y="${use.z + scene.height / 4}"/>\n`;
 		}
 	}
 

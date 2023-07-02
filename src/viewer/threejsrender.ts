@@ -165,14 +165,16 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.standardLights.add(dirLight);
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
 		this.standardLights.add(hemilight);
+		// this.standardLights.visible = false;
 		scene.add(this.standardLights);
 
 		//minimap lights
 		this.minimapLights = new Group();
-		let minidirlight = new THREE.DirectionalLight(0xffffff, 1.2);
+		let minidirlight = new THREE.DirectionalLight(0xffffff, 0.1);
 		minidirlight.position.set(-1, 1, 1);
 		this.minimapLights.add(minidirlight);
-		this.minimapLights.add(new THREE.AmbientLight(0xffffff, 0.8))
+		this.minimapLights.add(new THREE.AmbientLight(0xffffff, 0.05))
+		this.minimapLights.visible = false;
 		scene.add(this.minimapLights);
 
 		this.scene.fog = new THREE.Fog("#FFFFFF", 10000, 10000);

@@ -380,7 +380,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
 	rect: MapRect;
-	generated
 
 	cleanup() {
 		this.listeners = {};
@@ -431,7 +430,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 				let cloned: Mesh | null = null;
 				if (extra?.modeltype == "location" || extra?.modeltype == "locationgroup") {
 					cloned = child.clone();
-					cloned.position.y -= 0.1 * tiledimensions;
+					cloned.position.y -= 0.2 * tiledimensions;
 					cloned.updateMatrix();
 					cloned.updateMatrixWorld();
 
@@ -443,15 +442,14 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 						let original = geo.index!.array as any as Float32Array;
 						let array = indexclone.array as any as Float32Array;
 						let pos = 0;
-						let startpos = 0;
 						for (let i = 0; i < extra.subranges.length; i++) {
-							let endpos = extra.subranges[i];
+							let startpos = extra.subranges[i];
+							let endpos = (i + 1 >= extra.subranges.length ? original.length : extra.subranges[i + 1]);
 							let obj = extra.subobjects[i];
 							if (obj.modeltype == "location" && !obj.isGroundDecor) {
 								array.set(original.slice(startpos, endpos), pos);
 								pos += endpos - startpos
 							}
-							startpos = endpos;
 						}
 						geo.setDrawRange(0, pos);
 						geo.setIndex(indexclone);

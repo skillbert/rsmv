@@ -1585,11 +1585,7 @@ function SceneSpotAnim(p: LookupModeProps) {
 	)
 }
 type SceneMapState = {
-	chunkgroups: {
-		rect: MapRect,
-		chunk: RSMapChunk,
-		background: string
-	}[],
+	chunkgroups: RSMapChunk[],
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>,
 	selectionData: any
@@ -1609,8 +1605,13 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	@boundMethod
 	clear() {
 		this.selectCleanup.forEach(q => q());
-		this.state.chunkgroups.forEach(q => q.chunk.cleanup());
+		this.state.chunkgroups.forEach(q => q.cleanup());
 		this.setState({ chunkgroups: [], toggles: Object.create(null) });
+	}
+
+	@boundMethod
+	viewmap() {
+		showModal({ title: "Map view" }, <Map2dView chunks={this.state.chunkgroups} gridsize={512} mapscenes={true} />);
 	}
 
 	@boundMethod
@@ -1656,6 +1657,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		this.props.partial.renderer?.off("select", this.meshSelected);
 	}
 
+	@boundMethod
 	async addArea(rect: MapRect) {
 		const sceneCache = this.props.ctx?.sceneCache;
 		const renderer = this.props.ctx?.renderer;
@@ -1687,13 +1689,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				z: (rect.z + rect.zsize / 2) * chunksize * 512,
 			}
 		}
-		let chunkentry = { rect, chunk, background: "" };
-		chunk.renderSvg().then(svg => {
-			chunkentry.background = `url("data:image/svg+xml;base64,${btoa(svg)}")`;
-			this.forceUpdate();
-		});
 		this.setState({
-			chunkgroups: [...this.state.chunkgroups, chunkentry],
+			chunkgroups: [...this.state.chunkgroups, chunk],
 			center: center
 		});
 	}
@@ -1715,7 +1712,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			for (let key in old.toggles) {
 				newtoggles[key] = (key == toggle ? value : old.toggles[key]);
 			}
-			this.state.chunkgroups.forEach(q => q.chunk.setToggles(newtoggles));
+			this.state.chunkgroups.forEach(q => q.setToggles(newtoggles));
 			return { toggles: newtoggles };
 		})
 	}
@@ -1758,8 +1755,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		//find the last skybox
 		let skysettings: RSMapChunkData["sky"] | null = null;
 		for (let group of this.state.chunkgroups) {
-			if (group.chunk.loaded?.sky) {
-				skysettings = group.chunk.loaded.sky;
+			if (group.loaded?.sky) {
+				skysettings = group.loaded.sky;
 			}
 		}
 
@@ -1774,32 +1771,10 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				)}
 				{this.state.chunkgroups.length != 0 && (
 					<div className="mv-sidebar-scroll">
-						<div className="map-grid-container">
-							<div className="map-grid-root" style={{ gridTemplateColumns: `20px repeat(${xsize - 2},40px) 20px`, gridTemplateRows: `20px repeat(${zsize - 2},40px) 20px` }}>
-								{this.state.chunkgroups.flatMap((chunk, i) => {
-									let style: React.CSSProperties = {
-										gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
-										gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
-									}
-									if (chunk.background) {
-										style.backgroundImage = chunk.background;
-									}
-									for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
-										for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
-											addgrid[(x - xmin) * zsize + (z - zmin)] = null;
-										}
-									}
-									return (
-										<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !chunk.chunk.loaded })} style={style}>
-											{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : <React.Fragment>{chunk.rect.xsize}x{chunk.rect.zsize}<br /></React.Fragment>}
-											{chunk.rect.x},{chunk.rect.z}
-										</div>
-									);
-								})}
-								{addgrid}
-							</div>
-						</div>
+						<Map2dView chunks={this.state.chunkgroups} addArea={this.addArea} gridsize={40} mapscenes={false} />
+
 						<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
+						<input type="button" className="sub-btn" onClick={this.viewmap} value="View Map" />
 						{skysettings && (<div>
 							Skybox model: <span className="mv-copy-text">{skysettings.skyboxModelid}</span>,
 							fog: <span className="mv-copy-text">{skysettings.fogColor[0]},{skysettings.fogColor[1]},{skysettings.fogColor[2]}</span>
@@ -1835,6 +1810,84 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				)}
 			</React.Fragment>
 		)
+	}
+}
+
+type Map2dState = {
+	cache: Map<RSMapChunk, { render: Promise<string>, src: string | null }>,
+};
+export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => void, chunks: RSMapChunk[], gridsize: number, mapscenes: boolean }, Map2dState> {
+	constructor(p) {
+		super(p);
+
+		this.state = {
+			cache: new Map()
+		}
+	}
+
+	render() {
+		let xmin = Infinity, xmax = -Infinity;
+		let zmin = Infinity, zmax = -Infinity;
+		for (let chunk of this.props.chunks) {
+			xmin = Math.min(xmin, chunk.rect.x); xmax = Math.max(xmax, chunk.rect.x + chunk.rect.xsize);
+			zmin = Math.min(zmin, chunk.rect.z); zmax = Math.max(zmax, chunk.rect.z + chunk.rect.zsize);
+		}
+		let xsize = xmax - xmin + 2;
+		let zsize = zmax - zmin + 2;
+		xmin--;
+		zmin--;
+
+		let addgrid: (JSX.Element | null)[] = [];
+		for (let x = xmin; x < xmin + xsize; x++) {
+			for (let z = zmin; z < zmin + zsize; z++) {
+				let style: React.CSSProperties = {
+					gridColumn: "" + (x - xmin + 1),
+					gridRow: "" + (zmin + zsize - z),
+					border: "1px solid rgba(255,255,255,0.2)"
+				}
+				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.props.addArea?.({ x, z, xsize: 1, zsize: 1 })} style={style}></div>);
+			}
+		}
+
+
+		let gridsize = this.props.gridsize;
+		let pad = 20;
+		return (
+			<div className="map-grid-container">
+				<div className="map-grid-root" style={{ gridTemplateColumns: `${pad}px repeat(${xsize - 2},${gridsize}px) ${pad}px`, gridTemplateRows: `${pad}px repeat(${zsize - 2},${gridsize}px) ${pad}px` }}>
+					{this.props.chunks.flatMap((chunk, i) => {
+						let style: React.CSSProperties = {
+							gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
+							gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
+						}
+						let cached = this.state.cache.get(chunk);
+						if (cached?.src) {
+							style.backgroundImage = cached.src;
+						} else if (!cached) {
+							let prom = chunk.renderSvg(0, false);
+							cached = { render: prom, src: null as null | string };
+							this.state.cache.set(chunk, cached);
+							prom.then(svg => {
+								cached!.src = `url("data:image/svg+xml;base64,${btoa(svg)}")`;
+								this.forceUpdate();
+							});
+						}
+						for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
+							for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
+								addgrid[(x - xmin) * zsize + (z - zmin)] = null;
+							}
+						}
+						return (
+							<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !cached?.src })} style={style}>
+								{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : <React.Fragment>{chunk.rect.xsize}x{chunk.rect.zsize}<br /></React.Fragment>}
+								{chunk.rect.x},{chunk.rect.z}
+							</div>
+						);
+					})}
+					{addgrid}
+				</div>
+			</div>
+		);
 	}
 }
 
