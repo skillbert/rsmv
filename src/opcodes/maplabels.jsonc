@@ -1,0 +1,48 @@
+{
+	"0x01": { "name":                              "sprite", "read": "varuint" },
+	"0x02": { "name":                        "sprite_hover", "read": "varuint" },
+	"0x03": { "name":                                "text", "read": "string" },
+	"0x04": { "name":                             "color_1", "read": ["tuple","ubyte","ubyte","ubyte"] },
+	"0x05": { "name":                             "color_2", "read": ["tuple","ubyte","ubyte","ubyte"] },
+	"0x06": { "name":                           "font_size", "read": "ubyte" },
+	"0x07": { "name":                          "unknown_07", "read": "ubyte" },
+	"0x08": { "name":                          "unknown_08", "read": "ubyte" },
+	"0x09": { "name":                            "toggle_1", "read": ["struct",
+                                                                        ["varbit","ushort"],
+                                                                        ["varp","ushort"],
+                                                                        ["lower","uint"],
+                                                                        ["upper","uint"]
+                                                                    ] },
+	"0x0a": { "name":                        "rightclick_1", "read": "string" },
+	"0x0f": { "name":                             "polygon", "read": ["struct",
+                                                                        ["pointcount","ubyte"],
+                                                                        ["points",["array",["ref","pointcount"],["struct",
+                                                                            ["x","short"],
+                                                                            ["y","short"]
+                                                                        ]]],
+                                                                        ["color",["tuple","ubyte","ubyte","ubyte","ubyte"]],
+                                                                        ["always_1","ubyte"],
+                                                                        ["back_color",["tuple","ubyte","ubyte","ubyte","ubyte"]],
+                                                                        ["pointplanes",["array",["ref","pointcount"],"ubyte"]]
+                                                                    ] },
+	"0x11": { "name":                        "rightclick_2", "read": "string" },
+	"0x13": { "name":                            "category", "read": "ushort" },
+	"0x14": { "name":                            "toggle_2", "read": ["struct",
+                                                                        ["varbit","ushort"],
+                                                                        ["varp","ushort"],
+                                                                        ["lower","uint"],
+                                                                        ["upper","uint"]
+                                                                    ] },
+	"0x15": { "name":                          "unknown_15", "read": ["array",6,"ubyte"] },
+	"0x19": { "name":                   "background_sprite", "read": "varuint" },
+	"0x1a": { "name":                       "legacy_switch", "read": ["struct",
+                                                                        ["varbit","ushort"],
+                                                                        ["varp","ushort"],
+                                                                        ["value","ubyte"],
+                                                                        ["default_ref","ushort"],
+                                                                        ["legacy_ref","ushort"]
+                                                                    ] },
+	"0x1c": { "name":                          "unknown_1c", "read": "ubyte" },
+	"0x1e": { "name":                          "unknown_1e", "read": "ubyte" },
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
+}

@@ -169,6 +169,11 @@ export type items = {
 	neverStackable?: true | null
 	unknown_A7?: true | null
 	unknown_A8?: true | null
+	unknown_B2?: true | null
+	big_value?: [
+		number,
+		number,
+	] | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,

@@ -1662,22 +1662,21 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		if (!sceneCache || !renderer) { return; }
 
 		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true });
-		chunk.once("loaded", async () => {
-			let combined = chunk.rootnode;
-
+		chunk.on("changed", () => {
 			let toggles = this.state.toggles;
 			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 				if (typeof toggles[q] != "boolean") {
-					toggles[q] = !q.match(/(floorhidden|collision|walls|map|mapscenes)/);
+					toggles[q] = !q.match(/^(floorhidden|collision|walls|map|mapscenes)/);
 				}
 			});
-
+			this.setState({ toggles });
+			chunk.setToggles(toggles);
+		})
+		chunk.once("loaded", () => {
+			let combined = chunk.rootnode;
 			let center = this.state.center;
 			combined.position.add(new Vector3(-center.x, 0, -center.z));
 			chunk.addToScene(renderer);
-			chunk.setToggles(toggles);
-
-			this.setState({ toggles });
 		});
 
 		let center = this.state.center;

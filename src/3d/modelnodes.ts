@@ -1,7 +1,7 @@
 import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds, augmentThreeJsFloorMaterial } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize, tiledimensions, ModelExtras } from '../3d/mapsquare';
@@ -365,12 +365,13 @@ export type RSMapChunkData = {
 	chunkSize: number,
 	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
+	generatedMinimap: boolean,
 	modeldata: PlacedMesh[][],
 	chunkmodels: Group[],
 	rect: MapRect
 }
 
-export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> implements ThreeJsSceneElementSource {
+export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: undefined }> implements ThreeJsSceneElementSource {
 	chunkdata: Promise<RSMapChunkData>;
 	loaded: RSMapChunkData | null = null;
 	cache: ThreejsSceneCache;
@@ -379,7 +380,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
 	rect: MapRect;
-	minimapmode = false;
+	generated
 
 	cleanup() {
 		this.listeners = {};
@@ -414,32 +415,75 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 	}
 
 	onModelLoaded() {
-		this.setToggles(this.toggles, this.minimapmode);
+		this.setToggles(this.toggles);
 		this.emit("loaded", this.loaded!);
+		this.emit("changed", undefined);
 		this.renderscene?.sceneElementsChanged();
 		// this.renderscene?.setCameraLimits();//TODO fix this, current bounding box calc is too large
 	}
 
-	setToggles(toggles: Record<string, boolean>, minimap = this.minimapmode) {
+	generateMinimap() {
+		if (!this.loaded) { throw new Error("model not loaded yet"); }
+		if (this.loaded.generatedMinimap) { return; }
+		this.rootnode.traverse(child => {
+			if (child instanceof THREE.Mesh) {
+				let extra = child.userData as ModelExtras | undefined;
+				let cloned: Mesh | null = null;
+				if (extra?.modeltype == "location" || extra?.modeltype == "locationgroup") {
+					cloned = child.clone();
+					cloned.position.y -= 0.1 * tiledimensions;
+					cloned.updateMatrix();
+					cloned.updateMatrixWorld();
+
+					if (extra.modeltype == "location" && extra.isGroundDecor) {
+						cloned = null;
+					} else if (extra.modeltype == "locationgroup") {
+						let geo = cloned.geometry.clone();
+						let indexclone = geo.index!.clone();
+						let original = geo.index!.array as any as Float32Array;
+						let array = indexclone.array as any as Float32Array;
+						let pos = 0;
+						let startpos = 0;
+						for (let i = 0; i < extra.subranges.length; i++) {
+							let endpos = extra.subranges[i];
+							let obj = extra.subobjects[i];
+							if (obj.modeltype == "location" && !obj.isGroundDecor) {
+								array.set(original.slice(startpos, endpos), pos);
+								pos += endpos - startpos
+							}
+							startpos = endpos;
+						}
+						geo.setDrawRange(0, pos);
+						geo.setIndex(indexclone);
+						if (pos == 0) {
+							cloned = null;
+						}
+					}
+
+				}
+				if (extra?.modeltype == "floor") {
+					cloned = child.clone();
+					cloned.material = (cloned.material as Material).clone();
+					augmentThreeJsFloorMaterial(cloned.material, true);
+				}
+				if (extra && cloned) {
+					let modelgroup = `mini_${extra.modelgroup}`;
+					cloned.userData = { ...extra, modelgroup } satisfies ModelExtras;
+					this.loaded!.groups.add(modelgroup);
+					child.parent!.add(cloned);
+				}
+			}
+		});
+		this.emit("changed", undefined);
+	}
+
+	setToggles(toggles: Record<string, boolean>) {
 		this.toggles = toggles;
 		this.rootnode.traverse(node => {
 			if (node.userData.modelgroup) {
 				let newvis = toggles[node.userData.modelgroup] ?? true;
 				node.traverse(child => {
 					if (child instanceof THREE.Mesh) {
-						// let extra = child.userData as ModelExtras | undefined;
-						// if (extra?.modeltype == "location" || extra?.modeltype == "locationgroup") {
-						// 	child.position.y = (minimap ? -0.1 : 0) * tiledimensions;
-						// 	child.updateMatrix();
-						// 	child.updateMatrixWorld();
-						// } else if (extra?.modeltype == "floor") {
-						// 	let qq=child.material as Material;
-						// 	qq
-						// 	//
-						// } else {
-						// 	//
-						// }
-
 						child.visible = newvis;
 					}
 				});
@@ -447,12 +491,12 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 		});
 	}
 
-	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
+	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts & { minimap?: boolean }) {
 		super();
 		this.rect = rect;
 		this.cache = cache;
 		this.chunkdata = (async () => {
-			let opts: ParsemapOpts = { invisibleLayers: true, minimap: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
+			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
 			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
 				let chunk = await mapsquareModels(cache, grid, chunkdata, opts);
@@ -493,7 +537,10 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData }> impleme
 
 			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
 			let chunkmodels = processedChunks.map(q => q.group);
-			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize, rect };
+			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize, rect, generatedMinimap: false };
+			if (extraopts?.minimap) {
+				this.generateMinimap();
+			}
 			this.onModelLoaded();
 			return this.loaded;
 		})();

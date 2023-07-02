@@ -130,7 +130,7 @@ export type ModelExtrasLocation = {
 	worldz: number,
 	rotation: number,
 	mirror: boolean,
-	type: number,
+	isGroundDecor: boolean,
 	level: number,
 	locationInstance: WorldLocation
 }
@@ -752,7 +752,7 @@ export class TileGrid implements TileGridSource {
 	}
 }
 
-export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, minimap?: boolean, skybox?: boolean, mask?: MapRect[] };
+export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, skybox?: boolean, mask?: MapRect[] };
 export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
 export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
@@ -963,19 +963,7 @@ async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: 
 	}
 
 	for (let level = 0; level < squareLevels; level++) {
-		let base = mapsquareMesh(grid, chunk, level, atlas, false, true, false);
-		floors.push(base);
-		if (opts?.minimap) {
-			let mini = {
-				...base,
-				extra: {
-					...base.extra,
-					modelgroup: "minimap" + level
-				},
-				minimap: true
-			};
-			floors.push(mini);
-		}
+		floors.push(mapsquareMesh(grid, chunk, level, atlas, false, true, false));
 		if (opts?.map2d) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
 		}
@@ -1391,7 +1379,7 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 			worldz: inst.z,
 			rotation: inst.rotation,
 			mirror: !!objectmeta.mirror,
-			type: inst.type,
+			isGroundDecor: inst.type == 22 && !objectmeta.unknown_49,
 			level: inst.visualLevel,
 			locationInstance: inst
 		};
@@ -2123,7 +2111,6 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		showhidden,
 		tileinfos,
 		worldmap,
-		minimap: false,
 
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
@@ -2171,7 +2158,7 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	mat.vertexColors = true;
 	if (!floor.showhidden) {
 		if (!floor.worldmap) {
-			augmentThreeJsFloorMaterial(mat, floor.minimap);
+			augmentThreeJsFloorMaterial(mat, false);
 			let img = floor.atlas.convert();
 
 			//no clue why this doesn't work

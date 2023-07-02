@@ -63,6 +63,7 @@ export const cacheConfigPages = {
 	environments: 29,
 	animgroups: 32,
 	mapscenes: 34,
+	maplabels: 36,
 
 	//used before 488 (feb 2008)
 	locs_old: 6,

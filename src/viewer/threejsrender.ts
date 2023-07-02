@@ -72,6 +72,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private vr360cam: VR360Render | null = null;
 	private forceAspectRatio: number | null = null;
 
+	private standardLights: Group;
+	private minimapLights: Group;
+
 	private camMode: RenderCameraMode = "standard";
 	private camera: THREE.PerspectiveCamera;
 	private topdowncam: THREE.OrthographicCamera;
@@ -154,15 +157,23 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.modelnode.scale.set(1 / 512, 1 / 512, -1 / 512);
 		this.scene.add(this.modelnode);
 
-		//TODO figure out which lights work or not
-		scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-
+		//classic light config
+		this.standardLights = new Group();
+		this.standardLights.add(new THREE.AmbientLight(0xffffff, 0.7));
 		var dirLight = new THREE.DirectionalLight(0xffffff);
 		dirLight.position.set(75, 300, -75);
-		scene.add(dirLight);
-
+		this.standardLights.add(dirLight);
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
-		scene.add(hemilight);
+		this.standardLights.add(hemilight);
+		scene.add(this.standardLights);
+
+		//minimap lights
+		this.minimapLights = new Group();
+		let minidirlight = new THREE.DirectionalLight(0xffffff, 1.2);
+		minidirlight.position.set(-1, 1, 1);
+		this.minimapLights.add(minidirlight);
+		this.minimapLights.add(new THREE.AmbientLight(0xffffff, 0.8))
+		scene.add(this.minimapLights);
 
 		this.scene.fog = new THREE.Fog("#FFFFFF", 10000, 10000);
 
@@ -517,7 +528,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			-(cnvy - cnvrect.y) / cnvrect.height * 2 + 1,
 		);
 
-		raycaster.setFromCamera(mousepos, this.camera);
+		let currentcam = this.camMode == "standard" ? this.getStandardCamera() : this.camMode == "topdown" ? this.getTopdownCamera() : null;
+		if (!currentcam) { return; }
+		raycaster.setFromCamera(mousepos, currentcam);
 
 		let intersects = raycaster.intersectObjects(this.scene.children);
 		let firstloggable = true;
