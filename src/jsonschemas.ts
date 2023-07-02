@@ -49,7 +49,7 @@ const simpleModelDefSchema: JSONSchema6 = {
     }
 };
 
-export const customModelDefSchema={
+export const customModelDefSchema = {
     properties: {
         type: { const: "custom" },
         modelkey: string,
@@ -148,4 +148,32 @@ export const scenarioStateSchema: JSONSchema6 = {
             items: scenarioActionSchema
         }
     }
+}
+
+
+export const maprenderConfigSchema: JSONSchema6 = {
+    properties: {
+        layers: {
+            items: {
+                properties: {
+                    mode: { type: "string", enum: ["3d", "map", "height", "collision", "locs", "rendermeta", "minimap"] },
+                    name: string,
+                    pxpersquare: number,
+                    level: number,
+                    format: { type: "string", enum: ["png", "webp"] },
+                    usegzip: boolean,
+                    subtractlayers: { items: string },
+                    dxdy: number,
+                    dzdy: number,
+                    wallsonly: boolean
+                },
+                required: ["mode", "name", "level", "pxpersquare"]
+            }
+        },
+        tileimgsize: number,
+        mapsizex: number,
+        mapsizez: number,
+        area: string
+    },
+    required: ["layers", "tileimgsize", "mapsizex", "mapsizez", "area"]
 }

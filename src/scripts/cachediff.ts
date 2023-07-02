@@ -2,7 +2,7 @@ import { cacheConfigPages, cacheMajors } from "../constants";
 import { parse, FileParser } from "../opdecoder";
 import { archiveToFileId, CacheFileSource, CacheIndexFile } from "../cache";
 import prettyJson from "json-stringify-pretty-compact";
-import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { ParsedTexture } from "../3d/textures";
 import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";

@@ -29,6 +29,7 @@ const id = powerSaveBlocker.start("prevent-app-suspension");
 //powerSaveBlocker.stop(id)
 
 let hidden = false;
+let exitonend = false;
 
 
 let args: string[] = [];
@@ -45,6 +46,7 @@ for (let i = 0; i < process.argv.length; i++) {
 		//our own bootstrap flags, keep reading until get find the entry script
 		if (arg.startsWith("-")) {
 			if (arg == "--hidden") { hidden = true; }
+			if (arg == "--exit") { exitonend = true; }
 		} else {
 			entry = arg;
 		}
@@ -87,6 +89,9 @@ console.error=function(...args){
 }
 window.onerror=e=>console.error(e);
 window.onunhandledrejection=e=>console.error(e);
+window.onCliCompleted=(code)=>{
+	require("electron/renderer").ipcRenderer.send("exit",code);
+}
 
 require(${JSON.stringify(path.resolve(process.cwd(), entry))});
 `;
@@ -101,6 +106,11 @@ console.log(path.resolve(process.cwd(), entry));
 		if (type == "error") { console.error("[renderer]", ...args); }
 		else if (type == "warn") { console.warn("[renderer]", ...args); }
 		else { console.log("[renderer]", ...args); }
+	});
+	ipcMain.on("exit", (e, exitcode) => {
+		if (exitonend) {
+			process.exit(exitcode);
+		}
 	});
 
 	var index = new BrowserWindow({

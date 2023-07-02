@@ -1,6 +1,6 @@
 import { CacheFileSource, CacheIndex, SubFile } from ".";
 import { cacheFilenameHash, Stream } from "../utils";
-import { ScriptFS } from "../viewer/scriptsui";
+import { ScriptFS } from "../scriptrunner";
 import { parseLegacyArchive } from "./legacycache";
 
 export const classicGroups = {

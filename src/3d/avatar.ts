@@ -5,7 +5,6 @@ import { ThreejsSceneCache } from "./modeltothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../utils";
 import { items } from "../../generated/items";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
 import { testDecodeFile } from "../scripts/testdecode";
 import { avatars } from "../../generated/avatars";
 import { SimpleModelDef, serializeAnimset, SimpleModelInfo, castModelInfo } from "./modelnodes";

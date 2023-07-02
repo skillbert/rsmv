@@ -14,6 +14,8 @@ globalThis.fetch = require("node-fetch").default;
 export { CacheDownloader } from "../cache/downloader";
 export { GameCacheLoader } from "../cache/sqlite";
 export { CallbackCacheLoader } from "../cache";
+export { runMapRender, MapRenderDatabaseBacked, MapRenderFsBacked, MapRender } from "../map/index";
+export { ScriptOutput, CLIScriptOutput } from "../scriptrunner";
 //export buffer since we're polyfilling it in browsers
 export const BufferPoly = Buffer;
 

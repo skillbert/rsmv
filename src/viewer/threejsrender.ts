@@ -472,10 +472,12 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return r;
 	}
 
-	async takeMapPicture(cam: Camera, framesizex: number, framesizey: number) {
+	async takeMapPicture(cam: Camera, framesizex: number, framesizey: number, lights: "minimap" | "standard") {
 		this.renderer.setSize(framesizex, framesizey);
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
+			this.minimapLights.visible = lights == "minimap";
+			this.standardLights.visible = lights == "standard";
 			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);

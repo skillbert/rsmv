@@ -1,5 +1,5 @@
 import { cacheMajors } from "../constants";
-import { CLIScriptOutput, ScriptFS, ScriptOutput } from "viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../scriptrunner";
 import { CacheFileSource } from "cache";
 import prettyJson from "json-stringify-pretty-compact";
 

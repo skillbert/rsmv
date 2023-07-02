@@ -14,7 +14,7 @@ import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
-import { runMapRender } from "../map";
+import { MapRenderDatabaseBacked, runMapRender } from "../map";
 import { diffCaches, FileEdit } from "../scripts/cachediff";
 import { selectEntity, showModal } from "./jsonsearch";
 import { findImageBounds, makeImageData } from "../imgutils";
@@ -1962,10 +1962,11 @@ function MaprenderScript(p: UiScriptProps) {
 	let [auth, setAuth] = React.useState("");
 	let [mapid, setMapId] = React.useState(0);
 
-	let run = () => {
+	let run = async () => {
 		let output = new UIScriptOutput();
+		let config = await MapRenderDatabaseBacked.create(endpoint, auth, mapid, false);
 		localStorage.rsmv_script_map_endpoint = endpoint;
-		output.run(runMapRender, p.source, endpoint, auth, mapid, false);
+		output.run(runMapRender, p.source, config);
 		p.onRun(output, "");
 	}
 

@@ -1,6 +1,6 @@
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
-import { ScriptOutput } from "../viewer/scriptsui";
+import { ScriptOutput } from "../scriptrunner";
 
 export async function openrs2Ids(output: ScriptOutput, date: string, near: string, logcontents: boolean) {
     let allids = await validOpenrs2Caches();

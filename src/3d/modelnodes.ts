@@ -489,12 +489,12 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		});
 	}
 
-	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts & { minimap?: boolean }) {
+	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
 		super();
 		this.rect = rect;
 		this.cache = cache;
 		this.chunkdata = (async () => {
-			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, ...extraopts };
+			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
 			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
 				let chunk = await mapsquareModels(cache, grid, chunkdata, opts);

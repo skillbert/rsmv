@@ -1,8 +1,9 @@
 import { GameCacheLoader } from "./sqlite";
 import { WasmGameCacheLoader } from "./sqlitewasm";
 import { ClassicFileSource } from "./classicloader";
-import { CLIScriptFS, ScriptFS, UIScriptFS } from "../viewer/scriptsui";
+import { CLIScriptFS, ScriptFS } from "../scriptrunner";
 import { CacheOpts } from "../cliparser";
+import { UIScriptFS } from "../viewer/scriptsui";
 //TODO .dat / .dat2
 
 export async function selectFsCache(fs: ScriptFS, opts?: CacheOpts) {

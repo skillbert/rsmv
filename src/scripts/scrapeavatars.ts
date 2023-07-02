@@ -1,7 +1,7 @@
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import fetch from "node-fetch";
 import { avatarStringToBytes, avatarToModel, lowname } from "../3d/avatar";
-import { CLIScriptFS, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptFS, ScriptFS, ScriptOutput } from "../scriptrunner";
 import prettyJson from "json-stringify-pretty-compact";
 import { CacheFileSource } from "../cache";
 

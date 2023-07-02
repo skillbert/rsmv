@@ -3,7 +3,7 @@ import { quickchatcategories } from "../../generated/quickchatcategories";
 import { parse } from "../opdecoder";
 import { quickchatlines } from "../../generated/quickchatlines";
 import prettyJson from "json-stringify-pretty-compact";
-import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../scriptrunner";
 import { CacheFileSource } from "../cache";
 
 

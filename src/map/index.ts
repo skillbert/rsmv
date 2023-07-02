@@ -8,7 +8,7 @@ import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, isImageEqual, maskImage, pixelsToImageFile } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
-import { CLIScriptOutput, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
 import { CallbackPromise, delay, FetchThrottler, stringToMapArea, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
@@ -16,6 +16,8 @@ import { ChunkLocDependencies, chunkSummary, ChunkTileDependencies, compareFloor
 import { RSMapChunk, RSMapChunkData } from "../3d/modelnodes";
 import * as zlib from "zlib";
 import { Camera, Matrix4 } from "three";
+import fs from "fs/promises";
+import path from "path";
 
 type RenderedMapVersionMeta = {
 	buildnr: number,
@@ -54,10 +56,9 @@ type LayerConfig = {
 	usegzip?: boolean,
 	subtractlayers?: string[]
 } & ({
-	mode: "3d",
+	mode: "3d" | "minimap",
 	dxdy: number,
-	dzdy: number,
-	walls?: boolean
+	dzdy: number
 } | {
 	mode: "map",
 	wallsonly: boolean
@@ -70,18 +71,6 @@ type LayerConfig = {
 } | {
 	mode: "rendermeta"
 });
-
-async function initMapConfig(endpoint: string, auth: string, uploadmapid: number, version: number, overwrite: boolean) {
-	let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
-	if (!res.ok) { throw new Error("map config fetch error"); }
-	let config: Mapconfig = await res.json();
-	let rendermetaname = config.layers.find(q => q.mode == "rendermeta");
-
-	let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
-	localStorage.map_workerid ??= workerid;
-
-	return new MapRender(endpoint, auth, workerid, uploadmapid, config, version, rendermetaname, overwrite);
-}
 
 async function getVersionsFile(source: CacheFileSource, config: MapRender, writeversion = false) {
 	//make sure versions file is updated
@@ -175,47 +164,124 @@ async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) 
 	return { areas, mask };
 }
 
+function getLayerZooms(config: Mapconfig, layercnf: LayerConfig) {
+	const min = Math.floor(Math.log2(config.tileimgsize / (Math.max(config.mapsizex, config.mapsizez) * 64)));
+	const max = Math.log2(layercnf.pxpersquare);
+	const base = Math.log2(config.tileimgsize / 64);
+	return { min, max, base };
+}
+
+export abstract class MapRender {
+	config: Mapconfig;
+	version = 0;
+	workerid = "default";
+	constructor(config: Mapconfig) {
+		this.config = config;
+	}
+	abstract getFileResponse(name: string, version?: number): Promise<Response>;
+	abstract makeFileName(layer: string, zoom: number, x: number, y: number, ext: string): string;
+	abstract saveFile(name: string, hash: number, data: Buffer, version?: number): Promise<void>;
+	abstract symlink(name: string, hash: number, targetname: string, targetversion?: number): Promise<void>;
+
+	async symlinkBatch(files: SymlinkCommand[]) {
+		await Promise.all(files.map(f => this.symlink(f.file, f.hash, f.symlink, f.symlinkbuildnr)));
+	}
+	async beginMapVersion(version: number) {
+		this.version = version;
+	}
+
+	//optional api's when rendering history stuff
+	rendermetaLayer: LayerConfig | undefined = undefined;
+	async getRelatedFiles(names: string[], versions: number[]) {
+		return [] as KnownMapFile[];
+	}
+	async getMetas(names: UniqueMapFile[]) {
+		return [] as KnownMapFile[];
+	}
+}
+
+export class MapRenderFsBacked extends MapRender {
+	path: string;
+	copyOnSymlink = true;
+	constructor(config: Mapconfig, filepath: string) {
+		super(config);
+		this.path = path.resolve(filepath);
+	}
+	async getFilePath(name: string) {
+		let pathname = path.resolve(this.path, name);
+		let dir = path.dirname(pathname);
+		await fs.mkdir(dir, { recursive: true });
+		return pathname;
+	}
+	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
+		return `${layer}/${zoom}/${x}-${y}.${ext}`;
+	}
+	assertVersion(version = this.version) {
+		if (version != 0 && version != this.version) { throw new Error("versions not supported"); }
+	}
+	async saveFile(name: string, hash: number, data: Buffer, version: number) {
+		this.assertVersion(version);
+		await fs.writeFile(await this.getFilePath(name), data);
+	}
+	async getFileResponse(name: string, version?: number) {
+		this.assertVersion(version);
+		try {
+			let file = await fs.readFile(await this.getFilePath(name));
+			return new Response(file);
+		} catch {
+			return new Response(null, { status: 404 });
+		}
+	}
+	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
+		this.assertVersion(targetversion);
+		if (this.copyOnSymlink) {
+			//don't actually symliink because windows its weird in windows
+			await fs.copyFile(await this.getFilePath(targetname), await this.getFilePath(name));
+		} else {
+			await fs.symlink(await this.getFilePath(name), await this.getFilePath(targetname), "file");
+		}
+	}
+}
+
 //The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
-//this class is designed so it could also implement a direct fs backing
 //The render code decides which (opaque to server) file names should exist and checks if that name+hash already exists,
 //if not it will generate the file and save it together with some metadata (hash+build nr)
-class MapRender {
-	config: Mapconfig;
-	layers: LayerConfig[];
+export class MapRenderDatabaseBacked extends MapRender {
 	endpoint: string;
 	workerid: string;
 	uploadmapid: number;
 	auth: string;
-	version: number;
 	overwrite: boolean;
-	minzoom: number;
 	rendermetaLayer: LayerConfig | undefined;
 
 	private postThrottler = new FetchThrottler(20);
 	private fileThrottler = new FetchThrottler(20);
 
-	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, version: number, rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
+	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
+		super(config);
 		this.endpoint = endpoint;
 		this.auth = auth;
 		this.workerid = workerid;
-		this.config = config;
-		this.layers = config.layers;
-		this.version = version;
 		this.overwrite = overwrite;
 		this.rendermetaLayer = rendermetaLayer;
 		this.uploadmapid = uploadmapid;
-		this.minzoom = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
+	}
+	static async create(endpoint: string, auth: string, uploadmapid: number, overwrite: boolean) {
+		let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
+		if (!res.ok) { throw new Error("map config fetch error"); }
+		let config: Mapconfig = await res.json();
+		let rendermetaname = config.layers.find(q => q.mode == "rendermeta");
+
+		let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
+		localStorage.map_workerid ??= workerid;
+
+		return new MapRenderDatabaseBacked(endpoint, auth, workerid, uploadmapid, config, rendermetaname, overwrite);
 	}
 	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
 		return `${layer}/${zoom}/${x}-${y}.${ext}`;
 	}
-	getLayerZooms(layercnf: LayerConfig) {
-		const min = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
-		const max = Math.log2(layercnf.pxpersquare);
-		const base = Math.log2(this.config.tileimgsize / 64);
-		return { min, max, base };
-	}
-	async beginMapVersion() {
+	async beginMapVersion(version: number) {
+		this.version = version;
 		let send = await this.postThrottler.apiRequest(`${this.endpoint}/assurebuildnr?mapid=${this.uploadmapid}&buildnr=${this.version}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
@@ -231,7 +297,7 @@ class MapRender {
 		});
 		if (!send.ok) { throw new Error("file upload failed"); }
 	}
-	async symlink(name: string, hash: number, targetname: string, targetversion = this.version) {
+	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
 		return this.symlinkBatch([{ file: name, hash, buildnr: this.version, symlink: targetname, symlinkbuildnr: targetversion, symlinkfirstbuildnr: targetversion }]);
 	}
 	async symlinkBatch(files: SymlinkCommand[]) {
@@ -423,7 +489,7 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, endpoint: string, auth: string, uploadmapid: number, overwrite = false) {
+export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, config: MapRender) {
 	let versionid = filesource.getBuildNr();
 	if (filesource.getBuildNr() > 900) {
 		//use build number for order caches since they wont have version timestamps
@@ -442,8 +508,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		}
 		versionid = maxtime;
 	}
-	let config = await initMapConfig(endpoint, auth, uploadmapid, versionid, overwrite);
-	await config.beginMapVersion();
+	await config.beginMapVersion(versionid);
 
 	let prevconfigreq = await config.getFileResponse("meta.json");
 	if (prevconfigreq.ok) {
@@ -452,7 +517,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
 		if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 200) {
 			//skip if less than x*24hr ago
-			output.log("skipping", config.uploadmapid, config.version);
+			output.log("skipping", config.version);
 			return () => { };
 		}
 	}
@@ -485,9 +550,11 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
 
 
+	let opts: ParsemapOpts = { mask };
+	if (config.config.layers.some(q => q.mode == "minimap")) { opts.minimap = true; }
 	let getRenderer = () => {
 		let cnv = document.createElement("canvas");
-		let renderer = new MapRenderer(cnv, config, engine, deps, { mask });
+		let renderer = new MapRenderer(cnv, config, engine, deps, opts);
 		renderer.loadcallback = (x, z, state) => progress.update(x, z, "", state);
 		return renderer;
 	}
@@ -723,12 +790,14 @@ class MipScheduler {
 	render: MapRender;
 	progress: ProgressUI;
 	incompletes = new Map<string, MipCommand>();
+	minzoom: number;
 	constructor(render: MapRender, progress: ProgressUI) {
 		this.render = render;
 		this.progress = progress;
+		this.minzoom = Math.floor(Math.log2(render.config.tileimgsize / (Math.max(render.config.mapsizex, render.config.mapsizez) * 64)));
 	}
 	addTask(layer: LayerConfig, zoom: number, hash: number, x: number, y: number, srcfile: string) {
-		if (zoom - 1 < this.render.minzoom) { return; }
+		if (zoom - 1 < this.minzoom) { return; }
 		let newname = this.render.makeFileName(layer.name, zoom - 1, Math.floor(x / 2), Math.floor(y / 2), layer.format ?? "webp");
 		let incomp = this.incompletes.get(newname);
 		if (!incomp) {
@@ -828,7 +897,7 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 		if (!res.ok) {
 			throw new Error("image not found");
 		}
-		let mimetype = res.headers.get("content-type");
+		let mimetype = res.headers.get("content-type") ?? `image/${path.extname(f.name).slice(1)}`;
 		// imagedecoder API doesn't support svg
 		if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
 			let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
@@ -846,11 +915,13 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 }
 
 export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
-	let setfloors = (chunks: MaprenderSquare[], floornr: number) => {
+	let setfloors = (chunks: MaprenderSquare[], floornr: number, isminimap: boolean) => {
 		let toggles: Record<string, boolean> = {};
 		for (let i = 0; i < 4; i++) {
-			toggles["floor" + i] = i <= floornr;
-			toggles["objects" + i] = i <= floornr;
+			toggles["floor" + i] = !isminimap && i <= floornr;
+			toggles["objects" + i] = !isminimap && i <= floornr;
+			toggles["mini_floor" + i] = isminimap && i <= floornr;
+			toggles["mini_objects" + i] = isminimap && i <= floornr;
 			toggles["map" + i] = false;
 			toggles["mapscenes" + i] = false;
 			toggles["walls" + i] = false;
@@ -909,7 +980,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		run: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<{ file?: () => Promise<Buffer>, symlink?: undefined | KnownMapFile }>,
 	}[] = [];
 	let miptasks: (() => void)[] = [];
-	for (let cnf of config.layers) {
+	for (let cnf of config.config.layers) {
 		let squares = 1;//cnf.mapsquares ?? 1;//TODO remove or reimplement
 		if (chunkx % squares != 0 || chunkz % squares != 0) { continue; }
 		const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -920,12 +991,12 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			xsize: chunksize * squares,
 			zsize: chunksize * squares
 		};
-		let zooms = config.getLayerZooms(cnf);
+		let zooms = getLayerZooms(config.config, cnf);
 
 		let overflowrect: MapRect = { x: chunkx - 1, z: chunkz - 1, xsize: squares + 1, zsize: squares + 1 };
 		let singlerect: MapRect = { x: chunkx, z: chunkz, xsize: 1, zsize: 1 };
 
-		if (cnf.mode == "3d") {
+		if (cnf.mode == "3d" || cnf.mode == "minimap") {
 			let thiscnf = cnf;
 			for (let zoom = zooms.base; zoom <= zooms.max; zoom++) {
 				let subslices = 1 << (zoom - zooms.base);
@@ -940,7 +1011,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 							{ name: filename, level: thiscnf.level }
 						];
 						for (let sub of thiscnf.subtractlayers ?? []) {
-							let other = config.layers.find(q => q.name == sub);
+							let other = config.config.layers.find(q => q.name == sub);
 							if (!other) {
 								console.warn("subtrack layer " + sub + "missing");
 								continue;
@@ -960,7 +1031,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 							dedupeDependencies: parentCandidates.map(q => q.name),
 							mippable: (zoom == zooms.base ? { outputx: baseoutputx, outputy: baseoutputy, zoom: zoom, hash: depcrc } : null),
 							async run(chunks, renderer, parentinfo) {
-								setfloors(chunks, thiscnf.level);
+								setfloors(chunks, thiscnf.level, cnf.mode == "minimap");
 								let cam = mapImageCamera(area.x + tiles * subx, area.z + tiles * subz, tiles, thiscnf.dxdy, thiscnf.dzdy);
 
 								let parentFile: undefined | KnownMapFile = undefined;
@@ -1013,7 +1084,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 								let img: ImageData | null = null;
 								if (!parentFile) {
-									img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare);
+									img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, (cnf.mode == "minimap" ? "minimap" : "standard"));
 									flipImage(img);
 									// isImageEmpty(img, "black");
 
@@ -1254,7 +1325,10 @@ class RenderDepsTracker {
 		let match = this.cachedMetas.find(q => q.x == x && q.z == z);
 		if (!match) {
 			let metas = (async () => {
-				let filename = `${this.config.rendermetaLayer!.name}/${x}-${z}.${this.config.rendermetaLayer!.usegzip ? "json.gz" : "json"}`;
+				if (!this.config.rendermetaLayer || !this.config.getRelatedFiles) {
+					return [];
+				}
+				let filename = `${this.config.rendermetaLayer.name}/${x}-${z}.${this.config.rendermetaLayer.usegzip ? "json.gz" : "json"}`;
 				let urls = await this.config.getRelatedFiles([filename], this.targetversions);
 				urls = urls.filter(q => q.buildnr != this.config.version);
 				let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
@@ -1287,7 +1361,7 @@ class RenderDepsTracker {
 	}
 
 	async forkDeps(names: string[]) {
-		let allFiles = await this.config.getRelatedFiles(names, this.targetversions);
+		let allFiles = await this.config.getRelatedFiles?.(names, this.targetversions) ?? [];
 		let localmetas: ChunkRenderMeta[] = [];
 		let localfiles: KnownMapFile[] = [];
 

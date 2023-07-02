@@ -9,7 +9,7 @@ import { Openrs2CacheSource } from "./cache/openrs2loader";
 import type { MapRect } from "./3d/mapsquare";
 import { FileRange, stringToFileRange, stringToMapArea } from "./utils";
 import { selectFsCache } from "./cache/autocache";
-import { CLIScriptFS } from "./viewer/scriptsui";
+import { CLIScriptFS } from "./scriptrunner";
 
 export type Rect = { x: number, y: number, width: number, height: number };
 

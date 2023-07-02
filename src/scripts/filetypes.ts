@@ -4,7 +4,7 @@ import { parse, FileParser } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { cacheFilenameHash, constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
-import { ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { JSONSchema6Definition } from "json-schema";
 import { parseLegacySprite, parseSprite, parseTgaSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";

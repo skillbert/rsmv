@@ -9,7 +9,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio, CopyButton } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { GameCacheLoader } from "../cache/sqlite";
-import { CLIScriptFS, DomWrap, ScriptFS, UIScriptFile, UIScriptFS } from "./scriptsui";
+import { DomWrap, UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, drawTexture, TypedEmitter } from "../utils";
@@ -19,6 +19,7 @@ import { parse } from "../opdecoder";
 import * as path from "path";
 import classNames from "classnames";
 import { selectFsCache } from "../cache/autocache";
+import { CLIScriptFS } from "../scriptrunner";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");

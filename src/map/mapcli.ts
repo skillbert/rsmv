@@ -1,29 +1,53 @@
 
 import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
-import { CLIScriptFS, CLIScriptOutput } from "../viewer/scriptsui";
-import { runMapRender } from ".";
+import { CLIScriptFS, CLIScriptOutput } from "../scriptrunner";
+import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked, runMapRender } from ".";
 import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { stringToFileRange } from "../utils";
 import { classicBuilds, ClassicFileSource, detectClassicVersions } from "../cache/classicloader";
+import path from "path";
+import fs from "fs/promises";
+import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
 
 let cmd = cmdts.command({
 	name: "download",
 	args: {
 		...filesource,
-		classicFiles: cmdts.option({ long: "classicfiles", defaultValue: () => "" }),
-		endpoint: cmdts.option({ long: "endpoint", short: "e" }),
-		auth: cmdts.option({ long: "auth", short: "p" }),
-		mapid: cmdts.option({ long: "mapid", type: cmdts.number }),
-		builds: cmdts.option({ long: "builds", type: cmdts.string, defaultValue: () => "" }),
-		ascending: cmdts.flag({ long: "ascending", short: "a" })
+		classicFiles: cmdts.option({ long: "classicfiles", type: cmdts.optional(cmdts.string) }),
+		builds: cmdts.option({ long: "builds", type: cmdts.optional(cmdts.string) }),
+		ascending: cmdts.flag({ long: "ascending", short: "a" }),
+		//remote
+		endpoint: cmdts.option({ long: "endpoint", short: "e", type: cmdts.optional(cmdts.string) }),
+		auth: cmdts.option({ long: "auth", short: "p", type: cmdts.optional(cmdts.string) }),
+		mapid: cmdts.option({ long: "mapid", type: cmdts.optional(cmdts.number) }),
+		//fs
+		configfile: cmdts.option({ long: "config", short: "c", type: cmdts.optional(cmdts.string) }),
+		outdir: cmdts.option({ long: "out", short: "s", type: cmdts.optional(cmdts.string) })
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
 
+		let config: MapRender;
+		if (args.endpoint) {
+			if (!args.endpoint || !args.auth || typeof args.mapid != "number") {
+				throw new Error("need --endpoint, --auth and --mapid to use a remote map save");
+			}
+			config = await MapRenderDatabaseBacked.create(args.endpoint, args.auth, args.mapid, false);
+		} else if (args.configfile) {
+			let outdir = args.outdir ?? path.dirname(args.configfile!);
+			let configfile = await fs.readFile(args.configfile!, "utf8");
+			await fs.access(outdir);//check if we're allowed to write the outdir
+			let layerconfig = JSON.parse(configfile);
+			assertSchema(layerconfig, maprenderConfigSchema);
+			config = new MapRenderFsBacked(layerconfig, outdir);
+		} else {
+			throw new Error("no map endpoint selected");
+		}
+
 		if (!args.builds) {
 			let source = await args.source();
-			await runMapRender(output, source, args.endpoint, args.auth, args.mapid, false);
+			await runMapRender(output, source, config);
 		} else {
 			let ranges = stringToFileRange(args.builds);
 
@@ -69,7 +93,7 @@ let cmd = cmdts.command({
 
 			for await (let source of cacheiterator(args.ascending)) {
 				output.log(`Starting '${source.getCacheMeta().name}', build: ${source.getBuildNr()}`);
-				let cleanup = await runMapRender(output, source, args.endpoint, args.auth, args.mapid, false);
+				let cleanup = await runMapRender(output, source, config);
 				cleanup();
 			}
 		}
@@ -78,9 +102,14 @@ let cmd = cmdts.command({
 
 (async () => {
 	let res = await cmdts.runSafely(cmd, cliArguments());
+	let code = 0;
 	if (res._tag == "error") {
 		console.error(res.error.config.message);
+		code = res.error.config.exitCode;
 	} else {
 		console.log("cmd completed", res.value);
+	}
+	if (globalThis.onCliCompleted) {
+		globalThis.onCliCompleted(code);
 	}
 })();

@@ -1,7 +1,7 @@
 import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./filetypes";
-import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../viewer/scriptsui";
+import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../scriptrunner";
 import { FileParser, parse } from "../opdecoder";
 import { compareCacheMajors } from "./cachediff";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
