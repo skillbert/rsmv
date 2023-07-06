@@ -12,8 +12,44 @@ let similarangle = (a1: number, a2: number) => {
 	return Math.abs(d) < EPS;
 }
 
+export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect: MapRect, maplevel: number) {
+	let maplabels = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
 
-export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean) {
+	//number of tiles outside bounds to draw
+	const overdraw = 0;
+	for (let loc of locs) {
+		if (loc.x < rect.x - overdraw || loc.z < rect.z - overdraw) { continue; }
+		if (loc.x >= rect.x + rect.xsize + overdraw || loc.z >= rect.z + rect.zsize + overdraw) { continue; }
+		if (loc.effectiveLevel != maplevel) { continue; }
+
+		if (loc.location.mapFunction) {
+			let group = maplabels.get(loc.location.mapFunction);
+			if (!group) {
+				let maplabel = engine.mapMaplabels[loc.location.mapFunction];
+				if (maplabel.legacy_switch) {
+					maplabel = engine.mapMaplabels[maplabel.legacy_switch.default_ref];
+				}
+				let src = "";
+				let width = 0;
+				let height = 0;
+				if (maplabel.sprite != undefined) {
+					let spritefile = await engine.getFileById(cacheMajors.sprites, maplabel.sprite);
+					let sprite = parseSprite(spritefile);
+					src = await pixelsToDataUrl(sprite[0].img);
+					width = sprite[0].img.width;
+					height = sprite[0].img.height;
+				}
+				group = { src: src, width, height, uses: [] };
+				maplabels.set(loc.location.mapFunction, group);
+			}
+			group.uses.push({ x: loc.x - rect.x, z: loc.z - rect.z });
+		}
+	}
+
+	return [...maplabels.entries()].map(([id, q]) => ({ id, ...q }));
+}
+
+export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean, drawicons: boolean) {
 	let drawground = !wallsonly;
 	let drawwalls = true;
 	let drawmapscenes = !wallsonly;
@@ -164,8 +200,8 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 
 		if (wallsonly && loc.effectiveLevel != maplevel) { occluded = true; }
 
-		if (loc.location.mapFunction) {
-			let group = mapscenes.get(loc.location.mapFunction);
+		if (drawicons && loc.effectiveLevel == maplevel && loc.location.mapFunction) {
+			let group = maplabels.get(loc.location.mapFunction);
 			if (!group) {
 				let maplabel = engine.mapMaplabels[loc.location.mapFunction];
 				if (maplabel.legacy_switch) {

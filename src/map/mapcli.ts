@@ -40,7 +40,7 @@ let cmd = cmdts.command({
 			await fs.access(outdir);//check if we're allowed to write the outdir
 			let layerconfig = JSON.parse(configfile);
 			assertSchema(layerconfig, maprenderConfigSchema);
-			config = new MapRenderFsBacked(layerconfig, outdir);
+			config = new MapRenderFsBacked(outdir, layerconfig);
 		} else {
 			throw new Error("no map endpoint selected");
 		}

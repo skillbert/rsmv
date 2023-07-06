@@ -156,7 +156,7 @@ export const maprenderConfigSchema: JSONSchema6 = {
         layers: {
             items: {
                 properties: {
-                    mode: { type: "string", enum: ["3d", "map", "height", "collision", "locs", "rendermeta", "minimap"] },
+                    mode: { type: "string", enum: ["3d", "map", "height", "collision", "locs", "maplabels", "rendermeta", "minimap"] },
                     name: string,
                     pxpersquare: number,
                     level: number,

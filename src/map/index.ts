@@ -2,14 +2,14 @@
 import { disposeThreeTree, ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
-import { svgfloor } from "./svgrender";
+import { jsonIcons, svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, isImageEqual, maskImage, pixelsToImageFile } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
-import { CallbackPromise, delay, FetchThrottler, stringToMapArea, trickleTasks } from "../utils";
+import { CallbackPromise, delay, FetchThrottler, stringToFileRange, stringToMapArea, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
 import { ChunkLocDependencies, chunkSummary, ChunkTileDependencies, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies } from "./chunksummary";
@@ -61,13 +61,16 @@ type LayerConfig = {
 	dzdy: number
 } | {
 	mode: "map",
-	wallsonly: boolean
+	wallsonly: boolean,
+	mapicons: boolean
 } | {
 	mode: "height"
 } | {
 	mode: "collision"
 } | {
 	mode: "locs"
+} | {
+	mode: "maplabels"
 } | {
 	mode: "rendermeta"
 });
@@ -151,11 +154,11 @@ async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) 
 			];
 		}
 	} else {
-		let rect = stringToMapArea(areaArgument);
-		if (!rect) {
+		let fileranges = stringToFileRange(areaArgument);
+		if (!fileranges || fileranges.length == 0) {
 			throw new Error("map area argument did not match a preset name and did not resolve to a rectangle");
 		}
-		areas = [rect];
+		areas = fileranges.map(r => ({ x: r.start[0], z: r.start[1], xsize: r.end[0] - r.start[0] + 1, zsize: r.end[1] - r.start[1] + 1 }));
 	}
 	if (areas.length == 0) {
 		throw new Error("no map area or map name");
@@ -203,7 +206,7 @@ export abstract class MapRender {
 export class MapRenderFsBacked extends MapRender {
 	path: string;
 	copyOnSymlink = true;
-	constructor(config: Mapconfig, filepath: string) {
+	constructor(filepath: string, config: Mapconfig) {
 		super(config);
 		this.path = path.resolve(filepath);
 	}
@@ -226,8 +229,10 @@ export class MapRenderFsBacked extends MapRender {
 	async getFileResponse(name: string, version?: number) {
 		this.assertVersion(version);
 		try {
+			let ext = name.match(/\.(\w+)$/);
+			let mimetype = (ext ? ext[1] == "svg" ? "image/svg+xml" : `image/${ext[1]}` : "");
 			let file = await fs.readFile(await this.getFilePath(name));
-			return new Response(file);
+			return new Response(file, { headers: { "content-type": mimetype } });
 		} catch {
 			return new Response(null, { status: 404 });
 		}
@@ -897,7 +902,7 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 		if (!res.ok) {
 			throw new Error("image not found");
 		}
-		let mimetype = res.headers.get("content-type") ?? `image/${path.extname(f.name).slice(1)}`;
+		let mimetype = res.headers.get("content-type");
 		// imagedecoder API doesn't support svg
 		if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
 			let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
@@ -1131,7 +1136,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 						}
 					})));
 					let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
-					let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, thiscnf.wallsonly);
+					let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons);
 					return {
 						file: () => Promise.resolve(Buffer.from(svg, "utf8"))
 					};
@@ -1169,6 +1174,27 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 					//TODO what to do with classic 48x48 chunks?
 					let file = chunks[0].loaded.grid.getHeightCollisionFile(chunkx * 64, chunkz * 64, thiscnf.level, 64, 64);
 					let buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
+					if (thiscnf.usegzip) {
+						buf = zlib.gzipSync(buf);
+					}
+					return { file: () => Promise.resolve(buf) };
+				}
+			});
+		}
+		if (cnf.mode == "maplabels") {
+			let thiscnf = cnf;
+			let filename = `${thiscnf.name}/${chunkx}-${chunkz}.${cnf.usegzip ? "json.gz" : "json"}`;
+			chunktasks.push({
+				layer: thiscnf,
+				name: filename,
+				hash: recthash(singlerect),
+				datarect: singlerect,
+				async run(chunks) {
+					let rawarea = { x: chunkx * chunksize, z: chunkz * chunksize, xsize: chunksize, zsize: chunksize };
+					let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+					let iconjson = await jsonIcons(engine, locs, rawarea, thiscnf.level);
+					let textual = prettyJson(iconjson, { indent: "\t" });
+					let buf = Buffer.from(textual, "utf8");
 					if (thiscnf.usegzip) {
 						buf = zlib.gzipSync(buf);
 					}

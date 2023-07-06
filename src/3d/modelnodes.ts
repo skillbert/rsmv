@@ -10,7 +10,7 @@ import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationfram
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
 import { ModelData } from "../3d/rt7model";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
-import { svgfloor } from "../map/svgrender";
+import { jsonIcons, svgfloor } from "../map/svgrender";
 import { ThreeJsRenderer, ThreeJsSceneElement, ThreeJsSceneElementSource } from "../viewer/threejsrender";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import fetch from "node-fetch";
@@ -397,7 +397,8 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
 		let { chunks, grid, chunkSize } = await this.chunkdata;
 		let rect: MapRect = { x: this.rect.x * chunkSize, z: this.rect.z * chunkSize, xsize: this.rect.xsize * chunkSize, zsize: this.rect.zsize * chunkSize };
-		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly);
+		globalThis.qq = () => jsonIcons(this.cache.engine, chunks.flatMap(q => q.locs), rect, level);
+		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly, false);
 	}
 
 	getSceneElements(): ThreeJsSceneElement {
