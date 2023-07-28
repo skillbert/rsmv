@@ -7,7 +7,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { ModelMeshData, ModelData } from "./rt7model";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, ParsedMaterial, applyMaterial } from "./modeltothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, applyMaterial } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
@@ -27,6 +27,9 @@ export const classicChunkSize = 48;
 export const squareLevels = 4;//TODO get rid of this and use grid.levels instead
 export const worldStride = 128;
 const heightScale = 1 / 16;
+
+//TODO find out which prop the client uses to detect water materials
+const watermaterials = [2118, 1135, 2157, 2155, 38, 6986];
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
@@ -363,9 +366,9 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 		newmesh.materialId = (newmat == (1 << 16) - 1 ? -1 : newmat);
 	}
 
+	let clonedcolors: BufferAttribute | undefined = undefined;
 	if (mods.replaceColors && mods.replaceColors.length != 0 && mesh.attributes.color) {
 		let colors = mesh.attributes.color;
-		let clonedcolors: BufferAttribute | undefined = undefined;
 
 		let map: [number, [number, number, number]][] = [];
 		for (let repl of mods.replaceColors) {
@@ -386,13 +389,24 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 				}
 			}
 		}
-		if (clonedcolors) {
-			newmesh.attributes = {
-				...mesh.attributes,
-				color: clonedcolors
-			}
+	}
+	// if (typeof mods.brightness == "number" && mods.brightness != 1 && mesh.attributes.color) {
+	// 	let colors = mesh.attributes.color;
+	// 	if (!clonedcolors) {
+	// 		clonedcolors = colors.clone();
+	// 	}
+	// 	const scale = mods.brightness;
+	// 	for (let i = 0; i < colors.count; i++) {
+	// 		clonedcolors.setXYZ(i, clonedcolors.getX(i) * scale, clonedcolors.getY(i) * scale, clonedcolors.getZ(i) * scale);
+	// 	}
+	// }
+	if (clonedcolors) {
+		newmesh.attributes = {
+			...mesh.attributes,
+			color: clonedcolors
 		}
 	}
+
 	return newmesh;
 }
 
@@ -740,7 +754,7 @@ export class TileGrid implements TileGridSource {
 						//not sure what the 1=0 thing is about, but seems correct for trees
 						height += (tile.height == 1 ? 0 : tile.height);
 					} else {
-						//TODO this is a guess that sort of fits
+						//TODO there is much much more to this, probably similar to the classic code
 						height += 30;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
@@ -920,21 +934,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 	return { skybox, fogColor, skyboxModelid };
 }
 
-export async function mapsquareModels(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
-	let floors = await mapsquareFloors(scene, grid, chunk, opts);
-	let models = mapsquareObjectModels(scene.engine, chunk.locs);
-	let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(scene.engine, grid, chunk.locs));
-	let r: ChunkModelData = {
-		chunk,
-		floors,
-		models,
-		grid,
-		overlays
-	}
-	return r;
-}
-
-async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
+export async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, opts?: ParsemapOpts) {
 	let floors: FloorMeshData[] = [];
 	let matids = grid.gatherMaterials(chunk.tilerect.x, chunk.tilerect.z, chunk.tilerect.xsize + 1, chunk.tilerect.zsize + 1);
 	let textures = new Map<number, { tex: CanvasImage, repeat: number }>();
@@ -963,40 +963,43 @@ async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, chunk: 
 	}
 
 	for (let level = 0; level < squareLevels; level++) {
-		floors.push(mapsquareMesh(grid, chunk, level, atlas, false, true, false));
+		floors.push(mapsquareMesh(grid, chunk, level, atlas, true, "default"));
 		if (opts?.map2d) {
-			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, false, true));
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "worldmap"));
 		}
 		if (opts?.invisibleLayers) {
-			floors.push(mapsquareMesh(grid, chunk, level, atlas, true));
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "wireframe"));
+		}
+		if (opts?.minimap) {
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "minimap"));
 		}
 	}
 	return floors
 }
 
-export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkModelData, placedlocs: PlacedModel[]) {
-	let rootx = chunk.chunk.tilerect.x * tiledimensions;
-	let rootz = chunk.chunk.tilerect.z * tiledimensions;
+export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, floordatas: FloorMeshData[], placedlocs: PlacedModel[]) {
+	let rootx = chunk.tilerect.x * tiledimensions;
+	let rootz = chunk.tilerect.z * tiledimensions;
 
 	let node = new THREE.Group();
 	node.matrixAutoUpdate = false;
 	node.position.set(rootx, 0, rootz);
 	node.updateMatrix();
 
-	if (placedlocs.length != 0) { node.add(...await Promise.all(placedlocs.map(q => meshgroupsToThree(scene, grid, q, rootx, rootz)))); }
-	let chunkoverlays = await Promise.all(chunk.overlays.filter(q => q.models.length != 0).map(q => meshgroupsToThree(scene, grid, q, rootx, rootz)));
-	if (chunkoverlays.length != 0) { node.add(...chunkoverlays); }
+	if (placedlocs.length != 0) {
+		node.add(...await Promise.all(placedlocs.map(q => meshgroupsToThree(scene, grid, q, rootx, rootz))));
+	}
 
-	let floors = (await Promise.all(chunk.floors.map(f => floorToThree(scene, f)))).filter(q => q) as any;
+	let floors = (await Promise.all(floordatas.map(f => floorToThree(scene, f)))).filter(q => q) as any;
 	if (floors.length != 0) { node.add(...floors); }
 
 	for (let level = 0; level < squareLevels; level++) {
-		let boxes = mapsquareCollisionToThree(chunk, level);
+		let boxes = mapsquareCollisionToThree(grid, chunk, level);
 		if (boxes) { node.add(boxes); }
-		let rawboxes = mapsquareCollisionToThree(chunk, level, true);
+		let rawboxes = mapsquareCollisionToThree(grid, chunk, level, true);
 		if (rawboxes) { node.add(rawboxes); }
 	}
-	node.name = `mapsquare ${chunk.chunk.mapsquarex},${chunk.chunk.mapsquarez}`;
+	node.name = `mapsquare ${chunk.mapsquarex}.${chunk.mapsquarez}`;
 	return node;
 }
 
@@ -1098,10 +1101,11 @@ export type PlacedMeshBase<T> = {
 
 export type PlacedMesh = PlacedMeshBase<ModelExtrasLocation> | PlacedMeshBase<ModelExtrasOverlay>;
 
-type PlacedModel = {
+export type PlacedModel = {
 	models: PlacedMesh[],
 	materialId: number,
 	hasVertexAlpha: boolean,
+	textureAlphaMask: boolean,//only texture alpha is clamped! fragment can still have blended vertex alpha, used for minimap
 	overlayIndex: number,
 	groupid: string
 }
@@ -1144,7 +1148,7 @@ export async function resolveMorphedObject(source: EngineCache, id: number) {
 	}
 }
 
-async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: WorldLocation[]) {
+export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: WorldLocation[]) {
 	let mat = new THREE.MeshBasicMaterial();
 	mat.transparent = true;
 	mat.depthTest = false;
@@ -1152,6 +1156,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 		let wallgroup: PlacedModel = {
 			models: [],
 			groupid: "walls" + level,
+			textureAlphaMask: false,
 			hasVertexAlpha: false,
 			materialId: 0,
 			overlayIndex: 1
@@ -1204,6 +1209,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 			groupid: "mapscenes" + loc.effectiveLevel,
 			hasVertexAlpha: false,
 			materialId: 0,
+			textureAlphaMask: false,
 			// material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
 			models: [],
 			overlayIndex: 2
@@ -1267,7 +1273,7 @@ async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, locs: Worl
 	return floors.flatMap(f => [f.wallgroup, ...f.mapscenes.values()]);
 }
 
-function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
+export function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[], minimap = false) {
 	type CachedLoc = {
 		translate: THREE.Vector3,
 		rotate: THREE.Quaternion,
@@ -1283,10 +1289,13 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 		let model = modelcache.get(inst.locid);
 		let locmodels: MapsquareLocation["models"] = [];
 		let objectmeta = inst.location;
+		let isGroundDecor = inst.type == 22 && !objectmeta.unknown_49;
+		if (isGroundDecor && minimap) { continue; }
 		if (!model) {
 			let modelmods: ModelModifications = {
 				replaceColors: objectmeta.color_replacements ?? undefined,
-				replaceMaterials: objectmeta.material_replacements ?? undefined
+				replaceMaterials: objectmeta.material_replacements ?? undefined,
+				// brightness: (minimap ? (objectmeta.ambient ?? 0) / 50 : 1)//replicating rs3 bug, no default brightness
 			};
 			if (cache.getBuildNr() > lastClassicBuildnr && cache.getBuildNr() < 377) {
 				//old caches just use one prop to replace both somehow
@@ -1330,6 +1339,7 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 		}
 		if (model.mirrored) { scale.z *= -1; }
 		translate.add(new Vector3(originx, 0, originz));
+		if (minimap) { translate.y -= 0.2 * tiledimensions; }
 
 		if (inst.placement) {
 			translate.add(new Vector3().set(
@@ -1373,13 +1383,13 @@ function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[]) {
 		let extras: ModelExtrasLocation = {
 			modeltype: "location",
 			isclickable: false,
-			modelgroup: "objects" + inst.visualLevel,
+			modelgroup: (minimap ? "mini_objects" : "objects") + inst.visualLevel,
 			locationid: inst.locid,
 			worldx: inst.x,
 			worldz: inst.z,
 			rotation: inst.rotation,
 			mirror: !!objectmeta.mirror,
-			isGroundDecor: inst.type == 22 && !objectmeta.unknown_49,
+			isGroundDecor,
 			level: inst.visualLevel,
 			locationInstance: inst
 		};
@@ -1598,8 +1608,8 @@ export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, loca
 	return locs;
 }
 
-function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number, rawmode = false) {
-	const maxtriangles = chunk.tilerect.xsize * chunk.tilerect.zsize * 5 * 6 * 2;
+function mapsquareCollisionMesh(grid: TileGrid, tilerect: MapRect, level: number, rawmode = false) {
+	const maxtriangles = tilerect.xsize * tilerect.zsize * 5 * 6 * 2;
 	let posoffset = 0;
 	let coloroffset = 12;
 	let stride = 16;
@@ -1611,8 +1621,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 	let posbuffer = new Float32Array(buf);
 	let colorbuffer = new Uint8Array(buf);
 
-	let rootx = chunk.tilerect.x * tiledimensions;
-	let rootz = chunk.tilerect.z * tiledimensions;
+	let rootx = tilerect.x * tiledimensions;
+	let rootz = tilerect.z * tiledimensions;
 
 	let vertexindex = 0;
 	let indexpointer = 0;
@@ -1662,8 +1672,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 		indexbuf[indexpointer++] = v100; indexbuf[indexpointer++] = v111; indexbuf[indexpointer++] = v110;
 		indexbuf[indexpointer++] = v100; indexbuf[indexpointer++] = v101; indexbuf[indexpointer++] = v111;
 	}
-	for (let z = chunk.tilerect.z; z < chunk.tilerect.z + chunk.tilerect.zsize; z++) {
-		for (let x = chunk.tilerect.x; x < chunk.tilerect.x + chunk.tilerect.xsize; x++) {
+	for (let z = tilerect.z; z < tilerect.z + tilerect.zsize; z++) {
+		for (let x = tilerect.x; x < tilerect.x + tilerect.xsize; x++) {
 			let tile = grid.getTile(x, z, level);
 			let collision = (rawmode ? tile?.rawCollision : tile?.effectiveCollision);
 			if (tile && collision) {
@@ -1725,8 +1735,8 @@ function mapsquareCollisionMesh(grid: TileGrid, chunk: ChunkData, level: number,
 	}
 }
 
-function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number, rawmode = false) {
-	let { color, indices, pos, coloroffset, colorstride, posoffset, posstride, extra } = mapsquareCollisionMesh(modeldata.grid, modeldata.chunk, level, rawmode);
+function mapsquareCollisionToThree(grid: TileGrid, chunk: ChunkData, level: number, rawmode = false) {
+	let { color, indices, pos, coloroffset, colorstride, posoffset, posstride, extra } = mapsquareCollisionMesh(grid, chunk.tilerect, level, rawmode);
 
 	if (indices.length == 0) { return undefined; }
 	let geo = new THREE.BufferGeometry();
@@ -1739,11 +1749,11 @@ function mapsquareCollisionToThree(modeldata: ChunkModelData, level: number, raw
 	mat.vertexColors = true;
 	let model = new THREE.Mesh(geo, mat);
 	model.userData = extra;
-	model.name = `${rawmode ? "raw " : ""}collision ${modeldata.chunk.mapsquarex},${modeldata.chunk.mapsquarez} (${level})`;
+	model.name = `${rawmode ? "raw " : ""}collision ${chunk.mapsquarex},${chunk.mapsquarez} (${level})`;
 	return model;
 }
 
-export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: MapsquareLocation[]) {
+export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: MapsquareLocation[], minimap = false) {
 	let loadedmodels = new Map<number, ModelData>();
 
 	let matmeshes: Map<string, Map<number, PlacedModel>> = new Map();
@@ -1773,7 +1783,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 			let model = loadedmodels.get(modelinst.model)!;
 			for (let rawmesh of model.meshes) {
 				let modified = modifyMesh(rawmesh, obj.mods);
-				let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha);
+				let matkey = materialCacheKey(modified.materialId, modified.hasVertexAlpha, minimap);
 				let group = matmeshes.get(obj.extras.modelgroup);
 				if (!group) {
 					group = new Map();
@@ -1784,6 +1794,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 					matgroup = {
 						materialId: modified.materialId,
 						hasVertexAlpha: modified.hasVertexAlpha,
+						textureAlphaMask: minimap,
 						models: [],
 						groupid: obj.extras.modelgroup,
 						overlayIndex: 0
@@ -1831,7 +1842,7 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 	});
 	let mergedgeo = mergeBufferGeometries(geos);
 	let mesh = new THREE.Mesh(mergedgeo);
-	let material = await scene.getMaterial(meshgroup.materialId, meshgroup.hasVertexAlpha);
+	let material = await scene.getMaterial(meshgroup.materialId, meshgroup.hasVertexAlpha, meshgroup.textureAlphaMask);
 	applyMaterial(mesh, material);
 
 	let count = 0;
@@ -1858,7 +1869,11 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 }
 
 
-function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, showhidden: boolean, keeptileinfo = false, worldmap = false) {
+function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, keeptileinfo = false, mode: "default" | "wireframe" | "minimap" | "worldmap" = "default") {
+	const showhidden = mode == "wireframe";
+	const worldmap = mode == "worldmap";
+	const isMinimap = mode == "minimap";
+
 	const maxtiles = chunk.tilerect.xsize * chunk.tilerect.zsize * grid.levels;
 	const maxVerticesPerTile = 8;
 	//TODO can be compacted since we got rid of uv3
@@ -2013,7 +2028,8 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 					}
 					if (isvisible || showhidden) {
 						let props: TileVertex[];
-						if (!worldmap) {
+						let isminimapwater = isMinimap && overlaytype.material != null && watermaterials.includes(overlaytype.material);
+						if (!worldmap && !isminimapwater) {
 							props = shape.overlay.map(vertex => {
 								if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
 								else {
@@ -2026,6 +2042,12 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 								return defaultVertexProp;
 							});
 						} else {
+							if (isminimapwater) {
+								//minimap renders everything in "srgb" (gamma=2.0) except for the water which is rendered in linear
+								//and therefor appears to dark, precompensate that here since we're doing single shot rendering
+								const gamma = 2.2;
+								color = [Math.pow(color[0] / 255, gamma) * 255, Math.pow(color[1] / 255, gamma) * 255, Math.pow(color[2] / 255, gamma) * 255]
+							}
 							props = Array<TileVertex>(shape.overlay.length).fill({
 								color,
 								material: 0,
@@ -2084,7 +2106,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 	}
 
 	let extra: ModelExtras = {
-		modelgroup: (showhidden ? "floorhidden" : worldmap ? "map" : "floor") + level,
+		modelgroup: (mode == "wireframe" ? "floorhidden" : mode == "worldmap" ? "map" : mode == "minimap" ? "mini_floor" : "floor") + level,
 		modeltype: (showhidden ? "floorhidden" : "floor"),
 		mapsquarex: chunk.mapsquarex,
 		mapsquarez: chunk.mapsquarez,
@@ -2108,9 +2130,8 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 	return {
 		chunk,
 		level,
-		showhidden,
 		tileinfos,
-		worldmap,
+		mode,
 
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
@@ -2154,28 +2175,27 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	geo.setAttribute("texcoord_2", makeAttribute(floor._RA_FLOORTEX_UV2));
 	geo.setAttribute("color_1", makeAttribute(floor._RA_FLOORTEX_WEIGHTS));
 	geo.setAttribute("color_2", makeAttribute(floor._RA_FLOORTEX_USESCOLOR));
-	let mat = (!floor.worldmap ? new THREE.MeshPhongMaterial({ shininess: 0 }) : new THREE.MeshBasicMaterial());
+	let mat = (floor.mode != "worldmap" ? new THREE.MeshPhongMaterial({ shininess: 0 }) : new THREE.MeshBasicMaterial());
 	mat.vertexColors = true;
-	if (!floor.showhidden) {
-		if (!floor.worldmap) {
-			augmentThreeJsFloorMaterial(mat, false);
-			let img = floor.atlas.convert();
-
-			//no clue why this doesn't work
-			// mat.map = new THREE.Texture(img);
-			// globalThis.bug = mat.map;
-			let data = img.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, img.width, img.height);
-			mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
-
-			mat.map.magFilter = THREE.LinearFilter;
-			mat.map.minFilter = THREE.LinearMipMapNearestFilter;
-			mat.map.generateMipmaps = true;
-			mat.map.encoding = THREE.sRGBEncoding;
-			mat.map.needsUpdate = true;
-		}
-	} else {
+	if (floor.mode == "wireframe") {
 		mat.wireframe = true;
+	} else if (floor.mode != "worldmap") {
+		augmentThreeJsFloorMaterial(mat, floor.mode == "minimap");
+		let img = floor.atlas.convert();
+
+		//no clue why this doesn't work
+		// mat.map = new THREE.Texture(img);
+		// globalThis.bug = mat.map;
+		let data = img.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, img.width, img.height);
+		mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
+
+		mat.map.magFilter = THREE.LinearFilter;
+		mat.map.minFilter = THREE.LinearMipMapNearestFilter;
+		mat.map.generateMipmaps = true;
+		mat.map.encoding = THREE.sRGBEncoding;
+		mat.map.needsUpdate = true;
 	}
+
 	let model = new THREE.Mesh(geo, mat);
 	model.userData = floor.extra;
 	model.name = `floor ${floor.chunk.mapsquarex},${floor.chunk.mapsquarez} (${floor.level})`;

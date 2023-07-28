@@ -60,6 +60,38 @@ export type ParsedMaterial = {
 	matmeta: MaterialData
 }
 
+export function augmentThreeJsMinimapLocMaterial(mat: THREE.Material) {
+	mat.customProgramCacheKey = () => "minimaploc";
+	mat.onBeforeCompile = (shader, renderer) => {
+		shader.fragmentShader = shader.fragmentShader
+			.replace("#include <map_fragment>",
+				`#ifdef USE_MAP\n`
+				+ `vec4 sampledDiffuseColor = texture2D( map, vUv );\n`
+				+ `#ifdef DECODE_VIDEO_TEXTURE\n`
+				+ `sampledDiffuseColor = vec4( mix( pow( sampledDiffuseColor.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ), sampledDiffuseColor.rgb * 0.0773993808, vec3( lessThanEqual( sampledDiffuseColor.rgb, vec3( 0.04045 ) ) ) ), sampledDiffuseColor.w );\n`
+				+ `#endif\n`
+				+ `sampledDiffuseColor.a = step( 0.01, sampledDiffuseColor.a);\n`
+				// + `sampledDiffuseColor.rgb *= 0.1;\n`
+				// + `sampledDiffuseColor.rgb = pow(sampledDiffuseColor.rgb,vec3(2.2));\n`
+				+ `diffuseColor *= sampledDiffuseColor;\n`
+				+ `#endif\n`
+			)
+			.replace("#include <color_fragment>",
+				`#if defined( USE_COLOR_ALPHA ) || defined( USE_COLOR )\n`
+				+ `vec3 srgbVColor = pow(vColor.rgb,vec3(1.0/2.4));\n`//convert vertex color from linear to srgb
+				+ `#if defined( USE_COLOR_ALPHA )\n`
+				+ `diffuseColor *= vec4(srgbVColor,vColor.a);\n`
+				+ `#elif defined( USE_COLOR )\n`
+				+ `diffuseColor.rgb *= srgbVColor;\n`
+				+ `#endif\n`
+				+ `#endif\n`
+			)
+			.replace("#include <encodings_fragment>",
+				"\n"
+			);
+	}
+}
+
 export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: boolean) {
 	mat.customProgramCacheKey = () => (isminimap ? "minimaptex" : "floortex");
 	mat.onBeforeCompile = (shader, renderer) => {
@@ -104,7 +136,7 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 						`   v_ra_floortex_weights.r * mix(texture2D( map, v_ra_floortex_0 ), diffuseColor * 0.5, v_ra_floortex_usescolor.r)\n`
 						+ ` + v_ra_floortex_weights.g * mix(texture2D( map, v_ra_floortex_1 ), diffuseColor * 0.5, v_ra_floortex_usescolor.g)\n`
 						+ ` + v_ra_floortex_weights.b * mix(texture2D( map, v_ra_floortex_2 ), diffuseColor * 0.5, v_ra_floortex_usescolor.b);\n`
-						+ `texelColor = texelColor * 10.0;\n`
+						// + "texelColor.rgb = sqrt( texelColor.rgb );\n"
 						:
 						`   texture2D( map, v_ra_floortex_0 ) * v_ra_floortex_weights.r * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.r)\n`
 						+ ` + texture2D( map, v_ra_floortex_1 ) * v_ra_floortex_weights.g * mix(vec4(1.0), diffuseColor, v_ra_floortex_usescolor.g)\n`
@@ -115,6 +147,25 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 					+ `#endif\n`
 					+ `diffuseColor = texelColor;\n`
 				);
+		if (isminimap) {
+			shader.fragmentShader = shader.fragmentShader
+				.replace("#include <encodings_fragment>",
+					"gl_FragColor.rgb = pow(gl_FragColor.rgb,vec3(1.0/2.4));\n"//don't blame me for this, this is literally how the minimap is rendered
+				)
+				// .replace("#include <color_fragment>",
+				// 	`#if defined( USE_COLOR_ALPHA ) || defined( USE_COLOR )\n`
+				// 	+ `vec3 srgbVColor = pow(vColor.rgb,vec3(1.0/2.4));\n`//convert vertex color from linear to srgb
+				// 	+ `#if defined( USE_COLOR_ALPHA )\n`
+				// 	+ `diffuseColor *= vec4(srgbVColor,vColor.a);\n`
+				// 	+ `#elif defined( USE_COLOR )\n`
+				// 	+ `diffuseColor.rgb *= srgbVColor;\n`
+				// 	+ `#endif\n`
+				// 	+ `#endif\n`
+				// )
+				// .replace("#include <encodings_fragment>",
+				// 	"\n"
+				// );
+		}
 	}
 }
 
@@ -356,7 +407,7 @@ export async function detectTextureMode(source: CacheFileSource) {
 	return textureMode;
 }
 
-async function convertMaterialToThree(source: ThreejsSceneCache, material: MaterialData, hasVertexAlpha: boolean) {
+async function convertMaterialToThree(source: ThreejsSceneCache, material: MaterialData, hasVertexAlpha: boolean, minimapVariant: boolean) {
 	// let mat = new THREE.MeshPhongMaterial();
 	// mat.shininess = 0;
 	let mat = new THREE.MeshStandardMaterial();
@@ -439,6 +490,9 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 		(mat.userData.gltfExtensions ??= {}).RA_materials_uvanim = {
 			uvAnim: [material.uvAnim.u, material.uvAnim.v]
 		};
+	}
+	if (minimapVariant) {
+		augmentThreeJsMinimapLocMaterial(mat);
 	}
 
 	return { mat, matmeta: material };
@@ -575,12 +629,12 @@ export class ThreejsSceneCache {
 		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 	}
 
-	getMaterial(matid: number, hasVertexAlpha: boolean) {
+	getMaterial(matid: number, hasVertexAlpha: boolean, textureAlphaMask: boolean) {
 		//TODO the material should have this data, not the mesh
-		let matcacheid = materialCacheKey(matid, hasVertexAlpha);
+		let matcacheid = materialCacheKey(matid, hasVertexAlpha, textureAlphaMask);
 		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
 			let material = this.engine.getMaterialData(matid);
-			return convertMaterialToThree(this, material, hasVertexAlpha);
+			return convertMaterialToThree(this, material, hasVertexAlpha, textureAlphaMask);
 		}, mat => 256 * 256 * 4 * 2);
 	}
 }
@@ -758,7 +812,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		} else {
 			mesh = new THREE.Mesh(geo);
 		}
-		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha));
+		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha, false));
 		// mesh.geometry.computeVertexNormals();//TODO remove, only used for classic models atm
 		rootnode.add(mesh);
 	}

@@ -1,10 +1,10 @@
 import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds, augmentThreeJsFloorMaterial } from '../3d/modeltothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds, augmentThreeJsFloorMaterial, augmentThreeJsMinimapLocMaterial } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareModels, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize, tiledimensions, ModelExtras } from '../3d/mapsquare';
+import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize, tiledimensions, ModelExtras, mapsquareFloors, mapsquareObjectModels, mapsquareOverlays, PlacedModel } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
@@ -365,7 +365,6 @@ export type RSMapChunkData = {
 	chunkSize: number,
 	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
-	generatedMinimap: boolean,
 	modeldata: PlacedMesh[][],
 	chunkmodels: Group[],
 	rect: MapRect
@@ -422,60 +421,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		// this.renderscene?.setCameraLimits();//TODO fix this, current bounding box calc is too large
 	}
 
-	generateMinimap() {
-		if (!this.loaded) { throw new Error("model not loaded yet"); }
-		if (this.loaded.generatedMinimap) { return; }
-		this.rootnode.traverse(child => {
-			if (child instanceof THREE.Mesh) {
-				let extra = child.userData as ModelExtras | undefined;
-				let cloned: Mesh | null = null;
-				if (extra?.modeltype == "location" || extra?.modeltype == "locationgroup") {
-					cloned = child.clone();
-					cloned.position.y -= 0.2 * tiledimensions;
-					cloned.updateMatrix();
-					cloned.updateMatrixWorld();
-
-					if (extra.modeltype == "location" && extra.isGroundDecor) {
-						cloned = null;
-					} else if (extra.modeltype == "locationgroup") {
-						let geo = cloned.geometry.clone();
-						let indexclone = geo.index!.clone();
-						let original = geo.index!.array as any as Float32Array;
-						let array = indexclone.array as any as Float32Array;
-						let pos = 0;
-						for (let i = 0; i < extra.subranges.length; i++) {
-							let startpos = extra.subranges[i];
-							let endpos = (i + 1 >= extra.subranges.length ? original.length : extra.subranges[i + 1]);
-							let obj = extra.subobjects[i];
-							if (obj.modeltype == "location" && !obj.isGroundDecor) {
-								array.set(original.slice(startpos, endpos), pos);
-								pos += endpos - startpos
-							}
-						}
-						geo.setDrawRange(0, pos);
-						geo.setIndex(indexclone);
-						if (pos == 0) {
-							cloned = null;
-						}
-					}
-
-				}
-				if (extra?.modeltype == "floor") {
-					cloned = child.clone();
-					cloned.material = (cloned.material as Material).clone();
-					augmentThreeJsFloorMaterial(cloned.material, true);
-				}
-				if (extra && cloned) {
-					let modelgroup = `mini_${extra.modelgroup}`;
-					cloned.userData = { ...extra, modelgroup } satisfies ModelExtras;
-					this.loaded!.groups.add(modelgroup);
-					child.parent!.add(cloned);
-				}
-			}
-		});
-		this.emit("changed", undefined);
-	}
-
 	setToggles(toggles: Record<string, boolean>) {
 		this.toggles = toggles;
 		this.rootnode.traverse(node => {
@@ -498,10 +443,18 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
 			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
 			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
-				let chunk = await mapsquareModels(cache, grid, chunkdata, opts);
-				let locmeshes = await generateLocationMeshgroups(cache, chunk.models);
-				let group = await mapsquareToThreeSingle(this.cache, grid, chunk, locmeshes.byMaterial);
-				return { locmeshes, group, chunk };
+				let floors = await mapsquareFloors(cache, grid, chunkdata, opts);
+				let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(cache.engine, grid, chunkdata.locs));
+				let models = mapsquareObjectModels(cache.engine, chunkdata.locs);
+				let locmeshes = await generateLocationMeshgroups(cache, models);
+				let allmeshes = [...locmeshes.byMaterial, ...overlays];
+				if (opts.minimap) {
+					let minimodels = mapsquareObjectModels(cache.engine, chunkdata.locs, true);
+					let minimeshes = await generateLocationMeshgroups(cache, minimodels, true);
+					allmeshes.push(...minimeshes.byMaterial);
+				}
+				let group = await mapsquareToThreeSingle(this.cache, grid, chunkdata, floors, allmeshes);
+				return { locmeshes, group };
 			}));
 			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
 
@@ -536,10 +489,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 
 			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
 			let chunkmodels = processedChunks.map(q => q.group);
-			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize, rect, generatedMinimap: false };
-			if (extraopts?.minimap) {
-				this.generateMinimap();
-			}
+			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize, rect };
 			this.onModelLoaded();
 			return this.loaded;
 		})();

@@ -37,7 +37,7 @@
 	"0x18": { "name":                  "probably_animation", "read": "variable unsigned int" },
 	"0x1B": { "name":               "maybe_blocks_movement", "read": "true" },
 	"0x1C": { "name":                  "wallkit_related_1C", "read": "unsigned byte" },
-	"0x1D": { "name":                             "ambient", "read": "byte" },
+	"0x1D": { "name":                             "ambient", "read": "ubyte" },
 	"0x1E": { "name":                           "actions_0", "read": "string" },
 	"0x1F": { "name":                           "actions_1", "read": "string" },
 	"0x20": { "name":                           "actions_2", "read": "string" },

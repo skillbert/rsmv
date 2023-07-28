@@ -170,11 +170,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		//minimap lights
 		this.minimapLights = new Group();
-		let minidirlight = new THREE.DirectionalLight(0xffffff, 0.1);
-		minidirlight.position.set(-1, 1, 1);
-		this.minimapLights.add(minidirlight);
-		this.minimapLights.add(new THREE.AmbientLight(0xffffff, 0.05))
+		let minidirlight = new THREE.DirectionalLight(new THREE.Color().setRGB(0.8666666746139526, 0.8078431487083435, 0.7333333492279053), 2);
+		minidirlight.position.set(-0.5391638875007629, 0.6469966173171997, 0.5391638875007629);
+		minidirlight.color.convertSRGBToLinear();
+		let minimapambientlight = new THREE.AmbientLight(new THREE.Color(0.6059895753860474, 0.5648590922355652, 0.5127604007720947), 2);
+		minimapambientlight.color.convertSRGBToLinear()
 		this.minimapLights.visible = false;
+		this.minimapLights.add(minidirlight);
+		this.minimapLights.add(minimapambientlight);
 		scene.add(this.minimapLights);
 
 		this.scene.fog = new THREE.Fog("#FFFFFF", 10000, 10000);
@@ -182,9 +185,18 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.sceneElementsChanged();
 	}
 
-
+	getCurrent2dCamera() {
+		if (this.camMode == "standard") {
+			return this.getStandardCamera();
+		} else if (this.camMode == "item") {
+			return this.getItemCamera();
+		} else if (this.camMode == "topdown") {
+			return this.getTopdownCamera();
+		}
+		return null;
+	}
 	getStandardCamera() {
-		return this.camera as any;
+		return this.camera;
 	}
 	getVr360Camera() {
 		if (!this.vr360cam) {
@@ -301,6 +313,28 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.forceFrame();
 	}
 
+	minimapCam(size = 128) {
+		//TODO turn this into propper code
+		this.orthoControls.minAzimuthAngle = this.orthoControls.maxAzimuthAngle = 0;
+		this.orthoControls.minPolarAngle = this.orthoControls.maxPolarAngle = 0;
+
+		// let width = this.canvas.width / 8;
+		// let height = this.canvas.height / 8;
+		let width = size;
+		let height = size;
+
+		this.topdowncam.zoom = 1;
+		this.topdowncam.left = -width / 2;
+		this.topdowncam.right = width / 2;
+		this.topdowncam.top = height / 2;
+		this.topdowncam.bottom = -height / 2;
+		this.topdowncam.updateProjectionMatrix();
+		
+		this.minimapLights.visible = true;
+		this.standardLights.visible = false;
+		this.forceFrame();
+	}
+
 	resizeRendererToDisplaySize() {
 		const canvas = this.renderer.domElement;
 		if (!canvas.isConnected) { return; }
@@ -313,12 +347,19 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		const needResize = canvas.width !== width || canvas.height !== height;
 		if (needResize) {
 			this.renderer.setSize(width, height, false);
-			let camscaling = width / height * (this.topdowncam.top - this.topdowncam.bottom) / (this.topdowncam.right - this.topdowncam.left);
-			this.topdowncam.left *= camscaling;
-			this.topdowncam.right *= camscaling;
-			this.topdowncam.updateProjectionMatrix();
+			this.resizeViewToRendererSize();
 		}
 		return needResize;
+	}
+
+	resizeViewToRendererSize() {
+		let rendertarget = this.renderer.getRenderTarget();
+		let width = rendertarget?.width ?? this.canvas.width;
+		let height = rendertarget?.height ?? this.canvas.height;
+		let camscaling = width / height * (this.topdowncam.top - this.topdowncam.bottom) / (this.topdowncam.right - this.topdowncam.left);
+		this.topdowncam.left *= camscaling;
+		this.topdowncam.right *= camscaling;
+		this.topdowncam.updateProjectionMatrix();
 	}
 
 	@boundMethod
@@ -370,17 +411,13 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		if (cam) {
 			this.renderScene(cam);
-		} else if (this.camMode == "standard") {
-			this.renderScene(this.getStandardCamera());
-		} else if (this.camMode == "item") {
-			this.renderScene(this.getItemCamera());
-		} else if (this.camMode == "topdown") {
-			this.renderScene(this.getTopdownCamera());
-		} else {
+		} else if (this.camMode == "vr360") {
 			let cam = this.getVr360Camera();
 			this.renderCube(cam);
 			this.renderer.clearColor();
 			cam.render(this.renderer);
+		} else {
+			this.renderScene(this.getCurrent2dCamera()!);
 		}
 		if (this.autoFrameMode == "continuous") {
 			this.forceFrame();
@@ -447,8 +484,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		await this.guaranteeGlCalls(() => {
 			let oldtarget = this.renderer.getRenderTarget();
 			this.renderer.setRenderTarget(rendertarget);
+			this.resizeViewToRendererSize();
 			if (this.camMode != "vr360") {
-				this.renderScene(this.camera);
+				let cam = this.getCurrent2dCamera()!;
+				this.renderScene(cam);
 			} else {
 				let vrcam = new VR360Render(this.renderer, (width > 2000 ? 2048 : 1024), 0.1, 1000);
 				this.camera.add(vrcam.cubeCamera);
@@ -458,6 +497,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				vrcam.cubeCamera.removeFromParent();
 			}
 			this.renderer.setRenderTarget(oldtarget);
+			this.resizeViewToRendererSize();
 		});
 		let buf = new Uint8Array(width * height * 4);//node-gl doesn't accept clamped
 		if (rendertarget) {
@@ -476,8 +516,12 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.renderer.setSize(framesizex, framesizey);
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
-			this.minimapLights.visible = lights == "minimap";
-			this.standardLights.visible = lights == "standard";
+			if (lights == "minimap") {
+				//TODO revert this and make a proper system for it
+				this.renderer.outputEncoding = THREE.LinearEncoding;
+				this.minimapLights.visible = true;
+				this.standardLights.visible = false;
+			}
 			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);

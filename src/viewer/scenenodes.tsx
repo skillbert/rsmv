@@ -1034,6 +1034,10 @@ const exportimgsizes: ExportImgSize[] = [
 	{ w: 0, h: 0, mode: "vr360", name: "View" },
 	{ w: 2048, h: 1024, mode: "vr360", name: "2:1K" },
 	{ w: 4096, h: 2048, mode: "vr360", name: "4:2K" },
+	{ w: 0, h: 0, mode: "topdown", name: "View" },
+	{ w: 512, h: 512, mode: "topdown", name: "" },
+	{ w: 1024, h: 1024, mode: "topdown", name: "" },
+	{ w: 2048, h: 2048, mode: "topdown", name: "" },
 ]
 
 function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneElement["options"] }) {
@@ -1663,12 +1667,13 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		const renderer = this.props.ctx?.renderer;
 		if (!sceneCache || !renderer) { return; }
 
-		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true });
+		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true, minimap: true });
 		chunk.on("changed", () => {
 			let toggles = this.state.toggles;
 			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 				if (typeof toggles[q] != "boolean") {
-					toggles[q] = !q.match(/^(floorhidden|collision|walls|map|mapscenes)/);
+					// toggles[q] = !!q.match(/^(floor|objects)\d+/);
+					toggles[q] = !!q.match(/^mini_(floor|objects)0/);
 				}
 			});
 			this.setState({ toggles });
