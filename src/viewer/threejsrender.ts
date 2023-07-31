@@ -172,9 +172,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.minimapLights = new Group();
 		let minidirlight = new THREE.DirectionalLight(new THREE.Color().setRGB(0.8666666746139526, 0.8078431487083435, 0.7333333492279053), 2);
 		minidirlight.position.set(-0.5391638875007629, 0.6469966173171997, 0.5391638875007629);
-		minidirlight.color.convertSRGBToLinear();
+		// minidirlight.color.convertSRGBToLinear();
 		let minimapambientlight = new THREE.AmbientLight(new THREE.Color(0.6059895753860474, 0.5648590922355652, 0.5127604007720947), 2);
-		minimapambientlight.color.convertSRGBToLinear()
+		// minimapambientlight.color.convertSRGBToLinear()
 		this.minimapLights.visible = false;
 		this.minimapLights.add(minidirlight);
 		this.minimapLights.add(minimapambientlight);

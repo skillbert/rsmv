@@ -1306,7 +1306,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 	return { runTasks };
 }
 
-function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
+export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
 	let scale = 2 / ntiles;
 	let cam = new Camera();
 	cam.projectionMatrix.elements = [
@@ -1319,6 +1319,7 @@ function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy
 	cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
 	return cam;
 }
+globalThis.mapImageCamera = mapImageCamera;
 
 type RenderDepsEntry = {
 	x: number,

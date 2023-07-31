@@ -1,6 +1,3 @@
-import type { Texture } from "three";
-
-export type CanvasImage = Exclude<CanvasImageSource, SVGImageElement | VideoFrame>;
 
 export type FileRange = {
 	start: [number, number, number],
@@ -81,34 +78,6 @@ export function stringToFileRange(str: string) {
 	});
 	return ranges;
 }
-
-export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | CanvasImage) {
-	const cnv = ctx.canvas;
-	if ("data" in img) {
-		cnv.width = img.width;
-		cnv.height = img.height;
-		ctx.putImageData(img, 0, 0);
-	} else if ("source" in img) {
-		cnv.width = img.source.data.width;
-		cnv.height = img.source.data.height;
-		ctx.drawImage(img.source.data, 0, 0);
-	} else {
-		cnv.width = img.width;
-		cnv.height = img.height
-		ctx.drawImage(img, 0, 0);
-	}
-}
-
-export function dumpTexture(img: ImageData | Texture | CanvasImage) {
-	let cnv = document.createElement("canvas");
-	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
-	drawTexture(ctx, img);
-	cnv.style.cssText = "position:absolute;top:0px;left:0px;border:1px solid red;background:purple;";
-	document.body.appendChild(cnv);
-	cnv.onclick = e => cnv.remove();
-	return cnv;
-}
-globalThis.dumptex = dumpTexture;
 
 export function delay(ms: number) {
 	return new Promise(d => setTimeout(d, ms))

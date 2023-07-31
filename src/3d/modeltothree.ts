@@ -126,6 +126,13 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 			+ `varying vec3 v_ra_floortex_weights;\n`
 			+ `varying vec3 v_ra_floortex_usescolor;\n`
 			+ `#endif\n`
+			+ `\n`
+			+ `highp vec3 runeapps_srgb_to_linear(highp vec3 color,float gamma){\n`
+			+ `	return pow(color.rgb,vec3(1.0/gamma));\n`
+			+ `}\n`
+			+ `highp vec3 runeapps_linear_to_srgb(highp vec3 color,float gamma){\n`
+			+ `	return pow(color.rgb,vec3(gamma));\n`
+			+ `}\n`
 			+ shader.fragmentShader
 				.replace("#include <color_fragment>", "")
 				.replace("#include <map_fragment>",
@@ -150,21 +157,26 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 		if (isminimap) {
 			shader.fragmentShader = shader.fragmentShader
 				.replace("#include <encodings_fragment>",
-					"gl_FragColor.rgb = pow(gl_FragColor.rgb,vec3(1.0/2.4));\n"//don't blame me for this, this is literally how the minimap is rendered
+					"const float outgamma=2.3;\n"
+					+ "gl_FragColor.rgb = runeapps_srgb_to_linear(gl_FragColor.rgb,outgamma);\n"//don't blame me for this, this is literally how the minimap is rendered
 				)
-				// .replace("#include <color_fragment>",
-				// 	`#if defined( USE_COLOR_ALPHA ) || defined( USE_COLOR )\n`
-				// 	+ `vec3 srgbVColor = pow(vColor.rgb,vec3(1.0/2.4));\n`//convert vertex color from linear to srgb
-				// 	+ `#if defined( USE_COLOR_ALPHA )\n`
-				// 	+ `diffuseColor *= vec4(srgbVColor,vColor.a);\n`
-				// 	+ `#elif defined( USE_COLOR )\n`
-				// 	+ `diffuseColor.rgb *= srgbVColor;\n`
-				// 	+ `#endif\n`
-				// 	+ `#endif\n`
-				// )
-				// .replace("#include <encodings_fragment>",
-				// 	"\n"
-				// );
+			// .replace("#include <lights_fragment_end>",
+			// 	"irradiance = runeapps_linear_to_srgb(irradiance,2.4)*0.0;\n"
+			// 	+ "#include <lights_fragment_end>\n"
+			// )
+			// .replace("#include <color_fragment>",
+			// 	`#if defined( USE_COLOR_ALPHA ) || defined( USE_COLOR )\n`
+			// 	+ `vec3 srgbVColor = runeapps_srgb_to_linear(vColor.rgb,2.4);\n`//convert vertex color from linear to srgb
+			// 	+ `#if defined( USE_COLOR_ALPHA )\n`
+			// 	+ `diffuseColor *= vec4(srgbVColor,vColor.a);\n`
+			// 	+ `#elif defined( USE_COLOR )\n`
+			// 	+ `diffuseColor.rgb *= srgbVColor;\n`
+			// 	+ `#endif\n`
+			// 	+ `#endif\n`
+			// )
+			// .replace("#include <encodings_fragment>",
+			// 	"\n"
+			// );
 		}
 	}
 }

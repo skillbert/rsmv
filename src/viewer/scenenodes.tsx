@@ -1,5 +1,5 @@
 import { ThreejsSceneCache, EngineCache, constModelsIds } from '../3d/modeltothree';
-import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, drawTexture, ModelModifications, stringToFileRange, stringToMapArea, checkObject } from '../utils';
+import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, ModelModifications, stringToFileRange, stringToMapArea, checkObject } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize } from '../3d/mapsquare';
@@ -17,7 +17,7 @@ import { tiledimensions } from "../3d/mapsquare";
 import { MapRenderDatabaseBacked, runMapRender } from "../map";
 import { diffCaches, FileEdit } from "../scripts/cachediff";
 import { selectEntity, showModal } from "./jsonsearch";
-import { findImageBounds, makeImageData } from "../imgutils";
+import { drawTexture, findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
 import { items } from "../../generated/items";

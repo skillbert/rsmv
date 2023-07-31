@@ -1,4 +1,4 @@
-import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod, CanvasImage } from "../utils";
+import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -19,6 +19,7 @@ import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./class
 import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 import { crc32addInt } from "../scripts/dependencies";
 import { CacheFileSource } from "../cache";
+import { CanvasImage } from "../imgutils";
 
 
 export const tiledimensions = 512;

@@ -2,7 +2,7 @@ import { Texture, Buffer as JavaStream, TextureOp } from "../libs/proctexes";
 import { cacheMajors } from "../constants";
 import { EngineCache } from "./modeltothree";
 import { parseSprite } from "./sprite";
-import { dumpTexture } from "../utils";
+import { dumpTexture } from "../imgutils";
 
 
 class TextureGroup {

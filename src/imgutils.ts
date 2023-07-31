@@ -1,5 +1,9 @@
 //structure similar to ImageData, but without prototype chain or clamped constraint, easy to consume with sharp
 
+import type { Texture } from "three";
+
+export type CanvasImage = Exclude<CanvasImageSource, SVGImageElement | VideoFrame>;
+
 export function makeImageData(data: Uint8ClampedArray | Uint8Array | null, width: number, height: number): ImageData {
 	if (!data) {
 		data = new Uint8ClampedArray(width * height * 4);
@@ -219,4 +223,42 @@ export function findImageBounds(img: ImageData | ImageData) {
 	}
 
 	return { x: minx, y: miny, width: maxx - minx + 1, height: maxy - miny + 1 };
+}
+
+export function dumpTexture(img: ImageData | Texture | CanvasImage, flip = false) {
+	let cnv = document.createElement("canvas");
+	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
+	if (flip) {
+		if (!(img instanceof ImageData)) { throw new Error("can only flip imagedata textures"); }
+		flipImage(img);
+	}
+	drawTexture(ctx, img);
+	cnv.style.cssText = "position:absolute;top:0px;left:0px;border:1px solid red;background:purple;";
+	document.body.appendChild(cnv);
+	cnv.onclick = e => {
+		navigator.clipboard.write([
+			new ClipboardItem({ 'image/png': new Promise<Blob>(d => cnv.toBlob(d as any)) })
+		]);
+		cnv.remove();
+	}
+	return cnv;
+}
+globalThis.dumptex = dumpTexture;
+
+
+export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | CanvasImage) {
+	const cnv = ctx.canvas;
+	if ("data" in img) {
+		cnv.width = img.width;
+		cnv.height = img.height;
+		ctx.putImageData(img, 0, 0);
+	} else if ("source" in img) {
+		cnv.width = img.source.data.width;
+		cnv.height = img.source.data.height;
+		ctx.drawImage(img.source.data, 0, 0);
+	} else {
+		cnv.width = img.width;
+		cnv.height = img.height
+		ctx.drawImage(img, 0, 0);
+	}
 }
