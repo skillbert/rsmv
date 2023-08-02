@@ -154,7 +154,7 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 }
 
 function convertScenarioComponent(comp: ScenarioComponent<"simple">): ScenarioComponent {
-	let mods: Required<ModelModifications> = { replaceColors: [], replaceMaterials: [] };
+	let mods: Required<ModelModifications> = { replaceColors: [], replaceMaterials: [], lodLevel: -1 };
 	if (comp.simpleModel.length != 0) {
 		let firstmodel = comp.simpleModel[0];
 		for (let col of firstmodel.mods.replaceColors ?? []) {

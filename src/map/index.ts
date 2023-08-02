@@ -15,7 +15,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { ChunkLocDependencies, chunkSummary, ChunkTileDependencies, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies } from "./chunksummary";
 import { RSMapChunk, RSMapChunkData } from "../3d/modelnodes";
 import * as zlib from "zlib";
-import { Camera, Matrix4 } from "three";
+import { Camera, Matrix4, OrthographicCamera, Vector3 } from "three";
 import fs from "fs/promises";
 import path from "path";
 
@@ -58,11 +58,13 @@ type LayerConfig = {
 } & ({
 	mode: "3d" | "minimap",
 	dxdy: number,
-	dzdy: number
+	dzdy: number,
+	hidelocs?: boolean
 } | {
 	mode: "map",
-	wallsonly: boolean,
-	mapicons: boolean
+	wallsonly?: boolean,
+	mapicons?: boolean,
+	thicklines?: boolean
 } | {
 	mode: "height"
 } | {
@@ -920,13 +922,13 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 }
 
 export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
-	let setfloors = (chunks: MaprenderSquare[], floornr: number, isminimap: boolean) => {
+	let setfloors = (chunks: MaprenderSquare[], floornr: number, isminimap: boolean, hidelocs: boolean) => {
 		let toggles: Record<string, boolean> = {};
 		for (let i = 0; i < 4; i++) {
 			toggles["floor" + i] = !isminimap && i <= floornr;
-			toggles["objects" + i] = !isminimap && i <= floornr;
+			toggles["objects" + i] = !hidelocs && !isminimap && i <= floornr;
 			toggles["mini_floor" + i] = isminimap && i <= floornr;
-			toggles["mini_objects" + i] = isminimap && i <= floornr;
+			toggles["mini_objects" + i] = !hidelocs && isminimap && i <= floornr;
 			toggles["map" + i] = false;
 			toggles["mapscenes" + i] = false;
 			toggles["walls" + i] = false;
@@ -1036,7 +1038,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 							dedupeDependencies: parentCandidates.map(q => q.name),
 							mippable: (zoom == zooms.base ? { outputx: baseoutputx, outputy: baseoutputy, zoom: zoom, hash: depcrc } : null),
 							async run(chunks, renderer, parentinfo) {
-								setfloors(chunks, thiscnf.level, cnf.mode == "minimap");
+								setfloors(chunks, thiscnf.level, thiscnf.mode == "minimap", !!thiscnf.hidelocs);
 								let cam = mapImageCamera(area.x + tiles * subx, area.z + tiles * subz, tiles, thiscnf.dxdy, thiscnf.dzdy);
 
 								let parentFile: undefined | KnownMapFile = undefined;
@@ -1136,7 +1138,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 						}
 					})));
 					let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
-					let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons);
+					let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons, !!thiscnf.thicklines);
 					return {
 						file: () => Promise.resolve(Buffer.from(svg, "utf8"))
 					};
@@ -1306,20 +1308,61 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 	return { runTasks };
 }
 
+//TODO test map generation and move it over to mapimagecamera2
 export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
 	let scale = 2 / ntiles;
 	let cam = new Camera();
 	cam.projectionMatrix.elements = [
 		scale, scale * dxdy, 0, -x * scale - 1,
 		0, scale * dzdy, -scale, -z * scale - 1,
-		0, -0.001, 0, 0,
+		0, -0.01, 0, 0,
 		0, 0, 0, 1
 	];
 	cam.projectionMatrix.transpose();
 	cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
 	return cam;
 }
+export function mapImageCamera2(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
+	let cam = new SkewOrthographicCamera(ntiles, dxdy, dzdy);
+	cam.pointDown();
+	//negative z since the camera is usually in threejs reference frame instead of the flipped rs reference frame
+	cam.position.set(x + ntiles / 2, 0, -(z + ntiles / 2));
+	return cam;
+}
 globalThis.mapImageCamera = mapImageCamera;
+globalThis.mapImageCamera2 = mapImageCamera2;
+
+export class SkewOrthographicCamera extends OrthographicCamera {
+	skewMatrix = new Matrix4();
+	constructor(ntiles: number, dxdy: number, dzdy: number) {
+		super(-ntiles / 2, ntiles / 2, ntiles / 2, -ntiles / 2, -500, 500);
+		this.setSkew(dxdy, dzdy);
+	}
+
+	pointDown() {
+		this.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(0, 1, 0));
+	}
+
+	setSkew(dxdz: number, dydz: number) {
+		this.skewMatrix.set(
+			1, 0, dxdz, 0,
+			0, 1, dydz, 0,
+			0, 0, 1, 0,
+			0, 0, 0, 1
+		);
+		this.updateProjectionMatrix();
+	}
+
+	updateProjectionMatrix() {
+		//null during super constructor...
+		if (this.skewMatrix) {
+			super.updateProjectionMatrix();
+			this.projectionMatrix.multiply(this.skewMatrix);
+			this.projectionMatrixInverse.copy(this.projectionMatrix).invert();
+		}
+	}
+}
+
 
 type RenderDepsEntry = {
 	x: number,

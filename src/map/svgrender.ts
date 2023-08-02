@@ -49,7 +49,7 @@ export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect
 	return [...maplabels.entries()].map(([id, q]) => ({ id, ...q }));
 }
 
-export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean, drawicons: boolean) {
+export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: WorldLocation[], rect: MapRect, maplevel: number, pxpertile: number, wallsonly: boolean, drawicons: boolean, thicklines = false) {
 	let drawground = !wallsonly;
 	let drawwalls = true;
 	let drawmapscenes = !wallsonly;
@@ -309,7 +309,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	}
 
 	//wall lines
-	const linewidth = 0.2;
+	const linewidth = (thicklines ? 3 / 8 : 0.2);
 	if (whitelines.length != 0) {
 		r += `<g stroke="white" stroke-width="${linewidth}" fill="none">`;
 		for (let line of whitelines) {

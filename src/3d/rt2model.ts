@@ -141,18 +141,22 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
         bonecount: 0,
         miny, maxy,
         skincount: 0,
-        meshes: [...matmeshes.values()].map(q => ({
-            attributes: {
-                pos: q.pos,
-                color: q.color,
-                texuvs: q.texuvs,
-                normals: q.normals
-            },
-            hasVertexAlpha: false,
-            indices: new BufferAttribute(q.index, 1),
-            materialId: q.matid,
-            needsNormalBlending: true
-        }))
+        meshes: [...matmeshes.values()].map(q => {
+            let indices = new BufferAttribute(q.index, 1);
+            return {
+                attributes: {
+                    pos: q.pos,
+                    color: q.color,
+                    texuvs: q.texuvs,
+                    normals: q.normals
+                },
+                hasVertexAlpha: false,
+                indices: indices,
+                indexLODs: [indices],
+                materialId: q.matid,
+                needsNormalBlending: true
+            };
+        })
     }
 
     return r;

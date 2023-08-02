@@ -70,7 +70,9 @@ export function augmentThreeJsMinimapLocMaterial(mat: THREE.Material) {
 				+ `#ifdef DECODE_VIDEO_TEXTURE\n`
 				+ `sampledDiffuseColor = vec4( mix( pow( sampledDiffuseColor.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ), sampledDiffuseColor.rgb * 0.0773993808, vec3( lessThanEqual( sampledDiffuseColor.rgb, vec3( 0.04045 ) ) ) ), sampledDiffuseColor.w );\n`
 				+ `#endif\n`
-				+ `sampledDiffuseColor.a = step( 0.01, sampledDiffuseColor.a);\n`
+				+ `sampledDiffuseColor.a = pow(sampledDiffuseColor.a,1.0/2.4);\n`//i don't know i'm lost, this seems to match
+				+ `if(sampledDiffuseColor.a < 0.5){discard;}\n`
+				// + `sampledDiffuseColor.a = step( 0.05, sampledDiffuseColor.a);\n`
 				// + `sampledDiffuseColor.rgb *= 0.1;\n`
 				// + `sampledDiffuseColor.rgb = pow(sampledDiffuseColor.rgb,vec3(2.2));\n`
 				+ `diffuseColor *= sampledDiffuseColor;\n`
@@ -160,10 +162,12 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 					"const float outgamma=2.3;\n"
 					+ "gl_FragColor.rgb = runeapps_srgb_to_linear(gl_FragColor.rgb,outgamma);\n"//don't blame me for this, this is literally how the minimap is rendered
 				)
-			// .replace("#include <lights_fragment_end>",
-			// 	"irradiance = runeapps_linear_to_srgb(irradiance,2.4)*0.0;\n"
-			// 	+ "#include <lights_fragment_end>\n"
-			// )
+				.replace("#include <lights_fragment_begin>",
+					`#include <lights_fragment_begin>\n`
+					+ `irradiance =  runeapps_linear_to_srgb(0.5*getAmbientLightIrradiance( ambientLightColor ),2.4);\n`
+					+ `irradiance += runeapps_linear_to_srgb(0.5*getLightProbeIrradiance( lightProbe, geometry.normal ),2.4);\n`
+					// + `irradiance *= 0.5;\n`
+				)
 			// .replace("#include <color_fragment>",
 			// 	`#if defined( USE_COLOR_ALPHA ) || defined( USE_COLOR )\n`
 			// 	+ `vec3 srgbVColor = runeapps_srgb_to_linear(vColor.rgb,2.4);\n`//convert vertex color from linear to srgb

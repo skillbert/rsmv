@@ -538,18 +538,22 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         indexbuf[dstfaceindex * 3 + 2] = vertbase + 1;
     }
 
-    let meshes = [...matmesh.values()].map<ModelMeshData>(m => ({
-        indices: new BufferAttribute(m.index, 1),
-        materialId: m.matid,
-        hasVertexAlpha: !!modeldata.alpha,
-        needsNormalBlending: true,
-        attributes: {
-            pos: m.pos,
-            color: m.color,
-            texuvs: m.texuvs,
-            normals: m.normals
-        },
-    }));
+    let meshes = [...matmesh.values()].map<ModelMeshData>(m => {
+        let indices = new BufferAttribute(m.index, 1);
+        return {
+            indices: indices,
+            indexLODs: [indices],
+            materialId: m.matid,
+            hasVertexAlpha: !!modeldata.alpha,
+            needsNormalBlending: true,
+            attributes: {
+                pos: m.pos,
+                color: m.color,
+                texuvs: m.texuvs,
+                normals: m.normals
+            },
+        };
+    });
 
     if (modeldata.modelversion <= 7) {//possibly also 8 and 9, not 10
         const scale = 4;

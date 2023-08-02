@@ -7,6 +7,7 @@ export type FileRange = {
 export type ModelModifications = {
 	replaceColors?: [from: number, to: number][];
 	replaceMaterials?: [from: number, to: number][];
+	lodLevel?: number;
 }
 
 export type Stream = {

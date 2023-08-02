@@ -22,6 +22,7 @@ export type ModelData = {
 
 export type ModelMeshData = {
 	indices: THREE.BufferAttribute,
+	indexLODs: THREE.BufferAttribute[],
 	materialId: number,
 	hasVertexAlpha: boolean,
 	needsNormalBlending: boolean,
@@ -116,7 +117,6 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 		let normalBuffer = mesh.normalBuffer;
 
 		if (!positionBuffer) { continue; }
-		let indexbuf = indexBuffers[0];
 
 		//TODO let threejs do this while making the bounding box
 		for (let i = 0; i < positionBuffer.length; i += 3) {
@@ -127,9 +127,13 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 				miny = positionBuffer[i + 1];
 			}
 		}
+		let indexlods = indexBuffers.map(q => new THREE.BufferAttribute(q, 1));
+
+		let indexbuf = indexBuffers[0];
 
 		let meshdata: ModelMeshData = {
-			indices: new THREE.BufferAttribute(indexbuf, 1),
+			indices: indexlods[0],
+			indexLODs: indexlods,
 			materialId: mesh.materialArgument - 1,
 			hasVertexAlpha: !!mesh.alphaBuffer,
 			needsNormalBlending: false,

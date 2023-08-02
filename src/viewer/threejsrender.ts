@@ -9,6 +9,7 @@ import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, BufferGeometry, Camera, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
+import { SkewOrthographicCamera } from "../map";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -107,7 +108,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.standardControls.update();
 		this.standardControls.addEventListener("change", this.forceFrame);
 
-		this.topdowncam = new THREE.OrthographicCamera(-10, 10, 10, -10, -500, 500);
+		this.topdowncam = new SkewOrthographicCamera(10, 0, 0);
 		this.topdowncam.position.copy(this.camera.position);
 
 		this.orthoControls = new OrbitControls(this.topdowncam, canvas);
@@ -165,7 +166,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.standardLights.add(dirLight);
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
 		this.standardLights.add(hemilight);
-		// this.standardLights.visible = false;
+		this.standardLights.visible = false;
 		scene.add(this.standardLights);
 
 		//minimap lights
@@ -175,7 +176,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		// minidirlight.color.convertSRGBToLinear();
 		let minimapambientlight = new THREE.AmbientLight(new THREE.Color(0.6059895753860474, 0.5648590922355652, 0.5127604007720947), 2);
 		// minimapambientlight.color.convertSRGBToLinear()
-		this.minimapLights.visible = false;
+		// this.minimapLights.visible = false;
 		this.minimapLights.add(minidirlight);
 		this.minimapLights.add(minimapambientlight);
 		scene.add(this.minimapLights);
@@ -329,7 +330,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.topdowncam.top = height / 2;
 		this.topdowncam.bottom = -height / 2;
 		this.topdowncam.updateProjectionMatrix();
-		
+
 		this.minimapLights.visible = true;
 		this.standardLights.visible = false;
 		this.forceFrame();

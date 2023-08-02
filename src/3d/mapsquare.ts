@@ -366,6 +366,9 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 	if (newmat != undefined) {
 		newmesh.materialId = (newmat == (1 << 16) - 1 ? -1 : newmat);
 	}
+	if (typeof mods.lodLevel == "number" && mods.lodLevel != -1) {
+		newmesh.indices = mesh.indexLODs[Math.min(mods.lodLevel, mesh.indexLODs.length - 1)];
+	}
 
 	let clonedcolors: BufferAttribute | undefined = undefined;
 	if (mods.replaceColors && mods.replaceColors.length != 0 && mesh.attributes.color) {
@@ -486,6 +489,7 @@ export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: Tile
 		hasVertexAlpha: mesh.hasVertexAlpha,
 		needsNormalBlending: mesh.needsNormalBlending,
 		indices,
+		indexLODs: [indices],//only the current lod is transformed, the rest is invalid
 		attributes: {
 			...mesh.attributes,
 			normals: newnorm,
@@ -1128,9 +1132,10 @@ export function defaultMorphId(locmeta: objects) {
 
 //TODO move this to a more logical location
 export async function resolveMorphedObject(source: EngineCache, id: number) {
+	let resolvedid = id;
 	if (source.classicData) {
 		let locdata = getClassicLoc(source, id);
-		return { rawloc: locdata, morphedloc: locdata };
+		return { rawloc: locdata, morphedloc: locdata, resolvedid };
 	} else {
 		let objectfile = await source.getGameFile("objects", id);
 		let rawloc = parse.object.read(objectfile, source);
@@ -1143,9 +1148,10 @@ export async function resolveMorphedObject(source: EngineCache, id: number) {
 					...rawloc,
 					...parse.object.read(newloc, source)
 				};
+				resolvedid = newid;
 			}
 		}
-		return { rawloc, morphedloc };
+		return { rawloc, morphedloc, resolvedid };
 	}
 }
 
@@ -1296,7 +1302,7 @@ export function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocatio
 			let modelmods: ModelModifications = {
 				replaceColors: objectmeta.color_replacements ?? undefined,
 				replaceMaterials: objectmeta.material_replacements ?? undefined,
-				// brightness: (minimap ? (objectmeta.ambient ?? 0) / 50 : 1)//replicating rs3 bug, no default brightness
+				lodLevel: (minimap ? 100 : undefined)
 			};
 			if (cache.getBuildNr() > lastClassicBuildnr && cache.getBuildNr() < 377) {
 				//old caches just use one prop to replace both somehow
@@ -1384,7 +1390,7 @@ export function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocatio
 		let extras: ModelExtrasLocation = {
 			modeltype: "location",
 			isclickable: false,
-			modelgroup: (minimap ? "mini_objects" : "objects") + inst.visualLevel,
+			modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
 			locationid: inst.locid,
 			worldx: inst.x,
 			worldz: inst.z,
@@ -1501,6 +1507,7 @@ export type WorldLocation = {
 	rotation: number,
 	plane: number,
 	locid: number,
+	resolvedlocid: number,
 	location: objects,
 	sizex: number,
 	sizez: number,
@@ -1516,7 +1523,7 @@ export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, loca
 	// locations.map(q => resolveMorphedObject(engine, q.id));
 
 	for (let loc of locations) {
-		let { morphedloc, rawloc } = await resolveMorphedObject(engine, loc.id);
+		let { morphedloc, rawloc, resolvedid } = await resolveMorphedObject(engine, loc.id);
 		if (!morphedloc) { continue; }
 
 		for (let inst of loc.uses) {
@@ -1548,6 +1555,7 @@ export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, loca
 			locs.push({
 				location: morphedloc,
 				locid: loc.id,
+				resolvedlocid: resolvedid,
 				placement: inst.extra,
 				sizex,
 				sizez,
@@ -2046,7 +2054,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 							if (isminimapwater) {
 								//minimap renders everything in "srgb" (gamma=2.0) except for the water which is rendered in linear
 								//and therefor appears to dark, precompensate that here since we're doing single shot rendering
-								const gamma = 2.2;
+								const gamma = 3.3;
 								color = [Math.pow(color[0] / 255, gamma) * 255, Math.pow(color[1] / 255, gamma) * 255, Math.pow(color[2] / 255, gamma) * 255]
 							}
 							props = Array<TileVertex>(shape.overlay.length).fill({

@@ -140,6 +140,7 @@ export class MeshBuilder {
         return this;
     }
     convertSubmesh(matid: number): ModelData["meshes"][number] {
+        let indices = new BufferAttribute(new Uint16Array(this.index), 1);
         return {
             attributes: {
                 pos: new BufferAttribute(new Float32Array(this.pos), 3),
@@ -147,7 +148,8 @@ export class MeshBuilder {
                 texuvs: new BufferAttribute(new Float32Array(this.uvs), 2),
                 normals: new BufferAttribute(new Float32Array(this.normals), 3)
             },
-            indices: new BufferAttribute(new Uint16Array(this.index), 1),
+            indices,
+            indexLODs: [indices],
             hasVertexAlpha: false,
             materialId: matid,
             needsNormalBlending: false,
