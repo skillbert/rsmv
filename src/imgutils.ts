@@ -249,6 +249,10 @@ globalThis.dumptex = dumpTexture;
 export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | CanvasImage) {
 	const cnv = ctx.canvas;
 	if ("data" in img) {
+		if (typeof ImageData != "undefined" && !(img instanceof ImageData)) {
+			//@ts-ignore
+			img = new ImageData(img.data, img.width, img.height);
+		}
 		cnv.width = img.width;
 		cnv.height = img.height;
 		ctx.putImageData(img, 0, 0);

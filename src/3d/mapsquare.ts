@@ -20,6 +20,7 @@ import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 import { crc32addInt } from "../scripts/dependencies";
 import { CacheFileSource } from "../cache";
 import { CanvasImage } from "../imgutils";
+import { minimapFloorMaterial } from "../rs3shaders";
 
 
 export const tiledimensions = 512;
@@ -314,7 +315,7 @@ function generateTileShapes() {
 			overlay.push(0, 4, 6);
 			underlay.push(0, 2, 4);
 			//TODO find out what these are about
-			if (shape == 36) { rotation += 1; }
+			if (shape == 36) { rotation += 1; }//36 is rounded concave and has an extra vertex halfway the diagonal
 			if (shape == 40) { rotation += 3; }
 		} else if (shape == 8) {
 			overlay.push(0, 1, 6);
@@ -1306,6 +1307,7 @@ export function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocatio
 			};
 			if (cache.getBuildNr() > lastClassicBuildnr && cache.getBuildNr() < 377) {
 				//old caches just use one prop to replace both somehow
+				//TODO buildnr cutoff for this is off by like 2 years
 				modelmods.replaceMaterials = modelmods.replaceColors;
 			}
 
@@ -2189,20 +2191,27 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	if (floor.mode == "wireframe") {
 		mat.wireframe = true;
 	} else if (floor.mode != "worldmap") {
-		augmentThreeJsFloorMaterial(mat, floor.mode == "minimap");
 		let img = floor.atlas.convert();
 
 		//no clue why this doesn't work
 		// mat.map = new THREE.Texture(img);
 		// globalThis.bug = mat.map;
 		let data = img.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, img.width, img.height);
-		mat.map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
+		let map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
 
-		mat.map.magFilter = THREE.LinearFilter;
-		mat.map.minFilter = THREE.LinearMipMapNearestFilter;
-		mat.map.generateMipmaps = true;
-		mat.map.encoding = THREE.sRGBEncoding;
-		mat.map.needsUpdate = true;
+		map.magFilter = THREE.LinearFilter;
+		map.minFilter = THREE.LinearMipMapNearestFilter;
+		map.generateMipmaps = true;
+		map.encoding = THREE.sRGBEncoding;
+		map.needsUpdate = true;
+
+		if (floor.mode == "minimap") {
+			mat = minimapFloorMaterial(map) as any;
+		} else {
+			// augmentThreeJsFloorMaterial(mat, floor.mode == "minimap");
+			augmentThreeJsFloorMaterial(mat, false);
+			mat.map = map;
+		}
 	}
 
 	let model = new THREE.Mesh(geo, mat);

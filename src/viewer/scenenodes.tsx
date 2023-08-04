@@ -1674,6 +1674,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				if (typeof toggles[q] != "boolean") {
 					// toggles[q] = !!q.match(/^(floor|objects)\d+/);
 					toggles[q] = !!q.match(/^mini_(floor|objects)0/);
+					// toggles[q] = !!q.match(/^mini_(objects)0/);
 				}
 			});
 			this.setState({ toggles });

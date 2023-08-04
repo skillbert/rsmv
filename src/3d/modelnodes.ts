@@ -1,7 +1,7 @@
 import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds, augmentThreeJsFloorMaterial, augmentThreeJsMinimapLocMaterial } from '../3d/modeltothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize, tiledimensions, ModelExtras, mapsquareFloors, mapsquareObjectModels, mapsquareOverlays, PlacedModel } from '../3d/mapsquare';

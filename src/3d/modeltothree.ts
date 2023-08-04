@@ -25,6 +25,7 @@ import { classicOverlays, classicUnderlays } from "./classicmap";
 import { HSL2RGB, HSL2RGBfloat, packedHSL2HSL } from "../utils";
 import { loadProcTexture } from "./proceduraltexture";
 import { maplabels } from "../../generated/maplabels";
+import { minimapLocMaterial } from "../rs3shaders";
 
 const constModelOffset = 1000000;
 
@@ -424,8 +425,6 @@ export async function detectTextureMode(source: CacheFileSource) {
 }
 
 async function convertMaterialToThree(source: ThreejsSceneCache, material: MaterialData, hasVertexAlpha: boolean, minimapVariant: boolean) {
-	// let mat = new THREE.MeshPhongMaterial();
-	// mat.shininess = 0;
 	let mat = new THREE.MeshStandardMaterial();
 	mat.alphaTest = (material.alphamode == "cutoff" ? 0.5 : 0.1);//TODO use value from material
 	mat.transparent = hasVertexAlpha || material.alphamode == "blend";
@@ -508,7 +507,8 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 		};
 	}
 	if (minimapVariant) {
-		augmentThreeJsMinimapLocMaterial(mat);
+		// augmentThreeJsMinimapLocMaterial(mat);
+		mat = minimapLocMaterial(mat.map!) as any;
 	}
 
 	return { mat, matmeta: material };

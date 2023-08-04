@@ -29,6 +29,10 @@ module.exports = {
 			{
 				test: /\.jsonc?$/,
 				type: "asset/source"
+			},
+			{
+				test: /\.glsl(\.c)?$/,
+				type: "asset/source"
 			}
 		],
 	},
