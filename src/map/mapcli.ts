@@ -17,6 +17,7 @@ let cmd = cmdts.command({
 		classicFiles: cmdts.option({ long: "classicfiles", type: cmdts.optional(cmdts.string) }),
 		builds: cmdts.option({ long: "builds", type: cmdts.optional(cmdts.string) }),
 		ascending: cmdts.flag({ long: "ascending", short: "a" }),
+		force: cmdts.flag({ long: "force", short: "f" }),
 		//remote
 		endpoint: cmdts.option({ long: "endpoint", short: "e", type: cmdts.optional(cmdts.string) }),
 		auth: cmdts.option({ long: "auth", short: "p", type: cmdts.optional(cmdts.string) }),
@@ -47,7 +48,7 @@ let cmd = cmdts.command({
 
 		if (!args.builds) {
 			let source = await args.source();
-			await runMapRender(output, source, config);
+			await runMapRender(output, source, config, args.force);
 		} else {
 			let ranges = stringToFileRange(args.builds);
 
@@ -93,7 +94,7 @@ let cmd = cmdts.command({
 
 			for await (let source of cacheiterator(args.ascending)) {
 				output.log(`Starting '${source.getCacheMeta().name}', build: ${source.getBuildNr()}`);
-				let cleanup = await runMapRender(output, source, config);
+				let cleanup = await runMapRender(output, source, config, args.force);
 				cleanup();
 			}
 		}

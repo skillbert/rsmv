@@ -1111,7 +1111,7 @@ export type PlacedModel = {
 	models: PlacedMesh[],
 	materialId: number,
 	hasVertexAlpha: boolean,
-	textureAlphaMask: boolean,//only texture alpha is clamped! fragment can still have blended vertex alpha, used for minimap
+	minimapVariant: boolean,
 	overlayIndex: number,
 	groupid: string
 }
@@ -1164,7 +1164,7 @@ export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, loc
 		let wallgroup: PlacedModel = {
 			models: [],
 			groupid: "walls" + level,
-			textureAlphaMask: false,
+			minimapVariant: false,
 			hasVertexAlpha: false,
 			materialId: 0,
 			overlayIndex: 1
@@ -1217,7 +1217,7 @@ export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, loc
 			groupid: "mapscenes" + loc.effectiveLevel,
 			hasVertexAlpha: false,
 			materialId: 0,
-			textureAlphaMask: false,
+			minimapVariant: false,
 			// material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
 			models: [],
 			overlayIndex: 2
@@ -1392,7 +1392,7 @@ export function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocatio
 		let extras: ModelExtrasLocation = {
 			modeltype: "location",
 			isclickable: false,
-			modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
+			modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid && inst.location.probably_animation == undefined ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
 			locationid: inst.locid,
 			worldx: inst.x,
 			worldz: inst.z,
@@ -1805,7 +1805,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 					matgroup = {
 						materialId: modified.materialId,
 						hasVertexAlpha: modified.hasVertexAlpha,
-						textureAlphaMask: minimap,
+						minimapVariant: minimap,
 						models: [],
 						groupid: obj.extras.modelgroup,
 						overlayIndex: 0
@@ -1853,8 +1853,8 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 	});
 	let mergedgeo = mergeBufferGeometries(geos);
 	let mesh = new THREE.Mesh(mergedgeo);
-	let material = await scene.getMaterial(meshgroup.materialId, meshgroup.hasVertexAlpha, meshgroup.textureAlphaMask);
-	applyMaterial(mesh, material);
+	let material = await scene.getMaterial(meshgroup.materialId, meshgroup.hasVertexAlpha, meshgroup.minimapVariant);
+	applyMaterial(mesh, material, meshgroup.minimapVariant);
 
 	let count = 0;
 	let counts: number[] = [];
@@ -1951,9 +1951,21 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		normalbuffer[normalpointer + 0] = normalx;
 		normalbuffer[normalpointer + 1] = Math.sqrt(1 - normalx * normalx - normalz * normalz);
 		normalbuffer[normalpointer + 2] = normalz;
-		colorbuffer[colpointer + 0] = polyprops[currentmat].color[0];
-		colorbuffer[colpointer + 1] = polyprops[currentmat].color[1];
-		colorbuffer[colpointer + 2] = polyprops[currentmat].color[2];
+
+		let r = polyprops[currentmat].color[0];
+		let g = polyprops[currentmat].color[1];
+		let b = polyprops[currentmat].color[2];
+
+		if (isMinimap) {
+			//i don't have any clue why
+			r = 20 + 0.656 * r;
+			g = 28 + 0.577 * g;
+			b = 23 + 0.604 * b;
+		}
+
+		colorbuffer[colpointer + 0] = r;
+		colorbuffer[colpointer + 1] = g;
+		colorbuffer[colpointer + 2] = b;
 		colorbuffer[colpointer + 3] = 255;//4 alpha channel because of gltf
 
 		for (let i = 0; i < 3; i++) {

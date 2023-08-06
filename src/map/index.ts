@@ -496,7 +496,7 @@ class ProgressUI {
 	}
 }
 
-export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, config: MapRender) {
+export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, config: MapRender, forceCheck: boolean) {
 	let versionid = filesource.getBuildNr();
 	if (filesource.getBuildNr() > 900) {
 		//use build number for order caches since they wont have version timestamps
@@ -517,15 +517,17 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	}
 	await config.beginMapVersion(versionid);
 
-	let prevconfigreq = await config.getFileResponse("meta.json");
-	if (prevconfigreq.ok) {
-		let prevconfig: RenderedMapVersionMeta = await prevconfigreq.json();
-		let prevdate = new Date(prevconfig.rendertimestamp);
-		let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
-		if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 200) {
-			//skip if less than x*24hr ago
-			output.log("skipping", config.version);
-			return () => { };
+	if (!forceCheck) {
+		let prevconfigreq = await config.getFileResponse("meta.json");
+		if (prevconfigreq.ok) {
+			let prevconfig: RenderedMapVersionMeta = await prevconfigreq.json();
+			let prevdate = new Date(prevconfig.rendertimestamp);
+			let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
+			if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 200) {
+				//skip if less than x*24hr ago
+				output.log("skipping", config.version);
+				return () => { };
+			}
 		}
 	}
 
@@ -1091,7 +1093,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 								let img: ImageData | null = null;
 								if (!parentFile) {
-									img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, (cnf.mode == "minimap" ? "minimap" : "standard"));
+									img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, (thiscnf.mode == "minimap" ? "minimap" : "standard"));
 									flipImage(img);
 									// isImageEmpty(img, "black");
 

@@ -1,4 +1,5 @@
 import { ShaderMaterial, Texture, sRGBEncoding } from "three";
+import { MaterialData } from "../3d/jmat";
 
 let inputreplace: InputReplacer = {
     //camera matrices, slightly different
@@ -40,7 +41,7 @@ let definereplaceloc: InputReplacer = {
     // SRGB_TEXTURES: ""
 }
 
-export function minimapLocMaterial(texture: Texture) {
+export function minimapLocMaterial(texture: Texture, alphamode: MaterialData["alphamode"], alphathreshold: number) {
     let mat = new ShaderMaterial();
     mat.uniforms = {
         uAlphaTestThreshold: { value: [-1] },
@@ -96,10 +97,16 @@ export function minimapLocMaterial(texture: Texture) {
 
     frag = frag.replace(/(?<!void )getTexel\(\w+,/gm, () => `getTexel(vTextureUV,`);
 
-    // frag = injectheader(frag, "in highp vec2 v_texcoord_0;");
-    // vert = injectheader(vert, "in highp vec2 uv;");
-    // vert = injectheader(vert, "out highp vec2 v_texcoord_0;");
-    // vert = injectmain(vert, "v_texcoord_0=uv;");
+    frag = wrapMain(frag, `
+        void main(){
+            super();
+            //pre-multiply alpha
+            // gl_FragColor.rgb *= gl_FragColor.a;
+            // gl_FragColor.rgb = vec3( gl_FragColor.a);
+            gl_FragColor.a=1.0;
+            
+        }
+    `);
 
     mat.vertexShader = vert;
     mat.fragmentShader = frag;
@@ -108,9 +115,12 @@ export function minimapLocMaterial(texture: Texture) {
 
     mat.uniforms.uTextureAtlas = { value: texture };
     mat.uniforms.uInvSunDirection.value[2] *= -1;//z flip
+    mat.uniforms.uAlphaTestThreshold = { value: [alphathreshold] };
 
     mat.uniformsNeedUpdate = true;
-    mat.transparent = true;
+    if (alphamode == "blend") {
+        mat.transparent = true;
+    }
 
     if (texture) {
         texture.encoding = sRGBEncoding;
@@ -169,7 +179,7 @@ export function minimapFloorMaterial(texture: Texture) {
         + "settings.normalScale = 0.0;\n"
         + "}\n"
         + "void getTextureSettingsOld("
-    )
+    );
 
     //inject floor uv from mesh instead of derived from world position
     let gettexelcount = 0;
@@ -228,6 +238,12 @@ function replaceDefines(source: string, defs: InputReplacer) {
         }
         return m;
     })
+}
+
+function wrapMain(source: string, newmain: string) {
+    source = source.replace(/\bvoid main\(/, "void originalMain(");
+    source = source + "\n" + newmain.replace(/super\(/, "originalMain(");
+    return source;
 }
 
 function fixShader(source: string) {

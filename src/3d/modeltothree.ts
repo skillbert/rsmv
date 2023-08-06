@@ -508,7 +508,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 	}
 	if (minimapVariant) {
 		// augmentThreeJsMinimapLocMaterial(mat);
-		mat = minimapLocMaterial(mat.map!) as any;
+		mat = minimapLocMaterial(mat.map!, material.alphamode, material.alphacutoff) as any;
 	}
 
 	return { mat, matmeta: material };
@@ -645,12 +645,12 @@ export class ThreejsSceneCache {
 		}, obj => obj.meshes.reduce((a, m) => m.indices.count, 0) * 30);
 	}
 
-	getMaterial(matid: number, hasVertexAlpha: boolean, textureAlphaMask: boolean) {
+	getMaterial(matid: number, hasVertexAlpha: boolean, minimapVariant: boolean) {
 		//TODO the material should have this data, not the mesh
-		let matcacheid = materialCacheKey(matid, hasVertexAlpha, textureAlphaMask);
+		let matcacheid = materialCacheKey(matid, hasVertexAlpha, minimapVariant);
 		return this.engine.fetchCachedObject(this.threejsMaterialCache, matcacheid, async () => {
 			let material = this.engine.getMaterialData(matid);
-			return convertMaterialToThree(this, material, hasVertexAlpha, textureAlphaMask);
+			return convertMaterialToThree(this, material, hasVertexAlpha, minimapVariant);
 		}, mat => 256 * 256 * 4 * 2);
 	}
 }
@@ -659,19 +659,22 @@ function clamp(num: number) {
 	return (num > 255 ? 255 : num < 0 ? 0 : num);
 }
 
-export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial) {
+export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVariant: boolean) {
 	let oldcol = mesh.geometry.getAttribute("color");
 	let hasVertexAlpha = !!oldcol && oldcol.itemSize == 4;
 	mesh.material = parsedmat.mat;
-	let needsvertexcolors = parsedmat.matmeta.baseColorFraction != 1 || !parsedmat.matmeta.textures.diffuse || hasVertexAlpha;
+	//TODO what does the minimap do when basecolorfraction!=1, eg:0.8
+	let basecolor = (minimapVariant && parsedmat.matmeta.baseColorFraction == 1 ? [0.5, 0.5, 0.5] : parsedmat.matmeta.baseColor);
+	let nonwhiteverts = parsedmat.matmeta.baseColorFraction != 1 || basecolor.some(q => q != 1) || minimapVariant
+	let needsvertexcolors = nonwhiteverts || !parsedmat.matmeta.textures.diffuse || hasVertexAlpha;
 	if (needsvertexcolors) {
 		if (parsedmat.matmeta.baseColorFraction != 0) {
 			let vertcount = mesh.geometry.getAttribute("position").count;
 			let oldcol = mesh.geometry.getAttribute("color");
 			let oldfrac = 1 - parsedmat.matmeta.baseColorFraction;
-			let newrcomp = parsedmat.matmeta.baseColorFraction * parsedmat.matmeta.baseColor[0];
-			let newgcomp = parsedmat.matmeta.baseColorFraction * parsedmat.matmeta.baseColor[1];
-			let newbcomp = parsedmat.matmeta.baseColorFraction * parsedmat.matmeta.baseColor[2];
+			let newrcomp = parsedmat.matmeta.baseColorFraction * basecolor[0];
+			let newgcomp = parsedmat.matmeta.baseColorFraction * basecolor[1];
+			let newbcomp = parsedmat.matmeta.baseColorFraction * basecolor[2];
 			let stride = hasVertexAlpha ? 4 : 3;
 			let buf = new Uint8Array(stride * vertcount);
 			if (hasVertexAlpha && !oldcol) {
@@ -828,7 +831,7 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		} else {
 			mesh = new THREE.Mesh(geo);
 		}
-		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha, false));
+		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha, false), false);
 		// mesh.geometry.computeVertexNormals();//TODO remove, only used for classic models atm
 		rootnode.add(mesh);
 	}

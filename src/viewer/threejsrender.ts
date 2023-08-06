@@ -517,12 +517,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.renderer.setSize(framesizex, framesizey);
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
-			if (lights == "minimap") {
-				//TODO revert this and make a proper system for it
-				this.renderer.outputEncoding = THREE.LinearEncoding;
-				this.minimapLights.visible = true;
-				this.standardLights.visible = false;
-			}
+			this.renderer.outputEncoding = (lights == "minimap" ? THREE.LinearEncoding : THREE.sRGBEncoding);
+			this.minimapLights.visible = lights == "minimap";
+			this.standardLights.visible = lights == "standard";
 			this.renderScene(cam);
 			let ctx = this.renderer.getContext();
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
