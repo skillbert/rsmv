@@ -163,6 +163,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.sceneElementsChanged();
 	}
 
+	getCanvas() {
+		return this.canvas;
+	}
 
 	getStandardCamera() {
 		return this.camera as any;

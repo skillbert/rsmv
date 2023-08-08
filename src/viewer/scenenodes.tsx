@@ -1468,6 +1468,7 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 
 	cam.position.copy(pos);
 	cam.quaternion.copy(rot);
+	cam.aspect = ctx.renderer.getCanvas().width / ctx.renderer.getCanvas().height;
 	cam.updateProjectionMatrix();
 	cam.updateMatrixWorld(true);
 
