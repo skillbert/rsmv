@@ -190,42 +190,44 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 		//have to do some guessing here since the format overflowed and is corrupted
 		let itemid = (slot - 0x4000) & 0xffff;
 		let iswrapped = (slot < 0x4000);
-		let file = await engine.getGameFile("items", itemid);
-		let item = parse.item.read(file, engine.rawsource);
+		let file = await engine.getGameFile("items", itemid).catch(() => null);
+		if (file) {
+			let item = parse.item.read(file, engine.rawsource);
 
-		let animStruct = item.extra?.find(q => q.prop == 686)?.intvalue ?? -1;
+			let animStruct = item.extra?.find(q => q.prop == 686)?.intvalue ?? -1;
 
-		let itemmodels: number[] = [];
-		let maleindex = itemmodels.length;
-		if (item.maleModels_0) { itemmodels.push(item.maleModels_0.id); }
-		if (item.maleModels_1) { itemmodels.push(item.maleModels_1); }
-		if (item.maleModels_2) { itemmodels.push(item.maleModels_2); }
-		let femaleindex = itemmodels.length;
-		if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0.id); }
-		if (item.femaleModels_1) { itemmodels.push(item.femaleModels_1); }
-		if (item.femaleModels_2) { itemmodels.push(item.femaleModels_2); }
-		let maleheadindex = itemmodels.length;
-		if (item.maleHeads_0) { itemmodels.push(item.maleHeads_0); }
-		if (item.maleHeads_1) { itemmodels.push(item.maleHeads_1); }
-		let femaleheadindex = itemmodels.length;
-		if (item.femaleHeads_0) { itemmodels.push(item.femaleHeads_0); }
-		if (item.femaleHeads_1) { itemmodels.push(item.femaleHeads_1); }
-		let endindex = itemmodels.length;
+			let itemmodels: number[] = [];
+			let maleindex = itemmodels.length;
+			if (item.maleModels_0) { itemmodels.push(item.maleModels_0.id); }
+			if (item.maleModels_1) { itemmodels.push(item.maleModels_1); }
+			if (item.maleModels_2) { itemmodels.push(item.maleModels_2); }
+			let femaleindex = itemmodels.length;
+			if (item.femaleModels_0) { itemmodels.push(item.femaleModels_0.id); }
+			if (item.femaleModels_1) { itemmodels.push(item.femaleModels_1); }
+			if (item.femaleModels_2) { itemmodels.push(item.femaleModels_2); }
+			let maleheadindex = itemmodels.length;
+			if (item.maleHeads_0) { itemmodels.push(item.maleHeads_0); }
+			if (item.maleHeads_1) { itemmodels.push(item.maleHeads_1); }
+			let femaleheadindex = itemmodels.length;
+			if (item.femaleHeads_0) { itemmodels.push(item.femaleHeads_0); }
+			if (item.femaleHeads_1) { itemmodels.push(item.femaleHeads_1); }
+			let endindex = itemmodels.length;
 
-		let penalty = (item.equipSlotId != slotindex ? 1 : 0);
-		addOpt(parent, offset, penalty, isBackup || iswrapped, {
-			name: (item.name ? item.name : "item_" + itemid),
-			type: "item",
-			id: itemid,
-			models: itemmodels,
-			indexMale: [maleindex, femaleindex],
-			indexFemale: [femaleindex, maleheadindex],
-			indexMaleHead: [maleheadindex, femaleheadindex],
-			indexFemaleHead: [femaleheadindex, endindex],
-			replaceColors: item.color_replacements ?? [],
-			replaceMaterials: item.material_replacements ?? [],
-			animStruct
-		});
+			let penalty = (item.equipSlotId != slotindex ? 1 : 0);
+			addOpt(parent, offset, penalty, isBackup || iswrapped, {
+				name: (item.name ? item.name : "item_" + itemid),
+				type: "item",
+				id: itemid,
+				models: itemmodels,
+				indexMale: [maleindex, femaleindex],
+				indexFemale: [femaleindex, maleheadindex],
+				indexMaleHead: [maleheadindex, femaleheadindex],
+				indexFemaleHead: [femaleheadindex, endindex],
+				replaceColors: item.color_replacements ?? [],
+				replaceMaterials: item.material_replacements ?? [],
+				animStruct
+			});
+		}
 	}
 
 	let finalizeNode = async (opt: ReadOption) => {
