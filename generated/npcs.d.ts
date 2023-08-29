@@ -151,4 +151,5 @@ export type npcs = {
 		intvalue: number | null,
 		stringvalue: string | null,
 	}[] | null
+	unknown_FD?: number | null
 };

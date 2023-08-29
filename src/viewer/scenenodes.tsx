@@ -1642,7 +1642,9 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 					z: typedmatch.z,
 					subobjects: undefined,//remove (near) circular ref from json
 					subranges: undefined,
-					tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined }
+					tile: { ...typedmatch.tile, next01: undefined, next10: undefined, next11: undefined },
+					tilenxt: typedmatch.tilenxt,
+					originalcolor: typedmatch.underlaycolor
 				};
 			}
 		};

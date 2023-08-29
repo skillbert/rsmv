@@ -21,6 +21,7 @@ import { crc32addInt } from "../scripts/dependencies";
 import { CacheFileSource } from "../cache";
 import { CanvasImage } from "../imgutils";
 import { minimapFloorMaterial } from "../rs3shaders";
+import { mapsquare_tiles_nxt } from "../../generated/mapsquare_tiles_nxt";
 
 
 export const tiledimensions = 512;
@@ -114,6 +115,7 @@ export type ChunkData = {
 	chunkfilehash: number,
 	chunkfileversion: number,
 	tiles: mapsquare_tiles["tiles"],
+	nxttiles: mapsquare_tiles_nxt | null,
 	extra: mapsquare_tiles["extra"],
 	rawlocs: mapsquare_locations["locations"],
 	locs: WorldLocation[]
@@ -158,10 +160,19 @@ export type ModelExtras = ModelExtrasLocation | ModelExtrasOverlay | {
 	modelgroup: string
 } & ClickableMesh<ModelExtrasLocation | ModelExtrasOverlay>
 
-export type MeshTileInfo = { tile: mapsquare_tiles["tiles"][number], x: number, z: number, level: number };
+export type MeshTileInfo = {
+	tile: mapsquare_tiles["tiles"][number],
+	tilenxt: unknown,
+	x: number,
+	z: number,
+	level: number,
+	underlaycolor: number[]
+};
 
+type NxtTileInfo = Exclude<mapsquare_tiles_nxt["level0"], null | undefined>[number];
 
 export class TileProps {
+	nxttile: NxtTileInfo | null = null;
 	raw: mapsquare_tiles["tiles"][number];
 	rawOverlay: mapsquare_overlays | undefined;
 	rawUnderlay: mapsquare_underlays | undefined;
@@ -607,24 +618,27 @@ export class TileGrid implements TileGridSource {
 					if (!currenttile) { continue; }
 
 					//color blending
-					let r = 0, g = 0, b = 0;
-					let count = 0;
-					//5 deep letsgooooooo
-					for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
-						for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
-							let tile = this.getTile(x + dx, z + dz, level);
-							if (!tile || !tile.underlayVisible) { continue; }
-							let col = tile.underlayprops.color;
-							r += col[0];
-							g += col[1];
-							b += col[2];
-							count++;
+					if (!currenttile.nxttile) {
+						let r = 0, g = 0, b = 0;
+						let count = 0;
+						//5 deep letsgooooooo
+						for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
+							for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
+								let tile = this.getTile(x + dx, z + dz, level);
+								if (!tile || !tile.underlayVisible) { continue; }
+								let col = tile.originalUnderlayColor;
+								// let col = tile.underlayprops.color;
+								r += col[0];
+								g += col[1];
+								b += col[2];
+								count++;
+							}
+						}
+						if (count > 0) {
+							currenttile.underlayprops.color = [r / count, g / count, b / count];
 						}
 					}
-					if (count > 0) {
-						currenttile.underlayprops.color = [r / count, g / count, b / count];
-					}
-
+					
 					//normals
 					let dydx = 0;
 					let dydz = 0;
@@ -742,7 +756,7 @@ export class TileGrid implements TileGridSource {
 		}
 		return mats;
 	}
-	addMapsquare(tiles: mapsquare_tiles["tiles"], chunkrect: MapRect, levels: number, docollision = false) {
+	addMapsquare(tiles: mapsquare_tiles["tiles"], nxttiles: mapsquare_tiles_nxt | null, chunkrect: MapRect, levels: number, docollision = false) {
 		if (tiles.length != chunkrect.xsize * chunkrect.zsize * levels) { throw new Error(); }
 		let baseoffset = (chunkrect.x - this.xoffset) * this.xstep + (chunkrect.z - this.zoffset) * this.zstep;
 		for (let z = 0; z < chunkrect.zsize; z++) {
@@ -756,15 +770,30 @@ export class TileGrid implements TileGridSource {
 				let height = 0;
 				for (let level = 0; level < this.levels; level++) {
 					let tile = (level < levels ? tiles[tileindex] : {} as typeof tiles[number]);
-					if (tile.height != undefined) {
+					let nxttile: NxtTileInfo | null = null;
+					let extraheight: number | null | undefined = tile.height;
+					if (nxttiles) {
+						let nxtfloor = [nxttiles.level0, nxttiles.level1, nxttiles.level2, nxttiles.level3][level];
+						if (nxtfloor) {
+							nxttile = nxtfloor[(x + 1) * 66 + z + 1];
+							extraheight = (nxttile.flags & 16 ? nxttile.rest?.waterheight : nxttile.height);
+						}
+					}
+					if (extraheight != undefined && extraheight != 0) {
 						//not sure what the 1=0 thing is about, but seems correct for trees
-						height += (tile.height == 1 ? 0 : tile.height);
+						height += (extraheight == 1 ? 0 : extraheight);
 					} else {
 						//TODO there is much much more to this, probably similar to the classic code
 						height += 30;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
-					this.tiles[newindex] = new TileProps(this.engine, height, tile, tilex, tilez, level, docollision);
+					let outtile = new TileProps(this.engine, height, tile, tilex, tilez, level, docollision);
+					if (nxttile) {
+						outtile.nxttile = nxttile;
+						outtile.originalUnderlayColor = HSL2RGB(packedHSL2HSL(nxttile.rest?.underlaycolor ?? 0));
+						outtile.underlayprops.color = outtile.originalUnderlayColor;
+					}
+					this.tiles[newindex] = outtile;
 					tileindex += chunkrect.xsize * chunkrect.zsize;
 				}
 			}
@@ -780,6 +809,7 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 	let squareindex = chunkx + chunkz * worldStride;
 
 	let tiles: mapsquare_tiles["tiles"];
+	let nxttiles: mapsquare_tiles_nxt | null = null;
 	let tilesextra: mapsquare_tiles["extra"] = {};
 	let locs: mapsquare_locations["locations"] = [];
 	let tilerect: MapRect;
@@ -789,6 +819,7 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 
 	if (engine.getBuildNr() > lastClassicBuildnr) {
 		let tilefile: Buffer | null = null;
+		let nxttilefile: Buffer | null = null;
 		let locsfile: Buffer | null = null;
 		if (engine.getBuildNr() >= 759) {
 			let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
@@ -807,6 +838,10 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 			let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
 			if (locsindex != -1) {
 				locsfile = selfarchive[locsindex].buffer;
+			}
+			let nxttileindex = selfindex.subindices.indexOf(cacheMapFiles.square_nxt);
+			if (nxttileindex != -1) {
+				nxttilefile = selfarchive[nxttileindex].buffer;
 			}
 		} else if (engine.getBuildNr() > lastLegacyBuildnr) {
 			try {
@@ -849,6 +884,9 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 			return null
 		}
 		let tiledata = parse.mapsquareTiles.read(tilefile, engine.rawsource);
+		if (nxttilefile) {
+			nxttiles = parse.mapsquareTilesNxt.read(nxttilefile, engine.rawsource);
+		}
 		tiles = tiledata.tiles;
 		tilesextra = tiledata.extra;
 		if (locsfile) {
@@ -878,6 +916,7 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 		chunkfilehash: filehash,
 		chunkfileversion: fileversion,
 		tiles: tiles,
+		nxttiles,
 		extra: tilesextra,
 		rawlocs: locs,
 		locs: []
@@ -902,7 +941,7 @@ export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: 
 			if (!chunk) {
 				continue;
 			}
-			grid.addMapsquare(chunk.tiles, chunk.tilerect, chunk.levelcount, !!opts?.collision);
+			grid.addMapsquare(chunk.tiles, chunk.nxttiles, chunk.tilerect, chunk.levelcount, !!opts?.collision);
 
 			//only add the actual ones we need to the queue
 			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.xsize) { continue; }
@@ -1880,10 +1919,11 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 }
 
 
-function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, keeptileinfo = false, mode: "default" | "wireframe" | "minimap" | "worldmap" = "default") {
+function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, keeptileinfo = false, mode: "default" | "wireframe" | "minimap" | "minimapwater" | "worldmap" = "default") {
 	const showhidden = mode == "wireframe";
 	const worldmap = mode == "worldmap";
 	const isMinimap = mode == "minimap";
+	const isMinimapWater = mode == "minimapwater";
 
 	const maxtiles = chunk.tilerect.xsize * chunk.tilerect.zsize * grid.levels;
 	const maxVerticesPerTile = 8;
@@ -2037,7 +2077,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				}
 
 				if (keeptileinfo) {
-					tileinfos.push({ tile: tile.raw, x, z, level: tilelevel });
+					tileinfos.push({ tile: tile.raw, x, z, level: tilelevel, tilenxt: tile.nxttile, underlaycolor: tile.originalUnderlayColor });
 					tileindices.push(indexpointer);
 				}
 				if (hasneighbours && shape.overlay.length != 0) {
@@ -2051,41 +2091,43 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 					}
 					if (isvisible || showhidden) {
 						let props: TileVertex[];
-						let isminimapwater = isMinimap && overlaytype.material != null && watermaterials.includes(overlaytype.material);
-						if (!worldmap && !isminimapwater) {
-							props = shape.overlay.map(vertex => {
-								if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
-								else {
-									let node: TileProps | undefined = tile;
-									if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-									else if (vertex.nextx) { node = tile!.next01; }
-									else if (vertex.nextz) { node = tile!.next10; }
-									if (node) { return node.vertexprops[vertex.subvertex]; }
+						let isvertexminimapwater = isMinimap && overlaytype.material != null && watermaterials.includes(overlaytype.material);
+						if (!isMinimap || isvertexminimapwater == isMinimapWater) {
+							if (!worldmap && !isvertexminimapwater) {
+								props = shape.overlay.map(vertex => {
+									if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
+									else {
+										let node: TileProps | undefined = tile;
+										if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+										else if (vertex.nextx) { node = tile!.next01; }
+										else if (vertex.nextz) { node = tile!.next10; }
+										if (node) { return node.vertexprops[vertex.subvertex]; }
+									}
+									return defaultVertexProp;
+								});
+							} else {
+								if (isvertexminimapwater) {
+									//minimap renders everything in "srgb" (gamma=2.0) except for the water which is rendered in linear
+									//and therefor appears to dark, precompensate that here since we're doing single shot rendering
+									const gamma = 3.3;
+									color = [Math.pow(color[0] / 255, gamma) * 255, Math.pow(color[1] / 255, gamma) * 255, Math.pow(color[2] / 255, gamma) * 255]
 								}
-								return defaultVertexProp;
-							});
-						} else {
-							if (isminimapwater) {
-								//minimap renders everything in "srgb" (gamma=2.0) except for the water which is rendered in linear
-								//and therefor appears to dark, precompensate that here since we're doing single shot rendering
-								const gamma = 3.3;
-								color = [Math.pow(color[0] / 255, gamma) * 255, Math.pow(color[1] / 255, gamma) * 255, Math.pow(color[2] / 255, gamma) * 255]
+								props = Array<TileVertex>(shape.overlay.length).fill({
+									color,
+									material: 0,
+									materialTiling: 128
+								});
 							}
-							props = Array<TileVertex>(shape.overlay.length).fill({
-								color,
-								material: 0,
-								materialTiling: 128
-							});
-						}
-						for (let i = 2; i < shape.overlay.length; i++) {
-							let v0 = shape.overlay[0];
-							let v1 = shape.overlay[i - 1];
-							let v2 = shape.overlay[i];
-							if (!v0 || !v1 || !v2) { continue; }
-							let polyprops = [props[0], props[i - 1], props[i]];
-							indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
-							indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
-							indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
+							for (let i = 2; i < shape.overlay.length; i++) {
+								let v0 = shape.overlay[0];
+								let v1 = shape.overlay[i - 1];
+								let v2 = shape.overlay[i];
+								if (!v0 || !v1 || !v2) { continue; }
+								let polyprops = [props[0], props[i - 1], props[i]];
+								indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
+								indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
+								indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
+							}
 						}
 					}
 				}

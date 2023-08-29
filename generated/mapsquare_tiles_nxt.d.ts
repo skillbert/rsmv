@@ -5,61 +5,61 @@
 export type mapsquare_tiles_nxt = {
 	level0?: {
 		flags: number,
-		heightcode: number,
+		height: number,
 		rest: {
-			extraheight: number | null,
+			waterheight: number | null,
 			underlay: number,
-			underlayext: number | null,
+			underlaycolor: number | null,
 			overlay: number,
-			overlayunderwater: number | null,
+			overlay_under: number | null,
 			overlaydata: {
 				shape: number,
-				shapeunderwater: number | null,
+				overlay_under: number | null,
 			} | null,
 		} | null,
 	}[] | null
 	level1?: {
 		flags: number,
-		heightcode: number,
+		height: number,
 		rest: {
-			extraheight: number | null,
+			waterheight: number | null,
 			underlay: number,
-			underlayext: number | null,
+			underlaycolor: number | null,
 			overlay: number,
-			overlayunderwater: number | null,
+			overlay_under: number | null,
 			overlaydata: {
 				shape: number,
-				shapeunderwater: number | null,
+				overlay_under: number | null,
 			} | null,
 		} | null,
 	}[] | null
 	level2?: {
 		flags: number,
-		heightcode: number,
+		height: number,
 		rest: {
-			extraheight: number | null,
+			waterheight: number | null,
 			underlay: number,
-			underlayext: number | null,
+			underlaycolor: number | null,
 			overlay: number,
-			overlayunderwater: number | null,
+			overlay_under: number | null,
 			overlaydata: {
 				shape: number,
-				shapeunderwater: number | null,
+				overlay_under: number | null,
 			} | null,
 		} | null,
 	}[] | null
 	level3?: {
 		flags: number,
-		heightcode: number,
+		height: number,
 		rest: {
-			extraheight: number | null,
+			waterheight: number | null,
 			underlay: number,
-			underlayext: number | null,
+			underlaycolor: number | null,
 			overlay: number,
-			overlayunderwater: number | null,
+			overlay_under: number | null,
 			overlaydata: {
 				shape: number,
-				shapeunderwater: number | null,
+				overlay_under: number | null,
 			} | null,
 		} | null,
 	}[] | null
