@@ -2097,6 +2097,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 								props = shape.overlay.map(vertex => {
 									if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
 									else {
+										//TODO implement overlay.bleedpriority when overlays bleed into eachother
 										let node: TileProps | undefined = tile;
 										if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
 										else if (vertex.nextx) { node = tile!.next01; }

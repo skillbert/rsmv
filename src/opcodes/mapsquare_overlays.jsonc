@@ -8,7 +8,7 @@
 	"0x08": { "name":                        "unknown_0x08", "read": "true" },
 	"0x09": { "name":                     "material_tiling", "read": "unsigned short" },
 	"0x0A": { "name":                        "unknown_0x0A", "read": "true" },
-	"0x0B": { "name":                        "unknown_0x0B", "read": "unsigned byte" },
+	"0x0B": { "name":                       "bleedpriority", "read": "unsigned byte" },//higher number means that it flows into neighbouring overlays with lower number
 	"0x0C": { "name":                     "bleedToUnderlay", "read": "true" },
 	"0x0D": { "name":                     "tertiary_colour", "read": ["array",3,"unsigned byte"] },
 	"0x0E": { "name":                        "unknown_0x0E", "read": "unsigned byte" },
