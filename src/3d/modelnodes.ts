@@ -216,6 +216,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 	cleanup() {
 		this.listeners = {};
 		this.renderscene?.removeSceneElement(this);
+		this.skeletonHelper?.removeFromParent();
 		this.renderscene = null;
 	}
 
@@ -306,7 +307,8 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		action.play();
 		this.skeletonHelper?.removeFromParent();
 		this.skeletonHelper = new SkeletonHelper(mesh);
-		this.rootnode.add(this.skeletonHelper);
+		globalThis.skeletonhelper = this.skeletonHelper;
+		// (this.renderscene as any)?.scene.add(this.skeletonHelper);
 		this.mountedanim = clip;
 	}
 
