@@ -1910,7 +1910,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
-		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers });
+		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers, skipread: false });
 		p.onRun(output, `${mode}:${batched}:${keepbuffers}:${filestext}`);
 	}
 

@@ -28,6 +28,8 @@ function cacheSourceFromString(str: string) {
 			case "nxt":
 			case "cache":
 				return new GameCacheLoader(arg, false);
+			case "cache-write":
+				return new GameCacheLoader(arg, true);
 			case "openrs":
 			case "openrs2":
 				return Openrs2CacheSource.fromId(+arg);

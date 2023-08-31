@@ -64,6 +64,7 @@ const extract = command({
 		save: option({ long: "save", short: "s", type: cmdts.string, defaultValue: () => "extract" }),
 		mode: option({ long: "mode", short: "m", type: cmdts.string, defaultValue: () => "bin" }),
 		edit: flag({ long: "edit", short: "e" }),
+		skipread: flag({ long: "noread", short: "n" }),
 		fixhash: flag({ long: "fixhash", short: "h" }),
 		batched: flag({ long: "batched", short: "b" }),
 		batchlimit: option({ long: "batchsize", type: cmdts.number, defaultValue: () => -1 }),
@@ -191,7 +192,7 @@ const openrs2ids = command({
 
 let subcommands = cmdts.subcommands({
 	name: "cache tools cli",
-	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist,  cluecoords }
+	cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords }
 });
 
 cmdts.run(subcommands, cliArguments());

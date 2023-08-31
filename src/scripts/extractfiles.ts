@@ -4,7 +4,7 @@ import { FileRange } from "../utils";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { cacheFileDecodeModes, DecodeMode, DecodeModeFactory } from "./filetypes";
 
-export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange[], edit: boolean, keepbuffers: boolean }) {
+export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange[], edit: boolean, skipread: boolean, keepbuffers: boolean }) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
 	let flags: Record<string, string> = {};
@@ -23,73 +23,74 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 		.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subindex - b.subindex);
 
 
-	let lastarchive: null | { index: CacheIndex, subfiles: SubFile[], error: Error | null } = null;
-	let currentBatch: { name: string, startIndex: CacheIndex, arch: SubFile[], outputs: (string | Buffer)[], batchchunknr: number } | null = null;
-	let flushbatch = () => {
-		if (currentBatch) {
-			//return promise instead of async function so we only switch stacks when actually doing anything
-			return (async () => {
-				let filename = `${args.mode}-${currentBatch.startIndex.major}_${currentBatch.startIndex.minor}.batch`;
-				if (batchMaxFiles != -1) { filename += "." + currentBatch.batchchunknr; }
-				filename += `.${mode.ext}`;
-				outdir.writeFile(filename, mode.combineSubs(currentBatch.outputs));
-				currentBatch = null;
-			})();
-		}
-	}
-	for (let fileid of allfiles) {
-		if (output.state != "running") { break; }
-		let arch: SubFile[];
-		if (lastarchive && lastarchive.index == fileid.index) {
-			arch = lastarchive.subfiles;
-		} else {
-			let err: Error | null = null;
-			try {
-				arch = await source.getFileArchive(fileid.index);
-			} catch (e) {
-				err = e;
-				arch = [];
+	if (!args.skipread) {
+		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[], error: Error | null } = null;
+		let currentBatch: { name: string, startIndex: CacheIndex, arch: SubFile[], outputs: (string | Buffer)[], batchchunknr: number } | null = null;
+		let flushbatch = () => {
+			if (currentBatch) {
+				//return promise instead of async function so we only switch stacks when actually doing anything
+				return (async () => {
+					let filename = `${args.mode}-${currentBatch.startIndex.major}_${currentBatch.startIndex.minor}.batch`;
+					if (batchMaxFiles != -1) { filename += "." + currentBatch.batchchunknr; }
+					filename += `.${mode.ext}`;
+					outdir.writeFile(filename, mode.combineSubs(currentBatch.outputs));
+					currentBatch = null;
+				})();
 			}
-			lastarchive = { index: fileid.index, subfiles: arch, error: err };
 		}
-		let file = arch[fileid.subindex];
-		if (!file) {
-			output.log(`skipped ${mode.fileToLogical(source, fileid.index.major, fileid.index.minor, fileid.subindex).join(".")} due to error: ${lastarchive.error}`);
-			continue;
-		}
-		let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
-		let res = mode.read(file.buffer, logicalid, source);
-		// //@ts-ignore //TODO remove
-		// if (res.length == 0) { continue; }
-		if (res instanceof Promise) { res = await res; }
-		if (batchSubfile || batchMaxFiles != -1) {
-			let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;
-			let newarch = currentBatch && currentBatch.arch != arch
-			if (!currentBatch || maxedbatchsize || (batchSubfile && newarch)) {
-				let nextbatchchunknr = (newarch || !maxedbatchsize || !currentBatch ? 0 : currentBatch.batchchunknr + 1);
-				let p = flushbatch();
-				if (p) { await p; }
-				currentBatch = {
-					name: "",
-					startIndex: fileid.index,
-					arch,
-					outputs: [],
-					batchchunknr: nextbatchchunknr
-				};
+		for (let fileid of allfiles) {
+			if (output.state != "running") { break; }
+			let arch: SubFile[];
+			if (lastarchive && lastarchive.index == fileid.index) {
+				arch = lastarchive.subfiles;
+			} else {
+				let err: Error | null = null;
+				try {
+					arch = await source.getFileArchive(fileid.index);
+				} catch (e) {
+					err = e;
+					arch = [];
+				}
+				lastarchive = { index: fileid.index, subfiles: arch, error: err };
 			}
-			currentBatch.outputs.push(res);
-		} else {
-			let filename = `${args.mode}${logicalid.length == 0 ? "" : "-" + logicalid.join("_")}.${mode.ext}`;
-			await outdir.writeFile(filename, res);
-		}
-	}
-	flushbatch();
+			let file = arch[fileid.subindex];
+			if (!file) {
+				output.log(`skipped ${mode.fileToLogical(source, fileid.index.major, fileid.index.minor, fileid.subindex).join(".")} due to error: ${lastarchive.error}`);
+				continue;
+			}
+			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
+			let res = mode.read(file.buffer, logicalid, source);
 
+			if (res instanceof Promise) { res = await res; }
+			if (batchSubfile || batchMaxFiles != -1) {
+				let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;
+				let newarch = currentBatch && currentBatch.arch != arch
+				if (!currentBatch || maxedbatchsize || (batchSubfile && newarch)) {
+					let nextbatchchunknr = (newarch || !maxedbatchsize || !currentBatch ? 0 : currentBatch.batchchunknr + 1);
+					let p = flushbatch();
+					if (p) { await p; }
+					currentBatch = {
+						name: "",
+						startIndex: fileid.index,
+						arch,
+						outputs: [],
+						batchchunknr: nextbatchchunknr
+					};
+				}
+				currentBatch.outputs.push(res);
+			} else {
+				let filename = `${args.mode}${logicalid.length == 0 ? "" : "-" + logicalid.join("_")}.${mode.ext}`;
+				await outdir.writeFile(filename, res);
+			}
+		}
+		flushbatch();
+	}
 
 	if (args.edit) {
-		output.log("press any key to save edits");
+		output.log("press enter to save edits");
 		await new Promise<any>(d => process.stdin.once('data', d));
 
+		let lastarchive: null | { index: CacheIndex, subfiles: SubFile[], error: Error | null } = null;
 		let archedited = () => {
 			if (!(source instanceof GameCacheLoader)) { throw new Error("can only do this on file source of type gamecacheloader"); }
 			if (lastarchive) {

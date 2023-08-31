@@ -151,7 +151,7 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 				opcodetype.write(state, opt.op);
 				opt.parser.write(state, value[key]);
 			}
-			if (hasexplicitnull) {
+			if (!hasexplicitnull) {
 				opcodetype.write(state, 0);
 			}
 		},
