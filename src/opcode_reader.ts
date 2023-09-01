@@ -1,8 +1,6 @@
 import type * as jsonschema from "json-schema";
 import { lastLegacyBuildnr } from "./constants";
 
-type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand" | "gteq" | "lteq";
-
 export type TypeDef = { [name: string]: unknown };
 
 const BufferTypes = {
@@ -381,10 +379,8 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 function optParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
-			let value = ref.read(state);
-			if (!checkCondition(cmpmode, condvalue, value)) {
-				return null;
-			}
+			let matchindex = condchecker.read(state);
+			if (matchindex == -1) { return null; }
 			return type.read(state);
 		},
 		write(state, value) {
@@ -415,77 +411,49 @@ function optParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDe
 	}
 
 	if (args.length < 2) throw new Error(`2 arguments exptected for proprety with type opt`);
-	let condvar: string;
 	let arg1 = args[0];
-	let condvalue: number;
-	let cmpmode: CompareMode = "eq";
-	if (Array.isArray(arg1)) {
-		condvar = arg1[0];
-		cmpmode = arg1[2] ?? "eq";
-		if (typeof arg1[1] == "number") {
+	let condstr = "";
+	if (typeof arg1 == "string") {
+		condstr = arg1;
+	} else {
+		type CompareMode = "eq" | "eqnot" | "bitflag" | "bitflagnot" | "bitor" | "bitand" | "gteq" | "lteq";
+
+		let condvar: string;
+		let condvalue: number;
+		let cmpmode: CompareMode = "eq";
+		if (Array.isArray(arg1)) {
+			if (typeof arg1[1] != "number") {
+				throw new Error("only literal ints as condition value are supported");
+			}
+			condvar = arg1[0];
+			cmpmode = arg1[2] ?? "eq";
 			condvalue = arg1[1];
 		} else {
-			throw new Error("only literal ints as condition value are supported");
+			if (typeof arg1 != "number") { throw new Error(""); }
+			condvar = "$opcode";
+			condvalue = arg1;
 		}
-	} else {
-		if (typeof arg1 != "number") { throw new Error(""); }
-		condvar = "$opcode";
-		condvalue = arg1;
+		let condmap: Record<CompareMode, string> = {
+			bitand: "&=",
+			bitflag: "&",
+			bitflagnot: "!&",
+			bitor: "&",
+			eq: "==",
+			eqnot: "!=",
+			gteq: ">=",
+			lteq: "<="
+		}
+		let mapped = condmap[cmpmode]
+		if (cmpmode == "bitflag" || cmpmode == "bitflagnot") {
+			condvalue = 1 << condvalue;
+		}
+		condstr = `${condvar}${mapped}${condvalue}`;
 	}
-
-	let ref = refgetter(parent, condvar, (v: unknown, oldvalue: number) => {
-		return forceCondition(cmpmode, condvalue, oldvalue, v != null);
-	});
+	let condchecker = conditionParser(resolveReference, [condstr], v => (v == null ? -1 : 0));
 
 	let type = buildParser(resolveReference, args[1], typedef);
 
 	return r;
-}
-
-function forceCondition(condMode: CompareMode, compValue: number, oldvalue: number, state: boolean) {
-	switch (condMode) {
-		case "eq":
-			return state ? compValue : oldvalue;
-		case "eqnot":
-			return state ? oldvalue : compValue;
-		case "bitflag":
-			return (state ? oldvalue | (1 << compValue) : oldvalue & ~(1 << compValue));
-		case "bitor":
-			return (state ? oldvalue | compValue : oldvalue & ~compValue);
-		case "bitand":
-			return (state ? oldvalue | compValue : oldvalue & ~compValue);
-		case "bitflagnot":
-			return (state ? oldvalue & ~(1 << compValue) : oldvalue | (1 << compValue));
-		case "gteq":
-			return state ? Math.max(compValue, oldvalue) : oldvalue;
-		case "lteq":
-			return state ? Math.min(compValue, oldvalue) : oldvalue;
-		default:
-			throw new Error("unknown condition " + condMode);
-	}
-}
-
-function checkCondition(condmode: CompareMode, compValue: number, v: number) {
-	switch (condmode) {
-		case "eq":
-			return v == compValue;
-		case "eqnot":
-			return v != compValue;
-		case "bitflag":
-			return (v & (1 << compValue)) != 0;
-		case "bitor":
-			return (v & compValue) != 0;
-		case "bitand":
-			return (v & compValue) == compValue;
-		case "bitflagnot":
-			return (v & (1 << compValue)) == 0;
-		case "gteq":
-			return v >= compValue;
-		case "lteq":
-			return v <= compValue;
-		default:
-			throw new Error("unkown condition " + condmode);
-	}
 }
 
 function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
@@ -975,6 +943,104 @@ function stringParser(prebytes: number[]): ChunkParser {
 	}
 }
 
+function conditionParser(parent: ChunkParentCallback, optionstrings: string[], writegetindex?: (v: unknown) => number) {
+	type ops = "=" | "<" | "<=" | ">" | ">=" | "&" | "!&" | "!=" | "&=";
+	type cond = { op: ops, value: number, varname: string, varindex: number };
+
+	let varmap: { name: string, parser: ReturnType<typeof refgetter> }[] = [];
+	let options: cond[][] = [];
+	for (let str of optionstrings) {
+		str = str.replace(/\s/g, "");
+		let parts = str.split(/&&/g);
+		let conds: cond[] = [];
+		for (let opt of parts) {
+			let op: ops;
+			let varname: string;
+			let value = 0;
+			if (opt == "default" || opt == "other") {
+				continue;
+			} else {
+				let m = opt.match(/^((?<var>[\$a-zA-Z]\w*)?(?<op><|<=|>|>=|&|==|=|!&|&=|!=)?)?(?<version>0x[\da-fA=F]+|-?\d+)$/);
+				if (!m) { throw new Error("invalid match value, expected <op><version>. For example '>10'"); }
+				value = parseInt(m.groups!.version);
+				op = (m.groups!.op ?? "=") as ops;
+				if (op as any == "==") { op = "="; }
+				varname = m.groups!.var ?? "$opcode";
+			}
+
+			let varindex = varmap.findIndex(q => q.name == varname);
+			if (varindex == -1) {
+				varindex = varmap.length;
+
+				varmap.push({
+					name: varname,
+					parser: refgetter(parent, varname, (v, oldvalue) => {
+						if (!writegetindex) { throw new Error("write not implemented"); }
+						let index = writegetindex(v);
+
+						for (let optionindex = 0; optionindex < options.length; optionindex++) {
+							let option = options[optionindex];
+							for (let con of option) {
+								if (con.varindex != varindex) { continue; }
+								let state = optionindex == index;
+								let compValue = con.value;
+								switch (con.op) {
+									case "=": oldvalue = state ? compValue : oldvalue; break;
+									case "!=": oldvalue = state ? oldvalue : compValue; break;
+									case "&": oldvalue = (state ? oldvalue | compValue : oldvalue & ~compValue); break;
+									case "&=": oldvalue = (state ? oldvalue | compValue : oldvalue & ~compValue); break;
+									case "!&": oldvalue = (state ? oldvalue & ~compValue : oldvalue | compValue); break;
+									case ">=": oldvalue = state ? Math.max(compValue, oldvalue) : oldvalue; break;
+									case ">": oldvalue = state ? Math.max(compValue + 1, oldvalue) : oldvalue; break;
+									case "<=": oldvalue = state ? Math.min(compValue, oldvalue) : oldvalue; break;
+									case "<": oldvalue = state ? Math.min(compValue - 1, oldvalue) : oldvalue; break;
+									default: throw new Error("unknown condition " + con.op);
+								}
+							}
+						}
+						return oldvalue;
+					})
+				});
+			}
+
+			conds.push({ op, value, varname, varindex });
+		}
+		options.push(conds);
+	}
+
+	let read = (state: DecodeState) => {
+		let vars = varmap.map(q => q.parser.read(state));
+
+		for (let optindex = 0; optindex < options.length; optindex++) {
+			let opt = options[optindex];
+			let matched = true;
+			for (let cond of opt) {
+				let value = vars[cond.varindex];
+				switch (cond.op) {
+					case "=": matched = value == cond.value; break;
+					case "!=": matched = value != cond.value; break;
+					case "<": matched = value < cond.value; break;
+					case "<=": matched = value <= cond.value; break;
+					case ">": matched = value > cond.value; break;
+					case ">=": matched = value >= cond.value; break;
+					case "&": matched = (value & cond.value) != 0; break;
+					case "!&": matched = (value | cond.value) == 0; break;
+					case "&=": matched = (value & cond.value) == cond.value; break;
+					default: throw new Error("unknown op" + cond.op);
+				}
+			}
+			if (matched) {
+				return optindex;
+			}
+		}
+		return -1;
+	}
+
+
+	return { read };
+}
+
+
 const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) => ChunkParser> = {
 	playeritem: function () {
 		return {
@@ -1033,50 +1099,35 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		if (args.length != 2) { throw new Error("match chunks needs 2 arguments") }
 		if (typeof args[1] != "object") { throw new Error("match chunk requires 2n+2 arguments"); }
 
-		type ops = "=" | "<" | "<=" | ">" | ">=" | "&" | "default"
-
 		let r: ChunkParser = {
 			read(state) {
 				let opcodeprop = { $opcode: 0 };
 				state.stack.push({});
 				state.hiddenstack.push(opcodeprop);
-				let value = optparser.read(state);
+				let value = opvalueparser.read(state);
 				opcodeprop.$opcode = value;
-				let res: any;
-				let matched = false;
-				for (let option of options) {
-					switch (option.op) {
-						case "=": matched = value == option.value; break;
-						case "<": matched = value < option.value; break;
-						case "<=": matched = value <= option.value; break;
-						case ">": matched = value > option.value; break;
-						case ">=": matched = value >= option.value; break;
-						case "&": matched = (value & option.value) != 0; break;
-						case "default": matched = true; break;
-					}
-					if (matched) {
-						res = option.parser.read(state);
-						break;
-					}
+				let opindex = conditionparser.read(state);
+				if (opindex == -1) {
+					throw new Error("no opcode matched");
 				}
+				let res = optionvalues[opindex].read(state);
+
 				state.stack.pop();
-				state.hiddenstack.pop();
-				if (!matched) { throw new Error("no opcode matched"); }
-				return res;
+				state.hiddenstack.pop();				return res;
 			},
 			write(state, v) {
 				//no way to retrieve the opcode, so this only works for refs/constants
-				optparser.write(state, null);
+				opvalueparser.write(state, null);
 			},
 			getTypescriptType(indent) {
-				return "(" + options.map(opt => opt.parser.getTypescriptType(indent + "\t")).join("|") + ")";
+				return "(" + optionvalues.map(opt => opt.getTypescriptType(indent + "\t")).join("|") + ")";
 			},
 			getJsonSchema() {
-				return { oneOf: options.map(opt => opt.parser.getJsonSchema()) };
+				return { oneOf: optionvalues.map(opt => opt.getJsonSchema()) };
 			},
 		}
 
-		const resolveReference = function (name, child) {
+		const resolveReference: ChunkParentCallback = function (name, child) {
 			let res: ResolvedReference = {
 				stackdepth: child.stackdepth + 1,
 				resolve(v, old) {
@@ -1086,23 +1137,10 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			if (name == "$opcode") { return res; }
 			return buildReference(name, parent, res);
 		}
-
-		let options: { op: ops, value: number, parser: ChunkParser }[] = [];
-		let optparser = buildParser(resolveReference, args[0], typedef);
-		for (let opt in args[1]) {
-			let op: ops;
-			let value = 0;
-			if (opt == "default" || opt == "other") {
-				op = "default";
-			} else {
-				let m = opt.match(/^(?<op><|<=|>|>=|&|=)?(?<version>0x[\da-fA=F]+|\d+)$/);
-				if (!m) { throw new Error("invalid match value, expected <op><version>. For example '>10'"); }
-				value = parseInt(m.groups!.version);
-				op = (m.groups!.op ?? "=") as ops;
-			}
-			options.push({ op, value, parser: buildParser(resolveReference, args[1][opt], typedef) });
-		}
-
+		let opvalueparser = buildParser(resolveReference, args[0], typedef);
+		let conditionstrings = Object.keys(args[1] as any);
+		let optionvalues = Object.values(args[1] as any).map(q => buildParser(resolveReference, q, typedef))
+		let conditionparser = conditionParser(resolveReference, conditionstrings);
 		return r;
 	},
 	footer: function (args, parent, typedef) {

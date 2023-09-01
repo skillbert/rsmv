@@ -288,7 +288,6 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		{ t: "unknown", a: 0 },//2k hits, spread between -1-1, most at bounderies or 0
 	]
 
-	console.log(animtracks);
 	for (let index = 0; index < animtracks.length;) {
 		let track = animtracks[index];
 
