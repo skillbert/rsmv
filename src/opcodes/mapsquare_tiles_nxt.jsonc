@@ -2,60 +2,52 @@
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
 	["height","ubyte"],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["waterheight",["opt","flags&16","ubyte"]],
 		["underlay","varushort"],
-		["underlaycolor",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
-		["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]],
-		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
-			["shape","ubyte"],
-			["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]]
-		]]]
+		["overlay_under",["opt","flags&16","varushort"]],
+		["shape",["opt","overlay!=0","ubyte"]],
+		["underlay_under",["opt","overlay!=0 && flags&16","varushort"]]
 	]]]
 ]]},
 "0x01":{"name":"level1","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
 	["height","ubyte"],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["waterheight",["opt","flags&16","ubyte"]],
 		["underlay","varushort"],
-		["underlaycolor",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
-		["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]],
-		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
-			["shape","ubyte"],
-			["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]]
-		]]]
+		["overlay_under",["opt","flags&16","varushort"]],
+		["shape",["opt","overlay!=0","ubyte"]],
+		["underlay_under",["opt","overlay!=0 && flags&16","varushort"]]
 	]]]
 ]]},
 "0x02":{"name":"level2","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
 	["height","ubyte"],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["waterheight",["opt","flags&16","ubyte"]],
 		["underlay","varushort"],
-		["underlaycolor",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
-		["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]],
-		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
-			["shape","ubyte"],
-			["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]]
-		]]]
+		["overlay_under",["opt","flags&16","varushort"]],
+		["shape",["opt","overlay!=0","ubyte"]],
+		["underlay_under",["opt","overlay!=0 && flags&16","varushort"]]
 	]]]
 ]]},
 "0x03":{"name":"level3","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
 	["height","ubyte"],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt",["flags",4,"bitflag"],"ubyte"]],
+		["waterheight",["opt","flags&16","ubyte"]],
 		["underlay","varushort"],
-		["underlaycolor",["opt",["underlay",0,"eqnot"],"ushort"]],
+		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
-		["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]],
-		["overlaydata",["opt",["overlay",0,"eqnot"],["struct",
-			["shape","ubyte"],
-			["overlay_under",["opt",["flags",4,"bitflag"],"varushort"]]
-		]]]
+		["overlay_under",["opt","flags&16","varushort"]],
+		["shape",["opt","overlay!=0","ubyte"]],
+		["underlay_under",["opt","overlay!=0 && flags&16","varushort"]]
 	]]]
 ]]}
 }

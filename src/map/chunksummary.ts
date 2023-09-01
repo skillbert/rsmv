@@ -123,7 +123,7 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 						if (!tile.underlayVisible && !tile.overlayVisible) { continue; }
 						let tilehash = tilehashes[tile.effectiveVisualLevel];
 
-						tilehash = crc32addInt(tile.raw.flags, tilehash);
+						tilehash = crc32addInt(tile.raw.flags, tilehash);//TODO get rid of this one
 						tilehash = crc32addInt(tile.raw.height ?? -1, tilehash);
 						tilehash = crc32addInt(tile.raw.overlay ?? -1, tilehash);
 						tilehash = crc32addInt(tile.raw.settings ?? -1, tilehash);

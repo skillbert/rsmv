@@ -325,9 +325,8 @@ function generateTileShapes() {
 		} else if (shape == 4 || shape == 36 || shape == 40) {
 			overlay.push(0, 4, 6);
 			underlay.push(0, 2, 4);
-			//TODO find out what these are about
 			if (shape == 36) { rotation += 1; }//36 is rounded concave and has an extra vertex halfway the diagonal
-			if (shape == 40) { rotation += 3; }
+			if (shape == 40) { rotation += 3; }//opposite of 36
 		} else if (shape == 8) {
 			overlay.push(0, 1, 6);
 			underlay.push(1, 2, 4, 6)
@@ -370,6 +369,40 @@ function generateTileShapes() {
 		underlay: [2, 4, 6, 0].map(q => getvertex(q, 0))
 	}
 	return { tileshapes, defaulttileshape, defaulttileshapeflipped };
+}
+
+function invertTileShape(shape: number) {
+	let rotation = shape % 4;
+	let mirrorrotation = (rotation + 2) % 4;
+	let base = shape - rotation;
+
+	if (base == 0) {
+		return 0 + mirrorrotation;
+	} else if (base == 4) {
+		return 4 + mirrorrotation;
+	} else if (base == 8) {
+		return 16 + rotation;
+	} else if (base == 12) {
+		return 20 + rotation;
+	} else if (base == 16) {
+		return 8 + rotation;
+	} else if (base == 20) {
+		return 12 + rotation;
+	} else if (base == 24) {
+		return 24 + mirrorrotation;
+	} else if (base == 28) {
+		return 32 + rotation;
+	} else if (base == 36) {
+		return 40 + rotation;
+	} else if (base == 40) {
+		return 36 + rotation;
+	} else if (base == 32) {
+		return 28 + rotation;
+	} else if (base == 44) {
+		console.log("unknown inverse shape");
+		return 0;
+	}
+	throw new Error("unexpected");
 }
 
 export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
@@ -638,7 +671,7 @@ export class TileGrid implements TileGridSource {
 							currenttile.underlayprops.color = [r / count, g / count, b / count];
 						}
 					}
-					
+
 					//normals
 					let dydx = 0;
 					let dydz = 0;
@@ -786,13 +819,28 @@ export class TileGrid implements TileGridSource {
 						//TODO there is much much more to this, probably similar to the classic code
 						height += 30;
 					}
-					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
-					let outtile = new TileProps(this.engine, height, tile, tilex, tilez, level, docollision);
+					let outtile: TileProps;
 					if (nxttile) {
+						let nxtset = nxttile.flags;
+						let newsettings = (nxtset & 2 ? 1 : 0) | (nxtset & 4 ? 2 : 0) | (nxtset & 8 ? 4 : 0) | (nxtset & 32 ? 8 : 0) | (nxtset & 64 ? 16 : 0);
+						let faketile = {
+							flags: tile.flags,
+							height: tile.height,
+							overlay: nxttile.rest?.overlay_under ?? nxttile.rest?.overlay ?? null,
+							//when there is water on a tile it gets draw from the perspective of the underwater surface, we ignore all that for now
+							// shape: nxttile.rest?.overlay_under ? invertTileShape(nxttile.rest.shape ?? 0) : nxttile.rest?.shape ?? null,
+							shape: tile.shape,//use old file for shape for now, in newer areas the shape isn't defined and water does some auto-connect stuff
+							underlay: nxttile.rest?.underlay_under ?? nxttile.rest?.underlay ?? null,
+							settings: newsettings
+						}
+						outtile = new TileProps(this.engine, height, faketile, tilex, tilez, level, docollision);
 						outtile.nxttile = nxttile;
 						outtile.originalUnderlayColor = HSL2RGB(packedHSL2HSL(nxttile.rest?.underlaycolor ?? 0));
 						outtile.underlayprops.color = outtile.originalUnderlayColor;
+					} else {
+						outtile = new TileProps(this.engine, height, tile, tilex, tilez, level, docollision);
 					}
+					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
 					this.tiles[newindex] = outtile;
 					tileindex += chunkrect.xsize * chunkrect.zsize;
 				}

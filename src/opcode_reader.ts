@@ -1028,6 +1028,9 @@ function conditionParser(parent: ChunkParentCallback, optionstrings: string[], w
 					case "&=": matched = (value & cond.value) == cond.value; break;
 					default: throw new Error("unknown op" + cond.op);
 				}
+				if (!matched) {
+					break;
+				}
 			}
 			if (matched) {
 				return optindex;
@@ -1113,7 +1116,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				let res = optionvalues[opindex].read(state);
 
 				state.stack.pop();
-				state.hiddenstack.pop();				return res;
+				state.hiddenstack.pop(); return res;
 			},
 			write(state, v) {
 				//no way to retrieve the opcode, so this only works for refs/constants

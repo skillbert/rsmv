@@ -12,10 +12,8 @@ export type mapsquare_tiles_nxt = {
 			underlaycolor: number | null,
 			overlay: number,
 			overlay_under: number | null,
-			overlaydata: {
-				shape: number,
-				overlay_under: number | null,
-			} | null,
+			shape: number | null,
+			underlay_under: number | null,
 		} | null,
 	}[] | null
 	level1?: {
@@ -27,10 +25,8 @@ export type mapsquare_tiles_nxt = {
 			underlaycolor: number | null,
 			overlay: number,
 			overlay_under: number | null,
-			overlaydata: {
-				shape: number,
-				overlay_under: number | null,
-			} | null,
+			shape: number | null,
+			underlay_under: number | null,
 		} | null,
 	}[] | null
 	level2?: {
@@ -42,10 +38,8 @@ export type mapsquare_tiles_nxt = {
 			underlaycolor: number | null,
 			overlay: number,
 			overlay_under: number | null,
-			overlaydata: {
-				shape: number,
-				overlay_under: number | null,
-			} | null,
+			shape: number | null,
+			underlay_under: number | null,
 		} | null,
 	}[] | null
 	level3?: {
@@ -57,10 +51,8 @@ export type mapsquare_tiles_nxt = {
 			underlaycolor: number | null,
 			overlay: number,
 			overlay_under: number | null,
-			overlaydata: {
-				shape: number,
-				overlay_under: number | null,
-			} | null,
+			shape: number | null,
+			underlay_under: number | null,
 		} | null,
 	}[] | null
 };
