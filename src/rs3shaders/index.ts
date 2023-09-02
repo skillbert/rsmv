@@ -9,6 +9,7 @@ let inputreplace: InputReplacer = {
     uProjectionMatrix: "#define uProjectionMatrix projectionMatrix",
     uCameraPosition: "#define uCameraPosition cameraPosition",
 
+    aWaterPosition_Depth: "#define aWaterPosition_Depth vec4(position,10.0)",
     aVertexPosition: "#define aVertexPosition position",
     aVertexPosition_BoneLabel: "#define aVertexPosition_BoneLabel vec4(position,0.0)",
     aTextureUV: "#define aTextureUV uv",
@@ -165,6 +166,69 @@ export function minimapFloorMaterial(texture: Texture) {
     vert = replaceDefines(vert, definereplace);
 
     let frag: string = require("./minimap-floor-frag.glsl.c");
+    frag = fixShader(frag);
+    frag = replaceUniforms(frag, inputreplace);
+    frag = replaceDefines(frag, definereplace);
+    frag = frag.replace(/#undef gl_FragColor/, "// $&");
+    frag = frag.replace(/void getTextureSettings\(/,
+        "void getTextureSettings(vec2 s, out TextureSettings settings){\n"
+        + "settings.textureMeta1 = vec3(0.0,0.0,8196.0);\n"// [x,y,size] first texture, albedo x*uAtlasMeta.y*uAtlasMeta.z
+        + "settings.textureMeta2 = vec3(0.0,0.0,8196.0);\n"// [x,y,size] second texture normals??
+        + "settings.uvAnim = vec2(0.0,0.0);\n"
+        + "settings.wrapping = 0.0;\n"
+        + "settings.specular = 0.0;\n"
+        + "settings.normalScale = 0.0;\n"
+        + "}\n"
+        + "void getTextureSettingsOld("
+    );
+
+    //inject floor uv from mesh instead of derived from world position
+    let gettexelcount = 0;
+    frag = injectheader(frag, "in highp vec2 v_texcoord_0;\nin highp vec2 v_texcoord_1;\nin highp vec2 v_texcoord_2;");
+    vert = injectheader(vert, "in highp vec2 texcoord_0;\nin highp vec2 texcoord_1;\nin highp vec2 texcoord_2;");
+    vert = injectheader(vert, "out highp vec2 v_texcoord_0;\nout highp vec2 v_texcoord_1;\nout highp vec2 v_texcoord_2;");
+    vert = injectmain(vert, "v_texcoord_0=texcoord_0;\nv_texcoord_1=texcoord_1;\nv_texcoord_2=texcoord_2;\n");
+    frag = frag.replace(/(?<!void )getTexel\(\w+,/gm, () => `getTexel(v_texcoord_${gettexelcount++ % 3},`);
+
+    mat.vertexShader = vert;
+    mat.fragmentShader = frag;
+    globalThis.vert = vert;
+    globalThis.frag = frag;
+
+    mat.uniforms.uTextureAtlas = { value: texture };
+    mat.uniforms.uInvSunDirection.value[2] *= -1;//z flip
+
+    mat.uniformsNeedUpdate = true;
+
+    return mat;
+}
+export function minimapWaterMaterial(texture: Texture) {
+    let mat = new ShaderMaterial();
+    mat.customProgramCacheKey = () => "water";
+    mat.uniforms = {
+        uAmbientColour: { value: [1, 0, 0] },
+        uCameraPosition: { value: [1671168, 17344, 1638400] },
+        uDummy: { value: [0] },
+        uFullScreenLookupScale: { value: [0, 5.960465188081798e-8, 1, 0] },
+        uInvSunDirection: { value: [1671168, 17344, 1638400] },
+        uModelMatrix: { value: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1654783, 100, 1622015, 1] },
+        uProjectionMatrix: { value: [0.0000152587890625, 0, 0, 0, 0, -0.0000152587890625, 0, 0, 0, 0, -0.00006200397183420137, 0, 0, 0, -1.0317461490631104, 1] },
+        uSunColour: { value: [0, 5.960465188081798e-8, 1] },
+        uViewMatrix: { value: [1, 0, 0, 0, 0, 5.960465188081798e-8, 1, 0, 0, -1, 5.960465188081798e-8, 0, -1671168, 1638400, -17344.09765625, 1] },
+        uViewProjMatrix: { value: [0.0000152587890625, 0, 0, 0, 0, -9.094948101931455e-13, -0.00006200397183420137, 0, 0, 0.0000152587890625, -3.695725149521767e-12, 0, -25.5, -25, 0.04365682601928711, 1] },
+        uViewportLookupScale: { value: [1671168, 17344, 1638400, 1.0947093356943706e+27] },
+        uViewportOffsetScale: { value: [1, 0, 0, 0] },
+        uZBufferParams: { value: [16777248, 32256, -32768, -512.0009765625] }
+    }
+
+    mat.vertexColors = true;
+
+    let vert: string = require("./minimap-water-vert.glsl.c");
+    vert = fixShader(vert);
+    vert = replaceUniforms(vert, inputreplace);
+    vert = replaceDefines(vert, definereplace);
+
+    let frag: string = require("./minimap-water-frag.glsl.c");
     frag = fixShader(frag);
     frag = replaceUniforms(frag, inputreplace);
     frag = replaceDefines(frag, definereplace);

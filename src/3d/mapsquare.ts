@@ -20,7 +20,7 @@ import { MeshBuilder, topdown2dWallModels } from "./modelutils";
 import { crc32addInt } from "../scripts/dependencies";
 import { CacheFileSource } from "../cache";
 import { CanvasImage } from "../imgutils";
-import { minimapFloorMaterial } from "../rs3shaders";
+import { minimapFloorMaterial, minimapWaterMaterial } from "../rs3shaders";
 import { mapsquare_tiles_nxt } from "../../generated/mapsquare_tiles_nxt";
 
 
@@ -2143,10 +2143,16 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		let b = polyprops[currentmat].color[2];
 
 		if (isMinimap) {
+			//based on linear regression of a bunch of overlays
 			//i don't have any clue why
 			r = 20 + 0.656 * r;
 			g = 28 + 0.577 * g;
 			b = 23 + 0.604 * b;
+			if (drawWater) {
+				r = Math.pow(r / 255, 2.2) * 255;
+				g = Math.pow(g / 255, 2.2) * 255;
+				b = Math.pow(b / 255, 2.2) * 255;
+			}
 		}
 
 		colorbuffer[colpointer + 0] = r;
@@ -2227,7 +2233,12 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				}
 				if (drawWater) {
 					if (tile.waterProps) {
-						let polyprops = [tile.waterProps.props, tile.waterProps.props, tile.waterProps.props];
+						// let props: TileVertex = {
+						// 	...tile.waterProps.props,
+						// 	color: tile.waterProps.props.color.map((q, i) => (i == 3 ? q : Math.pow(q, 2.2)))
+						// }
+						let props = tile.waterProps.props;
+						let polyprops = [props, props, props];
 						let shape = tile.waterProps.shape
 						for (let i = 2; i < shape.length; i++) {
 							let v0 = shape[0];
@@ -2422,7 +2433,11 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 		map.needsUpdate = true;
 
 		if (floor.mode == "minimap") {
-			mat = minimapFloorMaterial(map) as any;
+			if (floor.iswater) {
+				mat = minimapWaterMaterial(map) as any;
+			} else {
+				mat = minimapFloorMaterial(map) as any;
+			}
 		} else {
 			// augmentThreeJsFloorMaterial(mat, floor.mode == "minimap");
 			augmentThreeJsFloorMaterial(mat, false);
