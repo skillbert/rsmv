@@ -31,12 +31,9 @@ export const squareLevels = 4;//TODO get rid of this and use grid.levels instead
 export const worldStride = 128;
 const heightScale = 1 / 16;
 
-//TODO find out which prop the client uses to detect water materials
-const watermaterials = [2118, 1135, 2157, 2155, 38, 6986];
-
 const upvector = new THREE.Vector3(0, 1, 0);
 
-const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, color: [255, 0, 255] };
+const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, materialBleedpriority: 0, color: [255, 0, 255] };
 
 export const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 
@@ -104,6 +101,7 @@ type TileShape = {
 export type TileVertex = {
 	material: number,
 	materialTiling: number,
+	materialBleedpriority: number,
 	color: number[]
 }
 
@@ -161,7 +159,7 @@ export type ModelExtras = ModelExtrasLocation | ModelExtrasOverlay | {
 } & ClickableMesh<ModelExtrasLocation | ModelExtrasOverlay>
 
 export type MeshTileInfo = {
-	tile: mapsquare_tiles["tiles"][number],
+	tile: mapsquare_tiles["tiles"][number] | null,
 	tilenxt: unknown,
 	x: number,
 	z: number,
@@ -172,13 +170,14 @@ export type MeshTileInfo = {
 type NxtTileInfo = Exclude<mapsquare_tiles_nxt["level0"], null | undefined>[number];
 
 export class TileProps {
-	nxttile: NxtTileInfo | null = null;
-	raw: mapsquare_tiles["tiles"][number];
-	rawOverlay: mapsquare_overlays | undefined;
-	rawUnderlay: mapsquare_underlays | undefined;
-	next01: TileProps | undefined;
-	next10: TileProps | undefined;
-	next11: TileProps | undefined;
+	debug_nxttile: NxtTileInfo | null = null;
+	debug_raw: mapsquare_tiles["tiles"][number] | null = null;
+	rawOverlay: mapsquare_overlays | undefined = undefined;
+	rawUnderlay: mapsquare_underlays | undefined = undefined;
+	settings: number;//1=blocking,2=bridge/flag2,4=roofed,8=forcedraw,16=roofoverhang,128=nxtwater
+	next01: TileProps | undefined = undefined;
+	next10: TileProps | undefined = undefined;
+	next11: TileProps | undefined = undefined;
 	x: number;
 	y: number;
 	z: number;
@@ -189,91 +188,115 @@ export class TileProps {
 	playery01: number;
 	playery10: number;
 	playery11: number;
-	shape: TileShape;
-	underlayVisible: boolean;
-	overlayVisible: boolean;//these should probably be merged
-	normalX: number;
-	normalZ: number;
-	bleedsOverlayMaterial: boolean;
-	//0 botleft,1 botmid,2 leftmid,3 midmi;
+	shape = defaulttileshape;
+	underlayVisible = false;
+	overlayVisible = false;//these should probably be merged
+	normalX = 0;
+	normalZ = 0;
+	bleedsOverlayMaterial = false;
+	//0 botleft,1 botmid,2 leftmid,3 midmid;
 	vertexprops: TileVertex[];
 	overlayprops: TileVertex;
-	originalUnderlayColor: number[];
 	underlayprops: TileVertex;
-	rawCollision: CollisionData | undefined;
-	effectiveCollision: CollisionData | undefined;
+	originalUnderlayColor = defaultVertexProp.color;
+	rawCollision: CollisionData | undefined = undefined;
+	effectiveCollision: CollisionData | undefined = undefined;
 	effectiveLevel: number;
 	effectiveVisualLevel: number;
+	waterProps: { y00: number, y01: number, y10: number, y11: number, props: TileVertex, shape: FloorvertexInfo[], isoriginal: boolean, rawOverlay: mapsquare_overlays } | null = null
 
-	constructor(engine: EngineCache, height: number, tile: mapsquare_tiles["tiles"][number], tilex: number, tilez: number, level: number, docollision: boolean) {
-		let underlayVisible = false;
-		let overlayVisible = false;
-		let shape = (tile.shape == undefined ? defaulttileshape : tileshapes[tile.shape]);
-		let bleedsOverlayMaterial = false;
-		let underlayprop: TileVertex | undefined = undefined;
-		let overlayprop: TileVertex | undefined = undefined;
-		//TODO bound checks
-		let underlay = (tile.underlay != undefined ? engine.mapUnderlays[tile.underlay - 1] : undefined);
+	addUnderlay(engine: EngineCache, tileunderlay: number | undefined | null) {
+		let underlay = (tileunderlay != undefined ? engine.mapUnderlays[tileunderlay - 1] : undefined);
 		if (underlay) {
 			if (underlay.color && (underlay.color[0] != 255 || underlay.color[1] != 0 || underlay.color[2] != 255)) {
-				underlayVisible = true;
+				this.underlayVisible = true;
 			}
-			underlayprop = {
+			this.underlayprops = {
 				material: underlay.material ?? -1,
 				materialTiling: underlay.material_tiling ?? 128,
+				materialBleedpriority: 0,
 				color: underlay.color ?? [255, 0, 255]
 			};
+			this.rawUnderlay = underlay;
+			this.originalUnderlayColor = this.underlayprops.color;
+			this.vertexprops.fill(this.underlayprops);
 		}
-		let overlay = (tile.overlay != undefined ? engine.mapOverlays[tile.overlay - 1] : undefined);
+	}
+
+	addOverlay(engine: EngineCache, tileoverlay: number | undefined | null, shape: number | undefined | null) {
+		let overlay = (tileoverlay != undefined ? engine.mapOverlays[tileoverlay - 1] : undefined);
 		if (overlay) {
 			if (overlay.color && (overlay.color[0] != 255 || overlay.color[1] != 0 || overlay.color[2] != 255)) {
-				overlayVisible = true;
+				this.overlayVisible = true;
 			}
-			overlayprop = {
+			this.overlayprops = {
 				material: overlay.materialbyte ?? overlay.material ?? -1,
 				materialTiling: overlay.material_tiling ?? 128,
+				materialBleedpriority: overlay.bleedpriority ?? 0,
 				color: overlay.color ?? (overlay.materialbyte != null ? [255, 255, 255] : [255, 0, 255])
 			};
-			bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
+			this.bleedsOverlayMaterial = !!overlay.bleedToUnderlay;
+			this.rawOverlay = overlay;
 		}
+		if (shape != null) {
+			this.shape = tileshapes[shape];
+		}
+	}
+
+	addUnderWater(engine: EngineCache, height: number, tileoverlay: number | undefined | null, tileunderlay: number | undefined | null) {
+		this.waterProps = {
+			y00: this.y,
+			y01: this.y,
+			y10: this.y,
+			y11: this.y,
+			props: this.overlayprops,
+			shape: this.shape.overlay,
+			isoriginal: this.shape == defaulttileshape || this.shape == defaulttileshapeflipped,
+			rawOverlay: this.rawUnderlay!
+		}
+		let oldunderlay = this.underlayprops;
+		this.underlayVisible = false;
+		this.overlayVisible = false;
+		this.bleedsOverlayMaterial = false;
+		this.rawOverlay = undefined;
+		this.addUnderlay(engine, tileunderlay);
+		this.addOverlay(engine, tileoverlay, null);
+		if (!this.overlayVisible) {
+			this.overlayVisible = true;
+			this.overlayprops = oldunderlay;
+			this.bleedsOverlayMaterial = true;
+		}
+
+		this.y = this.y01 = this.y10 = this.y11 = this.y - height * tiledimensions * heightScale;
+	}
+
+	constructor(height: number, tilesettings: number, tilex: number, tilez: number, level: number, docollision: boolean) {
 		let y = height * tiledimensions * heightScale;
-		//need to clone here since its colors will be modified
-		underlayprop ??= { ...defaultVertexProp };
-		overlayprop ??= { ...defaultVertexProp };
-		let collision: CollisionData | undefined = undefined;
-		if (docollision) {
-			let blocked = ((tile.settings ?? 0) & 1) != 0;
-			collision = {
-				settings: tile.settings ?? 0,
-				walk: [blocked, false, false, false, false, false, false, false, false],
-				sight: [false, false, false, false, false, false, false, false, false]
-			}
-		}
-		this.raw = tile;
-		this.rawOverlay = overlay;
-		this.rawUnderlay = underlay;
-		this.next01 = undefined;
-		this.next10 = undefined;
-		this.next11 = undefined;
+		this.settings = tilesettings;
 		this.x = tilex;
 		this.y = y;
 		this.z = tilez;
 		this.y01 = y; this.y10 = y; this.y11 = y;
 		this.playery00 = y, this.playery01 = y; this.playery10 = y; this.playery11 = y;
-		this.shape = shape;
-		this.underlayVisible = underlayVisible;
-		this.overlayVisible = overlayVisible;
-		this.normalX = 0;
-		this.normalZ = 0;
-		this.bleedsOverlayMaterial = bleedsOverlayMaterial;
+		this.effectiveLevel = level;
+		this.effectiveVisualLevel = 0;
+
+		let underlayprop = { ...defaultVertexProp };
 		this.vertexprops = [underlayprop, underlayprop, underlayprop, underlayprop];
 		this.underlayprops = underlayprop;
-		this.overlayprops = overlayprop;
-		this.originalUnderlayColor = underlayprop.color;
+		this.overlayprops = underlayprop;
+
+		let collision: CollisionData | undefined = undefined;
+		if (docollision) {
+			let blocked = ((tilesettings ?? 0) & 1) != 0;
+			collision = {
+				settings: tilesettings ?? 0,
+				walk: [blocked, false, false, false, false, false, false, false, false],
+				sight: [false, false, false, false, false, false, false, false, false]
+			}
+		}
 		this.rawCollision = collision;
 		this.effectiveCollision = collision;
-		this.effectiveLevel = level;
-		this.effectiveVisualLevel = 0
 	}
 }
 
@@ -569,14 +592,16 @@ export function getTileHeight(grid: TileGridSource, x: number, z: number, level:
 	let xfloor = Math.floor(x);
 	let zfloor = Math.floor(z);
 
+	let tile = grid.getTile(xfloor, zfloor, level);
+	//can be empty if the region has gaps
+	if (!tile) { return 0; }
+	if (tile.waterProps) { return tile.waterProps.y00; }
+
 	//TODO saturate weight to edge in case it's outside bounds
 	let w00 = (1 - (x - xfloor)) * (1 - (z - zfloor));
 	let w01 = (x - xfloor) * (1 - (z - zfloor));
 	let w10 = (1 - (x - xfloor)) * (z - zfloor);
 	let w11 = (x - xfloor) * (z - zfloor);
-	let tile = grid.getTile(xfloor, zfloor, level);
-	//can be empty if the region has gaps
-	if (!tile) { return 0; }
 
 	return tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11;
 }
@@ -638,12 +663,12 @@ export class TileGrid implements TileGridSource {
 		if (x < 0 || z < 0 || x >= this.xsize || z >= this.zsize) { return undefined; }
 		return this.tiles[this.levelstep * level + z * this.zstep + x * this.xstep];
 	}
-	blendUnderlays(kernelRadius = 3) {
+	blendUnderlays() {
 		for (let z = this.zoffset; z < this.zoffset + this.zsize; z++) {
 			for (let x = this.xoffset; x < this.xoffset + this.xsize; x++) {
 				let effectiveVisualLevel = 0;
 				let layer1tile = this.getTile(x, z, 1);
-				let flag2 = ((layer1tile?.raw.settings ?? 0) & 2) != 0;
+				let flag2 = ((layer1tile?.settings ?? 0) & 2) != 0;
 				let leveloffset = (flag2 ? -1 : 0);
 
 				for (let level = 0; level < this.levels; level++) {
@@ -651,12 +676,14 @@ export class TileGrid implements TileGridSource {
 					if (!currenttile) { continue; }
 
 					//color blending
-					if (!currenttile.nxttile) {
+					if (!currenttile.debug_nxttile) {
 						let r = 0, g = 0, b = 0;
 						let count = 0;
 						//5 deep letsgooooooo
-						for (let dz = -kernelRadius; dz <= kernelRadius; dz++) {
-							for (let dx = -kernelRadius; dx <= kernelRadius; dx++) {
+						//kernel is assymetric, so correct when going from tile center
+						//based on baked nxt colors
+						for (let dz = -4; dz <= 5; dz++) {
+							for (let dx = -4; dx <= 5; dx++) {
 								let tile = this.getTile(x + dx, z + dz, level);
 								if (!tile || !tile.underlayVisible) { continue; }
 								let col = tile.originalUnderlayColor;
@@ -672,15 +699,20 @@ export class TileGrid implements TileGridSource {
 						}
 					}
 
+					let tile_sw = this.getTile(x - 1, z - 1, level);
+					let tile_s = this.getTile(x, z - 1, level);
+					let tile_se = this.getTile(x + 1, z - 1, level);
+					let tile_e = this.getTile(x + 1, z, level);
+					let tile_ne = this.getTile(x + 1, z + 1, level);
+					let tile_n = this.getTile(x, z + 1, level);
+					let tile_nw = this.getTile(x - 1, z + 1, level);
+					let tile_w = this.getTile(x - 1, z, level);
+
 					//normals
 					let dydx = 0;
 					let dydz = 0;
-					let xprev = this.getTile(x - 1, z, level);
-					let xnext = this.getTile(x + 1, z, level);
-					if (xprev && xnext) { dydx = (xnext.y - xprev.y) / (2 * tiledimensions); }
-					let zprev = this.getTile(x, z - 1, level);
-					let znext = this.getTile(x, z + 1, level);
-					if (zprev && znext) { dydz = (znext.y - zprev.y) / (2 * tiledimensions); }
+					if (tile_w && tile_e) { dydx = (tile_e.y - tile_w.y) / (2 * tiledimensions); }
+					if (tile_s && tile_n) { dydz = (tile_n.y - tile_s.y) / (2 * tiledimensions); }
 					//cross product of two line connecting adjectent tiles
 					//[1,dydx,0]' x [0,dydz,1]' = [dydx,1,dydz]
 					let len = Math.hypot(dydx, dydz, 1);
@@ -688,28 +720,27 @@ export class TileGrid implements TileGridSource {
 					currenttile.normalX = -dydz / len;
 
 					//corners
-					let xznext = this.getTile(x + 1, z + 1, level);
-					currenttile.y01 = xnext?.y ?? currenttile.y;
-					currenttile.y10 = znext?.y ?? currenttile.y;
-					currenttile.y11 = xznext?.y ?? currenttile.y;
+					currenttile.y01 = tile_e?.y ?? currenttile.y;
+					currenttile.y10 = tile_n?.y ?? currenttile.y;
+					currenttile.y11 = tile_ne?.y ?? currenttile.y;
 					//need 4 separate player y's since the y can be non-continuous because of tile flag-2
 					currenttile.playery00 = currenttile.y;
-					currenttile.playery01 = xnext?.y ?? currenttile.y01;
-					currenttile.playery10 = znext?.y ?? currenttile.y10;
-					currenttile.playery11 = xznext?.y ?? currenttile.y11;
+					currenttile.playery01 = tile_e?.y ?? currenttile.y01;
+					currenttile.playery10 = tile_n?.y ?? currenttile.y10;
+					currenttile.playery11 = tile_ne?.y ?? currenttile.y11;
 
-					currenttile.next01 = xnext;
-					currenttile.next10 = znext;
-					currenttile.next11 = xznext;
+					currenttile.next01 = tile_e;
+					currenttile.next10 = tile_n;
+					currenttile.next11 = tile_ne;
 
-					let alwaysshow = ((currenttile.raw.settings ?? 0) & 8) != 0;
+					let alwaysshow = ((currenttile.settings ?? 0) & 8) != 0;
 
 					let effectiveLevel = level + leveloffset;
 					//weirdness with flag 2 and 8 related to effective levels
 					if (alwaysshow) { effectiveVisualLevel = 0; }
 
 					let effectiveTile = this.getTile(x, z, effectiveLevel);
-					let hasroof = ((effectiveTile?.raw.settings ?? 0) & 4) != 0;
+					let hasroof = ((effectiveTile?.settings ?? 0) & 4) != 0;
 
 					if (effectiveTile && effectiveLevel != level) {
 						effectiveTile.effectiveCollision = currenttile.rawCollision;
@@ -726,10 +757,54 @@ export class TileGrid implements TileGridSource {
 					for (let dz = -1; dz <= 1; dz++) {
 						for (let dx = -1; dx <= 1; dx++) {
 							let tile = this.getTile(x + dx, z + dz, level);
-							if (tile && ((tile.raw.settings ?? 0) & 0x8) == 0) { tile.effectiveVisualLevel = Math.max(tile.effectiveVisualLevel, effectiveVisualLevel); }
+							if (tile && ((tile.settings ?? 0) & 0x8) == 0) { tile.effectiveVisualLevel = Math.max(tile.effectiveVisualLevel, effectiveVisualLevel); }
 						}
 					}
 					if (hasroof) { effectiveVisualLevel = effectiveLevel + 1; }
+
+					//auto-link nxt shapeless water
+					if (!currenttile.waterProps) {
+						let northoreast = (tile_n?.waterProps?.isoriginal || tile_e?.waterProps?.isoriginal);
+						if (tile_ne?.waterProps?.isoriginal && northoreast) {
+							currenttile.waterProps = {
+								...tile_ne.waterProps,
+								isoriginal: false,
+								shape: tileshapes[0].overlay
+							}
+						} else if (tile_ne?.waterProps?.isoriginal) {
+							currenttile.waterProps = {
+								...tile_ne.waterProps,
+								isoriginal: false,
+								shape: tileshapes[6].overlay
+							}
+						} else if (tile_nw?.waterProps?.isoriginal && tile_n?.waterProps?.isoriginal) {
+							currenttile.waterProps = {
+								...tile_nw.waterProps,
+								isoriginal: false,
+								shape: tileshapes[5].overlay
+							}
+						} else if (tile_se?.waterProps?.isoriginal && tile_e?.waterProps?.isoriginal) {
+							currenttile.waterProps = {
+								...tile_se.waterProps,
+								isoriginal: false,
+								shape: tileshapes[7].overlay
+							}
+						}
+					} else if (currenttile.waterProps.shape.length == 0) {
+						if (tile_ne?.waterProps || tile_n?.waterProps || tile_e?.waterProps) {
+							currenttile.waterProps.shape = tileshapes[0].overlay;
+						} else {
+							currenttile.waterProps.shape = tileshapes[4].overlay;
+						}
+					}
+					//smooth water height
+					if (currenttile.waterProps) {
+						if (tile_e?.waterProps) { currenttile.waterProps.y01 = tile_e.waterProps.y00; }
+						if (tile_n?.waterProps) { currenttile.waterProps.y10 = tile_n.waterProps.y00; }
+						if (tile_ne?.waterProps) { currenttile.waterProps.y11 = tile_ne.waterProps.y00; }
+						else if (tile_e?.waterProps) { currenttile.waterProps.y11 = tile_e.waterProps.y10; }
+						else if (tile_n?.waterProps) { currenttile.waterProps.y11 = tile_n.waterProps.y01; }
+					}
 				}
 			}
 		}
@@ -747,7 +822,9 @@ export class TileGrid implements TileGridSource {
 							else if (vertex.nextx) { node = node.next01; }
 							else if (vertex.nextz) { node = node.next10; }
 							if (node) {
-								node.vertexprops[vertex.subvertex] = currenttile.overlayprops;
+								if (node.vertexprops[vertex.subvertex].materialBleedpriority < currenttile.overlayprops.materialBleedpriority) {
+									node.vertexprops[vertex.subvertex] = currenttile.overlayprops;
+								}
 							}
 						}
 					}
@@ -784,6 +861,9 @@ export class TileGrid implements TileGridSource {
 					if (tile.overlayprops.material != -1) {
 						addmat(tile.overlayprops.material, tile.overlayprops.materialTiling);
 					}
+					if (tile.waterProps && tile.waterProps.props.material != -1) {
+						addmat(tile.waterProps.props.material, tile.waterProps.props.materialTiling);
+					}
 				}
 			}
 		}
@@ -812,6 +892,7 @@ export class TileGrid implements TileGridSource {
 							extraheight = (nxttile.flags & 16 ? nxttile.rest?.waterheight : nxttile.height);
 						}
 					}
+					let waterheight = height;
 					if (extraheight != undefined && extraheight != 0) {
 						//not sure what the 1=0 thing is about, but seems correct for trees
 						height += (extraheight == 1 ? 0 : extraheight);
@@ -822,23 +903,35 @@ export class TileGrid implements TileGridSource {
 					let outtile: TileProps;
 					if (nxttile) {
 						let nxtset = nxttile.flags;
+						let haswater = (nxtset & 16) != 0;
+						//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
 						let newsettings = (nxtset & 2 ? 1 : 0) | (nxtset & 4 ? 2 : 0) | (nxtset & 8 ? 4 : 0) | (nxtset & 32 ? 8 : 0) | (nxtset & 64 ? 16 : 0);
-						let faketile = {
-							flags: tile.flags,
-							height: tile.height,
-							overlay: nxttile.rest?.overlay_under ?? nxttile.rest?.overlay ?? null,
-							//when there is water on a tile it gets draw from the perspective of the underwater surface, we ignore all that for now
-							// shape: nxttile.rest?.overlay_under ? invertTileShape(nxttile.rest.shape ?? 0) : nxttile.rest?.shape ?? null,
-							shape: tile.shape,//use old file for shape for now, in newer areas the shape isn't defined and water does some auto-connect stuff
-							underlay: nxttile.rest?.underlay_under ?? nxttile.rest?.underlay ?? null,
-							settings: newsettings
+						if (haswater) {
+							newsettings |= 128;//flag that doesn't exist in java
 						}
-						outtile = new TileProps(this.engine, height, faketile, tilex, tilez, level, docollision);
-						outtile.nxttile = nxttile;
+						outtile = new TileProps(height, newsettings, tilex, tilez, level, docollision);
+						// outtile.addUnderlay(this.engine, nxttile.rest?.underlay);
+						// outtile.addOverlay(this.engine, nxttile.rest?.overlay, nxttile.rest?.shape);
+						let overlay = nxttile.rest?.overlay_under ?? nxttile.rest?.overlay;
+						let underlay = nxttile.rest?.underlay_under ?? nxttile.rest?.underlay;
+						let shape = haswater ? invertTileShape(nxttile.rest?.shape ?? 0) : nxttile.rest?.shape;
+						outtile.addUnderlay(this.engine, underlay);
+						outtile.addOverlay(this.engine, overlay, shape);
+						if (haswater) {
+							outtile.addUnderWater(this.engine, nxttile.height, nxttile.rest?.overlay, nxttile.rest?.underlay);
+						}
+						// let underwaterheight = height - nxttile.height + (nxttile.rest?.waterheight ?? 0);
+						// let outunderwater = new TileProps(this.engine, underwaterheight, nxttile.rest?.shape, nxttile.rest?.underlay_under, nxttile.rest?.overlay_under, newsettings, tilex, tilez, level, false);
+						// outtile.underwatergraphics = outunderwater;
+
+						outtile.debug_nxttile = nxttile;
 						outtile.originalUnderlayColor = HSL2RGB(packedHSL2HSL(nxttile.rest?.underlaycolor ?? 0));
 						outtile.underlayprops.color = outtile.originalUnderlayColor;
 					} else {
-						outtile = new TileProps(this.engine, height, tile, tilex, tilez, level, docollision);
+						outtile = new TileProps(height, tile.settings ?? 0, tilex, tilez, level, docollision);
+						outtile.addUnderlay(this.engine, tile.underlay);
+						outtile.addOverlay(this.engine, tile.overlay, tile.shape);
+						outtile.debug_raw = tile;
 					}
 					let newindex = baseoffset + this.xstep * x + this.zstep * z + this.levelstep * level;
 					this.tiles[newindex] = outtile;
@@ -1057,6 +1150,7 @@ export async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, 
 
 	for (let level = 0; level < squareLevels; level++) {
 		floors.push(mapsquareMesh(grid, chunk, level, atlas, true, "default"));
+		floors.push(mapsquareMesh(grid, chunk, level, atlas, true, "default", true));
 		if (opts?.map2d) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "worldmap"));
 		}
@@ -1065,6 +1159,7 @@ export async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, 
 		}
 		if (opts?.minimap) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "minimap"));
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "minimap", true));
 		}
 	}
 	return floors
@@ -1967,11 +2062,11 @@ async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshg
 }
 
 
-function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, keeptileinfo = false, mode: "default" | "wireframe" | "minimap" | "minimapwater" | "worldmap" = "default") {
+//TODO just turn this monster into a class
+function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, keeptileinfo = false, mode: "default" | "wireframe" | "minimap" | "worldmap" = "default", drawWater = false) {
 	const showhidden = mode == "wireframe";
 	const worldmap = mode == "worldmap";
 	const isMinimap = mode == "minimap";
-	const isMinimapWater = mode == "minimapwater";
 
 	const maxtiles = chunk.tilerect.xsize * chunk.tilerect.zsize * grid.levels;
 	const maxVerticesPerTile = 8;
@@ -2027,9 +2122,12 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		const x = tile.x + subx * tiledimensions - modelx;
 		const z = tile.z + subz * tiledimensions - modelz;
 
-		const y = tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11;
-		const normalx = tile.normalX * w00 + (tile.next01 ?? tile).normalX * w01 + (tile.next10 ?? tile).normalX * w10 + (tile.next11 ?? tile).normalX * w11;
-		const normalz = tile.normalZ * w00 + (tile.next01 ?? tile).normalZ * w01 + (tile.next10 ?? tile).normalZ * w10 + (tile.next11 ?? tile).normalZ * w11;
+		const y = (drawWater
+			? tile.waterProps!.y00 * w00 + tile.waterProps!.y01 * w01 + tile.waterProps!.y10 * w10 + tile.waterProps!.y11 * w11
+			: tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11
+		);
+		const normalx = (drawWater ? 0 : tile.normalX * w00 + (tile.next01 ?? tile).normalX * w01 + (tile.next10 ?? tile).normalX * w10 + (tile.next11 ?? tile).normalX * w11);
+		const normalz = (drawWater ? 0 : tile.normalZ * w00 + (tile.next01 ?? tile).normalZ * w01 + (tile.next10 ?? tile).normalZ * w10 + (tile.next11 ?? tile).normalZ * w11)
 
 		minx = Math.min(minx, x); miny = Math.min(miny, y); minz = Math.min(minz, z);
 		maxx = Math.max(maxx, x); maxy = Math.max(maxy, y); maxz = Math.max(maxz, z);
@@ -2104,7 +2202,6 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				if (!tile) { continue; }
 				if (!showhidden && tile.effectiveVisualLevel != level) { continue; }
 
-				let rawtile = tile.raw;
 				let shape = tile.shape;
 				let hasneighbours = tile.next01 && tile.next10 && tile.next11;
 
@@ -2125,27 +2222,39 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 				}
 
 				if (keeptileinfo) {
-					tileinfos.push({ tile: tile.raw, x, z, level: tilelevel, tilenxt: tile.nxttile, underlaycolor: tile.originalUnderlayColor });
+					tileinfos.push({ tile: tile.debug_raw, x, z, level: tilelevel, tilenxt: tile.debug_nxttile, underlaycolor: tile.originalUnderlayColor });
 					tileindices.push(indexpointer);
 				}
-				if (hasneighbours && shape.overlay.length != 0) {
-					//code is a bit weird here, shouldnt have to call back to the raw overlay props
-					let overlaytype = grid.engine.mapOverlays[typeof rawtile.overlay == "number" ? rawtile.overlay - 1 : 0];
-					let color = overlaytype.color ?? (typeof overlaytype.materialbyte != "undefined" ? [255, 255, 255] : [255, 0, 255]);
-					let isvisible = color[0] != 255 || color[1] != 0 || color[2] != 255;
-					if (worldmap && !isvisible && overlaytype.secondary_colour) {
-						color = overlaytype.secondary_colour;
-						isvisible = true;
+				if (drawWater) {
+					if (tile.waterProps) {
+						let polyprops = [tile.waterProps.props, tile.waterProps.props, tile.waterProps.props];
+						let shape = tile.waterProps.shape
+						for (let i = 2; i < shape.length; i++) {
+							let v0 = shape[0];
+							let v1 = shape[i - 1];
+							let v2 = shape[i];
+							if (!v0 || !v1 || !v2) { continue; }
+							indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
+							indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
+							indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
+						}
 					}
-					if (isvisible || showhidden) {
-						let props: TileVertex[];
-						let isvertexminimapwater = isMinimap && overlaytype.material != null && watermaterials.includes(overlaytype.material);
-						if (!isMinimap || isvertexminimapwater == isMinimapWater) {
-							if (!worldmap && !isvertexminimapwater) {
+				} else {
+					if (hasneighbours && shape.overlay.length != 0) {
+						//TODO default id 0 makes no sense here
+						let overlaytype = tile.rawOverlay;
+						let color = overlaytype?.color ?? (overlaytype && typeof overlaytype.materialbyte != "undefined" ? [255, 255, 255] : [255, 0, 255]);
+						let isvisible = tile.overlayVisible;
+						if (worldmap && !isvisible && overlaytype?.secondary_colour) {
+							color = overlaytype.secondary_colour;
+							isvisible = true;
+						}
+						if (isvisible || showhidden) {
+							let props: TileVertex[];
+							if (!worldmap) {
 								props = shape.overlay.map(vertex => {
-									if (!overlaytype.bleedToUnderlay) { return tile!.overlayprops; }
+									if (!tile!.bleedsOverlayMaterial) { return tile!.overlayprops; }
 									else {
-										//TODO implement overlay.bleedpriority when overlays bleed into eachother
 										let node: TileProps | undefined = tile;
 										if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
 										else if (vertex.nextx) { node = tile!.next01; }
@@ -2155,17 +2264,13 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 									return defaultVertexProp;
 								});
 							} else {
-								if (isvertexminimapwater) {
-									//minimap renders everything in "srgb" (gamma=2.0) except for the water which is rendered in linear
-									//and therefor appears to dark, precompensate that here since we're doing single shot rendering
-									const gamma = 3.3;
-									color = [Math.pow(color[0] / 255, gamma) * 255, Math.pow(color[1] / 255, gamma) * 255, Math.pow(color[2] / 255, gamma) * 255]
-								}
-								props = Array<TileVertex>(shape.overlay.length).fill({
-									color,
+								let vert: TileVertex = {
 									material: 0,
-									materialTiling: 128
-								});
+									materialTiling: 128,
+									materialBleedpriority: 0,
+									color,
+								};
+								props = Array(shape.overlay.length).fill(vert);
 							}
 							for (let i = 2; i < shape.overlay.length; i++) {
 								let v0 = shape.overlay[0];
@@ -2179,40 +2284,46 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 							}
 						}
 					}
-				}
-				if (hasneighbours && shape.underlay.length != 0 && (tile.underlayVisible || showhidden)) {
-					let props: TileVertex[];
-					if (!worldmap) {
-						props = shape.underlay.map(vertex => {
-							let node: TileProps | undefined = tile;
-							if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
-							else if (vertex.nextx) { node = tile!.next01; }
-							else if (vertex.nextz) { node = tile!.next10; }
-							if (node) {
-								let prop = node.vertexprops[vertex.subvertex];
-								if (prop.material == -1) {
-									//TODO there seems to be more to the underlay thing
-									//maybe materials themselves also get blended somehow
-									//just copy our own materials for now if the neighbour is missing
-									return { ...prop, material: tile!.underlayprops.material };
-								} else {
-									return prop;
+					if (hasneighbours && shape.underlay.length != 0 && (tile.underlayVisible || showhidden)) {
+						let props: TileVertex[];
+						if (!worldmap) {
+							props = shape.underlay.map(vertex => {
+								let node: TileProps | undefined = tile;
+								if (vertex.nextx && vertex.nextz) { node = tile!.next11; }
+								else if (vertex.nextx) { node = tile!.next01; }
+								else if (vertex.nextz) { node = tile!.next10; }
+								if (node) {
+									let prop = node.vertexprops[vertex.subvertex];
+									if (prop.material == -1) {
+										//TODO there seems to be more to the underlay thing
+										//maybe materials themselves also get blended somehow
+										//just copy our own materials for now if the neighbour is missing
+										return { ...prop, material: tile!.underlayprops.material };
+									} else {
+										return prop;
+									}
 								}
-							}
-							return defaultVertexProp;
-						});
-					} else {
-						props = Array<TileVertex>(shape.underlay.length).fill({ color: tile.underlayprops.color, material: 0, materialTiling: 128 });
-					}
-					for (let i = 2; i < shape.underlay.length; i++) {
-						let v0 = shape.underlay[0];
-						let v1 = shape.underlay[i - 1];
-						let v2 = shape.underlay[i];
-						if (!v0 || !v1 || !v2) { continue; }
-						let polyprops = [props[0], props[i - 1], props[i]];
-						indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
-						indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
-						indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
+								return defaultVertexProp;
+							});
+						} else {
+							let prop: TileVertex = {
+								material: 0,
+								materialTiling: 128,
+								materialBleedpriority: 0,
+								color: tile.underlayprops.color
+							};
+							props = Array<TileVertex>(shape.underlay.length).fill(prop);
+						}
+						for (let i = 2; i < shape.underlay.length; i++) {
+							let v0 = shape.underlay[0];
+							let v1 = shape.underlay[i - 1];
+							let v2 = shape.underlay[i];
+							if (!v0 || !v1 || !v2) { continue; }
+							let polyprops = [props[0], props[i - 1], props[i]];
+							indexbuffer[indexpointer++] = writeVertex(tile, v0.subx, v0.subz, polyprops, 0);
+							indexbuffer[indexpointer++] = writeVertex(tile, v1.subx, v1.subz, polyprops, 1);
+							indexbuffer[indexpointer++] = writeVertex(tile, v2.subx, v2.subz, polyprops, 2);
+						}
 					}
 				}
 			}
@@ -2246,6 +2357,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		level,
 		tileinfos,
 		mode,
+		iswater: drawWater,
 
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
@@ -2268,6 +2380,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		extra
 	}
 }
+
 
 type FloorMeshData = typeof mapsquareMesh extends (...args: any[]) => infer Q ? Q : never;
 

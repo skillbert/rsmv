@@ -123,15 +123,18 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 						if (!tile.underlayVisible && !tile.overlayVisible) { continue; }
 						let tilehash = tilehashes[tile.effectiveVisualLevel];
 
-						tilehash = crc32addInt(tile.raw.flags, tilehash);//TODO get rid of this one
-						tilehash = crc32addInt(tile.raw.height ?? -1, tilehash);
-						tilehash = crc32addInt(tile.raw.overlay ?? -1, tilehash);
-						tilehash = crc32addInt(tile.raw.settings ?? -1, tilehash);
-						tilehash = crc32addInt(tile.raw.shape ?? -1, tilehash);
-						tilehash = crc32addInt(tile.raw.underlay ?? -1, tilehash);
+						let rawtile = tile.debug_raw;
+						//TODO make a nxt branch here
+						if (!rawtile) { throw new Error("can't calculate chunkhash since rawtile isn't set"); }
+						tilehash = crc32addInt(rawtile.flags, tilehash);//TODO get rid of this one
+						tilehash = crc32addInt(rawtile.height ?? -1, tilehash);
+						tilehash = crc32addInt(rawtile.overlay ?? -1, tilehash);
+						tilehash = crc32addInt(rawtile.settings ?? -1, tilehash);
+						tilehash = crc32addInt(rawtile.shape ?? -1, tilehash);
+						tilehash = crc32addInt(rawtile.underlay ?? -1, tilehash);
 
-						if (tile.raw.overlay != null && overlays.indexOf(tile.raw.overlay) == -1) { overlays.push(tile.raw.overlay); }
-						if (tile.raw.underlay != null && underlays.indexOf(tile.raw.underlay) == -1) { underlays.push(tile.raw.underlay); }
+						if (rawtile.overlay != null && overlays.indexOf(rawtile.overlay) == -1) { overlays.push(rawtile.overlay); }
+						if (rawtile.underlay != null && underlays.indexOf(rawtile.underlay) == -1) { underlays.push(rawtile.underlay); }
 
 						maxy = Math.max(maxy, tile.y, tile.y01, tile.y10, tile.y11);
 						tilehashes[tile.effectiveVisualLevel] = tilehash;

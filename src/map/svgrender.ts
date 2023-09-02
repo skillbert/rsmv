@@ -69,8 +69,9 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	}
 
 	let getOverlayColor = (tile: TileProps) => {
-		let colint = coltoint(tile.rawOverlay?.secondary_colour);
-		if (colint == transparent) { colint = coltoint(tile.overlayprops.color); }
+		let overlay = tile.waterProps?.rawOverlay ?? tile.rawOverlay!;
+		let colint = coltoint(overlay.secondary_colour);
+		if (colint == transparent) { colint = coltoint(tile.waterProps?.props.color ?? tile.overlayprops.color); }
 		return colint;
 	}
 
@@ -100,8 +101,8 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 						occluded = true;
 					}
 
-					if (tile.raw.overlay) {
-						let vertices = tile.shape.overlay;
+					if (tile.waterProps || tile.rawOverlay) {
+						let vertices = tile.waterProps?.shape ?? tile.shape.overlay;
 						let colint = getOverlayColor(tile);
 						if (colint == transparent) {
 							if (tile.underlayVisible) {

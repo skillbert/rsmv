@@ -603,7 +603,7 @@ export function classicModifyTileGrid(grid: TileGrid) {
         }
     }
 
-    let getoverlay = (tile: TileProps | undefined) => (tile?.raw.overlay ? grid.engine.classicData!.tiles[tile.raw.overlay! - 1] : undefined);
+    let getoverlay = (tile: TileProps | undefined) => (tile?.debug_raw?.overlay ? grid.engine.classicData!.tiles[tile.debug_raw?.overlay! - 1] : undefined);
 
     for (let level = 0; level < grid.levels; level++) {
         for (let z = grid.zsize - 1; z >= 1; z--) {
