@@ -398,7 +398,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
 		let { chunks, grid, chunkSize } = await this.chunkdata;
 		let rect: MapRect = { x: this.rect.x * chunkSize, z: this.rect.z * chunkSize, xsize: this.rect.xsize * chunkSize, zsize: this.rect.zsize * chunkSize };
-		globalThis.qq = () => jsonIcons(this.cache.engine, chunks.flatMap(q => q.locs), rect, level);
 		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly, false);
 	}
 
