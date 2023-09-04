@@ -108,7 +108,7 @@ function sampleInverseBezierSection(x0: number, x1: number, x2: number, x3: numb
 		//abc formula, but with bcd so bit confusing
 		let det = c * c - 4 * b * d;
 		if (det < 0) { throw new Error("no solution for quadratic interpolation"); }
-		//alternative form that behaves nicely when a=0;
+		//alternative form that behaves nicely in the linear case (b=0)
 		let sol0 = 2 * d / (-c - Math.sqrt(det));
 		let sol1 = 2 * d / (-c + Math.sqrt(det));
 		let sol0valid = sol0 >= -eps && sol0 <= 1 + eps;
@@ -259,6 +259,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 
 	let convertedtracks: KeyframeTrack[] = [];
 
+	//make sure that tracks that should be combined into vectors are adjacent for later
 	let animtracks = anim.tracks.sort((a, b) => {
 		if (a.boneid != b.boneid) { return a.boneid - b.boneid; }
 		return a.type_0to9 - b.type_0to9;
@@ -297,6 +298,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 
 		let tracktype = actiontypemap[track.type_0to9];
 		//no clue what these offsets are about
+		//(related to variable size encoding of the integers)
 		let boneid = (track.boneid < 16000 ? track.boneid - 64 : track.boneid - 16384);
 
 		while (index < animtracks.length) {

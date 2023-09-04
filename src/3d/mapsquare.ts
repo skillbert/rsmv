@@ -252,7 +252,7 @@ export class TileProps {
 			props: this.overlayprops,
 			shape: this.shape.overlay,
 			isoriginal: this.shape == defaulttileshape || this.shape == defaulttileshapeflipped,
-			rawOverlay: this.rawUnderlay!
+			rawOverlay: this.rawOverlay!
 		}
 		let oldunderlay = this.underlayprops;
 		this.underlayVisible = false;
@@ -924,6 +924,8 @@ export class TileGrid implements TileGridSource {
 						// let outunderwater = new TileProps(this.engine, underwaterheight, nxttile.rest?.shape, nxttile.rest?.underlay_under, nxttile.rest?.overlay_under, newsettings, tilex, tilez, level, false);
 						// outtile.underwatergraphics = outunderwater;
 
+						//TODO get rid of this at some point, currently needed to calculate chunkhash for map render
+						outtile.debug_raw = tile;
 						outtile.debug_nxttile = nxttile;
 						outtile.originalUnderlayColor = HSL2RGB(packedHSL2HSL(nxttile.rest?.underlaycolor ?? 0));
 						outtile.underlayprops.color = outtile.originalUnderlayColor;
