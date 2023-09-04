@@ -430,8 +430,8 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let size = this.renderer.getRenderTarget() ?? this.renderer.getContext().canvas ?? this.canvas;
 		let aspect = size.width / size.height;
 		if (cam instanceof THREE.PerspectiveCamera && cam.aspect != aspect) {
-			this.camera.aspect = aspect;
-			this.camera.updateProjectionMatrix();
+			cam.aspect = aspect;
+			cam.updateProjectionMatrix();
 		}
 
 		this.renderer.clearColor();
