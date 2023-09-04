@@ -1674,10 +1674,10 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			let toggles = this.state.toggles;
 			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 				if (typeof toggles[q] != "boolean") {
-					// toggles[q] = !!q.match(/^(floor|objects)\d+/);
+					toggles[q] = !!q.match(/^(floor|objects)\d+/);
 					// toggles[q] = !!q.match(/^mini_(floor|objects)0/);
 					// toggles[q] = !!q.match(/^mini_(objects)0/);
-					toggles[q] = !!q.match(/^mini_(floor)0/);
+					// toggles[q] = !!q.match(/^mini_(floor)0/);
 				}
 			});
 			this.setState({ toggles });
