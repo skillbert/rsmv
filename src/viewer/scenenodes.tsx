@@ -1669,7 +1669,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		const renderer = this.props.ctx?.renderer;
 		if (!sceneCache || !renderer) { return; }
 
-		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true, minimap: true });
+		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true });
 		chunk.on("changed", () => {
 			let toggles = this.state.toggles;
 			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
