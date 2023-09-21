@@ -5,7 +5,7 @@ import { CacheFileSource } from "../cache";
 import { jsonIcons, svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
-import { canvasToImageFile, flipImage, isImageEqual, maskImage, pixelsToImageFile } from "../imgutils";
+import { canvasToImageFile, fileToImageData, flipImage, isImageEqual, makeImageData, maskImage, pixelsToImageFile } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
 import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
@@ -53,13 +53,16 @@ type LayerConfig = {
 	pxpersquare: number,
 	level: number,
 	format?: "png" | "webp",
+	mipmode?: "default" | "avg",
 	usegzip?: boolean,
 	subtractlayers?: string[]
 } & ({
 	mode: "3d" | "minimap",
 	dxdy: number,
 	dzdy: number,
-	hidelocs?: boolean
+	hidelocs?: boolean,
+	overlaywalls?: boolean,
+	overlayicons?: boolean
 } | {
 	mode: "map",
 	wallsonly?: boolean,
@@ -142,7 +145,8 @@ async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) 
 			mask.push({ x: 82 * 64, z: 140 * 64, xsize: 5 * 64, zsize: 5 * 64 });//ed3
 			mask.push({ x: 69 * 64, z: 96 * 64, xsize: 6 * 64, zsize: 4 * 64 });//araxxor
 			mask.push({ x: 5 * 64, z: 2 * 64, xsize: 1 * 64, zsize: 1 * 64 });//kerapac
-			mask.push({ x: 43 * 64, z: 27 * 64, xsize: 3 * 64, zsize: 3 * 64 });//kerapac
+			mask.push({ x: 43 * 64, z: 27 * 64, xsize: 3 * 64, zsize: 3 * 64 });//aod
+			mask.push({ x: 50 * 64, z: 158 * 64, xsize: 2 * 64, zsize: 1 * 64 });//wars retreat
 
 			areas = mask.map(q => {
 				let x = Math.floor(q.x / 64);
@@ -874,7 +878,7 @@ class MipScheduler {
 					name: out,
 					hash: crc,
 					run: async () => {
-						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9);
+						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9, args.layer.mipmode == "avg");
 						await this.render.saveFile(out, crc, buf);
 					},
 					finally: () => {
@@ -893,7 +897,30 @@ class MipScheduler {
 	}
 }
 
-async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], format: "png" | "webp", quality: number) {
+function avgFilterMipImage(img: ImageData) {
+	if (img.width % 2 != 0 || img.height % 2 != 0) { throw new Error("can only use avg mip filter on textures with multiple of 2 size"); }
+	let mipped = makeImageData(null, img.width / 2, img.height / 2);
+	const stridex = 4;
+	const stridey = img.width * 4;
+	for (let y = 0; y < mipped.height; y++) {
+		for (let x = 0; x < mipped.width; x++) {
+			let i = (x * 2) * stridex + (y * 2) * stridey;
+			//2 bias to round using floor later
+			let r = 2 + img.data[i + 0] + img.data[i + stridex + 0] + img.data[i + stridey + 0] + img.data[i + stridex + stridey + 0];
+			let g = 2 + img.data[i + 1] + img.data[i + stridex + 1] + img.data[i + stridey + 1] + img.data[i + stridex + stridey + 1];
+			let b = 2 + img.data[i + 2] + img.data[i + stridex + 2] + img.data[i + stridey + 2] + img.data[i + stridex + stridey + 2];
+			let a = 2 + img.data[i + 3] + img.data[i + stridex + 3] + img.data[i + stridey + 3] + img.data[i + stridex + stridey + 3];
+			let iout = x * 4 + y * mipped.width * 4;
+			mipped.data[iout + 0] = r / 4;
+			mipped.data[iout + 1] = g / 4;
+			mipped.data[iout + 2] = b / 4;
+			mipped.data[iout + 3] = a / 4;
+		}
+	}
+	return mipped;
+}
+
+async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], format: "png" | "webp", quality: number, avgfilter: boolean) {
 	let cnv = document.createElement("canvas");
 	cnv.width = render.config.tileimgsize;
 	cnv.height = render.config.tileimgsize;
@@ -901,24 +928,33 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 	const subtilesize = render.config.tileimgsize / 2;
 	await Promise.all(files.map(async (f, i) => {
 		if (!f) { return null; }
-		let img: any;//Image|VideoFrame
 		let res = await render.getFileResponse(f.name);
-		if (!res.ok) {
-			throw new Error("image not found");
-		}
 		let mimetype = res.headers.get("content-type");
-		// imagedecoder API doesn't support svg
-		if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
-			let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
-			img = (await decoder.decode()).image;
+		let outx = (i % 2) * subtilesize;
+		let outy = Math.floor(i / 2) * subtilesize;
+		if (avgfilter) {
+			let file = await res.arrayBuffer();
+			let data = await fileToImageData(new Uint8Array(file), mimetype as any, false);
+			let scaled = avgFilterMipImage(data);
+			ctx.putImageData(scaled, outx, outy);
 		} else {
-			let blobsrc = URL.createObjectURL(await res.blob());
-			img = new Image(subtilesize, subtilesize);
-			img.src = blobsrc;
-			await img.decode();
-			URL.revokeObjectURL(blobsrc);
+			let img: any;//Image|VideoFrame
+			if (!res.ok) {
+				throw new Error("image not found");
+			}
+			// imagedecoder API doesn't support svg
+			if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
+				let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
+				img = (await decoder.decode()).image;
+			} else {
+				let blobsrc = URL.createObjectURL(await res.blob());
+				img = new Image(subtilesize, subtilesize);
+				img.src = blobsrc;
+				await img.decode();
+				URL.revokeObjectURL(blobsrc);
+			}
+			ctx.drawImage(img, outx, outy, subtilesize, subtilesize);
 		}
-		ctx.drawImage(img, (i % 2) * subtilesize, Math.floor(i / 2) * subtilesize, subtilesize, subtilesize);
 	}));
 	return canvasToImageFile(cnv, format, quality);
 }
@@ -1108,10 +1144,43 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 									});
 								}
 
-								return {
-									file: (() => pixelsToImageFile(img!, thiscnf.format ?? "webp", 0.9)),
-									symlink: parentFile
-								};
+								if (thiscnf.overlayicons || thiscnf.overlaywalls) {
+									if (thiscnf.overlayicons && !thiscnf.overlaywalls) {
+										//need to refarctor svgfloor a bit for this to work without breaking other stuff
+										throw new Error("overlayicons without overlaywalls currently not supported");
+									}
+									let grid = new CombinedTileGrid(chunks.map(ch => ({
+										src: ch.loaded.grid,
+										rect: {
+											x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
+											z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
+											xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
+											zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
+										}
+									})));
+									let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+									let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.overlaywalls, !!thiscnf.overlayicons, true);
+									let wallimg = new Image();
+									wallimg.src = `data:image/svg+xml;base64,${btoa(svg)}`;
+									wallimg.width = img!.width;
+									wallimg.height = img!.height;
+									await wallimg.decode();
+									let mergecnv = document.createElement("canvas");
+									mergecnv.width = img!.width;
+									mergecnv.height = img!.height;
+									let ctx = mergecnv.getContext("2d")!;
+									ctx.putImageData(img!, 0, 0);
+									ctx.drawImage(wallimg, 0, 0);
+									return {
+										file: (() => canvasToImageFile(mergecnv, thiscnf.format ?? "webp", 0.9)),
+										symlink: parentFile
+									};
+								} else {
+									return {
+										file: (() => pixelsToImageFile(img!, thiscnf.format ?? "webp", 0.9)),
+										symlink: parentFile
+									};
+								}
 							}
 						});
 					}

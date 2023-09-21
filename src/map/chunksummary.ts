@@ -119,8 +119,8 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 				for (let dz = 0; dz < groupsize; dz++) {
 					for (let level = 0; level < grid.levels; level++) {
 						let tile = grid.getTile(chunk.tilerect.x + x + dx, chunk.tilerect.z + z + dz, level);
-						if (!tile) { throw new Error("missing tile"); }
-						if (!tile.underlayVisible && !tile.overlayVisible) { continue; }
+						// if (!tile) { throw new Error("missing tile"); }
+						if (!tile || (!tile.underlayVisible && !tile.overlayVisible)) { continue; }
 						let tilehash = tilehashes[tile.effectiveVisualLevel];
 
 						let rawtile = tile.debug_raw;
