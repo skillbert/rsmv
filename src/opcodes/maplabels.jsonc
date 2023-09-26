@@ -13,7 +13,8 @@
                                                                         ["lower","uint"],
                                                                         ["upper","uint"]
                                                                     ] },
-	"0x0a": { "name":                        "rightclick_1", "read": "string" },
+    "0x0a": { "name":                        "rightclick_1", "read": "string" },
+    "0x0b": { "name":                          "unktext_0b", "read": "string" },
 	"0x0f": { "name":                             "polygon", "read": ["struct",
                                                                         ["pointcount","ubyte"],
                                                                         ["points",["array",["ref","pointcount"],["struct",
@@ -33,7 +34,8 @@
                                                                         ["lower","uint"],
                                                                         ["upper","uint"]
                                                                     ] },
-	"0x15": { "name":                          "unknown_15", "read": ["array",6,"ubyte"] },
+	"0x15": { "name":                          "unknown_15", "read": "int" },
+	"0x16": { "name":                          "unknown_16", "read": "int" },
 	"0x19": { "name":                   "background_sprite", "read": "varuint" },
 	"0x1a": { "name":                       "legacy_switch", "read": ["struct",
                                                                         ["varbit","ushort"],
