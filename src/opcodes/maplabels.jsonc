@@ -22,9 +22,10 @@
                                                                             ["y","short"]
                                                                         ]]],
                                                                         ["color",["tuple","ubyte","ubyte","ubyte","ubyte"]],
-                                                                        ["always_1","ubyte"],
+                                                                        ["always_1",["match","buildnr",{">=623":"ubyte","other":1}]],
+                                                                        //back color and color are also flipped before 623
                                                                         ["back_color",["tuple","ubyte","ubyte","ubyte","ubyte"]],
-                                                                        ["pointplanes",["array",["ref","pointcount"],"ubyte"]]
+                                                                        ["pointplanes",["match","buildnr",{">=623":["array",["ref","pointcount"],"ubyte"],"other":null}]]
                                                                     ] },
 	"0x11": { "name":                        "rightclick_2", "read": "string" },
 	"0x13": { "name":                            "category", "read": "ushort" },
