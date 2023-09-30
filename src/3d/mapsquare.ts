@@ -982,9 +982,12 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 			if (locsindex != -1) {
 				locsfile = selfarchive[locsindex].buffer;
 			}
-			let nxttileindex = selfindex.subindices.indexOf(cacheMapFiles.square_nxt);
-			if (nxttileindex != -1) {
-				nxttilefile = selfarchive[nxttileindex].buffer;
+			//builds before 861 contain the file, but it's slightly different and seems to be missing water overlay ids
+			if (engine.getBuildNr() >= 861) {
+				let nxttileindex = selfindex.subindices.indexOf(cacheMapFiles.square_nxt);
+				if (nxttileindex != -1) {
+					nxttilefile = selfarchive[nxttileindex].buffer;
+				}
 			}
 		} else if (engine.getBuildNr() > lastLegacyBuildnr) {
 			try {
