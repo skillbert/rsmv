@@ -464,7 +464,7 @@ function getLayerZooms(config: Mapconfig, layercnf: LayerConfig) {
 	return { min, max, base };
 }
 
-type RenderTask={
+type RenderTask = {
 	layer: LayerConfig,
 	name: string,
 	hash: number,
@@ -475,358 +475,103 @@ type RenderTask={
 	run: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<{ file?: () => Promise<Buffer>, symlink?: undefined | KnownMapFile }>,
 }
 
-export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
-	let setfloors = (chunks: MaprenderSquare[], floornr: number, isminimap: boolean, hidelocs: boolean) => {
-		let toggles: Record<string, boolean> = {};
-		for (let i = 0; i < 4; i++) {
-			toggles["floor" + i] = !isminimap && i <= floornr;
-			toggles["objects" + i] = !hidelocs && !isminimap && i <= floornr;
-			toggles["mini_floor" + i] = isminimap && i <= floornr;
-			toggles["mini_objects" + i] = !hidelocs && isminimap && i <= floornr;
-			toggles["map" + i] = false;
-			toggles["mapscenes" + i] = false;
-			toggles["walls" + i] = false;
-			toggles["floorhidden" + i] = false;
-			toggles["collision" + i] = false;
-			toggles["collision-raw" + i] = false;
-		}
-		for (let chunk of chunks) {
-			chunk.chunk.setToggles(toggles);
-		}
+function setChunkRenderToggles(chunks: MaprenderSquare[], floornr: number, isminimap: boolean, hidelocs: boolean) {
+	let toggles: Record<string, boolean> = {};
+	for (let i = 0; i < 4; i++) {
+		toggles["floor" + i] = !isminimap && i <= floornr;
+		toggles["objects" + i] = !hidelocs && !isminimap && i <= floornr;
+		toggles["mini_floor" + i] = isminimap && i <= floornr;
+		toggles["mini_objects" + i] = !hidelocs && isminimap && i <= floornr;
+		toggles["map" + i] = false;
+		toggles["mapscenes" + i] = false;
+		toggles["walls" + i] = false;
+		toggles["floorhidden" + i] = false;
+		toggles["collision" + i] = false;
+		toggles["collision-raw" + i] = false;
 	}
+	for (let chunk of chunks) {
+		chunk.chunk.setToggles(toggles);
+	}
+}
 
-	let baseoutputx = chunkx;
-	let baseoutputy = config.config.mapsizez - 1 - chunkz;
-
-	progress.update(chunkx, chunkz, "imaging");
-
-	let subhashes: { x: number, z: number, hash: number }[] = [];
-	let getsubhash = (x: number, z: number) => {
-		let h = subhashes.find(q => q.x == x && q.z == z);
+class SimpleHasher {
+	depstracker: RenderDepsTracker;
+	subhashes: { x: number, z: number, hash: number }[] = [];
+	constructor(deps: RenderDepsTracker) {
+		this.depstracker = deps;
+	}
+	getsubhash(x: number, z: number) {
+		let h = this.subhashes.find(q => q.x == x && q.z == z);
 		if (!h) {
-			let hash = depstracker.deps.hashDependencies(depstracker.deps.makeDeptName("mapsquare", x + z * worldStride));
-			subhashes.push({ x, z, hash });
+			let hash = this.depstracker.deps.hashDependencies(this.depstracker.deps.makeDeptName("mapsquare", x + z * worldStride));
+			this.subhashes.push({ x, z, hash });
 			return hash;
 		} else {
 			return h.hash;
 		}
 	}
-	let recthash = (rect: MapRect) => {
+	recthash(rect: MapRect) {
 		let hash = 0;
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				hash = crc32addInt(getsubhash(x, z), hash);
+				hash = crc32addInt(this.getsubhash(x, z), hash);
 			}
 		}
 		return hash;
 	}
-	let rectexists = (rect: MapRect) => {
+	rectexists(rect: MapRect) {
 		let exists = false;
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				exists ||= depstracker.deps.hasEntry(depstracker.deps.makeDeptName("mapsquare", x + z * worldStride));
+				exists ||= this.depstracker.deps.hasEntry(this.depstracker.deps.makeDeptName("mapsquare", x + z * worldStride));
 			}
 		}
 		return exists;
 	}
+}
+
+function chunkrectToOffetWorldRect(engine: EngineCache, rect: MapRect) {
+	const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+	const offset = Math.round(chunksize / 4);
+	let worldrect: MapRect = {
+		x: rect.x * chunksize - offset,
+		z: rect.z * chunksize - offset,
+		xsize: chunksize * rect.xsize,
+		zsize: chunksize * rect.zsize
+	};
+	return {
+		worldrect,
+		loadedchunksrect: { x: rect.x - 1, z: rect.z - 1, xsize: rect.xsize + 1, zsize: rect.zsize + 1 }
+	}
+}
+
+export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
+	let baseoutputx = chunkx;
+	let baseoutputy = config.config.mapsizez - 1 - chunkz;
+	let filebasecoord = { x: baseoutputx, y: baseoutputy };
+
+	progress.update(chunkx, chunkz, "imaging");
+
+	let deps = new SimpleHasher(depstracker);
 
 	let chunktasks: RenderTask[] = [];
 	let miptasks: (() => void)[] = [];
 	for (let cnf of config.config.layers) {
 		let squares = 1;//cnf.mapsquares ?? 1;//TODO remove or reimplement
 		if (chunkx % squares != 0 || chunkz % squares != 0) { continue; }
-		const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
-		const offset = Math.round(chunksize / 4);
-		let area: MapRect = {
-			x: chunkx * chunksize - offset,
-			z: chunkz * chunksize - offset,
-			xsize: chunksize * squares,
-			zsize: chunksize * squares
-		};
-		let zooms = getLayerZooms(config.config, cnf);
 
-		let overflowrect: MapRect = { x: chunkx - 1, z: chunkz - 1, xsize: squares + 1, zsize: squares + 1 };
-		let singlerect: MapRect = { x: chunkx, z: chunkz, xsize: 1, zsize: 1 };
+		let singlerect: MapRect = { x: chunkx, z: chunkz, xsize: squares, zsize: squares };
 
-		if (cnf.mode == "3d" || cnf.mode == "minimap") {
-			let thiscnf = cnf;
-			for (let zoom = zooms.base; zoom <= zooms.max; zoom++) {
-				let subslices = 1 << (zoom - zooms.base);
-				let pxpersquare = thiscnf.pxpersquare >> (zooms.max - zoom);
-				let tiles = area.xsize / subslices;
-				for (let subx = 0; subx < subslices; subx++) {
-					for (let subz = 0; subz < subslices; subz++) {
-						let suby = subslices - 1 - subz;
-						let filename = config.makeFileName(thiscnf.name, zoom, baseoutputx * subslices + subx, baseoutputy * subslices + suby, cnf.format ?? "webp");
-
-						let parentCandidates: { name: string, level: number }[] = [
-							{ name: filename, level: thiscnf.level }
-						];
-						for (let sub of thiscnf.subtractlayers ?? []) {
-							let other = config.config.layers.find(q => q.name == sub);
-							if (!other) {
-								console.warn("subtrack layer " + sub + "missing");
-								continue;
-							}
-							parentCandidates.push({
-								name: config.makeFileName(other.name, zoom, baseoutputx * subslices + subx, baseoutputy * subslices + suby, cnf.format ?? "webp"),
-								level: other.level
-							});
-						}
-
-						let depcrc = recthash(overflowrect);
-						chunktasks.push({
-							layer: thiscnf,
-							name: filename,
-							hash: depcrc,
-							datarect: overflowrect,
-							dedupeDependencies: parentCandidates.map(q => q.name),
-							mippable: (zoom == zooms.base ? { outputx: baseoutputx, outputy: baseoutputy, zoom: zoom, hash: depcrc } : null),
-							async run(chunks, renderer, parentinfo) {
-								setfloors(chunks, thiscnf.level, thiscnf.mode == "minimap", !!thiscnf.hidelocs);
-								let cam = mapImageCamera(area.x + tiles * subx, area.z + tiles * subz, tiles, thiscnf.dxdy, thiscnf.dzdy);
-
-								let parentFile: undefined | KnownMapFile = undefined;
-
-								findparent: for (let parentoption of parentCandidates) {
-									optloop: for (let versionMatch of await parentinfo.findMatches(this.datarect, parentoption.name)) {
-										let diff = new ImageDiffGrid();
-										let isdirty = false;
-										for (let chunk of chunks) {
-											let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
-											if (!other) { throw new Error("unexpected"); }
-
-											let modelmatrix = new Matrix4().makeTranslation(
-												chunk.chunk.rect.x * tiledimensions * chunk.chunk.loaded!.chunkSize,
-												0,
-												chunk.chunk.rect.z * tiledimensions * chunk.chunk.loaded!.chunkSize,
-											).premultiply(chunk.chunk.rootnode.matrixWorld);
-
-											let proj = cam.projectionMatrix.clone()
-												.multiply(cam.matrixWorldInverse)
-												.multiply(modelmatrix);
-
-											let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, thiscnf.level, parentoption.level);
-											let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, thiscnf.level, parentoption.level);
-
-											// if (locs.length + floor.length > 400) {
-											// 	continue optloop;
-											// }
-											isdirty ||= diff.anyInside(proj, locs);
-											isdirty ||= diff.anyInside(proj, floor);
-											if (isdirty) {
-												break;
-											}
-										}
-
-										// let area = diff.coverage();
-										if (!isdirty) {
-											parentFile = versionMatch.file;
-											break findparent;
-										}
-										// if (area < 0.2) {
-										// 	if (area > 0) {
-										// 		let { rects } = diff.calculateDiffArea(img.width, img.height);
-										// 		maskImage(img, rects);
-										// 	}
-										// 	break;
-										// }
-									}
-								}
-
-								let img: ImageData | null = null;
-								if (!parentFile) {
-									img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, (thiscnf.mode == "minimap" ? "minimap" : "standard"));
-									flipImage(img);
-									// isImageEmpty(img, "black");
-
-									//keep reference to dedupe similar renders
-									chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
-									parentinfo.addLocalFile({
-										file: this.name,
-										buildnr: config.version,
-										firstbuildnr: config.version,
-										hash: depcrc,
-										time: Date.now()
-									});
-								}
-
-								if (thiscnf.overlayicons || thiscnf.overlaywalls) {
-									if (thiscnf.overlayicons && !thiscnf.overlaywalls) {
-										//need to refarctor svgfloor a bit for this to work without breaking other stuff
-										throw new Error("overlayicons without overlaywalls currently not supported");
-									}
-									let grid = new CombinedTileGrid(chunks.map(ch => ({
-										src: ch.loaded.grid,
-										rect: {
-											x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
-											z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
-											xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
-											zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
-										}
-									})));
-									let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
-									let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.overlaywalls, !!thiscnf.overlayicons, true);
-									let wallimg = new Image();
-									wallimg.src = `data:image/svg+xml;base64,${btoa(svg)}`;
-									wallimg.width = img!.width;
-									wallimg.height = img!.height;
-									await wallimg.decode();
-									let mergecnv = document.createElement("canvas");
-									mergecnv.width = img!.width;
-									mergecnv.height = img!.height;
-									let ctx = mergecnv.getContext("2d")!;
-									ctx.putImageData(img!, 0, 0);
-									ctx.drawImage(wallimg, 0, 0);
-									return {
-										file: (() => canvasToImageFile(mergecnv, thiscnf.format ?? "webp", 0.9)),
-										symlink: parentFile
-									};
-								} else {
-									return {
-										file: (() => pixelsToImageFile(img!, thiscnf.format ?? "webp", 0.9)),
-										symlink: parentFile
-									};
-								}
-							}
-						});
-					}
-				}
-			}
-		}
-		if (cnf.mode == "map") {
-			let thiscnf = cnf;
-			let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutputx, baseoutputy, "svg");
-			let depcrc = recthash(overflowrect);
-			chunktasks.push({
-				layer: thiscnf,
-				name: filename,
-				hash: depcrc,
-				datarect: overflowrect,
-				mippable: { outputx: baseoutputx, outputy: baseoutputy, zoom: zooms.base, hash: depcrc },
-				async run(chunks) {
-					//TODO try enable 2d map render without loading all the 3d stuff
-					let grid = new CombinedTileGrid(chunks.map(ch => ({
-						src: ch.loaded.grid,
-						rect: {
-							x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
-							z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
-							xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
-							zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
-						}
-					})));
-					let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
-					let svg = await svgfloor(engine, grid, locs, area, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons, !!thiscnf.thicklines);
-					return {
-						file: () => Promise.resolve(Buffer.from(svg, "utf8"))
-					};
-				}
-			});
-		}
-		if (cnf.mode == "collision") {
-			let thiscnf = cnf;
-			let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutputx, baseoutputy, cnf.format ?? "webp");
-
-			let depcrc = recthash(overflowrect);
-			chunktasks.push({
-				layer: thiscnf,
-				name: filename,
-				hash: depcrc,
-				datarect: overflowrect,
-				mippable: { outputx: baseoutputx, outputy: baseoutputy, zoom: zooms.base, hash: depcrc },
-				async run(chunks) {
-					//TODO try enable 2d map render without loading all the 3d stuff
-					let grids = chunks.map(q => q.loaded.grid);
-					let file = drawCollision(grids, area, thiscnf.level, thiscnf.pxpersquare, 1);
-					return { file: () => file };
-				}
-			});
-		}
-		if (cnf.mode == "height") {
-			let thiscnf = cnf;
-			let filename = `${thiscnf.name}/${chunkx}-${chunkz}.${cnf.usegzip ? "bin.gz" : "bin"}`;
-			chunktasks.push({
-				layer: thiscnf,
-				name: filename,
-				hash: recthash(singlerect),
-				datarect: singlerect,
-				async run(chunks) {
-					//TODO what to do with classic 48x48 chunks?
-					let file = chunks[0].loaded.grid.getHeightCollisionFile(chunkx * 64, chunkz * 64, thiscnf.level, 64, 64);
-					let buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
-					if (thiscnf.usegzip) {
-						buf = zlib.gzipSync(buf);
-					}
-					return { file: () => Promise.resolve(buf) };
-				}
-			});
-		}
-		if (cnf.mode == "maplabels") {
-			let thiscnf = cnf;
-			let filename = `${thiscnf.name}/${chunkx}-${chunkz}.${cnf.usegzip ? "json.gz" : "json"}`;
-			chunktasks.push({
-				layer: thiscnf,
-				name: filename,
-				hash: recthash(singlerect),
-				datarect: singlerect,
-				async run(chunks) {
-					let rawarea = { x: chunkx * chunksize, z: chunkz * chunksize, xsize: chunksize, zsize: chunksize };
-					let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
-					let iconjson = await jsonIcons(engine, locs, rawarea, thiscnf.level);
-					let textual = prettyJson(iconjson, { indent: "\t" });
-					let buf = Buffer.from(textual, "utf8");
-					if (thiscnf.usegzip) {
-						buf = zlib.gzipSync(buf);
-					}
-					return { file: () => Promise.resolve(buf) };
-				}
-			});
-		}
-		if (cnf.mode == "locs") {
-			let thiscnf = cnf;
-			let filename = `${thiscnf.name}/${chunkx}-${chunkz}.${cnf.usegzip ? "json.gz" : "json"}`;
-			chunktasks.push({
-				layer: thiscnf,
-				name: filename,
-				hash: recthash(singlerect),
-				datarect: singlerect,
-				async run(chunks) {
-					let { grid, modeldata, chunkSize } = chunks[0].loaded.chunkdata;
-					let res = chunkSummary(grid, modeldata, { x: chunkx * chunkSize, z: chunkz * chunkSize, xsize: chunkSize, zsize: chunkSize });
-					let textual = prettyJson(res, { indent: "\t" });
-					let buf = Buffer.from(textual, "utf8");
-					if (thiscnf.usegzip) {
-						buf = zlib.gzipSync(buf);
-					}
-					return { file: () => Promise.resolve(buf) };
-				}
-			});
-		}
-		if (cnf.mode == "rendermeta") {
-			let thiscnf = cnf;
-			let filename = `${thiscnf.name}/${chunkx}-${chunkz}.${cnf.usegzip ? "json.gz" : "json"}`;
-			chunktasks.push({
-				layer: thiscnf,
-				name: filename,
-				hash: recthash(singlerect),
-				datarect: singlerect,
-				async run(chunks) {
-					let obj = chunks[0].loaded.rendermeta;
-					let file = Buffer.from(JSON.stringify(obj), "utf8");
-					if (thiscnf.usegzip) {
-						file = zlib.gzipSync(file);
-					}
-					return { file: () => Promise.resolve(file) };
-				}
-			});
-		}
+		let modefunc = rendermodes[cnf.mode];
+		if (!modefunc) { throw new Error("unknown render mode"); }
+		chunktasks.push(...modefunc(engine, config, cnf, deps, filebasecoord, singlerect));
 	}
 
 	let runTasks = async (renderpromise: Promise<MapRenderer>) => {
 		let savetasks: Promise<any>[] = [];
 		let symlinkcommands: SymlinkCommand[] = [];
 
-		let nonemptytasks = chunktasks.filter(q => rectexists(q.datarect));
+		let nonemptytasks = chunktasks.filter(q => deps.rectexists(q.datarect));
 
 		let metas = await config.getMetas(nonemptytasks.filter(q => q.hash != 0));
 
@@ -886,11 +631,307 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 	return { runTasks };
 }
 
-interface ChunkRenderTask{
+type RenderMode<MODE extends LayerConfig["mode"]> = (engine: EngineCache, config: MapRender, cnf: LayerConfig & { mode: MODE }, hasher: SimpleHasher, imgpos: { x: number, y: number }, maprect: MapRect) => RenderTask[];
 
+const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf, hasher, baseoutput, maprect) {
+	let zooms = getLayerZooms(config.config, cnf);
+	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
+	let thiscnf = cnf;
+	let tasks: RenderTask[] = [];
+	for (let zoom = zooms.base; zoom <= zooms.max; zoom++) {
+		let subslices = 1 << (zoom - zooms.base);
+		let pxpersquare = thiscnf.pxpersquare >> (zooms.max - zoom);
+		let tiles = worldrect.xsize / subslices;
+		for (let subx = 0; subx < subslices; subx++) {
+			for (let subz = 0; subz < subslices; subz++) {
+				let suby = subslices - 1 - subz;
+				let filename = config.makeFileName(thiscnf.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, cnf.format ?? "webp");
+
+				let parentCandidates: { name: string, level: number }[] = [
+					{ name: filename, level: thiscnf.level }
+				];
+				for (let sub of thiscnf.subtractlayers ?? []) {
+					let other = config.config.layers.find(q => q.name == sub);
+					if (!other) {
+						console.warn("subtrack layer " + sub + "missing");
+						continue;
+					}
+					parentCandidates.push({
+						name: config.makeFileName(other.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, cnf.format ?? "webp"),
+						level: other.level
+					});
+				}
+
+				let depcrc = hasher.recthash(loadedchunksrect);
+				tasks.push({
+					layer: thiscnf,
+					name: filename,
+					hash: depcrc,
+					datarect: loadedchunksrect,
+					dedupeDependencies: parentCandidates.map(q => q.name),
+					mippable: (zoom == zooms.base ? { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zoom, hash: depcrc } : null),
+					async run(chunks, renderer, parentinfo) {
+						setChunkRenderToggles(chunks, thiscnf.level, thiscnf.mode == "minimap", !!thiscnf.hidelocs);
+						let cam = mapImageCamera(worldrect.x + tiles * subx, worldrect.z + tiles * subz, tiles, thiscnf.dxdy, thiscnf.dzdy);
+
+						let parentFile: undefined | KnownMapFile = undefined;
+
+						findparent: for (let parentoption of parentCandidates) {
+							optloop: for (let versionMatch of await parentinfo.findMatches(this.datarect, parentoption.name)) {
+								let diff = new ImageDiffGrid();
+								let isdirty = false;
+								for (let chunk of chunks) {
+									let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
+									if (!other) { throw new Error("unexpected"); }
+
+									let modelmatrix = new Matrix4().makeTranslation(
+										chunk.chunk.rect.x * tiledimensions * chunk.chunk.loaded!.chunkSize,
+										0,
+										chunk.chunk.rect.z * tiledimensions * chunk.chunk.loaded!.chunkSize,
+									).premultiply(chunk.chunk.rootnode.matrixWorld);
+
+									let proj = cam.projectionMatrix.clone()
+										.multiply(cam.matrixWorldInverse)
+										.multiply(modelmatrix);
+
+									let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, thiscnf.level, parentoption.level);
+									let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, thiscnf.level, parentoption.level);
+
+									// if (locs.length + floor.length > 400) {
+									// 	continue optloop;
+									// }
+									isdirty ||= diff.anyInside(proj, locs);
+									isdirty ||= diff.anyInside(proj, floor);
+									if (isdirty) {
+										break;
+									}
+								}
+
+								// let area = diff.coverage();
+								if (!isdirty) {
+									parentFile = versionMatch.file;
+									break findparent;
+								}
+								// if (area < 0.2) {
+								// 	if (area > 0) {
+								// 		let { rects } = diff.calculateDiffArea(img.width, img.height);
+								// 		maskImage(img, rects);
+								// 	}
+								// 	break;
+								// }
+							}
+						}
+
+						let img: ImageData | null = null;
+						if (!parentFile) {
+							img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, (thiscnf.mode == "minimap" ? "minimap" : "standard"));
+							flipImage(img);
+							// isImageEmpty(img, "black");
+
+							//keep reference to dedupe similar renders
+							chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
+							parentinfo.addLocalFile({
+								file: this.name,
+								buildnr: config.version,
+								firstbuildnr: config.version,
+								hash: depcrc,
+								time: Date.now()
+							});
+						}
+
+						if (thiscnf.overlayicons || thiscnf.overlaywalls) {
+							if (thiscnf.overlayicons && !thiscnf.overlaywalls) {
+								//need to refarctor svgfloor a bit for this to work without breaking other stuff
+								throw new Error("overlayicons without overlaywalls currently not supported");
+							}
+							let grid = new CombinedTileGrid(chunks.map(ch => ({
+								src: ch.loaded.grid,
+								rect: {
+									x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
+									z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
+									xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
+									zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
+								}
+							})));
+							let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+							let svg = await svgfloor(engine, grid, locs, worldrect, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.overlaywalls, !!thiscnf.overlayicons, true);
+							let wallimg = new Image();
+							wallimg.src = `data:image/svg+xml;base64,${btoa(svg)}`;
+							wallimg.width = img!.width;
+							wallimg.height = img!.height;
+							await wallimg.decode();
+							let mergecnv = document.createElement("canvas");
+							mergecnv.width = img!.width;
+							mergecnv.height = img!.height;
+							let ctx = mergecnv.getContext("2d")!;
+							ctx.putImageData(img!, 0, 0);
+							ctx.drawImage(wallimg, 0, 0);
+							return {
+								file: (() => canvasToImageFile(mergecnv, thiscnf.format ?? "webp", 0.9)),
+								symlink: parentFile
+							};
+						} else {
+							return {
+								file: (() => pixelsToImageFile(img!, thiscnf.format ?? "webp", 0.9)),
+								symlink: parentFile
+							};
+						}
+					}
+				});
+			}
+		}
+	}
+	return tasks;
 }
 
+const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, baseoutput, worldrect) {
+	let zooms = getLayerZooms(config.config, cnf);
+	let { loadedchunksrect } = chunkrectToOffetWorldRect(engine, worldrect);
+	let thiscnf = cnf;
+	let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutput.x, baseoutput.y, "svg");
+	let depcrc = deps.recthash(loadedchunksrect);
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: depcrc,
+		datarect: loadedchunksrect,
+		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base, hash: depcrc },
+		async run(chunks) {
+			//TODO try enable 2d map render without loading all the 3d stuff
+			let grid = new CombinedTileGrid(chunks.map(ch => ({
+				src: ch.loaded.grid,
+				rect: {
+					x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
+					z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
+					xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
+					zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
+				}
+			})));
+			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+			let svg = await svgfloor(engine, grid, locs, worldrect, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons, !!thiscnf.thicklines);
+			return {
+				file: () => Promise.resolve(Buffer.from(svg, "utf8"))
+			};
+		}
+	}] satisfies RenderTask[];
+}
 
+const rendermodeCollision: RenderMode<"collision"> = function (engine, config, cnf, deps, baseoutput, worldrect) {
+	let zooms = getLayerZooms(config.config, cnf);
+	let { loadedchunksrect } = chunkrectToOffetWorldRect(engine, worldrect);
+	let thiscnf = cnf;
+	let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutput.x, baseoutput.y, cnf.format ?? "webp");
+
+	let depcrc = deps.recthash(loadedchunksrect);
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: depcrc,
+		datarect: loadedchunksrect,
+		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base, hash: depcrc },
+		async run(chunks) {
+			//TODO try enable 2d map render without loading all the 3d stuff
+			let grids = chunks.map(q => q.loaded.grid);
+			let file = drawCollision(grids, worldrect, thiscnf.level, thiscnf.pxpersquare, 1);
+			return { file: () => file };
+		}
+	}] satisfies RenderTask[];
+}
+
+const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
+	let thiscnf = cnf;
+	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "bin.gz" : "bin"}`;
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: deps.recthash(singlerect),
+		datarect: singlerect,
+		async run(chunks) {
+			//TODO what to do with classic 48x48 chunks?
+			let file = chunks[0].loaded.grid.getHeightCollisionFile(singlerect.x * 64, singlerect.z * 64, thiscnf.level, 64, 64);
+			let buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
+			if (thiscnf.usegzip) {
+				buf = zlib.gzipSync(buf);
+			}
+			return { file: () => Promise.resolve(buf) };
+		}
+	}] satisfies RenderTask[]
+}
+
+const rendermodeLocs: RenderMode<"height"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
+	let thiscnf = cnf;
+	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: deps.recthash(singlerect),
+		datarect: singlerect,
+		async run(chunks) {
+			let { grid, modeldata, chunkSize } = chunks[0].loaded.chunkdata;
+			let rawarea = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
+			let res = chunkSummary(grid, modeldata, rawarea);
+			let textual = prettyJson(res, { indent: "\t" });
+			let buf = Buffer.from(textual, "utf8");
+			if (thiscnf.usegzip) {
+				buf = zlib.gzipSync(buf);
+			}
+			return { file: () => Promise.resolve(buf) };
+		}
+	}] satisfies RenderTask[];
+}
+
+const rendermodeMaplabels: RenderMode<"height"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
+	let thiscnf = cnf;
+	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: deps.recthash(singlerect),
+		datarect: singlerect,
+		async run(chunks) {
+			let { chunkSize } = chunks[0].loaded.chunkdata;
+			let rawarea = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
+			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+			let iconjson = await jsonIcons(engine, locs, rawarea, thiscnf.level);
+			let textual = prettyJson(iconjson, { indent: "\t" });
+			let buf = Buffer.from(textual, "utf8");
+			if (thiscnf.usegzip) {
+				buf = zlib.gzipSync(buf);
+			}
+			return { file: () => Promise.resolve(buf) };
+		}
+	}] satisfies RenderTask[];
+}
+
+const rendermodeRenderMeta: RenderMode<"rendermeta"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
+	let thiscnf = cnf;
+	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: deps.recthash(singlerect),
+		datarect: singlerect,
+		async run(chunks) {
+			let obj = chunks[0].loaded.rendermeta;
+			let file = Buffer.from(JSON.stringify(obj), "utf8");
+			if (thiscnf.usegzip) {
+				file = zlib.gzipSync(file);
+			}
+			return { file: () => Promise.resolve(file) };
+		}
+	}] satisfies RenderTask[];
+}
+
+const rendermodes: Record<LayerConfig["mode"], RenderMode<any>> = {
+	"3d": rendermode3d,
+	minimap: rendermode3d,
+	collision: rendermodeCollision,
+	map: rendermodeMap,
+	height: rendermodeHeight,
+	locs: rendermodeLocs,
+	maplabels: rendermodeMaplabels,
+	rendermeta: rendermodeRenderMeta
+}
 
 //TODO test map generation and move it over to mapimagecamera2
 export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
