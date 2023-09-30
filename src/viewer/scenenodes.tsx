@@ -14,7 +14,7 @@ import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
-import { MapRenderDatabaseBacked, runMapRender } from "../map";
+import { runMapRender } from "../map";
 import { diffCaches, FileEdit } from "../scripts/cachediff";
 import { selectEntity, showModal } from "./jsonsearch";
 import { drawTexture, findImageBounds, makeImageData } from "../imgutils";
@@ -31,6 +31,7 @@ import { fileHistory } from '../scripts/filehistory';
 import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
+import { MapRenderDatabaseBacked } from '../map/backends';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 

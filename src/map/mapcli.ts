@@ -2,7 +2,8 @@
 import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CLIScriptFS, CLIScriptOutput } from "../scriptrunner";
-import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked, runMapRender } from ".";
+import { runMapRender } from ".";
+import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked } from "./backends";
 import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { stringToFileRange } from "../utils";
 import { classicBuilds, ClassicFileSource, detectClassicVersions } from "../cache/classicloader";

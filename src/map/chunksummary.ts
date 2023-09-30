@@ -1,25 +1,17 @@
-import { Box2, BufferAttribute, Camera, Group, Matrix4, Vector2, Vector3 } from "three";
+import { Box2, BufferAttribute, Group, Matrix4, Vector2, Vector3 } from "three";
 import { objects } from "../../generated/objects";
 import { ChunkData, MapRect, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
 import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBuilder } from "../3d/modelutils";
 import { crc32addInt, DependencyGraph } from "../scripts/dependencies";
-
-//reuse same buffers
-const pointAttribute = new BufferAttribute(new Float32Array(3), 3);
-const boxAttribute = new BufferAttribute(new Float32Array(3 * 8), 3);
-const boxtemp = new Box2();
-const v0 = new Vector3();
-const v1 = new Vector3();
-const v2 = new Vector3();
-
-const d0 = new Vector2();
-const d1 = new Vector2();
-const d2 = new Vector2();
+import { KnownMapFile, MapRender } from "./backends";
+import { CacheFileSource } from "../cache";
+import { RenderedMapMeta } from ".";
 
 export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
 	let sum = new Vector3();
 	let tmp = new Vector3();
+	const pointAttribute = new BufferAttribute(new Float32Array(3), 3);
 
 	let locids = new Map<number, objects>();
 	let locs: { id: number, x: number, z: number, l: number, r: number, center: number[] }[] = [];
@@ -162,6 +154,11 @@ function compareChunkLoc(a: ChunkLocDependencies["instances"][number], b: ChunkL
 }
 
 export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], rect: MapRect) {
+	const boxAttribute = new BufferAttribute(new Float32Array(3 * 8), 3);
+	const v0 = new Vector3();
+	const v1 = new Vector3();
+	const v2 = new Vector3();
+
 	let locgroups = new Map<number, PlacedMeshBase<ModelExtrasLocation>[][]>();
 	for (let models of locs) {
 		let first = models[0];//TODO why only index 0, i forgot
@@ -412,6 +409,9 @@ export class ImageDiffGrid {
 	}
 
 	addPolygons(projection: Matrix4, points: number[][]) {
+		const v0 = new Vector3();
+		const v1 = new Vector3();
+		const v2 = new Vector3();
 		for (let group of points) {
 			for (let i = 0; i < group.length; i += 3) {
 				v2.set(group[i + 0], group[i + 1], group[i + 2]);
@@ -450,6 +450,11 @@ export class ImageDiffGrid {
 	}
 
 	calculateDiffArea(imgwidth: number, imgheight: number) {
+		const boxtemp = new Box2();
+		const d0 = new Vector2();
+		const d1 = new Vector2();
+		const d2 = new Vector2();
+
 		const gridsize = this.gridsize;
 		const grid = this.grid;
 
@@ -668,4 +673,145 @@ function modelPlacementHash(loc: WorldLocation) {
 		hash = crc32addInt(loc.placement.scaleZ ?? 0, hash);
 	}
 	return hash;
+}
+
+export type ChunkRenderMeta = {
+	x: number,
+	z: number,
+	version: number,
+	floor: ChunkTileDependencies[],
+	locs: ChunkLocDependencies[],
+}
+
+type RenderDepsEntry = {
+	x: number,
+	z: number,
+	metas: Promise<{ buildnr: number, firstbuildnr: number, meta: ChunkRenderMeta }[]>
+}
+
+export type RenderDepsVersionInstance = Awaited<ReturnType<RenderDepsTracker["forkDeps"]>>;
+
+export class RenderDepsTracker {
+	config: MapRender;
+	deps: DependencyGraph;
+	targetversions: number[];
+
+	cachedMetas: RenderDepsEntry[] = [];
+	readonly cacheSize = 15;
+
+	constructor(source: CacheFileSource, config: MapRender, deps: DependencyGraph, rendermeta: RenderedMapMeta) {
+		this.config = config;
+		this.deps = deps;
+		let versiontime = +source.getCacheMeta().timestamp;
+		this.targetversions = rendermeta.versions
+			.slice()
+			.sort((a, b) => Math.abs(a.date - versiontime) - Math.abs(b.date - versiontime))
+			.slice(0, 10)
+			.map(q => q.version)
+	}
+
+	getEntry(x: number, z: number) {
+		let match = this.cachedMetas.find(q => q.x == x && q.z == z);
+		if (!match) {
+			let metas = (async () => {
+				if (!this.config.rendermetaLayer || !this.config.getRelatedFiles) {
+					return [];
+				}
+				let filename = `${this.config.rendermetaLayer.name}/${x}-${z}.${this.config.rendermetaLayer.usegzip ? "json.gz" : "json"}`;
+				let urls = await this.config.getRelatedFiles([filename], this.targetversions);
+				urls = urls.filter(q => q.buildnr != this.config.version);
+				let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
+					buildnr: q.buildnr,
+					firstbuildnr: q.firstbuildnr,
+					meta: await w.json() as ChunkRenderMeta
+				})));
+				return Promise.all(fetches)
+			})();
+
+			match = { x, z, metas };
+			this.cachedMetas.push(match);
+
+			//remove first item if cache is full
+			while (this.cachedMetas.length > this.cacheSize) {
+				this.cachedMetas.shift();
+			}
+		}
+		return match;
+	}
+
+	getRect(rect: MapRect) {
+		let entries: RenderDepsEntry[] = [];
+		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
+			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
+				entries.push(this.getEntry(x, z));
+			}
+		}
+		return entries;
+	}
+
+	async forkDeps(names: string[]) {
+		let allFiles = await this.config.getRelatedFiles?.(names, this.targetversions) ?? [];
+		let localmetas: ChunkRenderMeta[] = [];
+		let localfiles: KnownMapFile[] = [];
+
+		let addLocalFile = (file: KnownMapFile) => {
+			// allFiles.push(file);
+			localfiles.push(file);
+		}
+
+		let addLocalSquare = (rendermeta: ChunkRenderMeta) => {
+			if (!localmetas.some(q => q.x == rendermeta.x && q.z == rendermeta.z)) {
+				localmetas.push(rendermeta);
+			}
+		}
+
+		let findMatches = async (chunkRect: MapRect, name: string) => {
+			let matches: { file: KnownMapFile, metas: ChunkRenderMeta[] }[] = [];
+
+			//try find match in current render
+			let localfile = localfiles.find(q => q.file == name);
+			if (localfile) {
+				let haslocalchunks = true;
+				let localchunks: ChunkRenderMeta[] = []
+				for (let z = chunkRect.z; z < chunkRect.z + chunkRect.zsize; z++) {
+					for (let x = chunkRect.x; x < chunkRect.x + chunkRect.xsize; x++) {
+						let meta = localmetas.find(q => q.x == x && q.z == z);
+						if (!meta) {
+							haslocalchunks = false;
+						} else {
+							localchunks.push(meta);
+						}
+					}
+				}
+				if (haslocalchunks && localfiles.some(q => q.file == name)) {
+					matches.push({ file: localfile, metas: localchunks });
+				}
+			}
+
+			//search nearby build renders
+			let chunks = this.getRect(chunkRect);
+			let chunkmetas = await Promise.all(chunks.map(ch => ch.metas));
+			let namedversions = allFiles.filter(q => q.file == name);
+			matchloop: for (let file of namedversions) {
+				let metas: ChunkRenderMeta[] = [];
+				for (let chunk of chunkmetas) {
+					let meta = chunk.find(q => q.buildnr >= file.firstbuildnr && q.firstbuildnr <= file.buildnr);
+					if (!meta) {
+						continue matchloop;
+					} else {
+						metas.push(meta.meta);
+					}
+				}
+				matches.push({ file, metas });
+			}
+			return matches;
+		}
+
+		return {
+			allFiles,
+			findMatches,
+			addLocalFile,
+			addLocalSquare
+		};
+	}
 }

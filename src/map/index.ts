@@ -1,23 +1,24 @@
 
-import { disposeThreeTree, ThreeJsRenderer } from "../viewer/threejsrender";
+import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import { jsonIcons, svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
-import { canvasToImageFile, fileToImageData, flipImage, isImageEqual, makeImageData, maskImage, pixelsToImageFile } from "../imgutils";
+import { canvasToImageFile, flipImage, pixelsToImageFile } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
-import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
-import { CallbackPromise, delay, FetchThrottler, stringToFileRange, stringToMapArea, trickleTasks } from "../utils";
+import { ScriptOutput } from "../scriptrunner";
+import { CallbackPromise, delay, stringToFileRange, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
-import { ChunkLocDependencies, chunkSummary, ChunkTileDependencies, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies } from "./chunksummary";
+import { ChunkRenderMeta, chunkSummary, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies, RenderDepsTracker, RenderDepsVersionInstance } from "./chunksummary";
 import { RSMapChunk, RSMapChunkData } from "../3d/modelnodes";
 import * as zlib from "zlib";
 import { Camera, Matrix4, OrthographicCamera, Vector3 } from "three";
-import fs from "fs/promises";
-import path from "path";
+import { KnownMapFile, MapRender, SymlinkCommand } from "./backends";
+import { ProgressUI, TileLoadState } from "./progressui";
+import { MipScheduler } from "./mipper";
 
 type RenderedMapVersionMeta = {
 	buildnr: number,
@@ -30,7 +31,7 @@ type RenderedMapVersionMeta = {
 	rendertimestamp: string
 }
 
-type RenderedMapMeta = {
+export type RenderedMapMeta = {
 	versions: {
 		version: number,
 		date: number,
@@ -39,7 +40,7 @@ type RenderedMapMeta = {
 	}[]
 }
 
-type Mapconfig = {
+export type Mapconfig = {
 	layers: LayerConfig[],
 	tileimgsize: number,
 	mapsizex: number,
@@ -47,7 +48,7 @@ type Mapconfig = {
 	area: string
 }
 
-type LayerConfig = {
+export type LayerConfig = {
 	mode: string,
 	name: string,
 	pxpersquare: number,
@@ -173,337 +174,10 @@ async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) 
 	return { areas, mask };
 }
 
-function getLayerZooms(config: Mapconfig, layercnf: LayerConfig) {
-	const min = Math.floor(Math.log2(config.tileimgsize / (Math.max(config.mapsizex, config.mapsizez) * 64)));
-	const max = Math.log2(layercnf.pxpersquare);
-	const base = Math.log2(config.tileimgsize / 64);
-	return { min, max, base };
-}
-
-export abstract class MapRender {
-	config: Mapconfig;
-	version = 0;
-	workerid = "default";
-	constructor(config: Mapconfig) {
-		this.config = config;
-	}
-	abstract getFileResponse(name: string, version?: number): Promise<Response>;
-	abstract makeFileName(layer: string, zoom: number, x: number, y: number, ext: string): string;
-	abstract saveFile(name: string, hash: number, data: Buffer, version?: number): Promise<void>;
-	abstract symlink(name: string, hash: number, targetname: string, targetversion?: number): Promise<void>;
-
-	async symlinkBatch(files: SymlinkCommand[]) {
-		await Promise.all(files.map(f => this.symlink(f.file, f.hash, f.symlink, f.symlinkbuildnr)));
-	}
-	async beginMapVersion(version: number) {
-		this.version = version;
-	}
-
-	//optional api's when rendering history stuff
-	rendermetaLayer: LayerConfig | undefined = undefined;
-	async getRelatedFiles(names: string[], versions: number[]) {
-		return [] as KnownMapFile[];
-	}
-	async getMetas(names: UniqueMapFile[]) {
-		return [] as KnownMapFile[];
-	}
-}
-
-export class MapRenderFsBacked extends MapRender {
-	path: string;
-	copyOnSymlink = true;
-	constructor(filepath: string, config: Mapconfig) {
-		super(config);
-		this.path = path.resolve(filepath);
-	}
-	async getFilePath(name: string) {
-		let pathname = path.resolve(this.path, name);
-		let dir = path.dirname(pathname);
-		await fs.mkdir(dir, { recursive: true });
-		return pathname;
-	}
-	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
-		return `${layer}/${zoom}/${x}-${y}.${ext}`;
-	}
-	assertVersion(version = this.version) {
-		if (version != 0 && version != this.version) { throw new Error("versions not supported"); }
-	}
-	async saveFile(name: string, hash: number, data: Buffer, version: number) {
-		this.assertVersion(version);
-		await fs.writeFile(await this.getFilePath(name), data);
-	}
-	async getFileResponse(name: string, version?: number) {
-		this.assertVersion(version);
-		try {
-			let ext = name.match(/\.(\w+)$/);
-			let mimetype = (ext ? ext[1] == "svg" ? "image/svg+xml" : `image/${ext[1]}` : "");
-			let file = await fs.readFile(await this.getFilePath(name));
-			return new Response(file, { headers: { "content-type": mimetype } });
-		} catch {
-			return new Response(null, { status: 404 });
-		}
-	}
-	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
-		this.assertVersion(targetversion);
-		if (this.copyOnSymlink) {
-			//don't actually symliink because windows its weird in windows
-			await fs.copyFile(await this.getFilePath(targetname), await this.getFilePath(name));
-		} else {
-			await fs.symlink(await this.getFilePath(name), await this.getFilePath(targetname), "file");
-		}
-	}
-}
-
-//The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
-//The render code decides which (opaque to server) file names should exist and checks if that name+hash already exists,
-//if not it will generate the file and save it together with some metadata (hash+build nr)
-export class MapRenderDatabaseBacked extends MapRender {
-	endpoint: string;
-	workerid: string;
-	uploadmapid: number;
-	auth: string;
-	overwrite: boolean;
-	rendermetaLayer: LayerConfig | undefined;
-
-	private postThrottler = new FetchThrottler(20);
-	private fileThrottler = new FetchThrottler(20);
-
-	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
-		super(config);
-		this.endpoint = endpoint;
-		this.auth = auth;
-		this.workerid = workerid;
-		this.overwrite = overwrite;
-		this.rendermetaLayer = rendermetaLayer;
-		this.uploadmapid = uploadmapid;
-	}
-	static async create(endpoint: string, auth: string, uploadmapid: number, overwrite: boolean) {
-		let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
-		if (!res.ok) { throw new Error("map config fetch error"); }
-		let config: Mapconfig = await res.json();
-		let rendermetaname = config.layers.find(q => q.mode == "rendermeta");
-
-		let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
-		localStorage.map_workerid ??= workerid;
-
-		return new MapRenderDatabaseBacked(endpoint, auth, workerid, uploadmapid, config, rendermetaname, overwrite);
-	}
-	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
-		return `${layer}/${zoom}/${x}-${y}.${ext}`;
-	}
-	async beginMapVersion(version: number) {
-		this.version = version;
-		let send = await this.postThrottler.apiRequest(`${this.endpoint}/assurebuildnr?mapid=${this.uploadmapid}&buildnr=${this.version}`, {
-			method: "post",
-			headers: { "Authorization": this.auth },
-			timeout: 1000 * 60 * 15
-		});
-		if (!send.ok) { throw new Error("failed to init map"); }
-	}
-	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
-		let send = await this.postThrottler.apiRequest(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${version}&mapid=${this.uploadmapid}`, {
-			method: "post",
-			headers: { "Authorization": this.auth },
-			body: data
-		});
-		if (!send.ok) { throw new Error("file upload failed"); }
-	}
-	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
-		return this.symlinkBatch([{ file: name, hash, buildnr: this.version, symlink: targetname, symlinkbuildnr: targetversion, symlinkfirstbuildnr: targetversion }]);
-	}
-	async symlinkBatch(files: SymlinkCommand[]) {
-		let version = this.version;
-		let filtered = files.filter(q => q.file != q.symlink || version > q.symlinkbuildnr || version < q.symlinkfirstbuildnr);
-		if (filtered.length == 0) {
-			return;
-		}
-		let send = await this.postThrottler.apiRequest(`${this.endpoint}/uploadbatch?mapid=${this.uploadmapid}`, {
-			method: "post",
-			headers: {
-				"Authorization": this.auth,
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify(files)
-		});
-		if (!send.ok) { throw new Error("file symlink failed"); }
-	}
-	async getMetas(names: UniqueMapFile[]) {
-		if (this.overwrite) {
-			return [];
-		} else if (names.length == 0) {
-			return [];
-		} else {
-			let req = await this.postThrottler.apiRequest(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}&buildnr=${this.version}`, {
-				headers: { "Authorization": this.auth },
-			});
-			if (!req.ok) { throw new Error("req failed"); }
-			return await req.json() as KnownMapFile[];
-		}
-	}
-	async getRelatedFiles(names: string[], versions: number[]) {
-		if (names.length == 0 || versions.length == 0) {
-			return [];
-		}
-		let req = await this.postThrottler.apiRequest(`${this.endpoint}/getfileversions?mapid=${this.uploadmapid}`, {
-			method: "post",
-			headers: {
-				"Authorization": this.auth,
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify({
-				//TODO actually implement this?
-				startversion: Math.min(...versions),
-				endversion: Math.max(...versions),
-				files: names
-			})
-		});
-		if (!req.ok) { throw new Error("req faield"); }
-		let files = await req.json() as KnownMapFile[];
-		return files;
-	}
-	getFileResponse(name: string, version = this.version) {
-		let url = `${this.endpoint}/getnamed?file=${encodeURIComponent(name)}&version=${version}&mapid=${this.uploadmapid}`;
-		return this.fileThrottler.apiRequest(url, { cache: "reload" });
-	}
-}
-
-type TileProgress = "queued" | "imaging" | "saving" | "done" | "skipped";
-type TileLoadState = "loading" | "loaded" | "unloaded";
-
-class ProgressUI {
-	areas: MapRect[];
-	tiles = new Map<string, { el: HTMLDivElement, x: number, z: number, progress: TileProgress, loadstate: TileLoadState }>();
-	props: Record<string, { el: HTMLDivElement, contentel: HTMLElement, text: string }> = {};
-	root: HTMLElement;
-	proproot: HTMLElement;
-	grid: HTMLElement;
-
-	private updateDebounce = 0;
-	private queuedUpdates: { x: number, z: number, state: TileProgress | "", tilestate: TileLoadState | "" }[] = [];
-
-	static renderBackgrounds: Record<TileLoadState, string> = {
-		loaded: "lime",
-		loading: "red",
-		unloaded: "green"
-	}
-	static backgrounds: Record<TileProgress, string> = {
-		queued: "black",
-		imaging: "orange",
-		saving: "yellow",
-		done: "green",
-		skipped: "darkgreen"
-	};
-
-	constructor() {
-		this.areas = [];
-		this.grid = document.createElement("div");
-		this.grid.style.display = "grid";
-
-		this.proproot = document.createElement("div");
-
-		let root = document.createElement("div");
-		root.style.display = "grid";
-		root.style.grid = "'a b'/auto 1fr";
-		root.appendChild(this.grid);
-		root.appendChild(this.proproot);
-		this.root = root;
-	}
-	setAreas(areas: MapRect[]) {
-		this.areas = areas;
-		this.grid.replaceChildren();
-
-		let minx = Infinity, minz = Infinity;
-		let maxx = -Infinity, maxz = -Infinity;
-		for (let area of areas) {
-			minx = Math.min(minx, area.x); minz = Math.min(minz, area.z);
-			maxx = Math.max(maxx, area.x + area.xsize - 1); maxz = Math.max(maxz, area.z + area.zsize - 1);
-
-			for (let dz = 0; dz < area.zsize; dz++) {
-				for (let dx = 0; dx < area.xsize; dx++) {
-					let id = `${area.x + dx}-${area.z + dz}`;
-					if (!this.tiles.has(id)) {
-						let el = document.createElement("div");
-						this.tiles.set(id, { x: area.x + dx, z: area.z + dz, el, progress: "queued", loadstate: "unloaded" });
-					}
-				}
-			}
-		}
-
-		const maxheight = 930;
-		const maxwidth = 700;
-		let scale = Math.min(maxwidth / (maxx - minx + 1), maxheight / (maxz - minz + 1));
-		this.grid.style.width = `${(maxx - minx + 1) * scale}px`;
-		this.grid.style.height = `${(maxz - minz + 1) * scale}px`;
-		this.grid.style.gridTemplateColumns = `repeat(${maxx - minx + 1},1fr)`;
-		this.grid.style.gridTemplateRows = `repeat(${maxz - minz + 1},1fr)`;
-
-		this.proproot.style.left = `${(maxx - minx + 1) * scale}px`;
-		for (let tile of this.tiles.values()) {
-			tile.el.style.gridColumn = (tile.x - minx + 1) + "";
-			tile.el.style.gridRow = (maxz - minz - (tile.z - minz) + 1) + "";
-			tile.el.style.background = ProgressUI.backgrounds.queued;
-			this.grid.appendChild(tile.el);
-		}
-	}
-
-	update(x: number, z: number, state: TileProgress | "", tilestate: TileLoadState | "" = "") {
-		this.queuedUpdates.push({ x, z, state, tilestate });
-		if (!this.updateDebounce) {
-			this.updateDebounce = +setTimeout(() => {
-				this.queuedUpdates.forEach(q => this.doupdate(q.x, q.z, q.state, q.tilestate));
-				this.queuedUpdates = [];
-				this.updateDebounce = 0;
-			}, 400);
-		}
-	}
-
-	private doupdate(x: number, z: number, state: TileProgress | "", tilestate: TileLoadState | "" = "") {
-		let id = `${x}-${z}`;
-		let tile = this.tiles.get(id);
-		if (!tile) { return; }
-		if (state) {
-			tile.progress = state;
-		}
-		if (tilestate) {
-			tile.loadstate = tilestate;
-		}
-		if (tile.progress == "imaging" || tile.progress == "saving") {
-			tile.el.style.background = ProgressUI.backgrounds[tile.progress];
-		} else if (tile.loadstate != "unloaded") {
-			tile.el.style.background = ProgressUI.renderBackgrounds[tile.loadstate]
-		} else {
-			tile.el.style.background = ProgressUI.backgrounds[tile.progress];
-		}
-	}
-
-
-	updateProp(propname: string, value: string) {
-		let prop = this.props[propname];
-		if (!value && prop) {
-			this.proproot.removeChild(prop.el);
-			delete this.props[propname];
-			return;
-		}
-		if (value && !prop) {
-			let titleel = document.createElement("b");
-			let contentel = document.createElement("span");
-			let el = document.createElement("div");
-			el.append(titleel, contentel);
-			titleel.innerText = propname + ": ";
-
-			prop = { el, contentel, text: "" };
-			this.props[propname] = prop;
-			this.proproot.appendChild(prop.el);
-		}
-		prop.text = value;
-		prop.contentel.innerText = value;
-	}
-}
-
 export async function runMapRender(output: ScriptOutput, filesource: CacheFileSource, config: MapRender, forceCheck: boolean) {
 	let versionid = filesource.getBuildNr();
 	if (filesource.getBuildNr() > 900) {
-		//use build number for order caches since they wont have version timestamps
+		//use build number for older caches since they wont have version timestamps
 		//for newer caches the timestamp is more reliable since it allows us to mix
 		//openrs2 and sqlite caches at will without 100% knowing the build number
 		//and newer game updates rarely update build nr
@@ -575,14 +249,6 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	output.log("done");
 
 	return cleanup;
-}
-
-type ChunkRenderMeta = {
-	x: number,
-	z: number,
-	version: number,
-	floor: ChunkTileDependencies[],
-	locs: ChunkLocDependencies[],
 }
 
 type MaprenderSquareData = {
@@ -791,172 +457,22 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	output.log(errs);
 }
 
-type UniqueMapFile = { name: string, hash: number };
-
-type KnownMapFile = { hash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
-
-type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: (UniqueMapFile | null)[] };
-
-type SymlinkCommand = { file: string, buildnr: number, hash: number, symlink: string, symlinkbuildnr: number, symlinkfirstbuildnr: number };
-
-class MipScheduler {
-	render: MapRender;
-	progress: ProgressUI;
-	incompletes = new Map<string, MipCommand>();
-	minzoom: number;
-	constructor(render: MapRender, progress: ProgressUI) {
-		this.render = render;
-		this.progress = progress;
-		this.minzoom = Math.floor(Math.log2(render.config.tileimgsize / (Math.max(render.config.mapsizex, render.config.mapsizez) * 64)));
-	}
-	addTask(layer: LayerConfig, zoom: number, hash: number, x: number, y: number, srcfile: string) {
-		if (zoom - 1 < this.minzoom) { return; }
-		let newname = this.render.makeFileName(layer.name, zoom - 1, Math.floor(x / 2), Math.floor(y / 2), layer.format ?? "webp");
-		let incomp = this.incompletes.get(newname);
-		if (!incomp) {
-			incomp = {
-				layer,
-				zoom: zoom - 1,
-				x: Math.floor(x / 2),
-				y: Math.floor(y / 2),
-				files: [null, null, null, null]
-			};
-			this.incompletes.set(newname, incomp);
-		}
-		let isright = (x % 2) != 0;
-		let isbot = (y % 2) != 0;
-		let subindex = (isright ? 1 : 0) + (isbot ? 2 : 0);
-		incomp.files[subindex] = { name: srcfile, hash };
-	}
-	async run(includeIncomplete = false) {
-		const maxgroup = 200;
-		let completed = 0;
-		let skipped = 0;
-		let tasks: { name: string, hash: number, run: () => Promise<void>, finally: () => void }[] = [];
-		let processTasks = async () => {
-			let oldhashes = await this.render.getMetas(tasks);
-			let proms: Promise<void>[] = [];
-			let symlinks: SymlinkCommand[] = [];
-			for (let task of tasks) {
-				let old = oldhashes.find(q => q.file == task.name);
-
-				if (task.hash != 0 && old && old.hash == task.hash) {
-					symlinks.push({ file: task.name, hash: task.hash, buildnr: this.render.version, symlink: old.file, symlinkbuildnr: old.buildnr, symlinkfirstbuildnr: old.firstbuildnr });
-					skipped++;
-				} else {
-					proms.push(task.run().catch(e => console.warn("mipping", task.name, "failed", e)));
-					completed++;
-				}
-			}
-			proms.push(this.render.symlinkBatch(symlinks));
-			await Promise.all(proms);
-			for (let task of tasks) {
-				task.finally();
-			}
-			tasks = [];
-			this.progress.updateProp("mipqueue", "" + this.incompletes.size);
-		}
-		do {
-			let zoomlevel = -100;
-			if (includeIncomplete) {
-				for (let args of this.incompletes.values()) {
-					if (args.zoom > zoomlevel) {
-						zoomlevel = args.zoom;
-					}
-				}
-			}
-			for (let [out, args] of this.incompletes.entries()) {
-				if (includeIncomplete && args.zoom != zoomlevel) { continue; }
-				if (!includeIncomplete && args.files.some(q => !q)) { continue; }
-
-				let crc = 0;
-				for (let file of args.files) {
-					crc = crc32addInt(file?.hash ?? 0, crc);
-				}
-
-				tasks.push({
-					name: out,
-					hash: crc,
-					run: async () => {
-						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9, args.layer.mipmode == "avg");
-						await this.render.saveFile(out, crc, buf);
-					},
-					finally: () => {
-						this.addTask(args.layer, args.zoom, crc, args.x, args.y, out);
-					}
-				})
-				this.incompletes.delete(out);
-				if (tasks.length >= maxgroup) {
-					await processTasks();
-				}
-			}
-			await processTasks();
-		} while (includeIncomplete && this.incompletes.size != 0)
-		console.log("mipped", completed, "skipped", skipped, "left", this.incompletes.size);
-		return completed
-	}
+function getLayerZooms(config: Mapconfig, layercnf: LayerConfig) {
+	const min = Math.floor(Math.log2(config.tileimgsize / (Math.max(config.mapsizex, config.mapsizez) * 64)));
+	const max = Math.log2(layercnf.pxpersquare);
+	const base = Math.log2(config.tileimgsize / 64);
+	return { min, max, base };
 }
 
-function avgFilterMipImage(img: ImageData) {
-	if (img.width % 2 != 0 || img.height % 2 != 0) { throw new Error("can only use avg mip filter on textures with multiple of 2 size"); }
-	let mipped = makeImageData(null, img.width / 2, img.height / 2);
-	const stridex = 4;
-	const stridey = img.width * 4;
-	for (let y = 0; y < mipped.height; y++) {
-		for (let x = 0; x < mipped.width; x++) {
-			let i = (x * 2) * stridex + (y * 2) * stridey;
-			//2 bias to round using floor later
-			let r = 2 + img.data[i + 0] + img.data[i + stridex + 0] + img.data[i + stridey + 0] + img.data[i + stridex + stridey + 0];
-			let g = 2 + img.data[i + 1] + img.data[i + stridex + 1] + img.data[i + stridey + 1] + img.data[i + stridex + stridey + 1];
-			let b = 2 + img.data[i + 2] + img.data[i + stridex + 2] + img.data[i + stridey + 2] + img.data[i + stridex + stridey + 2];
-			let a = 2 + img.data[i + 3] + img.data[i + stridex + 3] + img.data[i + stridey + 3] + img.data[i + stridex + stridey + 3];
-			let iout = x * 4 + y * mipped.width * 4;
-			mipped.data[iout + 0] = r / 4;
-			mipped.data[iout + 1] = g / 4;
-			mipped.data[iout + 2] = b / 4;
-			mipped.data[iout + 3] = a / 4;
-		}
-	}
-	return mipped;
-}
-
-async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], format: "png" | "webp", quality: number, avgfilter: boolean) {
-	let cnv = document.createElement("canvas");
-	cnv.width = render.config.tileimgsize;
-	cnv.height = render.config.tileimgsize;
-	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
-	const subtilesize = render.config.tileimgsize / 2;
-	await Promise.all(files.map(async (f, i) => {
-		if (!f) { return null; }
-		let res = await render.getFileResponse(f.name);
-		let mimetype = res.headers.get("content-type");
-		let outx = (i % 2) * subtilesize;
-		let outy = Math.floor(i / 2) * subtilesize;
-		if (avgfilter) {
-			let file = await res.arrayBuffer();
-			let data = await fileToImageData(new Uint8Array(file), mimetype as any, false);
-			let scaled = avgFilterMipImage(data);
-			ctx.putImageData(scaled, outx, outy);
-		} else {
-			let img: any;//Image|VideoFrame
-			if (!res.ok) {
-				throw new Error("image not found");
-			}
-			// imagedecoder API doesn't support svg
-			if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {
-				let decoder = new ImageDecoder({ data: res.body, type: mimetype, desiredWidth: subtilesize, desiredHeight: subtilesize });
-				img = (await decoder.decode()).image;
-			} else {
-				let blobsrc = URL.createObjectURL(await res.blob());
-				img = new Image(subtilesize, subtilesize);
-				img.src = blobsrc;
-				await img.decode();
-				URL.revokeObjectURL(blobsrc);
-			}
-			ctx.drawImage(img, outx, outy, subtilesize, subtilesize);
-		}
-	}));
-	return canvasToImageFile(cnv, format, quality);
+type RenderTask={
+	layer: LayerConfig,
+	name: string,
+	hash: number,
+	datarect: MapRect,
+	dedupeDependencies?: string[],
+	mippable?: null | { zoom: number, outputx: number, outputy: number, hash: number },
+	//first callback depends on state and should be series, 2nd is deferred and can be parallel
+	run: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<{ file?: () => Promise<Buffer>, symlink?: undefined | KnownMapFile }>,
 }
 
 export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
@@ -1014,16 +530,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		return exists;
 	}
 
-	let chunktasks: {
-		layer: LayerConfig,
-		name: string,
-		hash: number,
-		datarect: MapRect,
-		dedupeDependencies?: string[],
-		mippable?: null | { zoom: number, outputx: number, outputy: number, hash: number },
-		//first callback depends on state and should be series, 2nd is deferred and can be parallel
-		run: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<{ file?: () => Promise<Buffer>, symlink?: undefined | KnownMapFile }>,
-	}[] = [];
+	let chunktasks: RenderTask[] = [];
 	let miptasks: (() => void)[] = [];
 	for (let cnf of config.config.layers) {
 		let squares = 1;//cnf.mapsquares ?? 1;//TODO remove or reimplement
@@ -1379,6 +886,12 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 	return { runTasks };
 }
 
+interface ChunkRenderTask{
+
+}
+
+
+
 //TODO test map generation and move it over to mapimagecamera2
 export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
 	let scale = 2 / ntiles;
@@ -1434,136 +947,3 @@ export class SkewOrthographicCamera extends OrthographicCamera {
 	}
 }
 
-
-type RenderDepsEntry = {
-	x: number,
-	z: number,
-	metas: Promise<{ buildnr: number, firstbuildnr: number, meta: ChunkRenderMeta }[]>
-}
-
-type RenderDepsVersionInstance = Awaited<ReturnType<RenderDepsTracker["forkDeps"]>>;
-
-class RenderDepsTracker {
-	config: MapRender;
-	deps: DependencyGraph;
-	targetversions: number[];
-
-	cachedMetas: RenderDepsEntry[] = [];
-	readonly cacheSize = 15;
-
-	constructor(source: CacheFileSource, config: MapRender, deps: DependencyGraph, rendermeta: RenderedMapMeta) {
-		this.config = config;
-		this.deps = deps;
-		let versiontime = +source.getCacheMeta().timestamp;
-		this.targetversions = rendermeta.versions
-			.slice()
-			.sort((a, b) => Math.abs(a.date - versiontime) - Math.abs(b.date - versiontime))
-			.slice(0, 10)
-			.map(q => q.version)
-	}
-
-	getEntry(x: number, z: number) {
-		let match = this.cachedMetas.find(q => q.x == x && q.z == z);
-		if (!match) {
-			let metas = (async () => {
-				if (!this.config.rendermetaLayer || !this.config.getRelatedFiles) {
-					return [];
-				}
-				let filename = `${this.config.rendermetaLayer.name}/${x}-${z}.${this.config.rendermetaLayer.usegzip ? "json.gz" : "json"}`;
-				let urls = await this.config.getRelatedFiles([filename], this.targetversions);
-				urls = urls.filter(q => q.buildnr != this.config.version);
-				let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
-					buildnr: q.buildnr,
-					firstbuildnr: q.firstbuildnr,
-					meta: await w.json() as ChunkRenderMeta
-				})));
-				return Promise.all(fetches)
-			})();
-
-			match = { x, z, metas };
-			this.cachedMetas.push(match);
-
-			//remove first item if cache is full
-			while (this.cachedMetas.length > this.cacheSize) {
-				this.cachedMetas.shift();
-			}
-		}
-		return match;
-	}
-
-	getRect(rect: MapRect) {
-		let entries: RenderDepsEntry[] = [];
-		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
-			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				entries.push(this.getEntry(x, z));
-			}
-		}
-		return entries;
-	}
-
-	async forkDeps(names: string[]) {
-		let allFiles = await this.config.getRelatedFiles?.(names, this.targetversions) ?? [];
-		let localmetas: ChunkRenderMeta[] = [];
-		let localfiles: KnownMapFile[] = [];
-
-		let addLocalFile = (file: KnownMapFile) => {
-			// allFiles.push(file);
-			localfiles.push(file);
-		}
-
-		let addLocalSquare = (rendermeta: ChunkRenderMeta) => {
-			if (!localmetas.some(q => q.x == rendermeta.x && q.z == rendermeta.z)) {
-				localmetas.push(rendermeta);
-			}
-		}
-
-		let findMatches = async (chunkRect: MapRect, name: string) => {
-			let matches: { file: KnownMapFile, metas: ChunkRenderMeta[] }[] = [];
-
-			//try find match in current render
-			let localfile = localfiles.find(q => q.file == name);
-			if (localfile) {
-				let haslocalchunks = true;
-				let localchunks: ChunkRenderMeta[] = []
-				for (let z = chunkRect.z; z < chunkRect.z + chunkRect.zsize; z++) {
-					for (let x = chunkRect.x; x < chunkRect.x + chunkRect.xsize; x++) {
-						let meta = localmetas.find(q => q.x == x && q.z == z);
-						if (!meta) {
-							haslocalchunks = false;
-						} else {
-							localchunks.push(meta);
-						}
-					}
-				}
-				if (haslocalchunks && localfiles.some(q => q.file == name)) {
-					matches.push({ file: localfile, metas: localchunks });
-				}
-			}
-
-			//search nearby build renders
-			let chunks = this.getRect(chunkRect);
-			let chunkmetas = await Promise.all(chunks.map(ch => ch.metas));
-			let namedversions = allFiles.filter(q => q.file == name);
-			matchloop: for (let file of namedversions) {
-				let metas: ChunkRenderMeta[] = [];
-				for (let chunk of chunkmetas) {
-					let meta = chunk.find(q => q.buildnr >= file.firstbuildnr && q.firstbuildnr <= file.buildnr);
-					if (!meta) {
-						continue matchloop;
-					} else {
-						metas.push(meta.meta);
-					}
-				}
-				matches.push({ file, metas });
-			}
-			return matches;
-		}
-
-		return {
-			allFiles,
-			findMatches,
-			addLocalFile,
-			addLocalSquare
-		};
-	}
-}
