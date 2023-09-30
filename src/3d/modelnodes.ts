@@ -422,11 +422,11 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		// this.renderscene?.setCameraLimits();//TODO fix this, current bounding box calc is too large
 	}
 
-	setToggles(toggles: Record<string, boolean>) {
+	setToggles(toggles: Record<string, boolean>, hideall = false) {
 		this.toggles = toggles;
 		this.rootnode.traverse(node => {
 			if (node.userData.modelgroup) {
-				let newvis = toggles[node.userData.modelgroup] ?? true;
+				let newvis = (hideall ? false : toggles[node.userData.modelgroup] ?? true);
 				node.traverse(child => {
 					if (child instanceof THREE.Mesh) {
 						child.visible = newvis;

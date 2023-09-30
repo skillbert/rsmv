@@ -1590,10 +1590,11 @@ function SceneSpotAnim(p: LookupModeProps) {
 	)
 }
 type SceneMapState = {
-	chunkgroups: RSMapChunk[],
+	chunkgroups: { rect: MapRect, models: Map<ThreejsSceneCache, RSMapChunk> }[],
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>,
-	selectionData: any
+	selectionData: any,
+	versions: { cache: ThreejsSceneCache, visible: boolean }[]
 };
 export class SceneMapModel extends React.Component<LookupModeProps, SceneMapState> {
 	selectCleanup: (() => void)[] = [];
@@ -1603,20 +1604,21 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			chunkgroups: [],
 			center: { x: 0, z: 0 },
 			toggles: Object.create(null),
-			selectionData: undefined
+			selectionData: undefined,
+			versions: []
 		}
 	}
 
 	@boundMethod
 	clear() {
 		this.selectCleanup.forEach(q => q());
-		this.state.chunkgroups.forEach(q => q.cleanup());
+		this.state.chunkgroups.forEach(q => q.models.forEach(q => q.cleanup()));
 		this.setState({ chunkgroups: [], toggles: Object.create(null) });
 	}
 
 	@boundMethod
 	viewmap() {
-		showModal({ title: "Map view" }, <Map2dView chunks={this.state.chunkgroups} gridsize={512} mapscenes={true} />);
+		showModal({ title: "Map view" }, <Map2dView chunks={this.state.chunkgroups.map(q => q.models.get(this.props.ctx!.sceneCache)!).filter(q => q)} gridsize={512} mapscenes={true} />);
 	}
 
 	@boundMethod
@@ -1666,31 +1668,36 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 
 	@boundMethod
 	async addArea(rect: MapRect) {
-		const sceneCache = this.props.ctx?.sceneCache;
+		for (let version of this.state.versions) {
+			this.loadChunk(rect, version.cache);
+		}
+		this.fixVisibility();
+	}
+
+	async loadChunk(rect: MapRect, sceneCache: ThreejsSceneCache | undefined) {
 		const renderer = this.props.ctx?.renderer;
 		if (!sceneCache || !renderer) { return; }
 
 		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true });
 		chunk.on("changed", () => {
 			let toggles = this.state.toggles;
+			let changed = false;
 			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 				if (typeof toggles[q] != "boolean") {
 					toggles[q] = !!q.match(/^(floor|objects)\d+/);
 					// toggles[q] = !!q.match(/^mini_(floor|objects)0/);
 					// toggles[q] = !!q.match(/^mini_(objects)0/);
 					// toggles[q] = !!q.match(/^mini_(floor)0/);
+					changed = true;
 				}
 			});
-			this.setState({ toggles });
-			chunk.setToggles(toggles);
+			let match = this.state.versions.find(q => q.cache == sceneCache);
+			chunk.setToggles(toggles, match && !match.visible);
+			if (changed) {
+				this.setState({ toggles });
+				this.fixVisibility(toggles);
+			}
 		})
-		chunk.once("loaded", () => {
-			let combined = chunk.rootnode;
-			let center = this.state.center;
-			combined.position.add(new Vector3(-center.x, 0, -center.z));
-			chunk.addToScene(renderer);
-		});
-
 		let center = this.state.center;
 		if (this.state.chunkgroups.length == 0) {
 			let chunksize = (sceneCache.engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -1699,9 +1706,19 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				z: (rect.z + rect.zsize / 2) * chunksize * 512,
 			}
 		}
-		this.setState({
-			chunkgroups: [...this.state.chunkgroups, chunk],
-			center: center
+		let combined = chunk.rootnode;
+		combined.position.add(new Vector3(-center.x, 0, -center.z));
+		chunk.addToScene(renderer);
+		this.setState(prevstate => {
+			let group = prevstate.chunkgroups.find(q => q.rect.x == rect.x && q.rect.z == rect.z && q.rect.xsize == rect.xsize && q.rect.zsize == rect.zsize);
+			let newstate: Partial<SceneMapState> = {};
+			newstate.center = center;
+			if (!group) {
+				group = { rect, models: new Map() };
+				newstate.chunkgroups = [...prevstate.chunkgroups, group];
+			}
+			group.models.set(sceneCache, chunk);
+			return newstate as any;//react typings fail?
 		});
 	}
 
@@ -1716,15 +1733,72 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		this.addArea(rect);
 	}
 
+	fixVisibility(newtoggles = this.state.toggles) {
+		this.state.chunkgroups.forEach(group => group.models.forEach((q, key) => {
+			let match = this.state.versions.find(q => q.cache == key);
+			q.setToggles(newtoggles, match && !match.visible);
+		}));
+	}
+
 	setToggle(toggle: string, value: boolean) {
 		this.setState(old => {
 			let newtoggles = Object.create(null);
 			for (let key in old.toggles) {
 				newtoggles[key] = (key == toggle ? value : old.toggles[key]);
 			}
-			this.state.chunkgroups.forEach(q => q.setToggles(newtoggles));
+			this.fixVisibility(newtoggles);
 			return { toggles: newtoggles };
 		})
+	}
+
+	@boundMethod
+	selectSecondCache() {
+		let onselect = async (source: SavedCacheSource) => {
+			frame.close();
+			let cache = await openSavedCache(source, false);
+			if (!cache) { return; }
+			let engine = await EngineCache.create(cache);
+			let scene = await ThreejsSceneCache.create(engine);
+			for (let area of this.state.chunkgroups) {
+				this.loadChunk(area.rect, scene);
+			}
+			this.setState({ versions: [...this.state.versions, { cache: scene, visible: true }] });
+		}
+
+		let frame = showModal({ title: "Select a cache" }, (
+			<CacheSelector onOpen={onselect} noReopen={true} />
+		));
+	}
+
+	removeCache(cache: ThreejsSceneCache) {
+		for (let group of this.state.chunkgroups) {
+			let model = group.models.get(cache);
+			if (!model) { continue; }
+			this.props.ctx?.renderer.removeSceneElement(model);
+		}
+		this.setState({ versions: this.state.versions.filter(q => q.cache != cache) });
+	}
+
+	@boundMethod
+	toggleCache() {
+		let currentindex = this.state.versions.findIndex(q => q.visible);
+		let newindex = (currentindex + 1) % this.state.versions.length;
+		this.state.versions.forEach((q, i) => this.toggleVisible(q.cache, i == newindex));
+	}
+
+	toggleVisible(cache: ThreejsSceneCache, visible: boolean) {
+		let entry = this.state.versions.find(q => q.cache == cache);
+		if (!entry) { return; }
+		entry.visible = visible;
+		this.forceUpdate();
+		this.fixVisibility();
+	}
+
+	static getDerivedStateFromProps(props: LookupModeProps, state: SceneMapState): Partial<SceneMapState> | null {
+		if (props.ctx && !state.versions.find(q => q.cache == props.ctx?.sceneCache)) {
+			return { versions: [{ cache: props.ctx.sceneCache, visible: true }, ...state.versions] };
+		}
+		return null;
 	}
 
 	render() {
@@ -1763,12 +1837,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		let initid = (typeof this.props.initialId == "string" ? this.props.initialId : "50,50,1,1");
 
 		//find the last skybox
-		let skysettings: RSMapChunkData["sky"] | null = null;
-		for (let group of this.state.chunkgroups) {
-			if (group.loaded?.sky) {
-				skysettings = group.loaded.sky;
-			}
-		}
+		let skysettings = this.state.chunkgroups.reduceRight((a, q) => a ?? q.models.get(this.props.ctx!.sceneCache)?.loaded?.sky, undefined as undefined | RSMapChunkData["sky"]);
 
 		return (
 			<React.Fragment>
@@ -1781,10 +1850,11 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				)}
 				{this.state.chunkgroups.length != 0 && (
 					<div className="mv-sidebar-scroll">
-						<Map2dView chunks={this.state.chunkgroups} addArea={this.addArea} gridsize={40} mapscenes={false} />
+						<Map2dView chunks={this.state.chunkgroups.map(q => q.models.get(this.props.ctx!.sceneCache)!).filter(q => q)} addArea={this.addArea} gridsize={40} mapscenes={false} />
 
 						<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
 						<input type="button" className="sub-btn" onClick={this.viewmap} value="View Map" />
+						<input type="button" className="sub-btn" value="Add other version" onClick={this.selectSecondCache} />
 						{skysettings && (<div>
 							Skybox model: <span className="mv-copy-text">{skysettings.skyboxModelid}</span>,
 							fog: <span className="mv-copy-text">{skysettings.fogColor[0]},{skysettings.fogColor[1]},{skysettings.fogColor[2]}</span>
@@ -1815,6 +1885,17 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 								)
 							})}
 						</div>
+						{(this.state.versions.length > 1 || !this.state.versions[0].visible) && "Versions"}
+						{(this.state.versions.length > 1 || !this.state.versions[0].visible) && this.state.versions.map((q, i) => (
+							<div key={i} style={{ clear: "both" }}>
+								<label title={q.cache.engine.getCacheMeta().descr}>
+									<input type="checkbox" checked={q.visible} onChange={e => this.toggleVisible(q.cache, e.currentTarget.checked)} />
+									{q.cache.engine.getCacheMeta().name}
+								</label>
+								<input type="button" className="sub-btn" value="x" style={{ float: "right" }} onClick={e => this.removeCache(q.cache)} />
+							</div>
+						))}
+						{this.state.versions.length > 1 && <input type="button" className="sub-btn" value="Toggle" onClick={this.toggleCache} />}
 						<JsonDisplay obj={this.state.selectionData} />
 					</div>
 				)}
