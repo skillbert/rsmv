@@ -26,6 +26,7 @@ import { HSL2RGB, HSL2RGBfloat, packedHSL2HSL } from "../utils";
 import { loadProcTexture } from "./proceduraltexture";
 import { maplabels } from "../../generated/maplabels";
 import { minimapLocMaterial } from "../rs3shaders";
+import { DependencyGraph, getDependencies } from "../scripts/dependencies";
 
 const constModelOffset = 1000000;
 
@@ -199,6 +200,7 @@ export class EngineCache extends CachingFileSource {
 	mapMapscenes: mapscenes[] = [];
 	mapMaplabels: maplabels[] = [];
 	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
+	dependencyGraph: Promise<DependencyGraph> | null = null;
 
 	legacyData: LegacyData | null = null;
 	classicData: ClassicConfig | null = null;
@@ -267,6 +269,11 @@ export class EngineCache extends CachingFileSource {
 		}
 
 		return this;
+	}
+
+	async getDependencyGraph() {
+		this.dependencyGraph ??= getDependencies(this, { lazyMapChunks: true });
+		return this.dependencyGraph;
 	}
 
 	async getGameFile(type: keyof LegacyData & keyof typeof cacheMajors, id: number) {

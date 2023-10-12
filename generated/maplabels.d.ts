@@ -26,6 +26,7 @@ export type maplabels = {
 		upper: number,
 	} | null
 	rightclick_1?: string | null
+	unktext_0b?: string | null
 	polygon?: {
 		pointcount: number,
 		points: {
@@ -38,14 +39,14 @@ export type maplabels = {
 			number,
 			number,
 		],
-		always_1: number,
+		always_1: (number|1),
 		back_color: [
 			number,
 			number,
 			number,
 			number,
 		],
-		pointplanes: number[],
+		pointplanes: (number[]|null),
 	} | null
 	rightclick_2?: string | null
 	category?: number | null
@@ -55,7 +56,8 @@ export type maplabels = {
 		lower: number,
 		upper: number,
 	} | null
-	unknown_15?: number[] | null
+	unknown_15?: number | null
+	unknown_16?: number | null
 	background_sprite?: number | null
 	legacy_switch?: {
 		varbit: number,

@@ -14,7 +14,7 @@ const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequ
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
 export type DepTypes = typeof depids[number];
 
-type DepArgs = { area?: MapRect, modelMaterials?: boolean } | undefined;
+type DepArgs = { area?: MapRect } | undefined;
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
 type HashCallback = (depType: DepTypes, depId: number, hash: number, version: number) => void;
 type DepCollector = (cache: EngineCache, addDep: DepCallback, addHash: HashCallback, args: DepArgs) => Promise<void>;
@@ -35,6 +35,25 @@ const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
+function chunkDeps(data: ChunkData, addDep: DepCallback, addHash: HashCallback) {
+	let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
+	addHash("mapsquare", squareindex, data.chunkfilehash, data.chunkfileversion);
+	for (let loc of data.rawlocs) {
+		addDep("loc", loc.id, "mapsquare", squareindex);
+	}
+
+	//batch these before adding for performance
+	let overlays = new Set<number>();
+	let underlays = new Set<number>();
+	for (let tile of data.tiles) {
+		if (tile.overlay != null) { overlays.add(tile.overlay); }
+		if (tile.underlay != null) { underlays.add(tile.underlay); }
+	}
+	//set iterators are same as insertion order according to the spec
+	overlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
+	underlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
+}
+
 const mapsquareDeps2: DepCollector = async (cache, addDep, addHash, args) => {
 	await trickleTasksTwoStep(20, function* () {
 		let rect = args?.area ?? { x: 0, z: 0, xsize: 100, zsize: 200 };
@@ -45,22 +64,7 @@ const mapsquareDeps2: DepCollector = async (cache, addDep, addHash, args) => {
 		}
 	}, data => {
 		if (!data) { return; }
-		let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
-		addHash("mapsquare", squareindex, data.chunkfilehash, data.chunkfileversion);
-		for (let loc of data.rawlocs) {
-			addDep("loc", loc.id, "mapsquare", squareindex);
-		}
-
-		//batch these before adding for performance
-		let overlays = new Set<number>();
-		let underlays = new Set<number>();
-		for (let tile of data.tiles) {
-			if (tile.overlay != null) { overlays.add(tile.overlay); }
-			if (tile.underlay != null) { underlays.add(tile.underlay); }
-		}
-
-		overlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
-		underlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
+		chunkDeps(data, addDep, addHash);
 	});
 }
 
@@ -297,20 +301,20 @@ const modelDeps: DepCollector = async (cache, addDep, addHash, opts) => {
 		if (!modelindex) { continue; }
 		addHash("model", modelindex.minor, modelindex.crc, modelindex.version);
 
-		if (opts?.modelMaterials) {
-			let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
-			let model = parse.models.read(file, cache);
-			for (let mesh of model.meshes) {
-				if (mesh.materialArgument != 0) {
-					addDep("material", mesh.materialArgument - 1, "model", modelindex.minor);
-				}
-			}
-		}
+		// if (opts?.modelMaterials) {
+		// 	let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
+		// 	let model = parse.models.read(file, cache);
+		// 	for (let mesh of model.meshes) {
+		// 		if (mesh.materialArgument != 0) {
+		// 			addDep("material", mesh.materialArgument - 1, "model", modelindex.minor);
+		// 		}
+		// 	}
+		// }
 	}
 }
 
 export type DependencyGraph = (typeof getDependencies) extends ((...args: any[]) => Promise<infer T>) ? T : never;
-export async function getDependencies(cache: EngineCache, args?: DepArgs) {
+export async function getDependencies(cache: EngineCache, args?: {}) {
 	let dependentsMap = new Map<string, string[]>();
 	let dependencyMap = new Map<string, string[]>();
 	let hashes = new Map<string, number>();
@@ -341,8 +345,21 @@ export async function getDependencies(cache: EngineCache, args?: DepArgs) {
 
 	globalThis.dependentsMap = dependentsMap;
 
+
+	let runDependencyGroup = async (run: DepCollector, args) => {
+		try {
+			console.log(`starting ${run.name}`);
+			let t = Date.now();
+			await run(cache, addDep, addHash, args);
+			console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
+		} catch (e) {
+			debugger;
+			throw e;
+		}
+	}
+
 	let runs: DepCollector[] = [
-		mapsquareDeps2,
+		// mapsquareDeps2,
 		locationDeps,
 		itemDeps,
 		animgroupDeps,
@@ -357,16 +374,12 @@ export async function getDependencies(cache: EngineCache, args?: DepArgs) {
 		// framesetDeps,
 	];
 
-	try {
-		for (let run of runs) {
-			console.log(`starting ${run.name}`);
-			let t = Date.now();
-			await run(cache, addDep, addHash, args);
-			console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
-		}
-	} catch (e) {
-		debugger;
-		throw e;
+	for (let run of runs) {
+		await runDependencyGroup(run, args);
+	}
+
+	let preloadChunkDependencies = (args?: DepArgs) => {
+		return runDependencyGroup(mapsquareDeps2, args);
 	}
 
 	let makeDeptName = (deptType: DepTypes, id: number) => {
@@ -404,12 +417,19 @@ export async function getDependencies(cache: EngineCache, args?: DepArgs) {
 		return crc;
 	}
 
-	let hasEntry = (depname: string) => {
-		return hashes.has(depname);
+	let hasEntry = (deptType: DepTypes, depId: number) => {
+		return hashes.has(makeDeptName(deptType, depId));
 	}
 
-	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies, hasEntry };
+	let insertMapChunk = (data: ChunkData) => {
+		chunkDeps(data, addDep, addHash);
+		let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
+		return makeDeptName("mapsquare", squareindex);
+	}
+
+	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies, hasEntry, insertMapChunk, preloadChunkDependencies };
 }
+
 //TODO remove
 globalThis.getdeps = getDependencies;
 

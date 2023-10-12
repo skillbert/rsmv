@@ -7,7 +7,7 @@ import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, pixelsToImageFile } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { crc32addInt, DependencyGraph, getDependencies } from "../scripts/dependencies";
+import { crc32addInt, DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
 import { CallbackPromise, delay, stringToFileRange, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
@@ -227,7 +227,8 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		if (areas.length == 1) {
 			deparea = { x: areas[0].x - 2, z: areas[0].z - 2, xsize: areas[0].xsize + 2, zsize: areas[0].zsize + 2 };
 		}
-		var deps = await getDependencies(engine, { area: deparea });
+		var deps = await engine.getDependencyGraph();
+		await deps.preloadChunkDependencies({ area: deparea });
 	} catch (e) {
 		console.error(e);
 		progress.updateProp("deps", "starting dependency graph");
@@ -523,7 +524,7 @@ class SimpleHasher {
 		let exists = false;
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				exists ||= this.depstracker.deps.hasEntry(this.depstracker.deps.makeDeptName("mapsquare", x + z * worldStride));
+				exists ||= this.depstracker.deps.hasEntry("mapsquare", x + z * worldStride);
 			}
 		}
 		return exists;

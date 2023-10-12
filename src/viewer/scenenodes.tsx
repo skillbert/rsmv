@@ -32,6 +32,7 @@ import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked } from '../map/backends';
+import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -1589,8 +1590,20 @@ function SceneSpotAnim(p: LookupModeProps) {
 		</React.Fragment>
 	)
 }
+type DiffMesh = {
+	a: ThreejsSceneCache,
+	b: ThreejsSceneCache,
+	info: any,
+	floora: number,
+	floorb: number,
+	visible: boolean,
+	floormesh: ThreeJsSceneElementSource,
+	locsmesh: ThreeJsSceneElementSource,
+	remove: () => void
+}
+
 type SceneMapState = {
-	chunkgroups: { rect: MapRect, models: Map<ThreejsSceneCache, RSMapChunk> }[],
+	chunkgroups: { rect: MapRect, models: Map<ThreejsSceneCache, RSMapChunk>, diffs: DiffMesh[] }[],
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>,
 	selectionData: any,
@@ -1619,6 +1632,71 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	@boundMethod
 	viewmap() {
 		showModal({ title: "Map view" }, <Map2dView chunks={this.state.chunkgroups.map(q => q.models.get(this.props.ctx!.sceneCache)!).filter(q => q)} gridsize={512} mapscenes={true} />);
+	}
+
+	async diffCaches(floora = 3, floorb = 3) {
+		let group = this.state.chunkgroups[0];
+		if (!this.props.ctx || !group) {
+			return;
+		}
+		let arr = [...group.models.entries()];
+		if (arr.length != 1 && arr.length != 2) {
+			console.log("//TODO can currenly only diff with 1 or 2 caches loaded");
+			return;
+		}
+		let [entrya, entryb] = (arr.length == 1 ? [arr[0], arr[0]] : arr);
+		let chunka = await entrya[1].chunkdata;
+		let chunkb = await entryb[1].chunkdata;
+		let cachea = entrya[0];
+		let cacheb = entryb[0];
+
+		let depsa = await cachea.engine.getDependencyGraph();
+		depsa.insertMapChunk(chunka.chunks[0]);
+		let depsb = await cacheb.engine.getDependencyGraph();
+		depsb.insertMapChunk(chunkb.chunks[0]);
+
+		let floordepsa = (chunka.chunks.length == 0 ? [] : mapsquareFloorDependencies(chunka.grid, depsa, chunka.chunks[0]));
+		let locdepsa = mapsquareLocDependencies(chunka.grid, depsa, chunka.modeldata, chunka.rect);
+		let floordepsb = (chunkb.chunks.length == 0 ? [] : mapsquareFloorDependencies(chunkb.grid, depsb, chunkb.chunks[0]));
+		let locdepsb = mapsquareLocDependencies(chunkb.grid, depsb, chunkb.modeldata, chunkb.rect);
+
+		let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
+		let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
+
+		let floordifmesh = await mapdiffmesh(globalThis.sceneCache, floordifs, [255, 0, 0]);
+		let locdifmesh = await mapdiffmesh(globalThis.sceneCache, locdifs, [0, 255, 0]);
+
+		let diffgroup: DiffMesh = {
+			a: cachea,
+			b: cacheb,
+			info: {
+				floordepsa,
+				floordepsb,
+				locdepsa,
+				locdepsb
+			},
+			floora,
+			floorb,
+			visible: true,
+			floormesh: {
+				getSceneElements() { return { modelnode: (!diffgroup.visible ? undefined : floordifmesh) } }
+			},
+			locsmesh: {
+				getSceneElements() { return { modelnode: (!diffgroup.visible ? undefined : locdifmesh) } }
+			},
+			remove: () => {
+				group.diffs = group.diffs.filter(q => q != diffgroup);
+				this.props.ctx?.renderer.removeSceneElement(diffgroup.floormesh);
+				this.props.ctx?.renderer.removeSceneElement(diffgroup.locsmesh);
+				this.forceUpdate();
+			}
+		};
+
+		this.props.ctx.renderer.addSceneElement(diffgroup.floormesh);
+		this.props.ctx.renderer.addSceneElement(diffgroup.locsmesh);
+
+		group.diffs.push(diffgroup);
+		this.forceUpdate();
 	}
 
 	@boundMethod
@@ -1714,7 +1792,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			let newstate: Partial<SceneMapState> = {};
 			newstate.center = center;
 			if (!group) {
-				group = { rect, models: new Map() };
+				group = { rect, models: new Map(), diffs: [] };
 				newstate.chunkgroups = [...prevstate.chunkgroups, group];
 			}
 			group.models.set(sceneCache, chunk);
@@ -1896,6 +1974,21 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 							</div>
 						))}
 						{this.state.versions.length > 1 && <input type="button" className="sub-btn" value="Toggle" onClick={this.toggleCache} />}
+						{this.state.chunkgroups.flatMap((group, groupi) => group.diffs.map((diff, i) => {
+							let metaa = diff.a.engine.getCacheMeta();
+							let metab = diff.a == diff.b ? metaa : diff.b.engine.getCacheMeta();
+							return (
+								<div key={groupi + "-" + i} style={{ clear: "both" }}>
+									<label title={diff.a == diff.b ? metaa.descr : `cache a:${metaa.descr}\n\n${metab.descr}`}>
+										<input type="checkbox" checked={diff.visible} onChange={e => { diff.visible = e.currentTarget.checked; this.props.ctx?.renderer.sceneElementsChanged(); this.forceUpdate(); }} />
+										{diff.a.engine.getBuildNr()}, floor: {diff.floora}
+										-
+										{diff.b.engine.getBuildNr()}, floor: {diff.floorb}
+									</label>
+									<input type="button" className="sub-btn" onClick={diff.remove} style={{ float: "right" }} value="x" />
+								</div>
+							)
+						}))}
 						<JsonDisplay obj={this.state.selectionData} />
 					</div>
 				)}

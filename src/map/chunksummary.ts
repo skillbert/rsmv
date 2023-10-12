@@ -183,7 +183,6 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 		}
 		outlocgroups.push(outgroup);
 		for (let loc of group) {
-			let first = loc[0];
 			v0.set(0, 0, 0);
 			v1.set(0, 0, 0);
 			for (let mesh of loc) {
@@ -194,7 +193,7 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 					v1.max(v2);
 				}
 			}
-
+			
 			//8 vertices, one for each bounding box corner
 			boxAttribute.setXYZ(0, v0.x, v0.y, v0.z);
 			boxAttribute.setXYZ(1, v0.x, v0.y, v1.z);
@@ -204,7 +203,8 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 			boxAttribute.setXYZ(5, v1.x, v0.y, v1.z);
 			boxAttribute.setXYZ(6, v1.x, v1.y, v0.z);
 			boxAttribute.setXYZ(7, v1.x, v1.y, v1.z);
-
+			
+			let first = loc[0];
 			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, rect.x * tiledimensions * rs2ChunkSize, rect.z * tiledimensions * rs2ChunkSize);
 			// trans.newpos.applyMatrix4(trans.matrix);
 			let bounds = [...trans.newpos.array as Float32Array].map(v => v | 0);
@@ -335,8 +335,7 @@ export function compareLocDependencies(chunka: ChunkLocDependencies[], chunkb: C
 	return vertsets;
 }
 
-export async function mapdiffmesh(scene: ThreejsSceneCache, points: number[][]) {
-	let col = [255, 0, 0] as [number, number, number];
+export async function mapdiffmesh(scene: ThreejsSceneCache, points: number[][], col: [number, number, number] = [255, 0, 0]) {
 	let tri = (model: ModelBuilder, verts: number[], a: number, b: number, c: number) => model.mat(-1).addTriangle(col,
 		verts.slice(a * 3, a * 3 + 3) as any,
 		verts.slice(b * 3, b * 3 + 3) as any,
