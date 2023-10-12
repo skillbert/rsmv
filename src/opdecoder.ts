@@ -120,5 +120,6 @@ function allParsers() {
 		proctexture: FileParser.fromJson<import("../generated/proctexture").proctexture>(require("./opcodes/proctexture.jsonc")),
 		oldproctexture: FileParser.fromJson<import("../generated/oldproctexture").oldproctexture>(require("./opcodes/oldproctexture.jsonc")),
 		maplabels: FileParser.fromJson<import("../generated/maplabels").maplabels>(require("./opcodes/maplabels.jsonc")),
+		cutscenes: FileParser.fromJson<import("../generated/cutscenes").cutscenes>(require("./opcodes/cutscenes.jsonc")),
 	}
 }

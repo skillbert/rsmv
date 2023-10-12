@@ -39,6 +39,7 @@ export const cacheMajors = {
 	skeletalAnims: 56,
 
 	achievements: 57,
+	cutscenes: 66,
 
 	index: 255
 } as const;
