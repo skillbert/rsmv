@@ -88,6 +88,15 @@ export function posmod(x: number, n: number) {
 	return ((x % n) + n) % n;
 }
 
+export function escapeHTML(str: string) {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#039;");
+}
+
 /**
  * used to get an array with enum typing
  */

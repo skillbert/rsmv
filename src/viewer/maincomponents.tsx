@@ -633,6 +633,8 @@ export function FileDisplay(p: { file: UIScriptFile }) {
 	if (typeof filedata == "string") {
 		if (ext == "hexerr.json") {
 			el = <FileDecodeErrorViewer file={filedata} />;
+		} else if (ext == "html") {
+			el = <iframe srcDoc={filedata} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
 		} else {
 			//TODO make this not depend on wether file is Buffer or string
 			//string types so far: txt, json, batch.json

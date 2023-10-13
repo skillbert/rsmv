@@ -14,6 +14,7 @@ import { ParsedTexture } from "../3d/textures";
 import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
+import { renderCutscene } from "./rendercutscene";
 
 
 type CacheFileId = {
@@ -373,6 +374,18 @@ const decodeSound = (major: number): DecodeModeFactory => () => {
 	}
 }
 
+const decodeCutscene: DecodeModeFactory = () => {
+	return {
+		ext: "html",
+		...noArchiveIndex(cacheMajors.cutscenes),
+		...throwOnNonSimple,
+		async read(buf, fileid, source) {
+			let res = await renderCutscene(source, buf);
+			return res.doc;
+		}
+	}
+}
+
 const decodeOldProcTexture: DecodeModeFactory = () => {
 	return {
 		ext: "png",
@@ -563,6 +576,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	sounds: decodeSound(cacheMajors.sounds),
 	musicfragments: decodeSound(cacheMajors.music),
 	music: decodeMusic,
+	cutscenehtml: decodeCutscene,
 
 	npcmodels: npcmodels,
 

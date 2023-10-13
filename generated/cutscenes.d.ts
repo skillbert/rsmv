@@ -13,25 +13,25 @@ export type cutscenes = {
 		end: number,
 		flag0: number,
 		graphics: {
-			img: string,
+			spritename: string,
 			height: number,
 			width: number,
 			unk: number,
-			unk2: number,
-			matrix0: [
+			spriteid: number,
+			opacityframes: [
 				number,
 				number,
 			][],
-			matrix1: [
+			rotateframes: [
 				number,
 				number,
 			][],
-			matrix2: [
+			translateframes: [
 				number,
 				number,
 				number,
 			][],
-			matrix3: [
+			scaleframes: [
 				number,
 				number,
 				number,
@@ -41,7 +41,8 @@ export type cutscenes = {
 		sound: string | null,
 		flag2: number,
 		subtitle: string | null,
-		unkbytes: Uint8Array | null,
+		unkbyte: number | null,
+		soundid: number | null,
 		extraflags: (number|0),
 		extra_01: {
 			start: number,
