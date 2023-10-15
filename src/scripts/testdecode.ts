@@ -1,12 +1,13 @@
 import { DecodeState, getDebug } from "../opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { JsonBasedFile } from "./filetypes";
-import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../scriptrunner";
-import { FileParser, parse } from "../opdecoder";
+import { ScriptFS, ScriptOutput } from "../scriptrunner";
+import { FileParser } from "../opdecoder";
 import { compareCacheMajors } from "./cachediff";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
 import { FileRange } from "../utils";
+import { EngineCache } from "../3d/modeltothree";
 
 
 export type DecodeErrorJson = {
@@ -252,9 +253,10 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 		scan: 0,
 		startoffset: 0,
 		endoffset: buffer.byteLength,
-		args: args ?? {},
-		keepBufferJson: false,
-		clientVersion: source.getBuildNr()
+		args: {
+			...source.getDecodeArgs(),
+			...args
+		}
 	};
 	try {
 		res = decoder.readInternal(state);

@@ -1,13 +1,10 @@
 import { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
-import { ThreejsSceneCache } from "./modeltothree";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../utils";
-import { items } from "../../generated/items";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { testDecodeFile } from "../scripts/testdecode";
 import { avatars } from "../../generated/avatars";
-import { SimpleModelDef, serializeAnimset, SimpleModelInfo, castModelInfo } from "./modelnodes";
+import { SimpleModelDef, serializeAnimset, castModelInfo } from "./modelnodes";
 import { EngineCache } from "./modeltothree";
 import { npcs } from "../../generated/npcs";
 

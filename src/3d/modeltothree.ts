@@ -27,6 +27,7 @@ import { loadProcTexture } from "./proceduraltexture";
 import { maplabels } from "../../generated/maplabels";
 import { minimapLocMaterial } from "../rs3shaders";
 import { DependencyGraph, getDependencies } from "../scripts/dependencies";
+import { ClientscriptObfuscation } from "../scripts/clientscriptparser";
 
 const constModelOffset = 1000000;
 
@@ -199,11 +200,13 @@ export class EngineCache extends CachingFileSource {
 	mapOverlays: mapsquare_overlays[] = [];
 	mapMapscenes: mapscenes[] = [];
 	mapMaplabels: maplabels[] = [];
-	jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
-	dependencyGraph: Promise<DependencyGraph> | null = null;
 
 	legacyData: LegacyData | null = null;
 	classicData: ClassicConfig | null = null;
+	clientScriptDeob: ClientscriptObfuscation | null = null;
+
+	private jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
+	private dependencyGraph: Promise<DependencyGraph> | null = null;
 
 	static create(source: CacheFileSource) {
 		return new EngineCache(source).preload();
@@ -269,6 +272,21 @@ export class EngineCache extends CachingFileSource {
 		}
 
 		return this;
+	}
+
+	getDecodeArgs(): Record<string, any> {
+		return {
+			...super.getDecodeArgs(),
+			clientscriptCallibration: this.clientScriptDeob ?? undefined
+		};
+	}
+
+	async getClientscriptDeob(data:any[]) {
+		this.clientScriptDeob ??= new ClientscriptObfuscation();
+		if (!this.clientScriptDeob.callibrated) {
+			await this.clientScriptDeob.runCallibration(this, data);
+		}
+		return this.clientScriptDeob;
 	}
 
 	async getDependencyGraph() {

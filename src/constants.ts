@@ -5,6 +5,7 @@ export const cacheMajors = {
 
 	oldmodels: 7,
 	sprites: 8,
+	clientscript: 12,
 	sounds: 14,
 	objects: 16,
 	enums: 17,

@@ -46,7 +46,7 @@ export class FileParser<T> {
 		return res;
 	}
 
-	read(buffer: Buffer, source: CacheFileSource, args?: Record<string, any>, keepBufferJson = false) {
+	read(buffer: Buffer, source: CacheFileSource, args?: Record<string, any>) {
 		let state: opcode_reader.DecodeState = {
 			buffer,
 			stack: [],
@@ -54,9 +54,10 @@ export class FileParser<T> {
 			scan: 0,
 			startoffset: 0,
 			endoffset: buffer.byteLength,
-			args: args ?? {},
-			keepBufferJson,
-			clientVersion: source.getBuildNr()
+			args: {
+				...source.getDecodeArgs(),
+				...args
+			}
 		};
 		return this.readInternal(state) as T;
 	}
@@ -65,7 +66,9 @@ export class FileParser<T> {
 		let state: opcode_reader.EncodeState = {
 			buffer: scratchbuf,
 			scan: 0,
-			clientVersion: 1000//TODO
+			args: {
+				clientVersion: 1000//TODO
+			}
 		};
 		this.parser.write(state, obj);
 		if (state.scan > scratchbuf.byteLength) { throw new Error("tried to write file larger than scratchbuffer size"); }
@@ -121,5 +124,6 @@ function allParsers() {
 		oldproctexture: FileParser.fromJson<import("../generated/oldproctexture").oldproctexture>(require("./opcodes/oldproctexture.jsonc")),
 		maplabels: FileParser.fromJson<import("../generated/maplabels").maplabels>(require("./opcodes/maplabels.jsonc")),
 		cutscenes: FileParser.fromJson<import("../generated/cutscenes").cutscenes>(require("./opcodes/cutscenes.jsonc")),
+		clientscript: FileParser.fromJson<import("../generated/clientscript").clientscript>(require("./opcodes/clientscript.jsonc"))
 	}
 }

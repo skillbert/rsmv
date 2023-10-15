@@ -1,0 +1,64 @@
+["struct",
+	["byte0","ubyte"],
+	["switchsize",["footer",2,"ushort"]],
+	["switches",["footer",["ref","switchsize"],
+		["array","ubyte",["array","ushort",["struct",
+			["value","int"],
+			["label","uint"]
+		]]]
+	]],
+	["unk0",["footer",2,"ushort"]],
+	["unk1",["footer",2,"ushort"]],
+	["stringargcount",["footer",2,"ushort"]],
+	["intargcount",["footer",2,"ushort"]],
+	["localstringcount",["footer",2,"ushort"]],
+	["localintcount",["footer",2,"ushort"]],
+	["instructioncount",["footer",4,"uint"]],
+	["opcodes",["array",["ref","instructioncount"],["struct",
+		["op",["scriptopt"]],
+		["imm",["match",["ref","op"],{
+			//in the runestar repo (osrs) code all ops<100 are 4 bytes except for 3 instructions (0x15 return,0x26 pop_int_discard,0x27 pop_string_discard)
+			//and the rest are all 1 byte except for 0x03 push_constant_string which is a string
+			//the opcodes are scrambled each build, these opcodes work for 932, openrs2:1568
+			"0x0023":"int",
+			"0x003b":"int",
+			"0x003f":"int",
+			"0x00a4":"int",
+			"0x00a8":"int",
+			"0x00f6":"int",
+			"0x0175":"int",
+			"0x01a0":"int",
+			"0x022f":"int",
+			"0x0273":"int",
+			"0x02c2":"int",
+			"0x033a":"int",
+			"0x0374":"int",
+			"0x03a1":"int",
+			"0x0456":"int",
+			"0x04ea":"int",
+			"0x04f4":"int",
+			"0x0501":"int",
+			"0x0559":"int",
+			"0x059d":"int",
+			"0x0676":"int",
+			"0x072d":"int",
+			"0x077d":"int",
+			"0x0798":"int",
+			"0x07a0":"int",
+			"0x07d8":"int",
+			"0x080f":"int",
+			"0x0838":"int",
+			"other":"ubyte"
+		}]],
+		["imm_obj",["match",["ref","op"],{
+			"0x07aa":["match",["ref","imm"],{
+				"0":"int",
+				"1":["buffer",8,"hex"],
+				"2":"string"
+			}],
+			"0x0314":"ushort",
+			"0x025d":"ushort",
+			"other":null
+		}]]
+	]]]
+]

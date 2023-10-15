@@ -270,7 +270,11 @@ export abstract class CacheFileSource {
 	getBuildNr(): number {
 		return latestBuildNumber;
 	}
-
+	getDecodeArgs(): Record<string, any> {
+		return {
+			clientVersion: this.getBuildNr()
+		};
+	}
 	writeFile(major: number, minor: number, file: Buffer): Promise<void> {
 		throw new Error("not implemented");
 	}

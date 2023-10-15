@@ -2083,10 +2083,11 @@ function ExtractFilesScript(p: UiScriptProps) {
 	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
 
 	let run = () => {
+		if (!p.ctx.sceneCache) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
-		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers, skipread: false });
+		output.run(extractCacheFiles, outdir, p.ctx.sceneCache.engine, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers, skipread: false });
 		p.onRun(output, `${mode}:${batched}:${keepbuffers}:${filestext}`);
 	}
 
@@ -2174,6 +2175,7 @@ function CacheDiffScript(p: UiScriptProps) {
 	let [cache2, setCache2] = React.useState<CacheFileSource | null>(null);
 	let [selectopen, setSelectopen] = React.useState(false);
 	let [result, setResult] = React.useState<FileEdit[] | null>(null);
+	let [filerange, setFilerange] = React.useState("");
 	let [showmodels, setshowmodels] = React.useState(false);
 
 	let openCache = async (s: SavedCacheSource) => {
@@ -2187,8 +2189,9 @@ function CacheDiffScript(p: UiScriptProps) {
 		if (!cache2) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("diff");
+		let files = stringToFileRange(filerange);
 		p.onRun(output, "");
-		let res = output.run(diffCaches, outdir, cache2, p.source);
+		let res = output.run(diffCaches, outdir, cache2, p.source, files);
 		res.then(setResult);
 	}
 
@@ -2243,6 +2246,9 @@ function CacheDiffScript(p: UiScriptProps) {
 				</div>
 			)}
 			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheMeta().name}`} onClick={e => setCache2(null)} />}
+			<LabeledInput label="file range">
+				<input type="text" onChange={e => setFilerange(e.currentTarget.value)} value={filerange} />
+			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 			{result && <label><input checked={showmodels} onChange={e => setshowmodels(e.currentTarget.checked)} type="checkbox" />View changed models</label>}
 		</React.Fragment>
@@ -2259,7 +2265,7 @@ function TestFilesScript(p: UiScriptProps) {
 
 	let run = () => {
 		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
-		if (!modeobj) { return; }
+		if (!modeobj || !p.ctx.sceneCache) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("output")
 		let opts = defaultTestDecodeOpts();
@@ -2270,7 +2276,7 @@ function TestFilesScript(p: UiScriptProps) {
 			modeobj = { ...modeobj };
 			modeobj.parser = FileParser.fromJson(customparser);
 		}
-		output.run(testDecode, outdir, p.source, modeobj, stringToFileRange(range), opts);
+		output.run(testDecode, outdir, p.ctx.sceneCache.engine, modeobj, stringToFileRange(range), opts);
 		p.onRun(output, `${mode}:${range}:${dumpall}:${ordersize}`);
 	}
 

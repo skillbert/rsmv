@@ -129,6 +129,7 @@ const indexoverview = command({
 const diff = command({
 	name: "run",
 	args: {
+		...filerange,
 		a: option({ long: "cache1", short: "a", type: ReadCacheSource }),
 		b: option({ long: "cache2", short: "b", type: ReadCacheSource }),
 		out: option({ long: "out", short: "s", type: cmdts.string })
@@ -139,7 +140,7 @@ const diff = command({
 
 		let outdir = new CLIScriptFS(args.out);
 		let output = new CLIScriptOutput();
-		await output.run(diffCaches, outdir, sourcea, sourceb);
+		await output.run(diffCaches, outdir, sourcea, sourceb, args.files);
 
 		sourcea.close();
 		sourceb.close();

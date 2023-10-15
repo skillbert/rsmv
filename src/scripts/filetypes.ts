@@ -273,11 +273,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 				}
 			},
 			read(b, id, source) {
-				let obj = parser.read(b, source, undefined, args.keepbuffers == "true");
-				// //TODO remove
-				// obj = obj.unk1Buffer;
-				// if (obj.length == 0) { return ""; }
-
+				let obj = parser.read(b, source, { keepbuffers: args.keepbuffers });
 
 				if (args.batched) {
 					obj.$fileid = (id.length == 1 ? id[0] : id);
@@ -508,6 +504,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 	maplabels: { parser: parse.maplabels, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
 	cutscenes: { parser: parse.cutscenes, lookup: noArchiveIndex(cacheMajors.cutscenes) },
+	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript) },
 
 	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
 	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },

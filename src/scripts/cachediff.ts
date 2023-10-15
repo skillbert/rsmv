@@ -6,6 +6,7 @@ import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { ParsedTexture } from "../3d/textures";
 import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
+import { FileRange } from "../utils";
 
 
 type FileAction = {
@@ -59,6 +60,9 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.texturesPng]: { name: "texturesPng", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.texturesKtx]: { name: "texturesKtx", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.sprites]: { name: "sprites", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
+	[cacheMajors.cutscenes]: { name: "cutscenes", comparesubfiles: false, parser: parse.cutscenes, outputType: "json", getFileName: standardName },
+	//need to first run deob first before this works
+	// [cacheMajors.clientscript]: { name: "clientscript", comparesubfiles: false, parser: parse.clientscript, outputType: "json", getFileName: standardName },
 	[cacheMajors.config]: (major, minor) => configmap[minor]
 }
 
@@ -208,12 +212,13 @@ export async function compareCacheMajors(output: ScriptOutput, sourcea: CacheFil
 	return changes;
 }
 
-export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea: CacheFileSource, sourceb: CacheFileSource) {
+export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea: CacheFileSource, sourceb: CacheFileSource, ranges: FileRange[]) {
 	let majors: number[] = [];
 	let roota = await sourcea.getCacheIndex(cacheMajors.index);
 	let rootb = await sourceb.getCacheIndex(cacheMajors.index);
 	let rootmaxlen = Math.max(roota.length, rootb.length);
 	for (let i = 0; i < rootmaxlen; i++) {
+		if (ranges.length != 0 && !ranges.some(q => q.end[0] >= i && q.start[0] <= i)) { continue; }
 		if (roota[i] && !rootb[i]) { output.log(`major ${i} removed`); }
 		if (!roota[i] && rootb[i]) { output.log(`major ${i} added`); }
 		if (roota[i] && rootb[i]) { majors.push(i); }
@@ -223,7 +228,8 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 
 	for (let major of majors) {
 		if (output.state != "running") { break; }
-		let newchanges = await compareCacheMajors(output, sourcea, sourceb, major);
+		let matchedrange = ranges.find(q => q.start[1] <= major && q.end[0] >= major);
+		let newchanges = await compareCacheMajors(output, sourcea, sourceb, major, matchedrange?.start[1], matchedrange?.end[1]);
 		changes.push(...newchanges);
 
 		for (let change of newchanges) {

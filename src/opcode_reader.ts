@@ -1,5 +1,6 @@
-import type * as jsonschema from "json-schema";
 import { lastLegacyBuildnr } from "./constants";
+import type * as jsonschema from "json-schema";
+import type { ClientscriptObfuscation } from "./scripts/clientscriptparser";
 
 export type TypeDef = { [name: string]: unknown };
 
@@ -39,15 +40,13 @@ export type DecodeState = {
 	endoffset: number,
 	startoffset: number,
 	buffer: Buffer,
-	args: Record<string, any>,
-	keepBufferJson: boolean,
-	clientVersion: number
+	args: Record<string, unknown>
 }
 
 export type EncodeState = {
 	scan: number
 	buffer: Buffer,
-	clientVersion: number
+	args: Record<string, unknown>
 }
 
 export type ResolvedReference = {
@@ -601,7 +600,7 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			state.scan += bytelen;
 			let array = (scalartype == "buffer" ? bytes : new type.constr(backing));
 			if (scalartype == "hex") { (array as any).toJSON = () => bytes.toString("hex"); }
-			else if (!state.keepBufferJson) { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
+			else if (state.args.keepBufferJson === true) { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
 			else { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[]{${[...array].join(",")}}` }
 			return array;
 		},
@@ -903,7 +902,7 @@ function stringParser(prebytes: number[]): ChunkParser {
 	const encoding = "latin1";
 	return {
 		read(state) {
-			let terminator = (state.clientVersion <= lastLegacyBuildnr ? 0xA : 0);
+			let terminator = (getClientVersion(state.args) <= lastLegacyBuildnr ? 0xA : 0);
 			for (let i = 0; i < prebytes.length; i++, state.scan++) {
 				if (state.buffer.readUInt8(state.scan) != prebytes[i]) {
 					throw new Error("failed to match string header bytes");
@@ -925,7 +924,7 @@ function stringParser(prebytes: number[]): ChunkParser {
 		},
 		write(state, value) {
 			if (typeof value != "string") throw new Error(`string expected`);
-			let terminator = (state.clientVersion <= lastLegacyBuildnr ? 0xA : 0);
+			let terminator = (getClientVersion(state.args) <= lastLegacyBuildnr ? 0xA : 0);
 			let writebytes = [
 				...prebytes,
 				...Buffer.from(value, encoding),
@@ -1075,8 +1074,13 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		//yes this is hacky af...
 		return {
 			read(state) {
-				if (type == "ref") { state.args.activeitem = (state.args.activeitem ?? -1) + 1; }
-				let ref = state.args.slots[state.args.activeitem];
+				let activeitem = (typeof state.args.activeitem == "number" ? state.args.activeitem : -1);
+				if (type == "ref") {
+					activeitem++;
+					state.args.activeitem = activeitem;
+				}
+				if (!Array.isArray(state.args.slots)) { throw new Error(""); }
+				let ref = state.args.slots[activeitem];
 				if (type == "ref") { return ref; }
 				else if (type == "matcount") { return ref?.replaceMaterials?.length ?? 0; }
 				else if (type == "colorcount") { return ref?.replaceColors?.length ?? 0; }
@@ -1092,7 +1096,9 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 	},
 	buildnr: function (args, typedef) {
 		return {
-			read(state) { return state.clientVersion },
+			read(state) {
+				return getClientVersion(state.args);
+			},
 			write(state, v) {/*noop*/ },
 			getTypescriptType(indent) { return "number"; },
 			getJsonSchema() { return { type: "number" } }
@@ -1268,7 +1274,40 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return { type: "any" };
 			}
 		}
+	},
+	scriptopt: function (args, parent, typedef) {
+		return {
+			read(state) {
+				let op = state.buffer.readUint16BE(state.scan);
+				state.scan += 2;
+				let cali = state.args.clientscriptCallibration;
+				if (cali) {
+					op = (cali as ClientscriptObfuscation).translateOpcode(op);
+				}
+				return op;
+			},
+			write(state, v) {
+				if (typeof v != "number") { throw new Error("number expected"); }
+				let cali = state.args.clientscriptCallibration;
+				if (cali) {
+					throw new Error("TODO");
+					// v = (cali as ClientscriptObfuscation).reverseTranslate(v);
+				}
+				state.buffer.writeUint16BE(v);
+			},
+			getJsonSchema() {
+				return { type: "number" }
+			},
+			getTypescriptType() {
+				return "number";
+			}
+		}
 	}
+}
+
+function getClientVersion(args: Record<string, unknown>) {
+	if (typeof args.clientVersion != "number") { throw new Error("client version not set"); }
+	return args.clientVersion;
 }
 
 const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s: EncodeState, v: number) => void, min: number, max: number }> = {
