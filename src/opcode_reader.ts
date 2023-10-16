@@ -22,7 +22,7 @@ var debugdata: null | {
 		op: string,
 		index: number,
 		stacksize: number,
-		external?: { start: number, len: number }
+		jump?: { to: number }
 	}[]
 } = null;
 
@@ -1162,9 +1162,13 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				let oldscan = state.scan;
 				let footstart = state.endoffset - len;
 				state.scan = footstart;
+				if (debugdata) {
+					// debugdata.opcodes.push({ op: `footer`, index: oldscan, stacksize: state.stack.length + 1, external: { start: state.scan, len: 0 } });
+					debugdata.opcodes.push({ op: `footer`, index: oldscan, stacksize: state.stack.length + 1, jump: { to: footstart } });
+				}
 				let res = subtype.read(state);
 				if (debugdata) {
-					debugdata.opcodes.push({ op: `footer`, index: oldscan, stacksize: state.stack.length + 1, external: { start: footstart, len: state.scan - footstart } });
+					debugdata.opcodes.push({ op: `footer`, index: state.scan, stacksize: state.stack.length + 1, jump: { to: oldscan } });
 				}
 				if (state.scan != state.endoffset) { console.log(`didn't read full footer, ${state.endoffset - state.scan} bytes left`); }
 				state.scan = oldscan;

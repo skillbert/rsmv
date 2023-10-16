@@ -286,11 +286,14 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 			let index = 0;
 			for (let i = 0; i < debugdata.opcodes.length; i++) {
 				let op = debugdata.opcodes[i];
-				let endindex = (i + 1 < debugdata.opcodes.length ? debugdata.opcodes[i + 1].index : state.scan);
+				let nextop = (i + 1 < debugdata.opcodes.length ? debugdata.opcodes[i + 1] : null);
+				let endindex = nextop?.index ?? state.scan;
 				let sliceend = endindex;
-				if (op.external) {
-					index = op.external.start;
-					sliceend = op.external.start + op.external.len;
+				if (op.jump) {
+					index = op.jump.to;
+					if (index == endindex) {
+						continue;
+					}
 				}
 				let opstr = " ".repeat(Math.max(0, op.stacksize - 1)) + op.op;
 				err.chunks.push({ offset: index, len: sliceend - index, label: opstr });
