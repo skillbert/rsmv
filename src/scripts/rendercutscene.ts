@@ -88,8 +88,6 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
                     }
 
                     let anims: string[] = [];
-                    let translateanim = "";
-                    let rotateanim = "";
 
                     if (img.opacityframes.length != 0) {
                         let animname = `${uuid}-${i}-${imgindex}-opacity`;
@@ -97,25 +95,19 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
                     }
                     if (img.rotateframes.length != 0) {
                         let animname = `${uuid}-${i}-${imgindex}-rotate`;
-                        rotateanim = `animation:${anim(el, animname, img.rotateframes, v => `transform:rotate(${v[1].toFixed(2)}deg);`)};`;
+                        anims.push(anim(el, animname, img.rotateframes, v => `rotate:${v[1].toFixed(2)}deg;`));
                     }
                     if (img.translateframes.length != 0) {
                         let animname = `${uuid}-${i}-${imgindex}-translate`;
-                        translateanim = `animation:${anim(el, animname, img.translateframes, v => `transform:translate(${v[1].toFixed(2)}px,${v[2].toFixed(2)}px)`)};`;
+                        anims.push(anim(el, animname, img.translateframes, v => `translate:${v[1].toFixed(2)}px ${v[2].toFixed(2)}px`));
                     }
                     if (img.scaleframes.length != 0) {
                         let animname = `${uuid}-${i}-${imgindex}-scale`;
-                        anims.push(anim(el, animname, img.scaleframes, v => `transform:scale(${v[1].toFixed(3)},${v[2].toFixed(2)});`));
+                        anims.push(anim(el, animname, img.scaleframes, v => `scale:${v[1].toFixed(3)} ${v[2].toFixed(2)};`));
                     }
 
-                    let positionstyle = `position:absolute; top:0px;left:0px;`;
-                    let countermargin = `margin-left:${-img.width / 2}px; margin-top:${-img.height / 2}px;`;
-
-                    html += `<div style="${positionstyle} ${translateanim}">\n`;
-                    html += `<div style="${rotateanim} transform-origin:center;">\n`;
-                    html += `<img src="${pngfile}" width="${img.width}" height="${img.height}" style="${countermargin} animation:${anims.join()};">\n`;
-                    html += `</div>\n`;
-                    html += `</div>\n`;
+                    let positionstyle = `position:absolute; top:0px; left:0px; transform-origin:center;margin-left:${-img.width / 2}px; margin-top:${-img.height / 2}px;`;
+                    html += `<img src="${pngfile}" width="${img.width}" height="${img.height}" style="${positionstyle} animation:${anims.join()};">\n`;
                 }
             }
             html += "</div>";
