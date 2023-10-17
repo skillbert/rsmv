@@ -205,6 +205,7 @@ export class EngineCache extends CachingFileSource {
 	classicData: ClassicConfig | null = null;
 	clientScriptDeob: ClientscriptObfuscation | null = null;
 
+	private clientScriptDeobReady: Promise<ClientscriptObfuscation> | null = null;
 	private jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 	private dependencyGraph: Promise<DependencyGraph> | null = null;
 
@@ -281,12 +282,14 @@ export class EngineCache extends CachingFileSource {
 		};
 	}
 
-	async getClientscriptDeob(data:any[]) {
-		this.clientScriptDeob ??= new ClientscriptObfuscation();
-		if (!this.clientScriptDeob.callibrated) {
-			await this.clientScriptDeob.runCallibration(this, data);
-		}
-		return this.clientScriptDeob;
+	async getClientscriptDeob() {
+		this.clientScriptDeobReady ??= (async () => {
+			let deob = new ClientscriptObfuscation();
+			await deob.runAutoCallibrate(this);
+			this.clientScriptDeob = deob;
+			return deob;
+		})();
+		return this.clientScriptDeobReady;
 	}
 
 	async getDependencyGraph() {

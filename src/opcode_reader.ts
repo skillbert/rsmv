@@ -1282,11 +1282,17 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 	scriptopt: function (args, parent, typedef) {
 		return {
 			read(state) {
+				let buildnr = getClientVersion(state.args);
 				let op = state.buffer.readUint16BE(state.scan);
 				state.scan += 2;
 				let cali = state.args.clientscriptCallibration;
 				if (cali) {
-					op = (cali as ClientscriptObfuscation).translateOpcode(op);
+					op = (cali as ClientscriptObfuscation).translateOpcode(op, buildnr);
+				} else if (buildnr > 668) {
+					throw new Error("opcode callibration not set for clientscript with obfuscated opcodes");
+				}
+				if (debugdata) {
+					debugdata.opcodes.push({ op: `cs2op_0x${op.toString(16)}`, index: state.scan - 2, stacksize: state.stack.length + 1 });
 				}
 				return op;
 			},

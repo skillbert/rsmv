@@ -67,6 +67,10 @@ export function validOpenrs2Caches() {
 				734, 733, 20, 10, 9, 8, 7, 2,
 				666, 729, 730, 728,
 
+				1455,//weird clientscript
+
+				312,286,1420,1421,1530//missing clientscripts
+
 			];
 			let allcaches: Openrs2CacheMeta[] = await fetch(`${endpoint}/caches.json`).then(q => q.json());
 			let checkedcaches = allcaches.filter(q =>

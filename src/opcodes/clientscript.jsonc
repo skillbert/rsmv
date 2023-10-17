@@ -1,14 +1,14 @@
 ["struct",
-	["byte0","ubyte"],
-	["switchsize",["footer",2,"ushort"]],
+	["byte0",["match","buildnr",{">458":"ubyte","other":0}]],
+	["switchsize",["match","buildnr",{">=495":["footer",2,"ushort"],"other":0}]],
 	["switches",["footer",["ref","switchsize"],
-		["array","ubyte",["array","ushort",["struct",
+		["array",["match","buildnr",{">=495":"ubyte","other":0}],["array","ushort",["struct",
 			["value","int"],
 			["label","uint"]
 		]]]
 	]],
-	["unk0",["footer",2,"ushort"]],
-	["unk1",["footer",2,"ushort"]],
+	["unk0",["match","buildnr",{">641":["footer",2,"ushort"],"other":0}]],
+	["unk1",["match","buildnr",{">641":["footer",2,"ushort"],"other":0}]],
 	["stringargcount",["footer",2,"ushort"]],
 	["intargcount",["footer",2,"ushort"]],
 	["localstringcount",["footer",2,"ushort"]],
@@ -17,47 +17,29 @@
 	["opcodes",["array",["ref","instructioncount"],["struct",
 		["op",["scriptopt"]],
 		["imm",["match",["ref","op"],{
-			//in the runestar repo (osrs) code all ops<100 are 4 bytes except for 3 instructions (0x15 return,0x26 pop_int_discard,0x27 pop_string_discard)
-			//and the rest are all 1 byte except for 0x03 push_constant_string which is a string
-			//the opcodes are scrambled each build, these opcodes work for 932, openrs2:1568
-			"0x0023":"int",
-			"0x003b":"int",
-			"0x003f":"int",
-			"0x00a4":"int",
-			"0x00a8":"int",
-			"0x00f6":"int",
-			"0x0175":"int",
-			"0x01a0":"int",
-			"0x022f":"int",
-			"0x0273":"int",
-			"0x02c2":"int",
-			"0x033a":"int",
-			"0x0374":"int",
-			"0x03a1":"int",
-			"0x0456":"int",
-			"0x04ea":"int",
-			"0x04f4":"int",
-			"0x0501":"int",
-			"0x0559":"int",
-			"0x059d":"int",
-			"0x0676":"int",
-			"0x072d":"int",
-			"0x077d":"int",
-			"0x0798":"int",
-			"0x07a0":"int",
-			"0x07d8":"int",
-			"0x080f":"int",
-			"0x0838":"int",
+			//last cache with non-scrambled is build 668, openrs2:1383
+			"0x03":0,
+			"0x36":0,
+			"0x15":"ubyte",
+			"0x26":"ubyte",
+			"0x27":"ubyte",
+			"0x66":"ubyte",
+			"<0x80":"int",
+			"<0x4000":"ubyte",
+			"<0x4100":"int",
 			"other":"ubyte"
 		}]],
 		["imm_obj",["match",["ref","op"],{
-			"0x07aa":["match",["ref","imm"],{
+			"0x03":"string",
+			"0x36":["buffer",8,"hex"],
+			//unknown original opcode ids
+			"0x4101":["match",["ref","imm"],{
 				"0":"int",
 				"1":["buffer",8,"hex"],
 				"2":"string"
 			}],
-			"0x0314":"ushort",
-			"0x025d":"ushort",
+			"0x4102":"ushort",//"0x0314":"ushort",
+			"0x4103":"ushort",// "0x025d":"ushort",
 			"other":null
 		}]]
 	]]]
