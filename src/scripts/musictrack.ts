@@ -1,7 +1,7 @@
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 
-export async function parseMusic(source: CacheFileSource, major: number, id: number, firstchunk: Buffer | null) {
+export async function parseMusic(source: CacheFileSource, major: number, id: number, firstchunk: Buffer | null, allowdownload = false) {
 
     let indexfile = firstchunk ?? await source.getFileById(major, id);
 
@@ -25,7 +25,10 @@ export async function parseMusic(source: CacheFileSource, major: number, id: num
     // for (let q of index.chunks) {
     //     chunkdatas.push(q.data ?? await source.getFileById(major, q.fileid));
     // }
-    let chunkdatas = await asyncMap(index.chunks, q => q.data ?? source.getFileById(major, q.fileid), 8);
+    let chunkdatas = (allowdownload
+        ? await asyncMap(index.chunks, q => q.data ?? source.getFileById(major, q.fileid), 8)
+        : index.chunks.filter(q => q.data).map(q => q.data!)
+    );
 
     let output: Buffer[] = [];
 

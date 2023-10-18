@@ -14,7 +14,7 @@ import { ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
 export type UIScriptFile = { name: string, data: Buffer | string };
 
 export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implements ScriptFS {
-	files: UIScriptFile[] = [];
+	filesMap = new Map<string, UIScriptFile>();
 	rootdirhandle: FileSystemDirectoryHandle | null = null;
 	outdirhandles = new Map<string, FileSystemDirectoryHandle | null>();
 	output: UIScriptOutput | null;
@@ -30,7 +30,15 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 		this.output?.emit("writefile", undefined);
 	}
 	async writeFile(name: string, data: Buffer | string) {
-		this.files.push({ name, data });
+		let fileentry: UIScriptFile = { name, data };
+		if (this.filesMap.has(name)) {
+			this.output?.log(`overwriting file "${name}"`);
+			// let index = this.files.findIndex(q => q.name == name);
+			// this.files[index] = fileentry;
+		} else {
+			// this.files.push(fileentry);
+		}
+		this.filesMap.set(name, fileentry);
 		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
 		this.emit("writefile", undefined);
 		this.output?.emit("writefile", undefined);
@@ -58,7 +66,7 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 			for (let [dir, handle] of this.outdirhandles.entries()) {
 				if (!handle) { await this.mkdirLocal(dir.split("/")); }
 			}
-			await Promise.all(this.files.map(q => this.saveLocalFile(q.name, q.data)));
+			await Promise.all([...this.filesMap.values()].map(q => this.saveLocalFile(q.name, q.data)));
 		}
 		this.output?.emit("statechange", undefined);
 	}
@@ -226,11 +234,11 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 }
 
 export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
-	let [files, setFiles] = React.useState(p.fs?.files);
+	let [files, setFiles] = React.useState(p.fs?.filesMap);
 
 	useEffect(() => {
 		if (p.fs) {
-			let onchange = () => setFiles(p.fs!.files);
+			let onchange = () => setFiles(p.fs!.filesMap);
 			p.fs.on("writefile", onchange);
 			return () => p.fs?.off("writefile", onchange);
 		}
@@ -239,13 +247,27 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 	let listkeydown = (e: React.KeyboardEvent) => {
 		if (p.fs && p.ctx.openedfile && e.key == "ArrowDown" || e.key == "ArrowUp") {
 			e.preventDefault();
-			let oldindex = p.fs!.files.indexOf(p.ctx.openedfile!);
-			if (oldindex != -1) {
-				let newindex = oldindex + (e.key == "ArrowDown" ? 1 : -1);
-				let newfile = p.fs?.files[newindex];
-				if (newfile) {
-					p.ctx.openFile(newfile);
+			//bit of a yikes, map behaves as a single linked list and i'm trying to not
+			//piss of the god of JIT by writing a custom iterator
+			let previous: UIScriptFile | null = null;
+			let match: UIScriptFile | null = null;
+			let grabnext = false;
+			for (let file of p.fs!.filesMap.values()) {
+				if (grabnext) {
+					match = file;
+					break;
+				} else if (file == p.ctx.openedfile) {
+					if (e.key == "ArrowUp") {
+						match = previous;
+						break;
+					} else {
+						grabnext = true;
+					}
 				}
+				previous = file;
+			}
+			if (match) {
+				p.ctx.openFile(match);
 			}
 		}
 	}
@@ -263,15 +285,21 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 	}
 	else {
 		const maxlist = 4000;
+
+		let filelist: React.ReactNode[] = [];
+		for (let q of files.values()) {
+			filelist.push(
+				<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>
+			);
+		}
+
 		return (
 			<div>
-				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.files.length} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
-				{p.fs?.rootdirhandle && <div>Saved files to disk: {p.fs.files.length}</div>}
-				{files.length > maxlist && <div>Only showing first {maxlist} files</div>}
+				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.filesMap.size} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
+				{p.fs?.rootdirhandle && <div>Saved files to disk: {p.fs.filesMap.size}</div>}
+				{files.size > maxlist && <div>Only showing first {maxlist} files</div>}
 				<div tabIndex={0} onKeyDownCapture={listkeydown}>
-					{files.slice(0, maxlist).map(q => (
-						<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>)
-					)}
+					{filelist}
 				</div>
 			</div>
 		);

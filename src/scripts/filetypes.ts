@@ -9,7 +9,7 @@ import { JSONSchema6Definition } from "json-schema";
 import { parseLegacySprite, parseSprite, parseTgaSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { crc32, CrcBuilder } from "../libs/crc32util";
-import { getModelHashes } from "../3d/modeltothree";
+import { getModelHashes, EngineCache } from "../3d/modeltothree";
 import { ParsedTexture } from "../3d/textures";
 import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
@@ -85,6 +85,7 @@ const throwOnNonSimple = {
 function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 	return {
 		major: cacheMajors.mapsquares,
+		minor: undefined,
 		logicalDimensions: 2,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) {
@@ -113,6 +114,7 @@ function worldmapIndex(subfile: number): DecodeLookup {
 	const worldStride = 128;
 	return {
 		major,
+		minor: undefined,
 		logicalDimensions: 2,
 		multiIndexArchives: true,
 		fileToLogical(source, major, minor, subfile) {
@@ -145,6 +147,7 @@ function worldmapIndex(subfile: number): DecodeLookup {
 function singleMinorIndex(major: number, minor: number): DecodeLookup {
 	return {
 		major,
+		minor,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) {
@@ -162,6 +165,7 @@ function singleMinorIndex(major: number, minor: number): DecodeLookup {
 function chunkedIndex(major: number): DecodeLookup {
 	return {
 		major,
+		minor: undefined,
 		logicalDimensions: 1,
 		multiIndexArchives: true,
 		fileToLogical(source, major, minor, subfile) {
@@ -181,6 +185,7 @@ function chunkedIndex(major: number): DecodeLookup {
 function noArchiveIndex(major: number): DecodeLookup {
 	return {
 		major,
+		minor: undefined,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("nonzero subfile in noarch index"); } return [minor]; },
@@ -194,6 +199,7 @@ function noArchiveIndex(major: number): DecodeLookup {
 function standardIndex(major: number): DecodeLookup {
 	return {
 		major,
+		minor: undefined,
 		logicalDimensions: 2,
 		multiIndexArchives: true,
 		fileToLogical(source, major, minor, subfile) { return [minor, subfile]; },
@@ -215,6 +221,7 @@ function blacklistIndex(parent: DecodeLookup, blacklist: { major: number, minor:
 function indexfileIndex(): DecodeLookup {
 	return {
 		major: cacheMajors.index,
+		minor: undefined,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) { return [minor]; },
@@ -231,6 +238,7 @@ function indexfileIndex(): DecodeLookup {
 function rootindexfileIndex(): DecodeLookup {
 	return {
 		major: cacheMajors.index,
+		minor: 255,
 		logicalDimensions: 0,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) { return []; },
@@ -299,6 +307,7 @@ type FileId = { major: number, minor: number, subid: number };
 
 type DecodeLookup = {
 	major: number | undefined,
+	minor: number | undefined,
 	logicalDimensions: number,
 	multiIndexArchives: boolean;
 	logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
@@ -310,7 +319,7 @@ export type DecodeMode<T = Buffer | string> = {
 	ext: string,
 	parser?: FileParser<any>,
 	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource): T | Promise<T>,
-	prepareDump(output: ScriptFS): void,
+	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
 	write(file: Buffer): Buffer,
 	combineSubs(files: T[]): T
 } & DecodeLookup;
@@ -319,6 +328,7 @@ const decodeBinary: DecodeModeFactory = () => {
 	return {
 		ext: "bin",
 		major: undefined,
+		minor: undefined,
 		logicalDimensions: 3,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) { return [major, minor, subfile]; },
@@ -339,6 +349,7 @@ const decodeMusic: DecodeModeFactory = () => {
 	return {
 		ext: "ogg",
 		major: cacheMajors.music,
+		minor: undefined,
 		logicalDimensions: 1,
 		multiIndexArchives: false,
 		fileToLogical(source, major, minor, subfile) { return [minor]; },
@@ -355,17 +366,17 @@ const decodeMusic: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		read(buf, fileid, source) {
-			return parseMusic(source, cacheMajors.music, fileid[0], buf);
+			return parseMusic(source, cacheMajors.music, fileid[0], buf, true);
 		}
 	}
 }
-const decodeSound = (major: number): DecodeModeFactory => () => {
+const decodeSound = (major: number, allowdownload: boolean): DecodeModeFactory => () => {
 	return {
 		ext: "ogg",
 		...noArchiveIndex(major),
 		...throwOnNonSimple,
 		read(buf, fileid, source) {
-			return parseMusic(source, major, fileid[0], buf);
+			return parseMusic(source, major, fileid[0], buf, allowdownload);
 		}
 	}
 }
@@ -504,7 +515,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 	maplabels: { parser: parse.maplabels, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
 	cutscenes: { parser: parse.cutscenes, lookup: noArchiveIndex(cacheMajors.cutscenes) },
-	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript) },
+	// clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript) },
 
 	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
 	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },
@@ -528,7 +539,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() }
 });
 
-const npcmodels: DecodeModeFactory = function (flags) {
+const npcmodels: DecodeModeFactory = function () {
 	return {
 		...chunkedIndex(cacheMajors.npcs),
 		ext: "json",
@@ -551,6 +562,25 @@ const npcmodels: DecodeModeFactory = function (flags) {
 	}
 }
 
+const clientscript: DecodeModeFactory = function () {
+	return {
+		...noArchiveIndex(cacheMajors.clientscript),
+		...throwOnNonSimple,
+		ext: "json",
+		async prepareDump(output, source) {
+			if (source instanceof EngineCache) {
+				await source.getClientscriptDeob()
+			} else {
+				throw new Error("source must be an instance of EngineCache");
+			}
+		},
+		read(b, id, source) {
+			let obj = parse.clientscript.read(b, source);
+			return prettyJson(obj);
+		},
+	}
+}
+
 export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	bin: decodeBinary,
 	sprites: decodeSprite(cacheMajors.sprites),
@@ -570,13 +600,14 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	textures_png: decodeTexture(cacheMajors.texturesPng),
 	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
 	textures_ktx: decodeTexture(cacheMajors.texturesKtx),
-	sounds: decodeSound(cacheMajors.sounds),
-	musicfragments: decodeSound(cacheMajors.music),
+	sounds: decodeSound(cacheMajors.sounds, true),
+	musicfragments: decodeSound(cacheMajors.music, false),
 	music: decodeMusic,
 	cutscenehtml: decodeCutscene,
 
 	npcmodels: npcmodels,
+	clientscript: clientscript,
 
 	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
 		.map(([k, v]) => [k, standardFile(v.parser, v.lookup)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
-});
+} as const);

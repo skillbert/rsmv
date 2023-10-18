@@ -70,7 +70,7 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
         }
         if (el.soundid) {
             try {
-                let file = await parseMusic(engine, cacheMajors.sounds, el.soundid, null);
+                let file = await parseMusic(engine, cacheMajors.sounds, el.soundid, null, true);
                 html += `<audio src="data:audio/ogg;base64,${file.toString("base64")}" data-timestart="${el.start}" data-timeend="${el.end}"></audio>\n`;
             } catch (e) {
                 console.warn(`missing sound ${el.soundid} ${el.sound}`);

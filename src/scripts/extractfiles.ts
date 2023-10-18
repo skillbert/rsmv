@@ -11,7 +11,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 	if (args.batched || args.batchlimit != -1) { flags.batched = "true"; }
 	if (args.keepbuffers) { flags.keepbuffers = "true"; }
 	let mode = modeconstr(flags);
-	mode.prepareDump(outdir);
+	await mode.prepareDump(outdir, source);
 
 	let batchMaxFiles = args.batchlimit;
 	let batchSubfile = args.batched;

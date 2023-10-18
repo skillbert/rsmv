@@ -33,6 +33,7 @@ import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked } from '../map/backends';
 import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
+import { previewAllFileTypes } from '../scripts/previewall';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -2075,6 +2076,25 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 	}
 }
 
+function PreviewFilesScript(p: UiScriptProps) {
+	let [] = p.initialArgs.split(":");
+
+	let run = () => {
+		if (!p.ctx.sceneCache) { return; }
+		let output = new UIScriptOutput();
+		let outdir = output.makefs("out");
+		output.run(previewAllFileTypes, outdir, p.ctx.sceneCache.engine);
+		p.onRun(output, ``);
+	}
+
+	return (
+		<React.Fragment>
+			<p>Extracts a couple example files for each known extraction mode.</p>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+
 function ExtractFilesScript(p: UiScriptProps) {
 	let [initmode, initbatched, initkeepbuffs, initfilestext] = p.initialArgs.split(":");
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
@@ -2316,6 +2336,7 @@ type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, in
 const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	test: TestFilesScript,
 	extract: ExtractFilesScript,
+	preview: PreviewFilesScript,
 	historic: ExtractHistoricScript,
 	maprender: MaprenderScript,
 	diff: CacheDiffScript
