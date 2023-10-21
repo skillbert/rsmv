@@ -515,7 +515,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 	maplabels: { parser: parse.maplabels, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
 	cutscenes: { parser: parse.cutscenes, lookup: noArchiveIndex(cacheMajors.cutscenes) },
-	// clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript) },
+	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript) },
 
 	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
 	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },
@@ -606,7 +606,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	cutscenehtml: decodeCutscene,
 
 	npcmodels: npcmodels,
-	clientscript: clientscript,
+	// clientscript: clientscript,
 
 	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
 		.map(([k, v]) => [k, standardFile(v.parser, v.lookup)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)

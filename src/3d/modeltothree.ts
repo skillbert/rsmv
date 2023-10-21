@@ -278,7 +278,8 @@ export class EngineCache extends CachingFileSource {
 	getDecodeArgs(): Record<string, any> {
 		return {
 			...super.getDecodeArgs(),
-			clientscriptCallibration: this.clientScriptDeob ?? undefined
+			//TODO remove testOpcodeGetter
+			translateCS2Opcode: globalThis.testOpcodeGetter ?? this.clientScriptDeob?.translateOpcode ?? undefined
 		};
 	}
 

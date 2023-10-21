@@ -39,9 +39,9 @@ export class FileParser<T> {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
-			if (state.buffer.byteLength < 100000) {
+			// if (state.buffer.byteLength < 100000) {
 				throw new Error(`bytes left over after decoding file: ${state.endoffset - state.scan}`);
-			}
+			// }
 		}
 		return res;
 	}

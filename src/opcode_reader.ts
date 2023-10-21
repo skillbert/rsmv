@@ -1280,14 +1280,17 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		}
 	},
 	scriptopt: function (args, parent, typedef) {
+		let instructioncount = refgetter(parent, "instructioncount", (v, old) => old);
 		return {
 			read(state) {
 				let buildnr = getClientVersion(state.args);
 				let op = state.buffer.readUint16BE(state.scan);
 				state.scan += 2;
-				let cali = state.args.clientscriptCallibration;
+				let cali = state.args.translateCS2Opcode;
 				if (cali) {
-					op = (cali as ClientscriptObfuscation).translateOpcode(op, buildnr);
+					let count = instructioncount.read(state);
+					let bytesleft = state.endoffset - state.scan;
+					op = (cali as Function)(op, buildnr, bytesleft, count);
 				} else if (buildnr > 668) {
 					throw new Error("opcode callibration not set for clientscript with obfuscated opcodes");
 				}
@@ -1298,7 +1301,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			},
 			write(state, v) {
 				if (typeof v != "number") { throw new Error("number expected"); }
-				let cali = state.args.clientscriptCallibration;
+				let cali = state.args.translateCS2Opcode;
 				if (cali) {
 					throw new Error("TODO");
 					// v = (cali as ClientscriptObfuscation).reverseTranslate(v);
