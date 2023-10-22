@@ -153,6 +153,28 @@ export function useForceUpdate() {
 	return forceUpdate;
 }
 
+export function useForceUpdateDebounce(delay = 50) {
+	const forceUpdate = useForceUpdate();
+	let ref = React.useRef(() => { });
+	React.useMemo(() => {
+		let timer = 0;
+		let tick = () => {
+			timer = 0;
+			forceUpdate();
+		}
+		ref.current = () => {
+			if (!timer) {
+				timer = +setTimeout(tick, delay);
+			}
+		}
+		return () => {
+			clearTimeout(timer);
+			timer = 0;
+		}
+	}, [forceUpdate, ref]);
+	return ref.current;
+}
+
 export function VR360View(p: { img: string | ImageData | TexImageSource }) {
 	let viewer = React.useRef<VR360Viewer | null>(null);
 	if (!viewer.current) {
@@ -196,7 +218,7 @@ export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefin
 export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
 	let [tab, setTab] = React.useState<"console" | string>("console");
 
-	let forceUpdate = useForceUpdate();
+	let forceUpdate = useForceUpdateDebounce();
 	React.useLayoutEffect(() => {
 		p.output?.on("statechange", forceUpdate);
 		p.output?.on("writefile", forceUpdate);
@@ -230,17 +252,31 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 			{selectedfs && <UIScriptFiles fs={selectedfs} ctx={p.ctx} />}
 		</div>
 	)
-
 }
 
 export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
+	const initialMaxlist = 4000;
 	let [files, setFiles] = React.useState(p.fs?.filesMap);
+	let [maxlist, setMaxlist] = React.useState(initialMaxlist);
 
 	useEffect(() => {
 		if (p.fs) {
-			let onchange = () => setFiles(p.fs!.filesMap);
+			let debouncetimer = 0;
+			setMaxlist(initialMaxlist);
+			setFiles(p.fs.filesMap);
+			let onchange = () => {
+				if (!debouncetimer) {
+					debouncetimer = +setTimeout(() => {
+						setFiles(p.fs!.filesMap);
+						debouncetimer = 0;
+					}, 50);
+				}
+			}
 			p.fs.on("writefile", onchange);
-			return () => p.fs?.off("writefile", onchange);
+			return () => {
+				if (debouncetimer) { clearTimeout(debouncetimer); }
+				p.fs?.off("writefile", onchange);
+			}
 		}
 	}, [p.fs]);
 
@@ -284,10 +320,9 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 		return <div />;
 	}
 	else {
-		const maxlist = 4000;
-
 		let filelist: React.ReactNode[] = [];
 		for (let q of files.values()) {
+			if (filelist.length > maxlist) { break; }
 			filelist.push(
 				<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>
 			);
@@ -300,6 +335,7 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 				{files.size > maxlist && <div>Only showing first {maxlist} files</div>}
 				<div tabIndex={0} onKeyDownCapture={listkeydown}>
 					{filelist}
+					{files.size > maxlist && <input type="button" className="sub-btn" onClick={e => setMaxlist(maxlist + 4000)} value={`Show more (${maxlist}/${files.size})`} />}
 				</div>
 			</div>
 		);
