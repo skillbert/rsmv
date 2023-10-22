@@ -1,6 +1,5 @@
 import { lastLegacyBuildnr } from "./constants";
 import type * as jsonschema from "json-schema";
-import type { ClientscriptObfuscation } from "./scripts/clientscriptparser";
 
 export type TypeDef = { [name: string]: unknown };
 
@@ -1280,24 +1279,17 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		}
 	},
 	scriptopt: function (args, parent, typedef) {
-		let instructioncount = refgetter(parent, "instructioncount", (v, old) => old);
 		return {
 			read(state) {
-				let buildnr = getClientVersion(state.args);
-				let op = state.buffer.readUint16BE(state.scan);
-				state.scan += 2;
 				let cali = state.args.translateCS2Opcode;
-				if (cali) {
-					let count = instructioncount.read(state);
-					let bytesleft = state.endoffset - state.scan;
-					op = (cali as Function)(op, buildnr, bytesleft, count);
-				} else if (buildnr > 668) {
+				if (!cali) {
 					throw new Error("opcode callibration not set for clientscript with obfuscated opcodes");
 				}
 				if (debugdata) {
-					debugdata.opcodes.push({ op: `cs2op_0x${op.toString(16)}`, index: state.scan - 2, stacksize: state.stack.length + 1 });
+					debugdata.opcodes.push({ op: "opcode", index: state.scan, stacksize: state.stack.length + 1 });
 				}
-				return op;
+				let res = (cali as Function)(state);
+				return res;
 			},
 			write(state, v) {
 				if (typeof v != "number") { throw new Error("number expected"); }
@@ -1309,10 +1301,22 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				state.buffer.writeUint16BE(v);
 			},
 			getJsonSchema() {
-				return { type: "number" }
+				return {
+					type: "object",
+					properties: {
+						opcode: { type: "number" },
+						imm: { type: "number" },
+						imm_obj: { oneOf: [{ type: "number" }, { type: "string" }, { type: "null" }] }
+					}
+				}
 			},
-			getTypescriptType() {
-				return "number";
+			getTypescriptType(indent) {
+				let newindent = indent + "\t";
+				return `{\n`
+					+ `${newindent}opcode:number,\n`
+					+ `${newindent}imm:number,\n`
+					+ `${newindent}imm_obj:number|string|[number,number]|null,\n`
+					+ `${indent}}`;
 			}
 		}
 	}

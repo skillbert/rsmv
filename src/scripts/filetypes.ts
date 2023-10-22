@@ -251,7 +251,7 @@ function rootindexfileIndex(): DecodeLookup {
 	}
 }
 
-function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeModeFactory {
+function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump?: ((source: CacheFileSource) => Promise<void> | void) | null): DecodeModeFactory {
 	let constr: DecodeModeFactory = (args: Record<string, string>) => {
 		let singleschemaurl = "";
 		let batchschemaurl = "";
@@ -259,7 +259,8 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup): DecodeMode
 			...lookup,
 			ext: "json",
 			parser: parser,
-			prepareDump(output: ScriptFS) {
+			async prepareDump(output, source) {
+				await prepareDump?.(source);
 				let name = Object.entries(cacheFileDecodeModes).find(q => q[1] == constr);
 				if (!name) { throw new Error(); }
 				let schema = parser.parser.getJsonSchema();
@@ -486,7 +487,8 @@ const decodeMeshHash: DecodeModeFactory = () => {
 
 export type JsonBasedFile = {
 	parser: FileParser<any>,
-	lookup: DecodeLookup
+	lookup: DecodeLookup,
+	prepareDump?: (source: CacheFileSource) => Promise<void> | void
 }
 
 export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
@@ -515,7 +517,6 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 	maplabels: { parser: parse.maplabels, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
 	cutscenes: { parser: parse.cutscenes, lookup: noArchiveIndex(cacheMajors.cutscenes) },
-	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript) },
 
 	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
 	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },
@@ -536,7 +537,14 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	classicmodels: { parser: parse.classicmodels, lookup: singleMinorIndex(0, classicGroups.models) },
 
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
-	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() }
+	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() },
+
+	clientscript: {
+		parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: async (source) => {
+			if (!(source instanceof EngineCache)) { throw new Error("source must be an instance of EngineCache"); }
+			await source.getClientscriptDeob()
+		}
+	},
 });
 
 const npcmodels: DecodeModeFactory = function () {
@@ -559,25 +567,6 @@ const npcmodels: DecodeModeFactory = function () {
 		combineSubs(b) {
 			return `[${b.join(",\n")}]`;
 		}
-	}
-}
-
-const clientscript: DecodeModeFactory = function () {
-	return {
-		...noArchiveIndex(cacheMajors.clientscript),
-		...throwOnNonSimple,
-		ext: "json",
-		async prepareDump(output, source) {
-			if (source instanceof EngineCache) {
-				await source.getClientscriptDeob()
-			} else {
-				throw new Error("source must be an instance of EngineCache");
-			}
-		},
-		read(b, id, source) {
-			let obj = parse.clientscript.read(b, source);
-			return prettyJson(obj);
-		},
 	}
 }
 
@@ -606,8 +595,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	cutscenehtml: decodeCutscene,
 
 	npcmodels: npcmodels,
-	// clientscript: clientscript,
 
 	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
-		.map(([k, v]) => [k, standardFile(v.parser, v.lookup)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+		.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 } as const);

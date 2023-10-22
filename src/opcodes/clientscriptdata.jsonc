@@ -14,5 +14,5 @@
 	["localstringcount",["footer",2,"ushort"]],
 	["localintcount",["footer",2,"ushort"]],
 	["instructioncount",["footer",4,"uint"]],
-	["opcodedata",["array",["ref","instructioncount"],["scriptopt"]]]
+	["opcodedata",["buffer",["bytesleft"],"buffer"]]
 ]

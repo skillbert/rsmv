@@ -1,8 +1,8 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\clientscript.jsonc'
+// This source data is located at '..\src\opcodes\clientscriptdata.jsonc'
 // run `npm run filetypes` to rebuild
 
-export type clientscript = {
+export type clientscriptdata = {
 	byte0: (number|0),
 	switchsize: (number|0),
 	switches: {
@@ -16,9 +16,5 @@ export type clientscript = {
 	localstringcount: number,
 	localintcount: number,
 	instructioncount: number,
-	opcodedata: {
-		opcode:number,
-		imm:number,
-		imm_obj:number|string|[number,number]|null,
-	}[],
+	opcodedata: Buffer,
 };

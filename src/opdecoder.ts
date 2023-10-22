@@ -39,9 +39,9 @@ export class FileParser<T> {
 				console.log("too many bytes left over warning, no more warnings will be logged");
 			}
 			// TODO remove this stupid condition, needed this to fail only in some situations
-			// if (state.buffer.byteLength < 100000) {
+			if (state.buffer.byteLength < 100000) {
 				throw new Error(`bytes left over after decoding file: ${state.endoffset - state.scan}`);
-			// }
+			}
 		}
 		return res;
 	}
@@ -124,6 +124,7 @@ function allParsers() {
 		oldproctexture: FileParser.fromJson<import("../generated/oldproctexture").oldproctexture>(require("./opcodes/oldproctexture.jsonc")),
 		maplabels: FileParser.fromJson<import("../generated/maplabels").maplabels>(require("./opcodes/maplabels.jsonc")),
 		cutscenes: FileParser.fromJson<import("../generated/cutscenes").cutscenes>(require("./opcodes/cutscenes.jsonc")),
-		clientscript: FileParser.fromJson<import("../generated/clientscript").clientscript>(require("./opcodes/clientscript.jsonc"))
+		clientscript: FileParser.fromJson<import("../generated/clientscript").clientscript>(require("./opcodes/clientscript.jsonc")),
+		clientscriptdata: FileParser.fromJson<import("../generated/clientscriptdata").clientscriptdata>(require("./opcodes/clientscriptdata.jsonc"))
 	}
 }

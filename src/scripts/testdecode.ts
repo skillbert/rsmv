@@ -143,6 +143,7 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 
 	let fileiter: () => AsyncGenerator<DecodeEntry>;
 
+	await mode.prepareDump?.(source);
 	let files = (await Promise.all(ranges.map(q => mode.lookup.logicalRangeToFiles(source, q.start, q.end)))).flat();
 
 	//pre-sort to get more small file under mem limit

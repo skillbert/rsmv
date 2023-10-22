@@ -27,7 +27,7 @@ import { loadProcTexture } from "./proceduraltexture";
 import { maplabels } from "../../generated/maplabels";
 import { minimapLocMaterial } from "../rs3shaders";
 import { DependencyGraph, getDependencies } from "../scripts/dependencies";
-import { ClientscriptObfuscation } from "../scripts/clientscriptparser";
+import {  ReadOpCallback, findOpcodeImmidiates3 } from "../scripts/clientscriptparser";
 
 const constModelOffset = 1000000;
 
@@ -203,9 +203,9 @@ export class EngineCache extends CachingFileSource {
 
 	legacyData: LegacyData | null = null;
 	classicData: ClassicConfig | null = null;
-	clientScriptDeob: ClientscriptObfuscation | null = null;
+	clientScriptDeob: ReadOpCallback | null = null;
 
-	private clientScriptDeobReady: Promise<ClientscriptObfuscation> | null = null;
+	private clientScriptDeobReady: Promise<ReadOpCallback> | null = null;
 	private jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 	private dependencyGraph: Promise<DependencyGraph> | null = null;
 
@@ -279,16 +279,16 @@ export class EngineCache extends CachingFileSource {
 		return {
 			...super.getDecodeArgs(),
 			//TODO remove testOpcodeGetter
-			translateCS2Opcode: globalThis.testOpcodeGetter ?? this.clientScriptDeob?.translateOpcode ?? undefined
+			// translateCS2Opcode: globalThis.testOpcodeGetter
+			translateCS2Opcode: globalThis.testOpcodeGetter ?? this.clientScriptDeob ?? undefined
 		};
 	}
 
 	async getClientscriptDeob() {
 		this.clientScriptDeobReady ??= (async () => {
-			let deob = new ClientscriptObfuscation();
-			await deob.runAutoCallibrate(this);
-			this.clientScriptDeob = deob;
-			return deob;
+			let deob = await findOpcodeImmidiates3(this);
+			this.clientScriptDeob = deob.readOpcode;
+			return deob.readOpcode;
 		})();
 		return this.clientScriptDeobReady;
 	}
@@ -360,6 +360,7 @@ export class EngineCache extends CachingFileSource {
 			let mode = cacheFileJsonModes[modename as keyof typeof cacheFileJsonModes];
 			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
+				await mode.prepareDump?.(this);
 				let allfiles = await mode.lookup.logicalRangeToFiles(this, [0, 0], [Infinity, Infinity]);
 				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 				let files: any[] = [];

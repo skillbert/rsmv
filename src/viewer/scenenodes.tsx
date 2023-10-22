@@ -34,6 +34,7 @@ import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked } from '../map/backends';
 import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
+import { findOpcodeImmidiates3 } from '../scripts/clientscriptparser';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -2078,6 +2079,7 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 
 function PreviewFilesScript(p: UiScriptProps) {
 	let [] = p.initialArgs.split(":");
+	console.log(findOpcodeImmidiates3);
 
 	let run = () => {
 		if (!p.ctx.sceneCache) { return; }
