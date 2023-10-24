@@ -27,7 +27,6 @@ import { loadProcTexture } from "./proceduraltexture";
 import { maplabels } from "../../generated/maplabels";
 import { minimapLocMaterial } from "../rs3shaders";
 import { DependencyGraph, getDependencies } from "../scripts/dependencies";
-import {  ReadOpCallback, findOpcodeImmidiates3 } from "../scripts/clientscriptparser";
 
 const constModelOffset = 1000000;
 
@@ -203,9 +202,7 @@ export class EngineCache extends CachingFileSource {
 
 	legacyData: LegacyData | null = null;
 	classicData: ClassicConfig | null = null;
-	clientScriptDeob: ReadOpCallback | null = null;
 
-	private clientScriptDeobReady: Promise<ReadOpCallback> | null = null;
 	private jsonSearchCache = new Map<string, { files: Promise<any[]>, schema: JSONSchema6Definition }>();
 	private dependencyGraph: Promise<DependencyGraph> | null = null;
 
@@ -273,24 +270,6 @@ export class EngineCache extends CachingFileSource {
 		}
 
 		return this;
-	}
-
-	getDecodeArgs(): Record<string, any> {
-		return {
-			...super.getDecodeArgs(),
-			//TODO remove testOpcodeGetter
-			// translateCS2Opcode: globalThis.testOpcodeGetter
-			translateCS2Opcode: globalThis.testOpcodeGetter ?? this.clientScriptDeob ?? undefined
-		};
-	}
-
-	async getClientscriptDeob() {
-		this.clientScriptDeobReady ??= (async () => {
-			let deob = await findOpcodeImmidiates3(this);
-			this.clientScriptDeob = deob.readOpcode;
-			return deob.readOpcode;
-		})();
-		return this.clientScriptDeobReady;
 	}
 
 	async getDependencyGraph() {

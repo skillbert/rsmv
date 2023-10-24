@@ -15,6 +15,7 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
+import { ClientscriptObfuscation } from "./clientscriptparser";
 
 
 type CacheFileId = {
@@ -541,8 +542,12 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	clientscript: {
 		parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: async (source) => {
-			if (!(source instanceof EngineCache)) { throw new Error("source must be an instance of EngineCache"); }
-			await source.getClientscriptDeob()
+			if (!source.decodeArgs.translateCS2Opcode) {
+				let deob = new ClientscriptObfuscation();
+				globalThis.deob = deob;//TODO remove
+				source.decodeArgs.translateCS2Opcode = deob.readOpcode;
+				await deob.runAutoCallibrate(source);
+			}
 		}
 	},
 });

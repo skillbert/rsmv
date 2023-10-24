@@ -254,6 +254,7 @@ export function archiveToFileId(major: number, minor: number, subfile: number) {
 
 
 export abstract class CacheFileSource {
+	decodeArgs: Record<string, any> = {};
 	getCacheMeta(): { name: string, descr: string, timestamp: Date, otherCaches?: Record<string, string> } {
 		return { name: "unkown", descr: "", timestamp: new Date(0) };
 	}
@@ -271,9 +272,9 @@ export abstract class CacheFileSource {
 		return latestBuildNumber;
 	}
 	getDecodeArgs(): Record<string, any> {
-		return {
-			clientVersion: this.getBuildNr()
-		};
+		//can't initialize this in constructor because sub class wont be ready yet
+		this.decodeArgs.clientVersion = this.getBuildNr();
+		return this.decodeArgs;
 	}
 	writeFile(major: number, minor: number, file: Buffer): Promise<void> {
 		throw new Error("not implemented");

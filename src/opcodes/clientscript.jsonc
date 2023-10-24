@@ -8,9 +8,9 @@
 		]]]
 	]],
 	["unk0",["match","buildnr",{">641":["footer",2,"ushort"],"other":0}]],
-	["unk1",["match","buildnr",{">641":["footer",2,"ushort"],"other":0}]],
 	["stringargcount",["footer",2,"ushort"]],
 	["intargcount",["footer",2,"ushort"]],
+	["unk1",["match","buildnr",{">641":["footer",2,"ushort"],"other":0}]],
 	["localstringcount",["footer",2,"ushort"]],
 	["localintcount",["footer",2,"ushort"]],
 	["instructioncount",["footer",4,"uint"]],

@@ -34,7 +34,6 @@ import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked } from '../map/backends';
 import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
-import { findOpcodeImmidiates3 } from '../scripts/clientscriptparser';
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -2079,13 +2078,11 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 
 function PreviewFilesScript(p: UiScriptProps) {
 	let [] = p.initialArgs.split(":");
-	console.log(findOpcodeImmidiates3);
 
 	let run = () => {
-		if (!p.ctx.sceneCache) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
-		output.run(previewAllFileTypes, outdir, p.ctx.sceneCache.engine);
+		output.run(previewAllFileTypes, outdir, p.source);
 		p.onRun(output, ``);
 	}
 
@@ -2105,11 +2102,10 @@ function ExtractFilesScript(p: UiScriptProps) {
 	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
 
 	let run = () => {
-		if (!p.ctx.sceneCache) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
-		output.run(extractCacheFiles, outdir, p.ctx.sceneCache.engine, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers, skipread: false });
+		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers, skipread: false });
 		p.onRun(output, `${mode}:${batched}:${keepbuffers}:${filestext}`);
 	}
 
@@ -2287,7 +2283,7 @@ function TestFilesScript(p: UiScriptProps) {
 
 	let run = () => {
 		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
-		if (!modeobj || !p.ctx.sceneCache) { return; }
+		if (!modeobj) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("output")
 		let opts = defaultTestDecodeOpts();
@@ -2298,7 +2294,7 @@ function TestFilesScript(p: UiScriptProps) {
 			modeobj = { ...modeobj };
 			modeobj.parser = FileParser.fromJson(customparser);
 		}
-		output.run(testDecode, outdir, p.ctx.sceneCache.engine, modeobj, stringToFileRange(range), opts);
+		output.run(testDecode, outdir, p.source, modeobj, stringToFileRange(range), opts);
 		p.onRun(output, `${mode}:${range}:${dumpall}:${ordersize}`);
 	}
 
