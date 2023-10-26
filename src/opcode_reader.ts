@@ -1,5 +1,6 @@
 import { lastLegacyBuildnr } from "./constants";
 import type * as jsonschema from "json-schema";
+import type { ClientscriptObfuscation } from "./scripts/clientscriptparser";
 
 export type TypeDef = { [name: string]: unknown };
 
@@ -1281,19 +1282,20 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 	scriptopt: function (args, parent, typedef) {
 		return {
 			read(state) {
-				let cali = state.args.translateCS2Opcode;
+				let cali = state.args.clientScriptDeob as ClientscriptObfuscation | undefined;
+				//don't explicitly check prototype here as we would have to import the constructor
 				if (!cali) {
 					throw new Error("opcode callibration not set for clientscript with obfuscated opcodes");
 				}
 				if (debugdata) {
 					debugdata.opcodes.push({ op: "opcode", index: state.scan, stacksize: state.stack.length + 1 });
 				}
-				let res = (cali as Function)(state);
+				let res = (cali as ClientscriptObfuscation).readOpcode(state);
 				return res;
 			},
 			write(state, v) {
 				if (typeof v != "number") { throw new Error("number expected"); }
-				let cali = state.args.translateCS2Opcode;
+				let cali = state.args.clientScriptDeob as ClientscriptObfuscation | undefined;;
 				if (cali) {
 					throw new Error("TODO");
 					// v = (cali as ClientscriptObfuscation).reverseTranslate(v);

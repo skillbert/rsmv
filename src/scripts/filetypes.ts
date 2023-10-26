@@ -15,7 +15,7 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
-import { ClientscriptObfuscation } from "./clientscriptparser";
+import { prepareClientScript, renderClientScript } from "./clientscriptparser";
 
 
 type CacheFileId = {
@@ -395,6 +395,18 @@ const decodeCutscene: DecodeModeFactory = () => {
 	}
 }
 
+const decodeClientScriptText: DecodeModeFactory = () => {
+	return {
+		ext: "txt",
+		...noArchiveIndex(cacheMajors.clientscript),
+		...throwOnNonSimple,
+		async prepareDump(out, source) { await prepareClientScript(source) },
+		async read(buf, fileid, source) {
+			return await renderClientScript(source, buf, fileid[0]);
+		}
+	}
+}
+
 const decodeOldProcTexture: DecodeModeFactory = () => {
 	return {
 		ext: "png",
@@ -540,16 +552,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
 	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() },
 
-	clientscript: {
-		parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: async (source) => {
-			if (!source.decodeArgs.translateCS2Opcode) {
-				let deob = new ClientscriptObfuscation();
-				globalThis.deob = deob;//TODO remove
-				source.decodeArgs.translateCS2Opcode = deob.readOpcode;
-				await deob.runAutoCallibrate(source);
-			}
-		}
-	},
+	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: source => prepareClientScript(source) },
 });
 
 const npcmodels: DecodeModeFactory = function () {
@@ -598,8 +601,9 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	musicfragments: decodeSound(cacheMajors.music, false),
 	music: decodeMusic,
 	cutscenehtml: decodeCutscene,
-
+	clientscripttext: decodeClientScriptText,
 	npcmodels: npcmodels,
+
 
 	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
 		.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
