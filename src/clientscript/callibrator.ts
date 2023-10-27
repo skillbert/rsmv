@@ -7,12 +7,13 @@ import { clientscriptdata } from "../../generated/clientscriptdata";
 import { clientscript } from "../../generated/clientscript";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
 import { osrsOpnames } from "./osrsopnames";
+import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
 const lastNonObfuscatedBuild = 668;
 const firstModernOpsBuild = 751;
 
-const namedOps = {
+export const namedClientScriptOps = {
     //old caches only
     pushint: 0,
     pushlong: 54,
@@ -39,29 +40,29 @@ const namedOps = {
     tribyte2: 9003
 }
 
-const knownOpNames: Record<number, string> = {
+export const knownClientScriptOpNames: Record<number, string> = {
     ...osrsOpnames,
-    ...Object.fromEntries(Object.entries(namedOps).map(q => [q[1], q[0]]))
+    ...Object.fromEntries(Object.entries(namedClientScriptOps).map(q => [q[1], q[0]]))
 }
 
 const branchInstructions = [
-    namedOps.jump,
-    namedOps.branch_not,
-    namedOps.branch_eq,
-    namedOps.branch_lt,
-    namedOps.branch_gt,
-    namedOps.branch_lteq,
-    namedOps.branch_gteq
+    namedClientScriptOps.jump,
+    namedClientScriptOps.branch_not,
+    namedClientScriptOps.branch_eq,
+    namedClientScriptOps.branch_lt,
+    namedClientScriptOps.branch_gt,
+    namedClientScriptOps.branch_lteq,
+    namedClientScriptOps.branch_gteq
 ];
 
-type ClientScriptOp = {
+export type ClientScriptOp = {
     opcode: number,
     imm: number,
     imm_obj: string | number | [number, number] | null,
     opname?: string
 }
 
-class OpcodeInfo {
+export class OpcodeInfo {
     scrambledid: number;
     id: number;
     possibleTypes: Set<ImmediateType>;
@@ -83,7 +84,7 @@ class OpcodeInfo {
     }
 }
 
-class StackDiff {
+export class StackDiff {
     int = 0;
     long = 0;
     string = 0;
@@ -122,7 +123,7 @@ class StackDiff {
     }
 }
 
-type ScriptCandidate = {
+export type ScriptCandidate = {
     id: number,
     solutioncount: number,
     buf: Buffer,
@@ -154,8 +155,8 @@ export type ReadOpCallback = (state: DecodeState) => ClientScriptOp;
 function opcodeToType(op: number) {
     let type: ImmediateType = "byte";
     if (op < 0x80 && op != 0x15 && op != 0x26 && op != 0x27 && op != 0x66) { type = "int"; }
-    if (op == namedOps.pushconst) { type = "switch"; }
-    if (op == namedOps.tribyte1 || op == namedOps.tribyte2) { type = "tribyte"; }
+    if (op == namedClientScriptOps.pushconst) { type = "switch"; }
+    if (op == namedClientScriptOps.tribyte1 || op == namedClientScriptOps.tribyte2) { type = "tribyte"; }
     return type;
 }
 
@@ -163,9 +164,9 @@ function translateClientScript(opcodes: ClientScriptOp[], frombuild: number, tob
     if (frombuild < firstModernOpsBuild && tobuild >= firstModernOpsBuild) {
         return opcodes.map<ClientScriptOp>(q => {
             //for sure build 751
-            if (q.opcode == namedOps.pushint) { return { opcode: namedOps.pushconst, imm: 0, imm_obj: q.imm }; }
-            if (q.opcode == namedOps.pushlong) { return { opcode: namedOps.pushconst, imm: 1, imm_obj: q.imm_obj }; }
-            if (q.opcode == namedOps.pushstring) { return { opcode: namedOps.pushconst, imm: 2, imm_obj: q.imm_obj }; }
+            if (q.opcode == namedClientScriptOps.pushint) { return { opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: q.imm }; }
+            if (q.opcode == namedClientScriptOps.pushlong) { return { opcode: namedClientScriptOps.pushconst, imm: 1, imm_obj: q.imm_obj }; }
+            if (q.opcode == namedClientScriptOps.pushstring) { return { opcode: namedClientScriptOps.pushconst, imm: 2, imm_obj: q.imm_obj }; }
 
             //idk build, between base and 751
             if (q.opcode == 0x2a) { return { opcode: 0x2a, imm: (2 << 24) | (q.imm << 8), imm_obj: q.imm_obj }; }
@@ -305,8 +306,8 @@ async function getReferenceOpcodeDump() {
         await refcalli.runCallibrationFrom(refsource, rootsource, rootcalli);
 
         //2 opcodes have the tribyte type
-        let tribyte1 = new OpcodeInfo(0x0314, namedOps.tribyte1, ["tribyte"]);
-        let tribyte2 = new OpcodeInfo(0x025d, namedOps.tribyte2, ["tribyte"]);
+        let tribyte1 = new OpcodeInfo(0x0314, namedClientScriptOps.tribyte1, ["tribyte"]);
+        let tribyte2 = new OpcodeInfo(0x025d, namedClientScriptOps.tribyte2, ["tribyte"]);
         refcalli.mappings.set(tribyte1.scrambledid, tribyte1);
         refcalli.mappings.set(tribyte2.scrambledid, tribyte2);
         refcalli.decodedMappings.set(tribyte1.id, tribyte1);
@@ -477,21 +478,20 @@ export class ClientscriptObfuscation {
         }
         console.log(`callibrated in ${itercount + 1} iterations`);
 
-        await this.findOpcodeImmidiates3(source);
+        await findOpcodeImmidiates(this, source);
         parseCandidateContents(source, this, candidates);
 
         for (let op of this.mappings.values()) {
-            if (op.id == namedOps.gosub) {
+            if (op.id == namedClientScriptOps.gosub) {
                 op.optype = "gosub";
-            } else if (op.id == namedOps.return) {
+            } else if (op.id == namedClientScriptOps.return) {
                 op.optype = "return";
             } else if (branchInstructions.includes(op.id)) {
                 op.optype = "branch";
             }
         }
-        await this.findOpcodeTypes(source);
-
         this.callibrated = true;
+        await findOpcodeTypes(this, source);
     }
     readOpcode: ReadOpCallback = (state: DecodeState) => {
         if (!this.callibrated) { throw new Error("clientscript deob not callibrated yet"); }
@@ -516,15 +516,9 @@ export class ClientscriptObfuscation {
         if (!imm) { throw new Error("failed to read immidiate"); }
         state.scan = imm.offset;
 
-        let opname = knownOpNames[res.id] ?? "unknown";
+        let opname = knownClientScriptOpNames[res.id] ?? "unknown";
 
         return { opcode: res.id, imm: imm.imm, imm_obj: imm.imm_obj, opname } satisfies ClientScriptOp;
-    }
-    async findOpcodeImmidiates3(source: CacheFileSource) {
-        await findOpcodeImmidiates3(this, source);
-    }
-    async findOpcodeTypes(source: CacheFileSource) {
-        return await findOpcodeTypes(this, source);
     }
 }
 
@@ -540,7 +534,7 @@ function parseCandidateContents(source: CacheFileSource, calli: ClientscriptObfu
     }
 }
 
-async function findOpcodeImmidiates3(calli: ClientscriptObfuscation, source: CacheFileSource) {
+async function findOpcodeImmidiates(calli: ClientscriptObfuscation, source: CacheFileSource) {
 
     let switchcompleted = false;
     let tribytecompleted = false;
@@ -820,17 +814,17 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
         let lastintconst = -1;
         for (let node of section.nodes) {
             if (!(node instanceof RawOpcodeNode)) { continue sectionloop; }
-            if (node.opinfo.id == namedOps.return) {
+            if (node.opinfo.id == namedClientScriptOps.return) {
                 let script = candmap.get(section.scriptid);
                 if (!script || !script.returnType) { continue sectionloop; }
                 constant.sub(script.returnType);
-            } else if (node.opinfo.id == namedOps.gosub) {
+            } else if (node.opinfo.id == namedClientScriptOps.gosub) {
                 let script = candmap.get(node.op.imm);
                 if (!script || !script.returnType || !script.argtype) { continue sectionloop; }
                 constant.sub(script.argtype).add(script.returnType);
-            } else if (node.opinfo.id == namedOps.joinstring) {
+            } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
                 constant.string += -node.op.imm + 1;
-            } else if (node.opinfo.id == namedOps.pushconst) {
+            } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
                 if (node.op.imm == 0) {
                     constant.int++;
                     if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
@@ -986,154 +980,6 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
     return activeEquations;
 }
 
-abstract class AstNode {
-    debugString(calli: ClientscriptObfuscation) { return "unknown op"; }
-}
-class MergeIntoNode extends AstNode {
-    target: CodeBlockNode;
-    constructor(target: CodeBlockNode) {
-        super();
-        this.target = target;
-    }
-    debugString() {
-        return " ".repeat(5) + " merge into next";
-    }
-}
-
-class CodeBlockNode extends AstNode {
-    startindex: number;
-    scriptid: number;
-    nodes: AstNode[] = [];
-    possibleSuccessors: CodeBlockNode[] = [];
-    constructor(scriptid: number, startindex: number) {
-        super();
-        this.scriptid = scriptid;
-        this.startindex = startindex;
-    }
-    debugString(calli: ClientscriptObfuscation) {
-        let res = `============ section ${this.startindex} ============\n`;
-        for (let [subline, command] of this.nodes.entries()) {
-            let currentline = this.startindex + subline;
-            res += `${currentline.toString().padStart(4, " ")}: ${command.debugString(calli)}\n`;
-        }
-        return res;
-    }
-}
-
-class RawOpcodeNode extends AstNode {
-    op: ClientScriptOp;
-    opinfo: OpcodeInfo;
-    opnr: number;
-    constructor(op: ClientScriptOp, opinfo: OpcodeInfo, opnr: number) {
-        super();
-        this.op = op;
-        this.opnr = opnr;
-        this.opinfo = opinfo;
-    }
-    debugString(calli: ClientscriptObfuscation) {
-        let opinfo = calli.decodedMappings.get(this.op.opcode);
-        if (!opinfo) { throw new Error("unknown op"); }
-        let name = knownOpNames[this.op.opcode] ?? "unk";
-        let res = "";
-        let immobj = (typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj}"` : (this.op.imm_obj ?? "").toString());
-        res += `${this.op.opcode.toString().padStart(5, " ")} ${(name ?? "unk").slice(0, 15).padEnd(15, " ")} ${this.op.imm.toString().padStart(10, " ")} ${immobj.padStart(10, " ")}`;
-        //TODO make subclass for this?
-        if (opinfo.optype == "branch" || opinfo.id == namedOps.jump) {
-            res += `  jumpto ${this.opnr + 1 + this.op.imm}`;
-        }
-        return res;
-    }
-}
-class GoSubNode extends RawOpcodeNode {
-    subargs = new StackDiff();
-    returntype = new StackDiff();
-    constructor(cands: ScriptCandidate[], op: ClientScriptOp, opinfo: OpcodeInfo, opnr: number) {
-        super(op, opinfo, opnr);
-        let sub = cands.find(q => q.id == op.imm);
-        if (sub?.returnType) { this.returntype = sub.returnType; }
-        if (sub?.argtype) { this.subargs = sub.argtype; }
-    }
-    debugString(calli: ClientscriptObfuscation) {
-        return `${super.debugString(calli)}  ${this.returntype}(${this.subargs})`;
-    }
-}
-
-function generateAst(cands: ScriptCandidate[], calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
-    let sections: CodeBlockNode[] = [];
-    let getorMakeSection = (index: number) => {
-        if (index >= ops.length) { throw new Error("tried to jump outside script"); }
-        let section = sections.find(q => q.startindex == index);
-        if (!section) {
-            section = new CodeBlockNode(scriptid, index);
-            sections.push(section);
-        }
-        return section
-    }
-
-    let currentsection = getorMakeSection(0);
-
-    //find all jump targets and make the sections
-    for (let [index, op] of ops.entries()) {
-        let nextindex = index + 1;
-        let info = calli.decodedMappings.get(op.opcode)!;
-        if (!info) { throw new Error("tried to add unknown op to AST"); }
-
-        if (info.optype == "branch") {
-            let jumpindex = nextindex + op.imm;
-            getorMakeSection(nextindex);
-            getorMakeSection(jumpindex);
-        }
-    }
-
-    //write the opcodes
-    for (let [index, op] of ops.entries()) {
-        let nextindex = index + 1;
-        let info = calli.decodedMappings.get(op.opcode)!;
-        if (!info) { throw new Error("tried to add unknown op to AST"); }
-        let opnode: RawOpcodeNode;
-        if (info.id == namedOps.gosub) {
-            opnode = new GoSubNode(cands, op, info, index);
-        } else {
-            opnode = new RawOpcodeNode(op, info, index);
-        }
-
-        //check if other flows merge into this one
-        let addrsection = sections.find(q => q.startindex == index);
-        if (addrsection && addrsection != currentsection) {
-            currentsection.nodes.push(new MergeIntoNode(addrsection));
-            currentsection.possibleSuccessors.push(addrsection);
-            currentsection = addrsection;
-        }
-
-        currentsection.nodes.push(opnode);
-
-        if (opnode.opinfo.optype == "branch") {
-            let jumpindex = nextindex + op.imm;
-            let nextblock = getorMakeSection(nextindex);
-            let jumpblock = getorMakeSection(jumpindex);
-            currentsection.possibleSuccessors.push(nextblock, jumpblock);
-            currentsection = nextblock;
-        } else if (opnode.opinfo.optype == "return") {
-            if (index != ops.length - 1) {
-                //dead code will be handled elsewhere
-                currentsection = getorMakeSection(nextindex);
-            }
-        } else if (opnode.opinfo.id == namedOps.switch) {
-            let cases = script.switches[opnode.op.imm];
-            if (!cases) { throw new Error("no matching cases in script"); }
-
-            let nextblock = getorMakeSection(nextindex);
-            currentsection.possibleSuccessors.push(nextblock)
-            for (let cond of cases) {
-                let jumpblock = getorMakeSection(nextindex + cond.label);
-                currentsection.possibleSuccessors.push(jumpblock);
-            }
-            currentsection = nextblock;
-        }
-    }
-    sections.sort((a, b) => a.startindex - b.startindex);
-    return sections;
-}
 
 export async function prepareClientScript(source: CacheFileSource) {
     if (!source.decodeArgs.clientScriptDeob) {
@@ -1144,7 +990,7 @@ export async function prepareClientScript(source: CacheFileSource) {
     }
 }
 
-function getArgType(script: clientscriptdata | clientscript) {
+export function getArgType(script: clientscriptdata | clientscript) {
     let res = new StackDiff();
     res.int = script.intargcount;
     res.long = script.unk0;
@@ -1152,46 +998,26 @@ function getArgType(script: clientscriptdata | clientscript) {
     return res;
 }
 
-function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptOp[]) {
+export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptOp[]) {
     let res = new StackDiff();
     //the jagex compiler appends a default return with null constants to the script, even if this would be dead code
     for (let i = ops.length - 2; i >= 0; i--) {
         let op = ops[i];
         let opinfo = calli.decodedMappings.get(op.opcode);
         if (!opinfo) { throw new Error("unnexpected"); }
-        if (opinfo.id == namedOps.pushconst) {
+        if (opinfo.id == namedClientScriptOps.pushconst) {
             if (op.imm == 0) { res.int++; }
             if (op.imm == 1) { res.long++; }
             if (op.imm == 2) { res.string++; }
-        } else if (opinfo.id == namedOps.pushint) {
+        } else if (opinfo.id == namedClientScriptOps.pushint) {
             res.int++;
-        } else if (opinfo.id == namedOps.pushlong) {
+        } else if (opinfo.id == namedClientScriptOps.pushlong) {
             res.long++;
-        } else if (opinfo.id == namedOps.pushstring) {
+        } else if (opinfo.id == namedClientScriptOps.pushstring) {
             res.string++;
         } else {
             break;
         }
-    }
-    return res;
-}
-
-export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
-    let calli = source.getDecodeArgs().clientScriptDeob;
-    if (!(calli instanceof ClientscriptObfuscation)) { throw new Error("no deob"); }
-
-    let cands = await calli.loadCandidates(source);
-
-    let script = parse.clientscript.read(buf, source);
-    let sections = generateAst(cands, calli, script, script.opcodedata, fileid);
-
-    let returntype = getReturnType(calli, script.opcodedata);
-    let argtype = getArgType(script);
-    let res = "";
-    res += `script ${fileid} ${returntype} (${argtype})\n`;
-
-    for (let section of sections) {
-        res += section.debugString(calli);
     }
     return res;
 }
