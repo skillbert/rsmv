@@ -785,12 +785,20 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 	return tasks;
 }
 
-const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, baseoutput, worldrect) {
+const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, baseoutput, maprect) {
 	let zooms = getLayerZooms(config.config, cnf);
-	let { loadedchunksrect } = chunkrectToOffetWorldRect(engine, worldrect);
+	let { loadedchunksrect } = chunkrectToOffetWorldRect(engine, maprect);
 	let thiscnf = cnf;
 	let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutput.x, baseoutput.y, "svg");
 	let depcrc = deps.recthash(loadedchunksrect);
+	//TODO make this an engine getter
+	const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+	let worldrect: MapRect = {
+		x: maprect.x * chunksize,
+		z: maprect.z * chunksize,
+		xsize: maprect.xsize * chunksize,
+		zsize: maprect.zsize * chunksize
+	}
 	return [{
 		layer: thiscnf,
 		name: filename,
@@ -817,12 +825,19 @@ const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, ba
 	}] satisfies RenderTask[];
 }
 
-const rendermodeCollision: RenderMode<"collision"> = function (engine, config, cnf, deps, baseoutput, worldrect) {
+const rendermodeCollision: RenderMode<"collision"> = function (engine, config, cnf, deps, baseoutput, maprect) {
 	let zooms = getLayerZooms(config.config, cnf);
-	let { loadedchunksrect } = chunkrectToOffetWorldRect(engine, worldrect);
+	let { loadedchunksrect } = chunkrectToOffetWorldRect(engine, maprect);
 	let thiscnf = cnf;
 	let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutput.x, baseoutput.y, cnf.format ?? "webp");
 
+	const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+	let worldrect: MapRect = {
+		x: maprect.x * chunksize,
+		z: maprect.z * chunksize,
+		xsize: maprect.xsize * chunksize,
+		zsize: maprect.zsize * chunksize
+	}
 	let depcrc = deps.recthash(loadedchunksrect);
 	return [{
 		layer: thiscnf,
