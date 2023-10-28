@@ -69,7 +69,6 @@ export class OpcodeInfo {
     type: ImmediateType | "unknown";
     optype: OpTypes | "unknown" = "unknown";
     stackchange: StackDiff | null = null;
-    nvararg = 0;
     stackchangeproofs = new Set<CodeBlockNode>();//TODO remove
     //TODO should probly construct this from the ClientscriptObfuscation and automatically set the mappings
     constructor(scrambledid: number, id: number, possibles: ImmediateType[]) {
@@ -88,38 +87,52 @@ export class StackDiff {
     int = 0;
     long = 0;
     string = 0;
+    vararg = 0;
     sub(other: StackDiff) {
         this.int -= other.int;
         this.long -= other.long;
         this.string -= other.string;
+        this.vararg -= other.vararg;
         return this;
     }
     add(other: StackDiff) {
         this.int += other.int;
         this.long += other.long;
         this.string += other.string;
+        this.vararg += other.vararg;
+        return this;
+    }
+    minzero() {
+        this.int = Math.max(0, this.int);
+        this.long = Math.max(0, this.long);
+        this.string = Math.max(0, this.string);
+        this.vararg = Math.max(0, this.vararg);
         return this;
     }
     intdiv(n: number) {
-        if (this.int % n != 0 || this.long % n != 0 || this.string % n != 0) {
+        if (this.int % n != 0 || this.long % n != 0 || this.string % n != 0 || this.vararg % n != 0) {
             throw new Error("attempted stackdiv division leading to remainder");
         }
         this.int /= n;
         this.long /= n;
         this.string /= n;
+        this.vararg /= n;
         return this;
     }
+    lteq(other: StackDiff) {
+        return this.int <= other.int && this.long <= other.long && this.string <= other.string && this.vararg <= other.vararg;
+    }
     equals(other: StackDiff) {
-        return this.int == other.int && this.long == other.long && this.string == other.string;
+        return this.int == other.int && this.long == other.long && this.string == other.string && this.vararg == other.vararg;
     }
     isEmpty() {
-        return this.int == 0 && this.long == 0 && this.string == 0;
+        return this.int == 0 && this.long == 0 && this.string == 0 && this.vararg == 0;
     }
     toString() {
-        return `int:${this.int}, long:${this.long}, str:${this.string}`;
+        return `${this.int}i ${this.long}L ${this.string}s ${this.vararg}v`;
     }
-    sum() {
-        return this.int + this.long + this.string;
+    clone() {
+        return new StackDiff().add(this);
     }
 }
 
@@ -792,14 +805,13 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
         let sections = generateAst(cands, calli, cand.script, cand.scriptcontents, cand.id);
         allsections.push(...sections);
     }
-    allsections.sort((a, b) => a.nodes.length - b.nodes.length);
+    allsections.sort((a, b) => a.children.length - b.children.length);
 
     type StackDiffEquation = {
         section: CodeBlockNode,
         ops: Map<number, number>,
         constant: StackDiff,
-        dependon: Set<OpcodeInfo>,
-        nvararg: number
+        dependon: Set<OpcodeInfo>
     }
 
     let opmap = new Map<number, StackDiffEquation[]>();
@@ -808,11 +820,10 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
         // if (allsections.indexOf(section) == 202928) { debugger; }
         let ops = new Map<number, number>();
         let constant = new StackDiff();
-        let nvararg = 0;
         let dependon = new Set<OpcodeInfo>();
         let hasProblemOp = false;
         let lastintconst = -1;
-        for (let node of section.nodes) {
+        for (let node of section.children) {
             if (!(node instanceof RawOpcodeNode)) { continue sectionloop; }
             if (node.opinfo.id == namedClientScriptOps.return) {
                 let script = candmap.get(section.scriptid);
@@ -840,8 +851,8 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
                     if (varargmatch) {
                         //only make use of this construct if it is at least 3 chars long
                         //otherwise ignore the equation
-                        nvararg++;
                         if (stringconst.length >= 3) {
+                            constant.vararg++;
                             constant.string--;
                             constant.string -= stringconst.match(/s/g)?.length ?? 0;
                             constant.int -= stringconst.match(/i/g)?.length ?? 0;
@@ -885,7 +896,7 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
             }
         }
         if (!hasProblemOp) {
-            let eq: StackDiffEquation = { section, ops, constant, nvararg, dependon };
+            let eq: StackDiffEquation = { section, ops, constant, dependon };
             for (let op of ops.keys()) {
                 let entry = opmap.get(op);
                 if (!entry) {
@@ -909,13 +920,12 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
             let newequations: StackDiffEquation[] = [];
             didsolve = false;
             for (let eq of activeEquations) {
-                if (!expandedsearch && eq.nvararg != 0) {
+                if (!expandedsearch && eq.constant.vararg != 0) {
                     //ignore sections that have a type string constant in them that might indicate a if_seton* opcode
                     continue;
                 }
                 if (eq.ops.size == 0) {
                     if (!eq.constant.isEmpty()) {
-                        let sumis0 = eq.constant.sum() == 0;
                         throw new Error("equation failed");
                     }
                     //ignore 0=0 equation
@@ -925,13 +935,11 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
                     let numberofops = eq.ops.get(opid)!;
                     let newdiff = new StackDiff().sub(eq.constant).intdiv(numberofops);
                     if (op.stackchange && !op.stackchange.equals(newdiff)) {
-                        let debugref = allsections.filter(q => q.nodes.some(q => (q instanceof RawOpcodeNode) && q.op.opcode == opid));
+                        let debugref = allsections.filter(q => q.children.some(q => (q instanceof RawOpcodeNode) && q.op.opcode == opid));
                         throw new Error("second equation leads to different result");
                     }
                     op.stackchange = newdiff;
                     op.stackchangeproofs.add(eq.section);
-                    if (eq.nvararg % numberofops != 0) { throw new Error("fractional varargs solution"); }
-                    op.nvararg = -eq.nvararg / numberofops;
                     didsolve = true;
                 } else {
                     //TODO do some rewriting here
@@ -943,7 +951,6 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
                                 section: eq.section,
                                 ops: new Map(eq.ops),
                                 constant: new StackDiff().add(eq.constant),
-                                nvararg: eq.nvararg,
                                 dependon: new Set(eq.dependon)
                             };
                             neweq.ops.delete(op);
