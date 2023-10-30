@@ -69,6 +69,7 @@ export class OpcodeInfo {
     type: ImmediateType | "unknown";
     optype: OpTypes | "unknown" = "unknown";
     stackchange: StackDiff | null = null;
+    stackmaxpassthrough: StackDiff | null = null;
     stackchangeproofs = new Set<CodeBlockNode>();//TODO remove
     //TODO should probly construct this from the ClientscriptObfuscation and automatically set the mappings
     constructor(scrambledid: number, id: number, possibles: ImmediateType[]) {
@@ -84,10 +85,16 @@ export class OpcodeInfo {
 }
 
 export class StackDiff {
-    int = 0;
-    long = 0;
-    string = 0;
-    vararg = 0;
+    int: number;
+    long: number;
+    string: number;
+    vararg: number;
+    constructor(int = 0, long = 0, string = 0, vararg = 0) {
+        this.int = int;
+        this.long = long;
+        this.string = string;
+        this.vararg = vararg;
+    }
     sub(other: StackDiff) {
         this.int -= other.int;
         this.long -= other.long;
@@ -109,6 +116,12 @@ export class StackDiff {
         this.vararg = Math.max(0, this.vararg);
         return this;
     }
+    min(other: StackDiff) {
+        this.int = Math.min(other.int, this.int);
+        this.long = Math.min(other.long, this.long);
+        this.string = Math.min(other.string, this.string);
+        this.vararg = Math.min(other.vararg, this.vararg);
+    }
     intdiv(n: number) {
         if (this.int % n != 0 || this.long % n != 0 || this.string % n != 0 || this.vararg % n != 0) {
             throw new Error("attempted stackdiv division leading to remainder");
@@ -129,7 +142,7 @@ export class StackDiff {
         return this.int == 0 && this.long == 0 && this.string == 0 && this.vararg == 0;
     }
     toString() {
-        return `${this.int}i ${this.long}L ${this.string}s ${this.vararg}v`;
+        return `(${this.int},${this.long},${this.string},${this.vararg})`;
     }
     clone() {
         return new StackDiff().add(this);
@@ -344,7 +357,7 @@ async function getReferenceOpcodeDump() {
 export class ClientscriptObfuscation {
     mappings = new Map<number, OpcodeInfo>();
     decodedMappings = new Map<number, OpcodeInfo>();
-    candidates: Promise<ScriptCandidate[]> | null = null;
+    candidates: Promise<Map<number, ScriptCandidate>> | null = null;
     callibrated = false;
     opidcounter = 10000;
     missedParseOps: number[] = [];
@@ -361,7 +374,7 @@ export class ClientscriptObfuscation {
     loadCandidates(source: CacheFileSource) {
         this.candidates ??= (async () => {
             let index = await source.getCacheIndex(cacheMajors.clientscript);
-            let candidates: ScriptCandidate[] = [];
+            let candidates = new Map<number, ScriptCandidate>();
             await trickleTasksTwoStep(10, function* () {
                 for (let entry of index) {
                     if (!entry) { continue; }
@@ -376,7 +389,7 @@ export class ClientscriptObfuscation {
                         unknowns: new Map()
                     }));
                 }
-            }, q => candidates.push(q));
+            }, q => candidates.set(q.id, q));
             return candidates;
         })();
         return this.candidates;
@@ -386,12 +399,12 @@ export class ClientscriptObfuscation {
         let cands = await this.loadCandidates(source);
         let scripts: ReferenceScript[] = [];
         parseCandidateContents(source, this, cands);
-        for (let cand of cands) {
+        for (let cand of cands.values()) {
             if (cand.scriptcontents) {
                 scripts.push({ id: cand.id, scriptdata: cand.script, scriptops: cand.scriptcontents });
             }
         }
-        console.log(`dumped ${scripts.length}/${cands.length} scripts`);
+        console.log(`dumped ${scripts.length}/${cands.size} scripts`);
         return {
             buildnr: source.getBuildNr(),
             scripts,
@@ -464,20 +477,10 @@ export class ClientscriptObfuscation {
         }
 
         let iter = async () => {
-            let ia = 0;
-            let ib = 0;
-            while (ia < candidates.length && ib < refcalli.scripts.length) {
-                let a = candidates[ia];
-                let b = refcalli.scripts[ib];
-                if (a.id == b.id) {
-                    testCandidate(a, convertedref[ib]);
-                    ia++;
-                    ib++;
-                } else if (a.id < b.id) {
-                    ia++;
-                } else {
-                    ib++;
-                }
+            for (let [index, ref] of refcalli.scripts.entries()) {
+                let cand = candidates.get(ref.id);
+                if (!cand) { continue; }
+                testCandidate(cand, convertedref[index])
             }
         }
         let oldcount = 0;
@@ -535,8 +538,8 @@ export class ClientscriptObfuscation {
     }
 }
 
-function parseCandidateContents(source: CacheFileSource, calli: ClientscriptObfuscation, cands: ScriptCandidate[]) {
-    for (let cand of cands) {
+function parseCandidateContents(source: CacheFileSource, calli: ClientscriptObfuscation, cands: Map<number, ScriptCandidate>) {
+    for (let cand of cands.values()) {
         try {
             cand.scriptcontents ??= parse.clientscript.read(cand.buf, source, { clientScriptDeob: calli }).opcodedata;
         } catch (e) { }
@@ -595,7 +598,7 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation, source: Cach
     }
 
     //copy array since the rest of the code wants it in id order
-    let candidates = (await calli.loadCandidates(source)).slice();
+    let candidates = [...(await calli.loadCandidates(source)).values()];
     candidates.sort((a, b) => a.script.instructioncount - b.script.instructioncount || a.script.opcodedata.length - b.script.opcodedata.length);
 
     let runtheories = (cand: ScriptCandidate, chained: (ScriptState | null)[]) => {
@@ -788,21 +791,15 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation, source: Cach
 }
 
 async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFileSource) {
-    let candmap = new Map<number, ScriptCandidate>();
-    let cands = await calli.loadCandidates(source);
+    let candmap = await calli.loadCandidates(source);
 
-    parseCandidateContents(source, calli, cands);
-
-    for (let cand of cands) {
-        if (!cand.scriptcontents) { continue; }
-        candmap.set(cand.id, cand);
-    }
+    parseCandidateContents(source, calli, candmap);
 
     //TODO merge with previous loop?
     let allsections: CodeBlockNode[] = [];
-    for (let cand of cands) {
+    for (let cand of candmap.values()) {
         if (!cand.scriptcontents) { continue }
-        let sections = generateAst(cands, calli, cand.script, cand.scriptcontents, cand.id);
+        let sections = generateAst(candmap, calli, cand.script, cand.scriptcontents, cand.id);
         allsections.push(...sections);
     }
     allsections.sort((a, b) => a.children.length - b.children.length);
@@ -816,58 +813,15 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
 
     let opmap = new Map<number, StackDiffEquation[]>();
     let allequations: StackDiffEquation[] = [];
-    sectionloop: for (let section of allsections) {
-        // if (allsections.indexOf(section) == 202928) { debugger; }
+    for (let section of allsections) {
+        if (section.hasUnexplainedChildren) { continue; }
         let ops = new Map<number, number>();
         let constant = new StackDiff();
         let dependon = new Set<OpcodeInfo>();
-        let hasProblemOp = false;
-        let lastintconst = -1;
         for (let node of section.children) {
-            if (!(node instanceof RawOpcodeNode)) { continue sectionloop; }
-            if (node.opinfo.id == namedClientScriptOps.return) {
-                let script = candmap.get(section.scriptid);
-                if (!script || !script.returnType) { continue sectionloop; }
-                constant.sub(script.returnType);
-            } else if (node.opinfo.id == namedClientScriptOps.gosub) {
-                let script = candmap.get(node.op.imm);
-                if (!script || !script.returnType || !script.argtype) { continue sectionloop; }
-                constant.sub(script.argtype).add(script.returnType);
-            } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
-                constant.string += -node.op.imm + 1;
-            } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
-                if (node.op.imm == 0) {
-                    constant.int++;
-                    if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
-                    lastintconst = node.op.imm_obj;
-                }
-                else if (node.op.imm == 1) { constant.long++; }
-                else if (node.op.imm == 2) {
-                    constant.string++;
-                    let stringconst = node.op.imm_obj as string;
-                    //a string like this indicates a vararg set where this string indicates the types
-                    //treat the entire thing as one vararg
-                    let varargmatch = stringconst.match(/^[ils]*Y?$/);
-                    if (varargmatch) {
-                        //only make use of this construct if it is at least 3 chars long
-                        //otherwise ignore the equation
-                        if (stringconst.length >= 3) {
-                            constant.vararg++;
-                            constant.string--;
-                            constant.string -= stringconst.match(/s/g)?.length ?? 0;
-                            constant.int -= stringconst.match(/i/g)?.length ?? 0;
-                            constant.long -= stringconst.match(/l/g)?.length ?? 0;
-                            //variable number of ints
-                            if (stringconst.includes("Y")) {
-                                constant.int--;
-                                constant.int -= lastintconst;
-                            }
-                        } else {
-                            hasProblemOp = true;
-                        }
-                    }
-                }
-                else { throw new Error("unexpected"); }
+            if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
+            if (node.knownStackDiff) {
+                constant.sub(node.knownStackDiff.in).add(node.knownStackDiff.out);
             } else if (node.opinfo.stackchange) {
                 constant.add(node.opinfo.stackchange);
                 dependon.add(node.opinfo);
@@ -875,38 +829,17 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
                 let count = ops.get(node.op.opcode) ?? 0;
                 ops.set(node.op.opcode, count + 1);
             }
-
-            //42 PUSH_VARC_INT is weird
-            const problemops = [
-                42,
-                43,
-                10023,
-                10672,
-                10110,
-                10717,
-                10063,
-                10885,
-                10699,
-                10815,
-                10735,//either this or 10736
-            ];
-            // const problemops = [10023, 10672, 10110, 10717,];
-            if (problemops.includes(node.op.opcode)) {
-                hasProblemOp = true;
-            }
         }
-        if (!hasProblemOp) {
-            let eq: StackDiffEquation = { section, ops, constant, dependon };
-            for (let op of ops.keys()) {
-                let entry = opmap.get(op);
-                if (!entry) {
-                    entry = [];
-                    opmap.set(op, entry);
-                }
-                entry.push(eq);
+        let eq: StackDiffEquation = { section, ops, constant, dependon };
+        for (let op of ops.keys()) {
+            let entry = opmap.get(op);
+            if (!entry) {
+                entry = [];
+                opmap.set(op, entry);
             }
-            allequations.push(eq);
+            entry.push(eq);
         }
+        allequations.push(eq);
     }
     opmap.forEach(q => q.sort((a, b) => a.ops.size - b.ops.size));
 
@@ -968,22 +901,28 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
         }
     }
 
-    //solve the set of linear equations
-    // for(let eq of allequations){
-    //     let unknowns=
-    // }
 
-    //variable number of pops/pushes
-    //joinstring (int imm)
-    //return (detect from tail const return)
-    //gosub (detect from other scripts)
-    //seton (detect from last pushed string or from other scripts)
-    // - has a bunch of variations, finding the opcodes might be challenging
-    //branches
-    // - branch
-    // - if
-    // - switch
-    // - else?
+    for (let section of allsections) {
+        if (section.hasUnexplainedChildren) { continue; }
+        let stack = new StackDiff();
+        for (let node of section.children) {
+            if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
+            if (node.knownStackDiff) {
+                stack.sub(node.knownStackDiff.in).add(node.knownStackDiff.out);
+            } else if (node.opinfo.stackchange) {
+                node.opinfo.stackmaxpassthrough ??= new StackDiff(100, 100, 100);
+                node.opinfo.stackmaxpassthrough.min(stack);
+                stack.add(node.opinfo.stackchange);
+                node.opinfo.stackmaxpassthrough.min(stack);
+            } else {
+                break;
+            }
+            if (stack.int < 0 || stack.long < 0 || stack.string < 0 || stack.vararg < 0) {
+                let qq = 1;
+            }
+        }
+    }
+
     return activeEquations;
 }
 

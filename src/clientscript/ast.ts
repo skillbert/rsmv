@@ -17,11 +17,11 @@ export abstract class AstNode {
     debugStringArgs(indent: string, calli: ClientscriptObfuscation) {
         let res = "";
         if (this.children.length != 0) {
-            res += `\n${indent}(\n`;
+            // res += `\n${indent}(\n`;
             for (let child of this.children) {
-                res += `${child.debugString(indent + "\t", calli)}\n`;
+                res += `${child.debugString(indent + "  ", calli)}\n`;
             }
-            res += `${indent})`;
+            // res += `${indent})`;
         }
         return res;
     }
@@ -46,6 +46,7 @@ export abstract class AstNode {
 export class CodeBlockNode extends AstNode {
     scriptid: number;
     possibleSuccessors: CodeBlockNode[] = [];
+    hasUnexplainedChildren = false;
     constructor(scriptid: number, startindex: number) {
         super(startindex);
         this.scriptid = scriptid;
@@ -54,7 +55,7 @@ export class CodeBlockNode extends AstNode {
         let res = `============ section ${this.originalindex} ============\n`;
         // res += this.debugStringArgs(indent, calli);
         for (let [subline, command] of this.children.entries()) {
-            res += `${command.debugString(indent, calli)}\n`;
+            res += `${indent}${command.debugString(indent, calli)}\n`;
         }
         if (this.possibleSuccessors.some(q => q.originalindex == this.originalindex + this.children.length)) {
             res += `${indent}${" ".repeat(5 + 1 + 5)} merge into next\n`;
@@ -66,6 +67,10 @@ export class CodeBlockNode extends AstNode {
 export class RawOpcodeNode extends AstNode {
     op: ClientScriptOp;
     opinfo: OpcodeInfo;
+    knownStackDiff: {
+        in: StackDiff,
+        out: StackDiff
+    } | null = null;
     opnr: number;
     constructor(index: number, op: ClientScriptOp, opinfo: OpcodeInfo, opnr: number) {
         super(index);
@@ -77,59 +82,32 @@ export class RawOpcodeNode extends AstNode {
         let opinfo = calli.decodedMappings.get(this.op.opcode);
         if (!opinfo) { throw new Error("unknown op"); }
         let name = knownClientScriptOpNames[this.op.opcode] ?? "unk";
-        let res = `${this.originalindex.toString().padStart(4, " ")}: `;
+        let res = "";
+        res += this.debugStringArgs(indent, calli);
+        res += `${indent}${this.originalindex.toString().padStart(4, " ")}: `;
         let immobj = (typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj}"` : (this.op.imm_obj ?? "").toString());
         res += `${this.op.opcode.toString().padStart(5, " ")} ${(name ?? "unk").slice(0, 15).padEnd(15, " ")} ${this.op.imm.toString().padStart(10, " ")} ${immobj.padStart(10, " ")}`;
         //TODO make subclass for this?
-        if (opinfo.stackchange) {
+        if (this.knownStackDiff) {
+            res += ` ${this.knownStackDiff.out}(${this.knownStackDiff.in})`;
+        } else if (opinfo.stackchange) {
             res += ` (${opinfo.stackchange})`;
+        }
+        if (opinfo.stackmaxpassthrough) {
+            res += ` <${opinfo.stackmaxpassthrough}>`;
         }
         if (opinfo.optype == "branch" || opinfo.id == namedClientScriptOps.jump) {
             res += `  jumpto ${this.opnr + 1 + this.op.imm}`;
         }
-        res += this.debugStringArgs(indent, calli);
         return res;
     }
 }
 
+//TODO obsolete?
 class RawGoSubNode extends RawOpcodeNode {
-    argumentType = new StackDiff();
-    returnType = new StackDiff();
-    constructor(cands: ScriptCandidate[], index: number, op: ClientScriptOp, opinfo: OpcodeInfo, opnr: number) {
-        super(index, op, opinfo, opnr);
-        let sub = cands.find(q => q.id == op.imm);
-        if (sub?.returnType) { this.returnType = sub.returnType; }
-        if (sub?.argtype) { this.argumentType = sub.argtype; }
-    }
-    debugString(indent: string, calli: ClientscriptObfuscation) {
-        return `${super.debugString(indent, calli)}  ${this.returnType}(${this.argumentType})${this.debugStringArgs(indent, calli)}`;
-    }
-}
-
-class StackOpNode extends AstNode {
-    ispop: boolean;
-    amount: StackDiff;
-    constructor(index: number, ispop: boolean, amount: StackDiff) {
-        super(index);
-        this.ispop = ispop;
-        this.amount = amount;
-    }
-}
-
-class FunctionCallNode extends AstNode {
-    stackin: StackDiff;
-    stackout: StackDiff;
-    targetOpcode: OpcodeInfo | null = null;
-    targetClientScript: number | null = null;
-    arguments: AstNode[] = [];
-    constructor(index: number, stackin: StackDiff, stackout: StackDiff) {
-        super(index);
-        this.stackin = stackin;
-        this.stackout = stackout;
-    }
-
-    grabArguments(ctx: RewriteCursor) {
-    }
+    // debugString(indent: string, calli: ClientscriptObfuscation) {
+    //     return `${super.debugString(indent, calli)}  ${this.debugStringArgs(indent, calli)}`;
+    // }
 }
 
 class RewriteCursor {
@@ -200,11 +178,15 @@ class RewriteCursor {
 
 function getNodeStackOut(node: AstNode) {
     let out = new StackDiff();
-    if (node instanceof RawGoSubNode) {
-        out.add(node.returnType);
-    } else if (node instanceof RawOpcodeNode) {
-        if (node.opinfo.stackchange) {
-            out.add(node.opinfo.stackchange).minzero();
+    if (node instanceof RawOpcodeNode) {
+        if (node.knownStackDiff) {
+            out.add(node.knownStackDiff.out);
+        } else if (node.opinfo.stackchange) {
+            out.add(node.opinfo.stackchange);
+            if (node.opinfo.stackmaxpassthrough) {
+                out.add(node.opinfo.stackmaxpassthrough)
+            }
+            out.minzero();
         }
     }
     return out;
@@ -212,11 +194,15 @@ function getNodeStackOut(node: AstNode) {
 
 function getNodeStackIn(node: AstNode) {
     let out = new StackDiff();
-    if (node instanceof RawGoSubNode) {
-        out.add(node.argumentType);
-    } else if (node instanceof RawOpcodeNode) {
-        if (node.opinfo.stackchange) {
-            out.sub(node.opinfo.stackchange).minzero();
+    if (node instanceof RawOpcodeNode) {
+        if (node.knownStackDiff) {
+            out.add(node.knownStackDiff.in);
+        } else if (node.opinfo.stackchange) {
+            out.sub(node.opinfo.stackchange);
+            if (node.opinfo.stackmaxpassthrough) {
+                out.add(node.opinfo.stackmaxpassthrough)
+            }
+            out.minzero();
         }
     }
     return out;
@@ -247,7 +233,110 @@ export function translateAst(ast: CodeBlockNode) {
     return ast;
 }
 
-export function generateAst(cands: ScriptCandidate[], calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
+function addKnownStackDiff(section: CodeBlockNode, candmap: Map<number, ScriptCandidate>) {
+
+    const problemops = [
+        42,//42 PUSH_VARC_INT can somehow also push long?
+        43,
+        10023,
+        10672,
+        10110,
+        10717,
+        10063,
+        10885,
+        10699,
+        10815,
+        10735,//either this or 10736
+    ];
+
+    let lastintconst = -1;
+    for (let node of section.children) {
+        if (!(node instanceof RawOpcodeNode)) {
+            section.hasUnexplainedChildren = true;
+            return false;
+        }
+        if (node.opinfo.id == namedClientScriptOps.return) {
+            let script = candmap.get(section.scriptid);
+            if (!script || !script.returnType) {
+                section.hasUnexplainedChildren = true;
+                return false;
+            }
+            node.knownStackDiff = {
+                in: script.returnType,
+                out: new StackDiff()
+            };
+        } else if (node.opinfo.id == namedClientScriptOps.gosub) {
+            let script = candmap.get(node.op.imm);
+            if (!script || !script.returnType || !script.argtype) {
+                section.hasUnexplainedChildren = true;
+                return null;
+            }
+            node.knownStackDiff = {
+                in: script.argtype,
+                out: script.returnType
+            };
+        } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
+            node.knownStackDiff = {
+                in: new StackDiff(0, 0, node.op.imm),
+                out: new StackDiff(0, 0, 1)
+            }
+        } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
+            if (node.op.imm == 0) {
+                node.knownStackDiff = {
+                    in: new StackDiff(),
+                    out: new StackDiff(1)
+                }
+                if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
+                lastintconst = node.op.imm_obj;
+            } else if (node.op.imm == 1) {
+                node.knownStackDiff = {
+                    in: new StackDiff(),
+                    out: new StackDiff(0, 1)
+                };
+            } else if (node.op.imm == 2) {
+                let stringconst = node.op.imm_obj as string;
+                //a string like this indicates a vararg set where this string indicates the types
+                //treat the entire thing as one vararg
+                let varargmatch = stringconst.match(/^[ils]*Y?$/);
+                if (varargmatch) {
+                    //only make use of this construct if it is at least 3 chars long
+                    //otherwise ignore the equation
+                    if (stringconst.length >= 3) {
+                        let indiff = new StackDiff(
+                            stringconst.match(/i/g)?.length ?? 0,
+                            stringconst.match(/l/g)?.length ?? 0,
+                            stringconst.match(/s/g)?.length ?? 0
+                        );
+                        let outdiff = new StackDiff(0, 0, 0, 1);
+                        node.knownStackDiff = { in: indiff, out: outdiff };
+                        //variable number of ints
+                        if (stringconst.includes("Y")) {
+                            indiff.int++;//number of ints to take from stack
+                            indiff.int += lastintconst;
+                        }
+                    } else {
+                        section.hasUnexplainedChildren = true;
+                    }
+                } else {
+                    node.knownStackDiff = {
+                        in: new StackDiff(),
+                        out: new StackDiff(0, 0, 1)
+                    }
+                }
+            } else {
+                throw new Error("unexpected");
+            }
+        }
+
+        if (problemops.includes(node.op.opcode)) {
+            section.hasUnexplainedChildren = true;
+        }
+    }
+    return true;
+}
+
+export function generateAst(candmap: Map<number, ScriptCandidate>, calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
+
     let sections: CodeBlockNode[] = [];
     let getorMakeSection = (index: number) => {
         if (index >= ops.length) { throw new Error("tried to jump outside script"); }
@@ -281,7 +370,7 @@ export function generateAst(cands: ScriptCandidate[], calli: ClientscriptObfusca
         if (!info) { throw new Error("tried to add unknown op to AST"); }
         let opnode: RawOpcodeNode;
         if (info.id == namedClientScriptOps.gosub) {
-            opnode = new RawGoSubNode(cands, index, op, info, index);
+            opnode = new RawGoSubNode(index, op, info, index);
         } else {
             opnode = new RawOpcodeNode(index, op, info, index);
         }
@@ -323,6 +412,7 @@ export function generateAst(cands: ScriptCandidate[], calli: ClientscriptObfusca
         }
     }
     sections.sort((a, b) => a.originalindex - b.originalindex);
+    sections.forEach(q => addKnownStackDiff(q, candmap))
     return sections;
 }
 
@@ -334,7 +424,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
     let script = parse.clientscript.read(buf, source);
     let sections = generateAst(cands, calli, script, script.opcodedata, fileid);
-    // sections = sections.map(q => translateAst(q));
+    sections = sections.map(q => translateAst(q));
 
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
