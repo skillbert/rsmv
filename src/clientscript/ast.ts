@@ -103,13 +103,6 @@ export class RawOpcodeNode extends AstNode {
     }
 }
 
-//TODO obsolete?
-class RawGoSubNode extends RawOpcodeNode {
-    // debugString(indent: string, calli: ClientscriptObfuscation) {
-    //     return `${super.debugString(indent, calli)}  ${this.debugStringArgs(indent, calli)}`;
-    // }
-}
-
 class RewriteCursor {
     rootnode: AstNode;
     cursorStack: AstNode[] = [];
@@ -183,10 +176,10 @@ function getNodeStackOut(node: AstNode) {
             out.add(node.knownStackDiff.out);
         } else if (node.opinfo.stackchange) {
             out.add(node.opinfo.stackchange);
+            out.minzero();
             if (node.opinfo.stackmaxpassthrough) {
                 out.add(node.opinfo.stackmaxpassthrough)
             }
-            out.minzero();
         }
     }
     return out;
@@ -233,11 +226,11 @@ export function translateAst(ast: CodeBlockNode) {
     return ast;
 }
 
-function addKnownStackDiff(section: CodeBlockNode, candmap: Map<number, ScriptCandidate>) {
+function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscation) {
 
     const problemops = [
-        42,//42 PUSH_VARC_INT can somehow also push long?
-        43,
+        // 42,//42 PUSH_VARC_INT can somehow also push long?
+        // 43,
         10023,
         10672,
         10110,
@@ -256,7 +249,7 @@ function addKnownStackDiff(section: CodeBlockNode, candmap: Map<number, ScriptCa
             return false;
         }
         if (node.opinfo.id == namedClientScriptOps.return) {
-            let script = candmap.get(section.scriptid);
+            let script = calli.candidates.get(section.scriptid);
             if (!script || !script.returnType) {
                 section.hasUnexplainedChildren = true;
                 return false;
@@ -266,10 +259,10 @@ function addKnownStackDiff(section: CodeBlockNode, candmap: Map<number, ScriptCa
                 out: new StackDiff()
             };
         } else if (node.opinfo.id == namedClientScriptOps.gosub) {
-            let script = candmap.get(node.op.imm);
+            let script = calli.candidates.get(node.op.imm);
             if (!script || !script.returnType || !script.argtype) {
                 section.hasUnexplainedChildren = true;
-                return null;
+                return false;
             }
             node.knownStackDiff = {
                 in: script.argtype,
@@ -280,6 +273,25 @@ function addKnownStackDiff(section: CodeBlockNode, candmap: Map<number, ScriptCa
                 in: new StackDiff(0, 0, node.op.imm),
                 out: new StackDiff(0, 0, 1)
             }
+        } else if (node.opinfo.id == namedClientScriptOps.pushvar || node.opinfo.id == namedClientScriptOps.popvar) {
+            let groupid = (node.op.imm >> 24) & 0xff;
+            let varid = (node.op.imm >> 8) & 0xffff;
+            let group = calli.varmeta.get(groupid);
+            let varmeta = group?.get(varid);
+            if (!group || !varmeta) {
+                section.hasUnexplainedChildren = true;
+                return false;
+            }
+            let diff = new StackDiff();
+            if ([36, 50].includes(varmeta.type)) { diff.string++; }
+            else if ([35, 49, 56, 71, 110, 115, 116].includes(varmeta.type)) { diff.long++; }
+            else { diff.int++; }
+            let ispop = node.opinfo.id == namedClientScriptOps.popvar;
+
+            node.knownStackDiff = {
+                in: (ispop ? diff : new StackDiff()),
+                out: (ispop ? new StackDiff() : diff)
+            };
         } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
             if (node.op.imm == 0) {
                 node.knownStackDiff = {
@@ -335,7 +347,7 @@ function addKnownStackDiff(section: CodeBlockNode, candmap: Map<number, ScriptCa
     return true;
 }
 
-export function generateAst(candmap: Map<number, ScriptCandidate>, calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
+export function generateAst(calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
 
     let sections: CodeBlockNode[] = [];
     let getorMakeSection = (index: number) => {
@@ -368,12 +380,7 @@ export function generateAst(candmap: Map<number, ScriptCandidate>, calli: Client
         let nextindex = index + 1;
         let info = calli.decodedMappings.get(op.opcode)!;
         if (!info) { throw new Error("tried to add unknown op to AST"); }
-        let opnode: RawOpcodeNode;
-        if (info.id == namedClientScriptOps.gosub) {
-            opnode = new RawGoSubNode(index, op, info, index);
-        } else {
-            opnode = new RawOpcodeNode(index, op, info, index);
-        }
+        let opnode = new RawOpcodeNode(index, op, info, index);
 
         //check if other flows merge into this one
         let addrsection = sections.find(q => q.originalindex == index);
@@ -412,7 +419,7 @@ export function generateAst(candmap: Map<number, ScriptCandidate>, calli: Client
         }
     }
     sections.sort((a, b) => a.originalindex - b.originalindex);
-    sections.forEach(q => addKnownStackDiff(q, candmap))
+    sections.forEach(q => addKnownStackDiff(q, calli))
     return sections;
 }
 
@@ -420,10 +427,8 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     let calli = source.getDecodeArgs().clientScriptDeob;
     if (!(calli instanceof ClientscriptObfuscation)) { throw new Error("no deob"); }
 
-    let cands = await calli.loadCandidates(source);
-
     let script = parse.clientscript.read(buf, source);
-    let sections = generateAst(cands, calli, script, script.opcodedata, fileid);
+    let sections = generateAst(calli, script, script.opcodedata, fileid);
     sections = sections.map(q => translateAst(q));
 
     let returntype = getReturnType(calli, script.opcodedata);

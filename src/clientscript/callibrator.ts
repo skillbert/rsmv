@@ -1,6 +1,6 @@
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
-import { parse } from "../opdecoder";
+import { FileParser, parse } from "../opdecoder";
 import { trickleTasksTwoStep } from "../utils";
 import { DecodeState } from "../opcode_reader";
 import { clientscriptdata } from "../../generated/clientscriptdata";
@@ -13,6 +13,26 @@ const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies Imme
 const lastNonObfuscatedBuild = 668;
 const firstModernOpsBuild = 751;
 
+const variableSources = {
+    player: { key: 0, index: 60 },
+    npc: { key: 1, index: 61 },
+    client: { key: 2, index: 62 },
+    world: { key: 3, index: 63 },
+    region: { key: 4, index: 64 },
+    object: { key: 5, index: 65 },
+    clan: { key: 6, index: 66 },
+    clansettings: { key: 7, index: 67 },
+    campaign: { key: 8, index: 68 },
+    playergroup: { key: 9, index: 75 }//not sure about 75
+};
+
+let varInfoParser = new FileParser<{ type: number }>({
+    "0x03": { "name": "type", "read": "ubyte" },
+    "0x04": { "name": "0x04", "read": "ubyte" },
+    "0x07": { "name": "0x07", "read": true },
+    "0x6e": { "name": "0x6e", "read": "ushort" },
+});
+
 export const namedClientScriptOps = {
     //old caches only
     pushint: 0,
@@ -22,6 +42,10 @@ export const namedClientScriptOps = {
     //variable number of args
     joinstring: 37,
     gosub: 40,
+
+    //complicated types
+    pushvar: 42,
+    popvar: 43,
 
     //control flow
     jump: 6,
@@ -121,6 +145,13 @@ export class StackDiff {
         this.long = Math.min(other.long, this.long);
         this.string = Math.min(other.string, this.string);
         this.vararg = Math.min(other.vararg, this.vararg);
+    }
+    mult(n: number) {
+        this.int *= n;
+        this.long *= n;
+        this.string *= n;
+        this.vararg *= n;
+        return this;
     }
     intdiv(n: number) {
         if (this.int % n != 0 || this.long % n != 0 || this.string % n != 0 || this.vararg % n != 0) {
@@ -326,10 +357,10 @@ async function getReferenceOpcodeDump() {
     referenceOpcodeDump ??= (async () => {
         let rootsource = await Openrs2CacheSource.fromId(1383);
         let refsource = await Openrs2CacheSource.fromId(1572);
-        let rootcalli = new ClientscriptObfuscation();
-        let refcalli = new ClientscriptObfuscation();
+        let rootcalli = await ClientscriptObfuscation.create(rootsource);
+        let refcalli = await ClientscriptObfuscation.create(refsource);
         rootcalli.setNonObbedMappings();
-        await refcalli.runCallibrationFrom(refsource, rootsource, rootcalli);
+        await refcalli.runCallibrationFrom(rootcalli);
 
         //2 opcodes have the tribyte type
         let tribyte1 = new OpcodeInfo(0x0314, namedClientScriptOps.tribyte1, ["tribyte"]);
@@ -349,7 +380,7 @@ async function getReferenceOpcodeDump() {
                 // refcalli.decodedMappings.set(newop.id, newop);
             }
         }
-        return refcalli.generateDump(refsource);
+        return refcalli.generateDump();
     })();
     return referenceOpcodeDump;
 }
@@ -357,10 +388,22 @@ async function getReferenceOpcodeDump() {
 export class ClientscriptObfuscation {
     mappings = new Map<number, OpcodeInfo>();
     decodedMappings = new Map<number, OpcodeInfo>();
-    candidates: Promise<Map<number, ScriptCandidate>> | null = null;
+    candidates: Map<number, ScriptCandidate> = new Map();
     callibrated = false;
     opidcounter = 10000;
     missedParseOps: number[] = [];
+    source: CacheFileSource;
+    varmeta: Map<number, Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never>> = new Map();
+
+    private constructor(source: CacheFileSource) {
+        this.source = source;
+    }
+
+    static async create(source: CacheFileSource) {
+        let res = new ClientscriptObfuscation(source);
+        await res.preloadData();
+        return res;
+    }
 
     declareOp(rawopid: number, types: ImmediateType[]) {
         let op = new OpcodeInfo(rawopid, this.opidcounter++, types);
@@ -371,34 +414,44 @@ export class ClientscriptObfuscation {
         return op;
     }
 
-    loadCandidates(source: CacheFileSource) {
-        this.candidates ??= (async () => {
-            let index = await source.getCacheIndex(cacheMajors.clientscript);
-            let candidates = new Map<number, ScriptCandidate>();
-            await trickleTasksTwoStep(10, function* () {
-                for (let entry of index) {
-                    if (!entry) { continue; }
-                    yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
-                        id: entry.minor,
-                        solutioncount: 0,
-                        buf,
-                        script: parse.clientscriptdata.read(buf, source),
-                        scriptcontents: null,
-                        argtype: null,
-                        returnType: null,
-                        unknowns: new Map()
-                    }));
-                }
-            }, q => candidates.set(q.id, q));
-            return candidates;
-        })();
-        return this.candidates;
+    async preloadData() {
+        let loadVars = async (subid: number) => {
+            let archieve = await this.source.getArchiveById(cacheMajors.config, subid);
+            return new Map(archieve.map(q => [q.fileid, varInfoParser.read(q.buffer, this.source)]));
+        }
+
+        //only tested on current 932 caches
+        if (this.source.getBuildNr() > 900) {
+            this.varmeta = new Map(await Promise.all(Object.entries(variableSources).map(async q => [
+                q[1].key,
+                await loadVars(q[1].index)
+            ] as const)));
+        }
+
+        let index = await this.source.getCacheIndex(cacheMajors.clientscript);
+        this.candidates.clear();
+        let source = this.source;
+        await trickleTasksTwoStep(10, function* () {
+            for (let entry of index) {
+                if (!entry) { continue; }
+                yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
+                    id: entry.minor,
+                    solutioncount: 0,
+                    buf,
+                    script: parse.clientscriptdata.read(buf, source),
+                    scriptcontents: null,
+                    argtype: null,
+                    returnType: null,
+                    unknowns: new Map()
+                }));
+            }
+        }, q => this.candidates.set(q.id, q));
     }
 
-    async generateDump(source: CacheFileSource) {
-        let cands = await this.loadCandidates(source);
+    async generateDump() {
+        let cands = this.candidates;
         let scripts: ReferenceScript[] = [];
-        parseCandidateContents(source, this, cands);
+        parseCandidateContents(this);
         for (let cand of cands.values()) {
             if (cand.scriptcontents) {
                 scripts.push({ id: cand.id, scriptdata: cand.script, scriptops: cand.scriptcontents });
@@ -406,7 +459,7 @@ export class ClientscriptObfuscation {
         }
         console.log(`dumped ${scripts.length}/${cands.size} scripts`);
         return {
-            buildnr: source.getBuildNr(),
+            buildnr: this.source.getBuildNr(),
             scripts,
             mappings: this.mappings,
             opidcounter: this.opidcounter
@@ -417,12 +470,12 @@ export class ClientscriptObfuscation {
             this.setNonObbedMappings();
         } else {
             let ref = await getReferenceOpcodeDump();
-            await this.runCallibration(source, ref, ref.buildnr);
+            await this.runCallibration(ref);
         }
     }
-    async runCallibrationFrom(currentsource: CacheFileSource, referenceSource: CacheFileSource, previousCallibration: ClientscriptObfuscation) {
-        let refscript = await previousCallibration.generateDump(referenceSource);
-        await this.runCallibration(currentsource, refscript, referenceSource.getBuildNr());
+    async runCallibrationFrom(previousCallibration: ClientscriptObfuscation) {
+        let refscript = await previousCallibration.generateDump();
+        await this.runCallibration(refscript);
     }
     setNonObbedMappings() {
         //originally all <0x80 were ints
@@ -439,9 +492,9 @@ export class ClientscriptObfuscation {
         this.mappings.forEach(value => this.decodedMappings.set(value.id, value));
         this.callibrated = true;
     }
-    async runCallibration(source: CacheFileSource, refcalli: ReferenceCallibration, refbuildnr: number) {
-        let convertedref = refcalli.scripts.map<ClientScriptOp[]>(q => translateClientScript(q.scriptops, refbuildnr, source.getBuildNr()));
-        let candidates = await this.loadCandidates(source);
+    async runCallibration(refcalli: ReferenceCallibration) {
+        let convertedref = refcalli.scripts.map<ClientScriptOp[]>(q => translateClientScript(q.scriptops, refcalli.buildnr, this.source.getBuildNr()));
+        let candidates = this.candidates;
 
         this.opidcounter = refcalli.opidcounter;
         let testCandidate = (cand: ScriptCandidate, refops: ClientScriptOp[]) => {
@@ -494,8 +547,8 @@ export class ClientscriptObfuscation {
         }
         console.log(`callibrated in ${itercount + 1} iterations`);
 
-        await findOpcodeImmidiates(this, source);
-        parseCandidateContents(source, this, candidates);
+        await findOpcodeImmidiates(this);
+        parseCandidateContents(this);
 
         for (let op of this.mappings.values()) {
             if (op.id == namedClientScriptOps.gosub) {
@@ -507,7 +560,7 @@ export class ClientscriptObfuscation {
             }
         }
         this.callibrated = true;
-        await findOpcodeTypes(this, source);
+        await findOpcodeTypes(this);
     }
     readOpcode: ReadOpCallback = (state: DecodeState) => {
         if (!this.callibrated) { throw new Error("clientscript deob not callibrated yet"); }
@@ -538,10 +591,10 @@ export class ClientscriptObfuscation {
     }
 }
 
-function parseCandidateContents(source: CacheFileSource, calli: ClientscriptObfuscation, cands: Map<number, ScriptCandidate>) {
-    for (let cand of cands.values()) {
+function parseCandidateContents(calli: ClientscriptObfuscation) {
+    for (let cand of calli.candidates.values()) {
         try {
-            cand.scriptcontents ??= parse.clientscript.read(cand.buf, source, { clientScriptDeob: calli }).opcodedata;
+            cand.scriptcontents ??= parse.clientscript.read(cand.buf, calli.source, { clientScriptDeob: calli }).opcodedata;
         } catch (e) { }
 
         if (!cand.scriptcontents) { continue; }
@@ -550,7 +603,7 @@ function parseCandidateContents(source: CacheFileSource, calli: ClientscriptObfu
     }
 }
 
-async function findOpcodeImmidiates(calli: ClientscriptObfuscation, source: CacheFileSource) {
+async function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
 
     let switchcompleted = false;
     let tribytecompleted = false;
@@ -598,7 +651,7 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation, source: Cach
     }
 
     //copy array since the rest of the code wants it in id order
-    let candidates = [...(await calli.loadCandidates(source)).values()];
+    let candidates = [...calli.candidates.values()];
     candidates.sort((a, b) => a.script.instructioncount - b.script.instructioncount || a.script.opcodedata.length - b.script.opcodedata.length);
 
     let runtheories = (cand: ScriptCandidate, chained: (ScriptState | null)[]) => {
@@ -790,16 +843,14 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation, source: Cach
     }
 }
 
-async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFileSource) {
-    let candmap = await calli.loadCandidates(source);
-
-    parseCandidateContents(source, calli, candmap);
+async function findOpcodeTypes(calli: ClientscriptObfuscation) {
+    parseCandidateContents(calli);
 
     //TODO merge with previous loop?
     let allsections: CodeBlockNode[] = [];
-    for (let cand of candmap.values()) {
+    for (let cand of calli.candidates.values()) {
         if (!cand.scriptcontents) { continue }
-        let sections = generateAst(candmap, calli, cand.script, cand.scriptcontents, cand.id);
+        let sections = generateAst(calli, cand.script, cand.scriptcontents, cand.id);
         allsections.push(...sections);
     }
     allsections.sort((a, b) => a.children.length - b.children.length);
@@ -929,7 +980,7 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation, source: CacheFile
 
 export async function prepareClientScript(source: CacheFileSource) {
     if (!source.decodeArgs.clientScriptDeob) {
-        let deob = new ClientscriptObfuscation();
+        let deob = await ClientscriptObfuscation.create(source);
         globalThis.deob = deob;//TODO remove
         source.decodeArgs.clientScriptDeob = deob;
         await deob.runAutoCallibrate(source);

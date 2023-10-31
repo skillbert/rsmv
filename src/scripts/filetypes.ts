@@ -184,6 +184,22 @@ function chunkedIndex(major: number): DecodeLookup {
 	};
 }
 
+function anyFileIndex(): DecodeLookup {
+	return {
+		major: undefined,
+		minor: undefined,
+		logicalDimensions: 3,
+		multiIndexArchives: false,
+		fileToLogical(source, major, minor, subfile) { return [major, minor, subfile]; },
+		logicalToFile(source, id) { return { major: id[0], minor: id[1], subid: id[2] }; },
+		async logicalRangeToFiles(source, start, end) {
+			if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
+			let major = start[0];
+			return filerange(source, { major, minor: start[1], subid: start[2] }, { major, minor: end[1], subid: end[2] });
+		}
+	}
+}
+
 function noArchiveIndex(major: number): DecodeLookup {
 	return {
 		major,
@@ -329,18 +345,8 @@ export type DecodeMode<T = Buffer | string> = {
 
 const decodeBinary: DecodeModeFactory = () => {
 	return {
+		...anyFileIndex(),
 		ext: "bin",
-		major: undefined,
-		minor: undefined,
-		logicalDimensions: 3,
-		multiIndexArchives: false,
-		fileToLogical(source, major, minor, subfile) { return [major, minor, subfile]; },
-		logicalToFile(source, id) { return { major: id[0], minor: id[1], subid: id[2] }; },
-		async logicalRangeToFiles(source, start, end) {
-			if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
-			let major = start[0];
-			return filerange(source, { major, minor: start[1], subid: start[2] }, { major, minor: end[1], subid: end[2] });
-		},
 		prepareDump() { },
 		read(b) { return b; },
 		write(b) { return b; },
@@ -552,6 +558,8 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
 	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() },
+
+	test: { parser: FileParser.fromJson(`["struct",\n  \n]`), lookup: anyFileIndex() },
 
 	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: source => prepareClientScript(source) },
 });
