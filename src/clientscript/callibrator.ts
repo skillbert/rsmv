@@ -22,7 +22,7 @@ const variableSources = {
     object: { key: 5, index: 65 },
     clan: { key: 6, index: 66 },
     clansettings: { key: 7, index: 67 },
-    campaign: { key: 8, index: 68 },
+    // campaign: { key: 8, index: 68 },//seems incorrect after 30oct2023
     playergroup: { key: 9, index: 75 }//not sure about 75
 };
 
