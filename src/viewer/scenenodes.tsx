@@ -2167,7 +2167,7 @@ function MaprenderScript(p: UiScriptProps) {
 
 	let run = async () => {
 		let output = new UIScriptOutput();
-		let config = await MapRenderDatabaseBacked.create(endpoint, auth, mapid, false);
+		let config = await MapRenderDatabaseBacked.create(endpoint, auth, mapid, false, new Date(0));
 		localStorage.rsmv_script_map_endpoint = endpoint;
 		output.run(runMapRender, p.source, config, true);
 		p.onRun(output, "");

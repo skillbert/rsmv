@@ -16,7 +16,7 @@ import { ChunkRenderMeta, chunkSummary, compareFloorDependencies, compareLocDepe
 import { RSMapChunk, RSMapChunkData } from "../3d/modelnodes";
 import * as zlib from "zlib";
 import { Camera, Matrix4, OrthographicCamera, Vector3 } from "three";
-import { KnownMapFile, MapRender, SymlinkCommand } from "./backends";
+import { KnownMapFile, MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";
 
@@ -81,7 +81,7 @@ export type LayerConfig = {
 	mode: "rendermeta"
 });
 
-async function getVersionsFile(source: CacheFileSource, config: MapRender, writeversion = false) {
+async function getVersionsFile(config: MapRender, includeCacheVersion: CacheFileSource | null = null) {
 	//make sure versions file is updated
 	let versionsres = await config.getFileResponse("versions.json", 0);
 	let mapversionsinfo: RenderedMapMeta;
@@ -92,12 +92,12 @@ async function getVersionsFile(source: CacheFileSource, config: MapRender, write
 	} else {
 		mapversionsinfo = await versionsres.json();
 	}
-	if (writeversion && !mapversionsinfo.versions.some(q => q.version == config.version)) {
+	if (includeCacheVersion && !mapversionsinfo.versions.some(q => q.version == config.version)) {
 		mapversionsinfo.versions.push({
 			version: config.version,
-			build: source.getBuildNr(),
-			date: +source.getCacheMeta().timestamp,
-			source: source.getCacheMeta().name
+			build: includeCacheVersion.getBuildNr(),
+			date: +includeCacheVersion.getCacheMeta().timestamp,
+			source: includeCacheVersion.getCacheMeta().name
 		});
 		mapversionsinfo.versions.sort((a, b) => b.version - a.version);
 		//no lock this is technically a race condition when using multiple renderers
@@ -105,6 +105,28 @@ async function getVersionsFile(source: CacheFileSource, config: MapRender, write
 		await config.saveFile("versions.json", 0, Buffer.from(JSON.stringify(mapversionsinfo)), 0);
 	}
 	return mapversionsinfo;
+}
+
+export async function purgeBadRenders(config: MapRender, versionfilter: VersionFilter) {
+	let timestamp = new Date().toISOString();
+	let versions = await getVersionsFile(config);
+	for (let version of versions.versions) {
+		if (typeof versionfilter.from == "number" && version.version < versionfilter.from) { continue; }
+		if (typeof versionfilter.to == "number" && version.version > versionfilter.to) { continue; }
+
+		let configres = await config.getFileResponse("meta.json", version.version);
+		if (!configres.ok) {
+			console.log("missing meta.json file skipped");
+			continue;
+		}
+
+		let metajson: RenderedMapVersionMeta = await configres.json();
+		metajson.workerid = config.workerid;
+		metajson.running = true;
+		metajson.rendertimestamp = timestamp;
+
+		await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(metajson, undefined, "\t")));
+	}
 }
 
 async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) {
@@ -197,12 +219,20 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 
 	if (!forceCheck) {
 		let prevconfigreq = await config.getFileResponse("meta.json");
-		if (prevconfigreq.ok) {
+		if (!prevconfigreq.ok) {
+			console.log(`starting new render ${config.version}`);
+		} else {
 			let prevconfig: RenderedMapVersionMeta = await prevconfigreq.json();
 			let prevdate = new Date(prevconfig.rendertimestamp);
-			let isownrun = prevconfig.running && prevconfig.workerid == config.workerid;
-			if (!isownrun && +prevdate > Date.now() - 1000 * 60 * 60 * 24 * 200) {
-				//skip if less than x*24hr ago
+
+			let isownrun = prevconfig.workerid == config.workerid;
+			let hoursold = (Date.now() - +prevdate) / 1000 / 60 / 60;
+			//take work from other worker if the timestamp is older than 20 hours which probably means something crashed
+			if (prevconfig.running && isownrun) {
+				console.log(`continuing render ${config.version} which was locked by current worker`);
+			} else if (prevconfig.running && hoursold > 20) {
+				console.log(`continuing render ${config.version} which was locked by other worker and presumed abandoned. (locked ${hoursold | 0} hours ago)`);
+			} else {
 				output.log("skipping", config.version);
 				return () => { };
 			}
@@ -407,7 +437,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 
 	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
 
-	let versionsFile = await getVersionsFile(engine, config, true);
+	let versionsFile = await getVersionsFile(config, engine);
 
 	let mipper = new MipScheduler(config, progress);
 	let depstracker = new RenderDepsTracker(engine, config, deps, versionsFile);
@@ -596,8 +626,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 				await Promise.all(chunks.map(q => q.loadprom));
 				// console.log("running", task.file, "old", meta?.hash, "new", task.hash);
 				if (!chunks.some(q => q.loaded!.chunkdata.chunks.length != 0)) {
-					//no actual chunks loaded, skip
-					//TODO find some way to skip before loading parent candidates
+					//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
 					continue;
 				}
 				let data = await task.run(chunks as MaprenderSquareLoaded[], renderer, parentinfo);
@@ -954,8 +983,6 @@ export function mapImageCamera2(x: number, z: number, ntiles: number, dxdy: numb
 	cam.position.set(x + ntiles / 2, 0, -(z + ntiles / 2));
 	return cam;
 }
-globalThis.mapImageCamera = mapImageCamera;
-globalThis.mapImageCamera2 = mapImageCamera2;
 
 export class SkewOrthographicCamera extends OrthographicCamera {
 	skewMatrix = new Matrix4();

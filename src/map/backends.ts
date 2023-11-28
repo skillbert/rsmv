@@ -3,6 +3,8 @@ import path from "path";
 import { LayerConfig, Mapconfig } from ".";
 import { FetchThrottler } from "../utils";
 
+export type VersionFilter = { from?: number, to?: number };
+
 export type UniqueMapFile = { name: string, hash: number };
 
 export type KnownMapFile = { hash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
@@ -92,12 +94,13 @@ export class MapRenderDatabaseBacked extends MapRender {
 	uploadmapid: number;
 	auth: string;
 	overwrite: boolean;
+	ignorebefore: Date;
 	rendermetaLayer: LayerConfig | undefined;
 
 	private postThrottler = new FetchThrottler(20);
 	private fileThrottler = new FetchThrottler(20);
 
-	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, rendermetaLayer: LayerConfig | undefined, overwrite: boolean) {
+	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, rendermetaLayer: LayerConfig | undefined, overwrite: boolean, ignorebefore: Date) {
 		super(config);
 		this.endpoint = endpoint;
 		this.auth = auth;
@@ -105,8 +108,9 @@ export class MapRenderDatabaseBacked extends MapRender {
 		this.overwrite = overwrite;
 		this.rendermetaLayer = rendermetaLayer;
 		this.uploadmapid = uploadmapid;
+		this.ignorebefore = ignorebefore;
 	}
-	static async create(endpoint: string, auth: string, uploadmapid: number, overwrite: boolean) {
+	static async create(endpoint: string, auth: string, uploadmapid: number, overwrite: boolean, ignorebefore: Date) {
 		let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
 		if (!res.ok) { throw new Error("map config fetch error"); }
 		let config: Mapconfig = await res.json();
@@ -115,7 +119,7 @@ export class MapRenderDatabaseBacked extends MapRender {
 		let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
 		localStorage.map_workerid ??= workerid;
 
-		return new MapRenderDatabaseBacked(endpoint, auth, workerid, uploadmapid, config, rendermetaname, overwrite);
+		return new MapRenderDatabaseBacked(endpoint, auth, workerid, uploadmapid, config, rendermetaname, overwrite, ignorebefore);
 	}
 	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
 		return `${layer}/${zoom}/${x}-${y}.${ext}`;
@@ -162,7 +166,7 @@ export class MapRenderDatabaseBacked extends MapRender {
 		} else if (names.length == 0) {
 			return [];
 		} else {
-			let req = await this.postThrottler.apiRequest(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}&buildnr=${this.version}`, {
+			let req = await this.postThrottler.apiRequest(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}&buildnr=${this.version}&ignorebefore=${+this.ignorebefore}`, {
 				headers: { "Authorization": this.auth },
 			});
 			if (!req.ok) { throw new Error("req failed"); }
@@ -173,7 +177,7 @@ export class MapRenderDatabaseBacked extends MapRender {
 		if (names.length == 0 || versions.length == 0) {
 			return [];
 		}
-		let req = await this.postThrottler.apiRequest(`${this.endpoint}/getfileversions?mapid=${this.uploadmapid}`, {
+		let req = await this.postThrottler.apiRequest(`${this.endpoint}/getfileversions?mapid=${this.uploadmapid}&ignorebefore=${+this.ignorebefore}`, {
 			method: "post",
 			headers: {
 				"Authorization": this.auth,

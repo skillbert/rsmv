@@ -19,6 +19,7 @@ let cmd = cmdts.command({
 		builds: cmdts.option({ long: "builds", type: cmdts.optional(cmdts.string) }),
 		ascending: cmdts.flag({ long: "ascending", short: "a" }),
 		force: cmdts.flag({ long: "force", short: "f" }),
+		ignorebefore: cmdts.option({ long: "ignorebefore", type: cmdts.optional(cmdts.string) }),
 		//remote
 		endpoint: cmdts.option({ long: "endpoint", short: "e", type: cmdts.optional(cmdts.string) }),
 		auth: cmdts.option({ long: "auth", short: "p", type: cmdts.optional(cmdts.string) }),
@@ -30,12 +31,14 @@ let cmd = cmdts.command({
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
 
+		let ignorebefore = new Date(args?.ignorebefore ?? 0);
+
 		let config: MapRender;
 		if (args.endpoint) {
 			if (!args.endpoint || !args.auth || typeof args.mapid != "number") {
 				throw new Error("need --endpoint, --auth and --mapid to use a remote map save");
 			}
-			config = await MapRenderDatabaseBacked.create(args.endpoint, args.auth, args.mapid, false);
+			config = await MapRenderDatabaseBacked.create(args.endpoint, args.auth, args.mapid, false, ignorebefore);
 		} else if (args.configfile) {
 			let outdir = args.outdir ?? path.dirname(args.configfile!);
 			let configfile = await fs.readFile(args.configfile!, "utf8");
