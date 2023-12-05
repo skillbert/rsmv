@@ -1,6 +1,7 @@
 //tested on 910, openrs:557
 ["struct",
     ["newint","ubyte"],//3,4,5,255
+    ["version",["match",{"newint=255":-1,"other":["ref","newint"]}]],
     ["type","ubyte"],
     ["name",["opt","type&0x80","string"]],
     ["contenttype","ushort"],
@@ -17,7 +18,10 @@
     ["containerdata",["opt","type=0",["struct",
         ["layerwidth","ushort"],
         ["layerheight","ushort"],
-        ["disablehover",["opt","newint==255","bool"]]
+        ["layerheightextra",["opt","layerheight&0x8000","uint"]],//????
+        ["disablehover",["opt","newint==255","bool"]],
+        ["v6unk1",["opt","version>=6","uint"]],
+        ["v6unk2",["opt","version==6","uint"]]
     ]]],
     ["figuredata",["opt","type=3",["struct",
         ["color","uint"],
@@ -40,13 +44,15 @@
         ["spriteid","int"],
         ["unk1","ushort"],
         ["flag2","ubyte"],
+        ["unkextra",["opt","flag2>=4","uint"]],//?????
         ["transparency","ubyte"],
         ["borderthickness","ubyte"],
         ["unk2","int"],
         ["vflip","bool"],
         ["hflip","bool"],
         ["color","uint"],
-        ["clickmask",["opt","newint!=255","ubyte"]]//does weird shit with newint here to determine if this byte is read
+        ["clickmask",["opt","newint!=255","ubyte"]],//does weird shit with newint here to determine if this byte is read
+        ["v6unk",["opt","version>=6","uint"]]
     ]]],
     ["modeldata",["opt","type=6",["struct",
         ["modelid","varuint"],
@@ -69,12 +75,34 @@
         ["color","uint"],
         ["dir","bool"]
     ]]],
+    ["unk10data",["opt","type=10",["struct",
+        ["data",["buffer",41,"hex"]],
+        ["str1","string"],
+        ["data2",["buffer",10,"hex"]]
+    ]]],
+    ["unk11data",["opt","type=11",["struct",
+        ["data",["buffer",6,"hex"]]
+    ]]],
+    ["unk12data",["opt","type=12",["struct",
+        ["data",["buffer",36,"hex"]],
+        ["str","string"],
+        ["data2",["buffer",10,"hex"]]
+    ]]],
+    ["unk15data",["opt","type=15",["struct",
+        ["data",["buffer",10,"hex"]]
+    ]]],
+    ["unk16data",["opt","type=16",["struct",
+        ["data",["buffer",179,"hex"]]//or 188 or 238, no clue how this works
+    ]]],
+    ["unkffff",["opt","version>=6","uint"]],
 
 
 
     ["optmask0","ubyte"],
     ["optmask1","ubyte"],
     ["optmask2","ubyte"],
+    ["unkprepre3",["opt","version>=7","ubyte"]],
+    ["unkpre3",["opt","version>=6","ubyte"]],
     ["unk3",["match",{
         "newint=255":["nullarray","ubyte",["buffer",3,"hex"]],
         "other":["struct",
@@ -101,6 +129,7 @@
     ["optmask0data_bit02",["opt","optmask0&0x02&&optmask1!&0x40",["buffer",6,"hex"]]],
     ["cursor",["match",{"newint!=255":"ushort","other":-1}]],
     ["unkdata",["opt","newint!=255","ushort"]],
+    ["unkdatadata",["opt","newint!=255 && unkdata!=0",["buffer",6,"hex"]]],
 
     ["scripts",["struct",
         ["load","uivalues"],
@@ -124,6 +153,10 @@
         ["unk14","uivalues"],
         ["unk15","uivalues"],
         ["unk16","uivalues"],
+        ["unk17",["opt","version>=6","uivalues"]],
+        ["unk18",["opt","version>=6","uivalues"]],
+        ["unk19",["opt","version>=6","uivalues"]],
+        ["unk20",["opt","version>=7","uivalues"]],
 
         ["v2unk0","uivaluesint"],//"config"
         ["v2unk1","uivaluesint"],
