@@ -125,6 +125,7 @@ function allParsers() {
 		maplabels: FileParser.fromJson<import("../generated/maplabels").maplabels>(require("./opcodes/maplabels.jsonc")),
 		cutscenes: FileParser.fromJson<import("../generated/cutscenes").cutscenes>(require("./opcodes/cutscenes.jsonc")),
 		clientscript: FileParser.fromJson<import("../generated/clientscript").clientscript>(require("./opcodes/clientscript.jsonc")),
-		clientscriptdata: FileParser.fromJson<import("../generated/clientscriptdata").clientscriptdata>(require("./opcodes/clientscriptdata.jsonc"))
+		clientscriptdata: FileParser.fromJson<import("../generated/clientscriptdata").clientscriptdata>(require("./opcodes/clientscriptdata.jsonc")),
+		interfaces: FileParser.fromJson<import("../generated/interfaces").interfaces>(require("./opcodes/interfaces.jsonc"))
 	}
 }

@@ -17,7 +17,7 @@ const BufferTypes = {
 };
 
 var debugdata: null | {
-	structstack: object[],
+	rootstate: unknown,
 	opcodes: {
 		op: string,
 		index: number,
@@ -28,8 +28,7 @@ var debugdata: null | {
 
 export function getDebug(trigger: boolean) {
 	let ret = debugdata;
-	//TODO structstack is obsolete because of the stack in state
-	debugdata = trigger ? { structstack: [], opcodes: [] } : null;
+	debugdata = trigger ? { rootstate: null, opcodes: [] } : null;
 	return ret;
 }
 
@@ -115,7 +114,7 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			let hidden: any = { $opcode: 0 };
 			state.stack.push(r);
 			state.hiddenstack.push(hidden);
-			if (debugdata) { debugdata.structstack.push(r); }
+			if (debugdata && !debugdata.rootstate) { debugdata.rootstate = r; }
 			while (true) {
 				if (state.scan == state.endoffset) {
 					if (!hasexplicitnull) {
@@ -136,7 +135,6 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			}
 			state.stack.pop();
 			state.hiddenstack.pop();
-			if (debugdata) { debugdata.structstack.pop(); }
 			return r;
 		},
 		write(state, value) {
@@ -294,6 +292,7 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			let hidden = {};
 			state.stack.push(r);
 			state.hiddenstack.push(hidden);
+			if (debugdata && !debugdata.rootstate) { debugdata.rootstate = r; }
 			for (let key of keys) {
 				if (debugdata) { debugdata.opcodes.push({ op: key, index: state.scan, stacksize: state.stack.length }); }
 				let v = props[key].read(state);
@@ -1023,7 +1022,7 @@ function conditionParser(parent: ChunkParentCallback, optionstrings: string[], w
 					case ">": matched = value > cond.value; break;
 					case ">=": matched = value >= cond.value; break;
 					case "&": matched = (value & cond.value) != 0; break;
-					case "!&": matched = (value | cond.value) == 0; break;
+					case "!&": matched = (value & cond.value) == 0; break;
 					case "&=": matched = (value & cond.value) == cond.value; break;
 					default: throw new Error("unknown op" + cond.op);
 				}
@@ -1105,15 +1104,12 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		}
 	},
 	match: function (args, parent, typedef) {
-		if (args.length != 2) { throw new Error("match chunks needs 2 arguments") }
-		if (typeof args[1] != "object") { throw new Error("match chunk requires 2n+2 arguments"); }
-
 		let r: ChunkParser = {
 			read(state) {
 				let opcodeprop = { $opcode: 0 };
 				state.stack.push({});
 				state.hiddenstack.push(opcodeprop);
-				let value = opvalueparser.read(state);
+				let value = (opvalueparser ? opvalueparser.read(state) : 0);
 				opcodeprop.$opcode = value;
 				let opindex = conditionparser.read(state);
 				if (opindex == -1) {
@@ -1126,7 +1122,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			},
 			write(state, v) {
 				//no way to retrieve the opcode, so this only works for refs/constants
-				opvalueparser.write(state, null);
+				opvalueparser?.write(state, null);
 			},
 			getTypescriptType(indent) {
 				return "(" + optionvalues.map(opt => opt.getTypescriptType(indent + "\t")).join("|") + ")";
@@ -1146,7 +1142,12 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			if (name == "$opcode") { return res; }
 			return buildReference(name, parent, res);
 		}
-		let opvalueparser = buildParser(resolveReference, args[0], typedef);
+
+		if (args.length == 1) { args = [null, args[0]]; }
+		if (args.length != 2) { throw new Error("match chunks needs 2 arguments") }
+		if (typeof args[1] != "object") { throw new Error("match chunk requires 2n+2 arguments"); }
+
+		let opvalueparser = (args[0] ? buildParser(resolveReference, args[0], typedef) : null);
 		let conditionstrings = Object.keys(args[1] as any);
 		let optionvalues = Object.values(args[1] as any).map(q => buildParser(resolveReference, q, typedef))
 		let conditionparser = conditionParser(resolveReference, conditionstrings);

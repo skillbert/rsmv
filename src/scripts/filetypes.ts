@@ -553,6 +553,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
 	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
 	oldproctextures: { parser: parse.oldproctexture, lookup: singleMinorIndex(cacheMajors.texturesOldPng, 0) },
+	interfaces: { parser: parse.interfaces, lookup: standardIndex(cacheMajors.interfaces) },
 
 	classicmodels: { parser: parse.classicmodels, lookup: singleMinorIndex(0, classicGroups.models) },
 

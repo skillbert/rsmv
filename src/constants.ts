@@ -1,6 +1,7 @@
 export const cacheMajors = {
 	framemaps: 1,
 	config: 2,
+	interfaces: 3,
 	mapsquares: 5,
 
 	oldmodels: 7,

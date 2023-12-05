@@ -178,6 +178,9 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 				continue;
 			}
 			let entry: DecodeEntry = { major: index.major, minor: index.minor, subfile: file.subindex, file: subfile.buffer };
+			if (globalThis.testDecodeFilter && !globalThis.testDecodeFilter(entry)) {
+				continue;
+			}
 			if (orderBySize) {
 				allfiles.push(entry);
 				if (memuse > memlimit) {
@@ -207,21 +210,23 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 		let res = testDecodeFile(mode.parser, file.file, source);
 
 		if (output.state == "running") {
-			if (res.success) {
-				nsuccess++;
-			} else {
-				errminors.push(file.minor);
-				errfilesizes.push(file.file.byteLength);
-				errorcount++;
-			}
-			if (opts.dumpall || !res.success) {
-				let logicalindex = mode.lookup.fileToLogical(source, file.major, file.minor, file.subfile);
-				let filename = `${res.success ? "pass" : "fail"}-${file.name ? `${file.name}` : `${logicalindex.join("_")}`}`;
-				if (opts.outmode == "json") {
-					outdir.writeFile(filename + ".hexerr.json", res.getDebugFile(opts.outmode));
+			if (!globalThis.testDecodeOutputFilter || globalThis.testDecodeOutputFilter(res.state, res.debugdata.rootstate)) {
+				if (res.success) {
+					nsuccess++;
+				} else {
+					errminors.push(file.minor);
+					errfilesizes.push(file.file.byteLength);
+					errorcount++;
 				}
-				if (opts.outmode == "original" || opts.outmode == "hextext") {
-					outdir.writeFile(filename + ".bin", res.getDebugFile(opts.outmode));
+				if (opts.dumpall || !res.success) {
+					let logicalindex = mode.lookup.fileToLogical(source, file.major, file.minor, file.subfile);
+					let filename = `${res.success ? "pass" : "fail"}-${file.name ? `${file.name}` : `${logicalindex.join("_")}`}`;
+					if (opts.outmode == "json") {
+						outdir.writeFile(filename + ".hexerr.json", res.getDebugFile(opts.outmode));
+					}
+					if (opts.outmode == "original" || opts.outmode == "hextext") {
+						outdir.writeFile(filename + ".bin", res.getDebugFile(opts.outmode));
+					}
 				}
 			}
 		}
@@ -304,7 +309,6 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 			let remainderchunk: DecodeErrorJson["chunks"][number] = { offset: index, len: remainingbytes, label: `remainder: ${remainingbytes}` };
 			err.chunks.push(remainderchunk);
 			// err.state = state.stack[state.stack.length - 1] ?? null;
-			err.state = debugdata.structstack[debugdata.structstack.length - 1] ?? null;
 
 			if (outmode == "json") {
 				errorfile = JSON.stringify(err);
@@ -345,5 +349,5 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 		}
 		return errorfile as any;
 	}
-	return { success, error, getDebugFile };
+	return { success, error, getDebugFile, state, debugdata };
 }
