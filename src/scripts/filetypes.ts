@@ -17,6 +17,7 @@ import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
 import { prepareClientScript } from "../clientscript/callibrator";
 import { renderClientScript } from "../clientscript/ast";
+import { renderRsInterface } from "./renderrsinterface";
 
 
 type CacheFileId = {
@@ -402,6 +403,27 @@ const decodeCutscene: DecodeModeFactory = () => {
 	}
 }
 
+const decodeInterface: DecodeModeFactory = () => {
+	return {
+		ext: "html",
+		major: cacheMajors.interfaces,
+		minor: undefined,
+		logicalDimensions: 1,
+		multiIndexArchives: false,
+		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.interfaces, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let indexfile = await source.getCacheIndex(cacheMajors.interfaces);
+			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
+		},
+		...throwOnNonSimple,
+		async read(buf, fileid, source) {
+			let res = await renderRsInterface(source, fileid[0]);
+			return res.doc;
+		}
+	}
+}
+
 const decodeClientScriptText: DecodeModeFactory = () => {
 	return {
 		ext: "txt",
@@ -611,6 +633,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	musicfragments: decodeSound(cacheMajors.music, false),
 	music: decodeMusic,
 	cutscenehtml: decodeCutscene,
+	interfacehtml: decodeInterface,
 	clientscripttext: decodeClientScriptText,
 	npcmodels: npcmodels,
 

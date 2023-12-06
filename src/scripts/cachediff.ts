@@ -7,6 +7,7 @@ import { ParsedTexture } from "../3d/textures";
 import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { FileRange } from "../utils";
+import { renderRsInterface } from "./renderrsinterface";
 
 
 type FileAction = {
@@ -16,7 +17,7 @@ type FileAction = {
 	outputType: string,
 	getFileName: (major: number, minor: number, subfile: number) => string
 } & ({
-	outputType: "rstex" | "png" | "bin",
+	outputType: "rstex" | "png" | "bin" | "html",//TODO better system for non-json files
 } | {
 	outputType: "json",
 	parser: FileParser<any>
@@ -61,6 +62,7 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.texturesKtx]: { name: "texturesKtx", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.sprites]: { name: "sprites", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.cutscenes]: { name: "cutscenes", comparesubfiles: false, parser: parse.cutscenes, outputType: "json", getFileName: standardName },
+	[cacheMajors.interfaces]: { name: "interfaces", comparesubfiles: false, parser: null, outputType: "html", getFileName: standardName },
 	//need to first run deob first before this works
 	// [cacheMajors.clientscript]: { name: "clientscript", comparesubfiles: false, parser: parse.clientscript, outputType: "json", getFileName: standardName },
 	[cacheMajors.config]: (major, minor) => configmap[minor]
@@ -264,6 +266,16 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 				if (after) {
 					let tex = (change.major == cacheMajors.sprites ? parseSprite(after)[0].img : await new ParsedTexture(after, false, false).toImageData(0));
 					await addfile("png", true, await pixelsToImageFile(tex, "png", 1));
+				}
+			} else if (change.action.outputType == "html") {
+				//TODO make standardised way to deal with different decoder types
+				if (before) {
+					let iface = await renderRsInterface(sourcea, change.minor)
+					await addfile("html", false, iface.doc);
+				}
+				if (after) {
+					let iface = await renderRsInterface(sourceb, change.minor)
+					await addfile("html", true, iface.doc);
 				}
 			}
 		}

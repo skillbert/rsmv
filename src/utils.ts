@@ -97,6 +97,54 @@ export function escapeHTML(str: string) {
 		.replace(/'/g, "&#039;");
 }
 
+export function rsmarkupToSafeHtml(str: string) {
+	let res = "";
+	let tokenstack: string[] = [];
+	try {
+		while (str) {
+			let token = str.match(/<(\/?)(\w+)(=(\w+))?>/);
+			if (!token) {
+				res += escapeHTML(str);
+				str = "";
+			} else {
+				res += escapeHTML(str.slice(0, token.index));
+				str = str.slice(token.index! + token[0].length);
+				let isclose = !!token[1];
+				let tagname = token[2]
+				if (isclose) {
+					let last = tokenstack.pop();
+					if (last != tagname) { throw new Error("markup token mismatch"); }
+					if (last == "col") {
+						res += "</span>";
+					} else {
+						throw new Error("unknown markup closing token " + last);
+					}
+				} else if (tagname == "br") {
+					res += "<br/>";
+				} else if (tagname == "col") {
+					res += `<span style="color:#${token[4].replace(/\W/g, "")};">`;
+					tokenstack.push("col");
+				} else {
+					throw new Error("unknown token " + tagname);
+				}
+			}
+		}
+
+		while (tokenstack.length != 0) {
+			let token = tokenstack.pop()!;
+			if (token == "col") {
+				res += "</span>";
+			} else {
+				throw new Error("non-autocloseable token left unclosed " + token);
+			}
+		}
+	} catch (e) {
+		console.log(e.message);
+		res = escapeHTML(str);
+	}
+	return res;
+}
+
 /**
  * used to get an array with enum typing
  */
