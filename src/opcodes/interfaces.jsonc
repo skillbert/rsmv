@@ -1,7 +1,6 @@
-//tested on 910, openrs:557
+//works from 500 to 932, system is entirely different below 500
 ["struct",
-    ["newint","ubyte"],//3,4,5,255
-    ["version",["match",{"newint=255":-1,"other":["ref","newint"]}]],
+    ["version",["match","buildnr",{">500":"byte","other":-1}]],//-1,3,4,5,6,9
     ["type","ubyte"],
     ["name",["opt","type&0x80","string"]],
     ["contenttype","ushort"],
@@ -19,7 +18,7 @@
         ["layerwidth","ushort"],
         ["layerheight","ushort"],
         ["layerheightextra",["opt","layerheight&0x8000","uint"]],//????
-        ["disablehover",["opt","newint==255","bool"]],
+        ["disablehover",["opt","version==-1","bool"]],
         ["v6unk1",["opt","version>=6","uint"]],
         ["v6unk2",["opt","version==6","uint"]]
     ]]],
@@ -30,7 +29,7 @@
     ]]],
     ["textdata",["opt","type=4",["struct",
         ["fontid","varuint"],
-        ["unk1",["match",{"newint!=255":"ubyte","other":false}]],
+        ["unk1",["match",{"version>=0":"ubyte","other":false}]],
         ["text","string"],
         ["unk2","ubyte"],
         ["alignhor","ubyte"],
@@ -38,25 +37,26 @@
         ["shadow","bool"],
         ["color","uint"],
         ["trans","ubyte"],
-        ["multiline",["opt","newint!=255","ubyte"]]
+        ["multiline",["opt","version>=0","ubyte"]]
     ]]],
     ["spritedata",["opt","type=5",["struct",
         ["spriteid","int"],
         ["unk1","ushort"],
         ["flag2","ubyte"],
-        ["unkextra",["opt","flag2>=4","uint"]],//?????
+        ["aspectwidthdata",["match",{"aspectwidthtype==4":"uint","other":-1}]],
+        ["aspectheightdata",["match",{"aspectheighttype==4":"uint","other":-1}]],
         ["transparency","ubyte"],
         ["borderthickness","ubyte"],
         ["unk2","int"],
         ["vflip","bool"],
         ["hflip","bool"],
         ["color","uint"],
-        ["clickmask",["opt","newint!=255","ubyte"]],//does weird shit with newint here to determine if this byte is read
+        ["clickmask",["opt","version>=0","ubyte"]],
         ["v6unk",["opt","version>=6","uint"]]
     ]]],
     ["modeldata",["opt","type=6",["struct",
-        ["modelid","varuint"],
-        ["mode","ubyte"],
+        ["modelid",["match","buildnr",{">616":"varuint","other":"ushort"}]],
+        ["mode",["match","buildnr",{">616":"ubyte","other":1}]],
         ["positiondata",["opt","mode!=0",["struct",
             ["unk0","short"],
             ["unk1","short"],
@@ -66,7 +66,8 @@
             ["unk4","ushort"],
             ["zoom","ushort"]//can be signed? if mode is 2
         ]]],
-        ["animid","varuint"],
+        ["animid",["match","buildnr",{">616":"varuint","other":"ushort"}]],
+        ["unkdata",["match","buildnr",{">616":null,"other":["buffer",6,"hex"]}]],
         ["aspectwidthdata",["match",{"aspectwidthtype!=0":"ushort","other":-1}]],
         ["aspectheightdata",["match",{"aspectheighttype!=0":"ushort","other":-1}]]
     ]]],
@@ -98,13 +99,12 @@
 
 
 
-    ["optmask0","ubyte"],
-    ["optmask1","ubyte"],
-    ["optmask2","ubyte"],
+    ["optmask","ushort"],
+    ["unk2","ubyte"],
     ["unkprepre3",["opt","version>=7","ubyte"]],
     ["unkpre3",["opt","version>=6","ubyte"]],
     ["unk3",["match",{
-        "newint=255":["nullarray","ubyte",["buffer",3,"hex"]],
+        "version==-1":["nullarray","ubyte",["buffer",3,"hex"]],
         "other":["struct",
             ["op","ubyte"],
             ["data",["opt","op!=0",["buffer",4,"hex"]]
@@ -118,18 +118,16 @@
         ["op","ubyte"],
         ["cursor","ushort"]
     ]]],
-    ["unkstring1",["opt","optmask0!&4","string"]],
+    ["unkstring1",["opt","optmask!&0x0400","string"]],
     ["unk4","ubyte"],
-    ["bit4data",["opt","optmask0&4","ubyte"]],
+    ["bit4data",["opt","optmask&0x0400","ubyte"]],
     ["unk5","ubyte"],
     ["unk6","ubyte"],
     ["unkstuff123","string"],
-    //these 2 are the same, replace with bitmask in ushort bitfield
-    ["optmask1data_bit40",["opt","optmask1&0x40",["buffer",6,"hex"]]],
-    ["optmask0data_bit02",["opt","optmask0&0x02&&optmask1!&0x40",["buffer",6,"hex"]]],
-    ["cursor",["match",{"newint!=255":"ushort","other":-1}]],
-    ["unkdata",["opt","newint!=255","ushort"]],
-    ["unkdatadata",["opt","newint!=255 && unkdata!=0",["buffer",6,"hex"]]],
+    ["optmask1data_bit40",["opt","optmask&0x0240",["buffer",6,"hex"]]],
+    ["cursor",["match",{"version>=0":"ushort","other":-1}]],
+    ["unkdata",["opt","version>=0","ushort"]],
+    ["unkdatadata",["opt","version>=0 && unkdata!=0",["buffer",6,"hex"]]],
 
     ["scripts",["struct",
         ["load","uivalues"],
@@ -142,7 +140,7 @@
         ["unk4","uivalues"],
         ["unk5","uivalues"],
         ["unk6","uivalues"],
-        ["unk7",["opt","newint!=255","uivalues"]],
+        ["unk7",["opt","version>=0","uivalues"]],
         ["hovertext","uivalues"],
         ["unk8","uivalues"],
         ["unk9","uivalues"],
