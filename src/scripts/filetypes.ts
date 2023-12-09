@@ -418,8 +418,27 @@ const decodeInterface: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			let res = await renderRsInterface(source, fileid[0]);
-			return res.doc;
+			let res = await renderRsInterface(source, null, fileid[0], "html");
+			return res;
+		}
+	}
+}
+const decodeInterface2: DecodeModeFactory = () => {
+	return {
+		ext: "ui.json",
+		major: cacheMajors.interfaces,
+		minor: undefined,
+		logicalDimensions: 1,
+		multiIndexArchives: false,
+		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.interfaces, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let indexfile = await source.getCacheIndex(cacheMajors.interfaces);
+			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
+		},
+		...throwOnNonSimple,
+		async read(buf, fileid, source) {
+			return JSON.stringify({ id: fileid[0] });
 		}
 	}
 }
@@ -634,6 +653,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	music: decodeMusic,
 	cutscenehtml: decodeCutscene,
 	interfacehtml: decodeInterface,
+	interfaceviewer: decodeInterface2,
 	clientscripttext: decodeClientScriptText,
 	npcmodels: npcmodels,
 

@@ -156,6 +156,7 @@ export async function combineLegacyTexture(engine: EngineCache, name: string, su
 
 
     if (subimg.img.width + subimg.x > img.img.width || subimg.img.height + subimg.y > img.img.height) {
+        //TODO probably fixable by using subimg.fullwidth
         console.warn("tried to overlay image outside of dest bounds");
         return img;
         throw new Error("tried to overlay image outside of dest bounds");
@@ -177,5 +178,11 @@ export async function combineLegacyTexture(engine: EngineCache, name: string, su
             combined.data[dsti + 3] = (forcetrans ? 0 : usesub ? suba : img.img.data[dsti + 3]);
         }
     }
-    return { x: img.x, y: img.y, img: combined };
+    return {
+        x: img.x,
+        y: img.y,
+        fullwidth: img.fullwidth,
+        fullheight: img.fullheight,
+        img: combined
+    };
 }

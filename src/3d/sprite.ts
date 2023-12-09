@@ -4,6 +4,8 @@ import { Stream } from "../utils";
 export type SubImageData = {
 	x: number,
 	y: number,
+	fullwidth: number,
+	fullheight: number,
 	img: ImageData
 }
 
@@ -66,6 +68,8 @@ export function parseLegacySprite(metafile: Buffer, buf: Buffer) {
 		imgs.push({
 			x: offsetx,
 			y: offsety,
+			fullwidth: totalwidth,
+			fullheight: totalheight,
 			img: parseSubsprite(imgbytes, palette, width, height, false, transpose).img
 		});
 	}
@@ -77,6 +81,20 @@ export function parseLegacySprite(metafile: Buffer, buf: Buffer) {
 	return imgs[0];
 }
 
+export function expandSprite(subimg: SubImageData) {
+	if (subimg.x == 0 && subimg.y == 0 && subimg.fullwidth == subimg.img.width && subimg.fullheight == subimg.img.height) {
+		return subimg.img;
+	}
+	let img = new ImageData(subimg.fullwidth, subimg.fullheight);
+	for (let dy = 0; dy < subimg.img.height; dy++) {
+		let instride = subimg.img.width * 4;
+		let inoffset = dy * instride;
+		let outstride = img.width * 4;
+		let outoffset = (dy + subimg.y) * outstride + subimg.x * 4;
+		img.data.set(subimg.img.data.subarray(inoffset, inoffset + instride), outoffset);
+	}
+	return img;
+}
 
 export function parseSprite(buf: Buffer) {
 	let data = buf.readUInt16BE(buf.length - 2);
@@ -112,7 +130,13 @@ export function parseSprite(buf: Buffer) {
 				let alpha = (flags & 2) != 0;
 				let subimg = parseSubsprite(buf.slice(offset), palette, imgdef.width, imgdef.height, alpha, transposed);
 				offset += subimg.bytesused;
-				spriteimgs.push({ x: imgdef.x, y: imgdef.y, img: subimg.img });
+				spriteimgs.push({
+					x: imgdef.x,
+					y: imgdef.y,
+					fullwidth: maxwidth,
+					fullheight: maxheight,
+					img: subimg.img
+				});
 			}
 		}
 	} else {
@@ -142,7 +166,13 @@ export function parseSprite(buf: Buffer) {
 				imgdata[outoffset + 3] = alpha ? buf.readUInt8(alphaoffset + inoffset + 2) : 255;
 			}
 		}
-		spriteimgs.push({ x: 0, y: 0, img: makeImageData(imgdata, width, height) });
+		spriteimgs.push({
+			x: 0,
+			y: 0,
+			fullwidth: width,
+			fullheight: height,
+			img: makeImageData(imgdata, width, height)
+		});
 	}
 	return spriteimgs;
 }
@@ -196,6 +226,8 @@ export function parseTgaSprite(file: Buffer) {
 	let r: SubImageData = {
 		x: originx,
 		y: originy,
+		fullwidth: width,
+		fullheight: height,
 		img: makeImageData(imgdata, width, height)
 	};
 	return r;

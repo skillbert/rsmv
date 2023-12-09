@@ -21,6 +21,7 @@ import classNames from "classnames";
 import { selectFsCache } from "../cache/autocache";
 import { CLIScriptFS } from "../scriptrunner";
 import { drawTexture } from "../imgutils";
+import { RsUIViewer } from "./rsuiviewer";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -633,6 +634,8 @@ export function FileDisplay(p: { file: UIScriptFile }) {
 	if (typeof filedata == "string") {
 		if (ext == "hexerr.json") {
 			el = <FileDecodeErrorViewer file={filedata} />;
+		} else if (ext == "ui.json") {
+			el = <RsUIViewer data={filedata} />
 		} else if (ext == "html") {
 			el = <iframe srcDoc={filedata} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
 		} else {
@@ -678,7 +681,7 @@ export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFi
 				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => downloadBlob(p.file.name, new Blob([p.file.data]))}>download</span>
 				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => p.onSelectFile(null)}>x</span>
 			</div>
-			<div style={{ overflow: "auto", flex: "1" }}>
+			<div style={{ overflow: "auto", flex: "1", position: "relative" }}>
 				<FileDisplay file={p.file} />
 			</div>
 		</div>

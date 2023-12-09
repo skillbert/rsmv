@@ -8,7 +8,7 @@ import { cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
-import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode } from "./threejsrender";
+import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode, ThreeJsRenderer } from "./threejsrender";
 import { cacheFileJsonModes, cacheFileDecodeModes } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap } from "./scriptsui";
@@ -1419,33 +1419,12 @@ function SceneLocation(p: LookupModeProps) {
 	)
 }
 
-function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: items, centery: number }) {
-	let [translatex, settranslatex] = React.useState(meta?.modelTranslate_0 ?? 0);
-	let [translatey, settranslatey] = React.useState(meta?.modelTranslate_1 ?? 0);
-	let [rotx, setrotx] = React.useState(meta?.rotation_0 ?? 0);
-	let [roty, setroty] = React.useState(meta?.rotation_1 ?? 0);
-	let [rotz, setrotz] = React.useState(meta?.rotation_2 ?? 0);
-	let [zoom, setzoom] = React.useState(meta?.model_zoom ?? 2048);
-	let [lastmeta, setlastmeta] = React.useState(meta);
-
-	let reset = () => {
-		settranslatex(meta?.modelTranslate_0 ?? 0);
-		settranslatey(meta?.modelTranslate_1 ?? 0);
-		setrotx(meta?.rotation_0 ?? 0);
-		setroty(meta?.rotation_1 ?? 0);
-		setrotz(meta?.rotation_2 ?? 0);
-		setzoom(meta?.model_zoom ?? 2048);
-		setlastmeta(meta);
-	}
-	if (meta != lastmeta) {
-		reset();
-	}
-
+export function updateItemCamera(renderer: ThreeJsRenderer, centery: number, translatex: number, translatey: number, rotx: number, roty: number, rotz: number, zoom: number) {
 	const defaultcamdist = 16;//found through testing
 	const imgheight = 32;
 	const imgwidth = 36;
 
-	let cam = ctx.renderer.getItemCamera();
+	let cam = renderer.getItemCamera();
 
 	//fov such that the value 32 ends up in the projection matrix.yy
 	//not sure if coincidence that this is equal to height
@@ -1483,6 +1462,33 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 	cam.quaternion.copy(rot);
 	cam.updateProjectionMatrix();
 	cam.updateMatrixWorld(true);
+	return cam;
+}
+
+function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: items, centery: number }) {
+	let [translatex, settranslatex] = React.useState(meta?.modelTranslate_0 ?? 0);
+	let [translatey, settranslatey] = React.useState(meta?.modelTranslate_1 ?? 0);
+	let [rotx, setrotx] = React.useState(meta?.rotation_0 ?? 0);
+	let [roty, setroty] = React.useState(meta?.rotation_1 ?? 0);
+	let [rotz, setrotz] = React.useState(meta?.rotation_2 ?? 0);
+	let [zoom, setzoom] = React.useState(meta?.model_zoom ?? 2048);
+	let [lastmeta, setlastmeta] = React.useState(meta);
+
+	let reset = () => {
+		settranslatex(meta?.modelTranslate_0 ?? 0);
+		settranslatey(meta?.modelTranslate_1 ?? 0);
+		setrotx(meta?.rotation_0 ?? 0);
+		setroty(meta?.rotation_1 ?? 0);
+		setrotz(meta?.rotation_2 ?? 0);
+		setzoom(meta?.model_zoom ?? 2048);
+		setlastmeta(meta);
+	}
+	if (meta != lastmeta) {
+		reset();
+	}
+
+	let cam = updateItemCamera(ctx.renderer, centery, translatex, translatey, rotx, roty, rotz, zoom);
+
 
 	React.useEffect(() => {
 		let el: ThreeJsSceneElementSource = {

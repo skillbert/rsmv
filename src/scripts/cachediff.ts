@@ -270,12 +270,12 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 			} else if (change.action.outputType == "html") {
 				//TODO make standardised way to deal with different decoder types
 				if (before) {
-					let iface = await renderRsInterface(sourcea, change.minor)
-					await addfile("html", false, iface.doc);
+					let iface = await renderRsInterface(sourcea, null, change.minor, "html");
+					await addfile("html", false, iface);
 				}
 				if (after) {
-					let iface = await renderRsInterface(sourceb, change.minor)
-					await addfile("html", true, iface.doc);
+					let iface = await renderRsInterface(sourceb, null, change.minor, "html");
+					await addfile("html", true, iface);
 				}
 			}
 		}
