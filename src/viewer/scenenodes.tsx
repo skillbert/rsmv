@@ -3,7 +3,7 @@ import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, ModelModifications
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize } from '../3d/mapsquare';
-import { Euler, Quaternion, Vector3 } from "three";
+import { Euler, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
@@ -1419,12 +1419,8 @@ function SceneLocation(p: LookupModeProps) {
 	)
 }
 
-export function updateItemCamera(renderer: ThreeJsRenderer, centery: number, translatex: number, translatey: number, rotx: number, roty: number, rotz: number, zoom: number) {
+export function updateItemCamera(cam: PerspectiveCamera, imgwidth: number, imgheight: number, centery: number, params: UiCameraParams) {
 	const defaultcamdist = 16;//found through testing
-	const imgheight = 32;
-	const imgwidth = 36;
-
-	let cam = renderer.getItemCamera();
 
 	//fov such that the value 32 ends up in the projection matrix.yy
 	//not sure if coincidence that this is equal to height
@@ -1433,24 +1429,24 @@ export function updateItemCamera(renderer: ThreeJsRenderer, centery: number, tra
 	cam.updateProjectionMatrix();
 
 	let rot = new Quaternion().setFromEuler(new Euler(
-		-rotx / 2048 * 2 * Math.PI,
-		roty / 2048 * 2 * Math.PI,
-		-rotz / 2048 * 2 * Math.PI,
+		-params.rotx / 2048 * 2 * Math.PI,
+		params.roty / 2048 * 2 * Math.PI,
+		-params.rotz / 2048 * 2 * Math.PI,
 		"ZYX"
 	));
 	let pos = new Vector3(
 		6,//no clue where the 6 comes from
 		0,
-		4 * -zoom
+		4 * -params.zoom
 	);
-	let quatx = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), rotx / 2048 * 2 * Math.PI);
-	let quaty = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -roty / 2048 * 2 * Math.PI);
-	let quatz = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), -rotz / 2048 * 2 * Math.PI)
+	let quatx = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), params.rotx / 2048 * 2 * Math.PI);
+	let quaty = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -params.roty / 2048 * 2 * Math.PI);
+	let quatz = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), -params.rotz / 2048 * 2 * Math.PI)
 	pos.applyQuaternion(quatx);
 	pos.add(new Vector3(
-		-translatex * 4,
-		translatey * 4,
-		-translatey * 4//yep this is y not z, i don't fucking know
+		-params.translatex * 4,
+		params.translatey * 4,
+		-params.translatey * 4//yep this is y not z, i don't fucking know
 	));
 	pos.applyQuaternion(quaty);
 	pos.applyQuaternion(quatz);
@@ -1465,6 +1461,15 @@ export function updateItemCamera(renderer: ThreeJsRenderer, centery: number, tra
 	return cam;
 }
 
+export type UiCameraParams = {
+	rotx: number,
+	roty: number,
+	rotz: number,
+	translatex: number,
+	translatey: number,
+	zoom: number
+}
+
 function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: items, centery: number }) {
 	let [translatex, settranslatex] = React.useState(meta?.modelTranslate_0 ?? 0);
 	let [translatey, settranslatey] = React.useState(meta?.modelTranslate_1 ?? 0);
@@ -1473,6 +1478,9 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 	let [rotz, setrotz] = React.useState(meta?.rotation_2 ?? 0);
 	let [zoom, setzoom] = React.useState(meta?.model_zoom ?? 2048);
 	let [lastmeta, setlastmeta] = React.useState(meta);
+	const imgheight = 32;
+	const imgwidth = 36;
+	let params: UiCameraParams = { rotx, roty, rotz, translatex, translatey, zoom };
 
 	let reset = () => {
 		settranslatex(meta?.modelTranslate_0 ?? 0);
@@ -1487,8 +1495,7 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 		reset();
 	}
 
-	let cam = updateItemCamera(ctx.renderer, centery, translatex, translatey, rotx, roty, rotz, zoom);
-
+	let cam = updateItemCamera(ctx.renderer.getItemCamera(), imgwidth, imgheight, centery, params);
 
 	React.useEffect(() => {
 		let el: ThreeJsSceneElementSource = {

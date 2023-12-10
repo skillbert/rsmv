@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { delay, TypedEmitter } from '../utils';
-import { flipImage, makeImageData } from '../imgutils';
+import { dumpTexture, flipImage, makeImageData } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
@@ -10,6 +10,7 @@ import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, BufferGeometry, Camera, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
 import { SkewOrthographicCamera } from "../map";
+import { UiCameraParams, updateItemCamera } from "./scenenodes";
 
 //TODO remove
 globalThis.THREE = THREE;
@@ -658,6 +659,60 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 
 		this.emit("select", null);
+	}
+
+	makeUIRenderer(model: ThreeJsSceneElement, centery: number) {
+		let scene = new THREE.Scene();
+		scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
+		var dirLight = new THREE.DirectionalLight(0xffffff);
+		dirLight.position.set(75, 300, -75);
+		let modelnode = new THREE.Group();
+		modelnode.scale.set(1 / 512, 1 / 512, -1 / 512);
+		if (model.modelnode) {
+			modelnode.add(model.modelnode);
+		}
+
+		scene.add(dirLight);
+		scene.add(hemilight);
+		scene.add(modelnode);
+		let clock = new THREE.Clock();
+		let rendertarget: THREE.WebGLRenderTarget | null = null;
+
+		let takePicture = (width: number, height: number, params: UiCameraParams) => {
+			let gl = this.renderer.getContext();
+			if (!rendertarget || width != rendertarget.width || height != rendertarget.height) {
+				rendertarget?.dispose();
+				rendertarget = new THREE.WebGLRenderTarget(width, height, {
+					minFilter: THREE.LinearFilter,
+					magFilter: THREE.LinearFilter,
+					format: THREE.RGBAFormat,
+					encoding: this.renderer.outputEncoding,
+					samples: gl.getParameter(gl.SAMPLES)
+				});
+			}
+			let delta = clock.getDelta();
+			model.updateAnimation?.(delta, clock.elapsedTime);
+
+			let oldtarget = this.renderer.getRenderTarget();
+			this.renderer.setRenderTarget(rendertarget);
+			let itemcam = new THREE.PerspectiveCamera();
+			updateItemCamera(itemcam, width, height, centery, params);
+
+			this.renderer.clearColor();
+			this.renderer.clearDepth();
+			this.renderer.render(scene, itemcam);
+			this.renderer.setRenderTarget(oldtarget);
+
+			let buf = new Uint8Array(width * height * 4);//node-gl doesn't accept clamped
+			this.renderer.readRenderTargetPixels(rendertarget, 0, 0, width, height, buf);
+			let r = makeImageData(buf, width, height);
+			flipImage(r);
+			return r;
+		}
+		let dispose = () => rendertarget?.dispose();
+
+		return { takePicture, dispose };
 	}
 
 	dispose() {

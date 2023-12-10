@@ -418,7 +418,7 @@ const decodeInterface: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			let res = await renderRsInterface(source, null, fileid[0], "html");
+			let res = await renderRsInterface({ source: source, sceneCache: null, renderer: null }, fileid[0], "html");
 			return res;
 		}
 	}

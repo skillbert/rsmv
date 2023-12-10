@@ -102,7 +102,7 @@
     ["optmask","ushort"],
     ["unk2","ubyte"],
     ["unkprepre3",["opt","version>=7","ubyte"]],
-    ["unkpre3",["opt","version>=6","ubyte"]],
+    ["unkpre3",["opt","version>=6","ubyte"]],//might be style class
     ["unk3",["match",{
         "version==-1":["nullarray","ubyte",["buffer",3,"hex"]],
         "other":["struct",

@@ -7,21 +7,34 @@ import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 import { parse } from "../opdecoder";
 import { escapeHTML, rsmarkupToSafeHtml } from "../utils";
-import { updateItemCamera } from "../viewer/scenenodes";
+import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 
 type HTMLResult = string;
 export type RsInterfaceElement = { el: HTMLElement, dispose: (() => void)[] };
 
+type UiRenderContext = {
+    source: CacheFileSource,
+    sceneCache: ThreejsSceneCache | null,
+    renderer: ThreeJsRenderer | null
+}
 
-export async function renderRsInterface<MODE extends "html" | "dom">(source: CacheFileSource, scene: ThreejsSceneCache | null, id: number, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
-    let arch = await source.getArchiveById(cacheMajors.interfaces, id);
+export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRenderContext, id: number, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
+    let arch = await ctx.source.getArchiveById(cacheMajors.interfaces, id);
 
-    let comps = arch.map(q => new RsInterfaceComponent(parse.interfaces.read(q.buffer, source), q.fileid));
+    let comps = new Map<number, RsInterfaceComponent>();
 
-    for (let comp of comps) {
+    for (let sub of arch) {
+        try {
+            comps.set(sub.fileid, new RsInterfaceComponent(parse.interfaces.read(sub.buffer, ctx.source), sub.fileid))
+        } catch (e) {
+            console.log(`failed to parse interface ${id}:${sub.fileid}`);
+        }
+    }
+
+    for (let [id, comp] of comps) {
         if (comp.data.parentid != 0xffff) {
-            let parent = comps[comp.data.parentid];
+            let parent = comps.get(comp.data.parentid);
             if (!parent) {
                 console.log("missing parent");
                 continue;
@@ -53,9 +66,9 @@ export async function renderRsInterface<MODE extends "html" | "dom">(source: Cac
 
     if (mode == "html") {
         let html = "";
-        for (let comp of comps) {
+        for (let comp of comps.values()) {
             if (comp.data.parentid == 0xffff) {
-                html += await comp.toHtml(source, scene, "html");
+                html += await comp.toHtml(ctx, "html");
             }
         }
         let doc = `<!DOCTYPE html>\n`;
@@ -65,7 +78,7 @@ export async function renderRsInterface<MODE extends "html" | "dom">(source: Cac
         doc += css;
         doc += `</style>\n`
         doc += "<script>\n"
-        doc += `var mod=(${jsmodule + ""})(${JSON.stringify(comps.map(q => q.data))});\n`;
+        doc += `var mod=(${jsmodule + ""})(${JSON.stringify(Object.fromEntries([...comps]))});\n`;
         doc += "</script>\n"
         doc += `</head>\n`
         doc += `<body>\n`
@@ -90,9 +103,9 @@ export async function renderRsInterface<MODE extends "html" | "dom">(source: Cac
         root.appendChild(container);
         let disposelist: (() => void)[] = [];
 
-        for (let comp of comps) {
-            if (comp.data.parentid == 0xffff) {
-                let sub = await comp.toHtml(source, scene, "dom");
+        for (let comp of comps.values()) {
+            if (comp.data.parentid == 0xffff || !comps.has(comp.data.parentid)) {
+                let sub = await comp.toHtml(ctx, "dom");
                 disposelist.push(...sub.dispose);
                 container.appendChild(sub.el);
             }
@@ -183,7 +196,7 @@ class RsInterfaceComponent {
         this.subid = subid;
     }
 
-    async toHtml<MODE extends "dom" | "html">(source: CacheFileSource, scene: ThreejsSceneCache | null, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
+    async toHtml<MODE extends "dom" | "html">(ctx: UiRenderContext, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
         let style = "";
         let childhtml = "";
         let el = mode == "dom" ? document.createElement("div") : null;
@@ -220,9 +233,9 @@ class RsInterfaceComponent {
         } else if (this.data.containerdata) {
             for (let child of this.children) {
                 if (mode == "html") {
-                    childhtml += await child.toHtml(source, scene, "html");
+                    childhtml += await child.toHtml(ctx, "html");
                 } else {
-                    let sub = await child.toHtml(source, scene, "dom")
+                    let sub = await child.toHtml(ctx, "dom");
                     el!.appendChild(sub.el);
                     disposelist.push(...sub.dispose);
                 }
@@ -232,12 +245,16 @@ class RsInterfaceComponent {
                 let flags = this.data.spritedata.spriteid >> 24;
                 if (flags != 0) { console.log("sprite flags", flags); }
                 let spriteid = this.data.spritedata.spriteid & 0xffffff;
-                let spritebuf = await source.getFileById(cacheMajors.sprites, spriteid);
+                let spritebuf = await ctx.source.getFileById(cacheMajors.sprites, spriteid);
                 let img = expandSprite(parseSprite(spritebuf)[0]);
                 let imgstyle = "";
                 let pngfile = await pixelsToDataUrl(img);
                 imgstyle += `background-image:url('${pngfile}');`;
+                if ((this.data.spritedata.color & 0xffffff) != 0xffffff) {
+                    imgstyle += `background-color:${cssColor(this.data.spritedata.color)};background-blend-mode:multiply;`;
+                }
                 if (this.data.spritedata.hflip || this.data.spritedata.vflip) {
+                    //TODO this doesn't handle the alpha channel correctly
                     imgstyle += `scale:${this.data.spritedata.hflip ? -1 : 1} ${this.data.spritedata.vflip ? -1 : 1};`;
                 }
                 if (mode == "html") {
@@ -252,26 +269,53 @@ class RsInterfaceComponent {
                 clickable = true;
             }
         } else if (this.data.modeldata) {
-            if (mode == "html" || !scene) {
+            let isplaceholder = this.data.modeldata.modelid == 0x7fff || this.data.modeldata.modelid == 0xffff;
+            if (mode == "html" || isplaceholder || !ctx.sceneCache || !ctx.renderer) {
                 style += "background:rgba(0,255,0,0.5);outline:blue;";
-                childhtml += this.data.modeldata.modelid;
+                childhtml += (isplaceholder ? "placeholder" : this.data.modeldata.modelid);
             } else {
+                let camdata = this.data.modeldata.positiondata!;
+                let camconfig: UiCameraParams = {
+                    rotx: camdata.rotate_x,
+                    roty: camdata.rotate_y,
+                    rotz: camdata.rotate_z,
+                    translatex: camdata.translate_x / 4,
+                    translatey: camdata.translate_y / 4,
+                    zoom: camdata.zoom * 8
+                };
+                let model = new RSModel(ctx.sceneCache, [{ modelid: this.data.modeldata.modelid, mods: {} }], `model_${this.data.modeldata.modelid}`);
                 let canvas = document.createElement("canvas");
                 canvas.classList.add("rs-model");
-                canvas.dataset.modelid = "" + this.data.modeldata.modelid;
-                canvas.dataset.animid = "" + this.data.modeldata.animid;
-                let render = new ThreeJsRenderer(canvas, { alpha: true, antialias: true });
-                let model = new RSModel(scene, [{ modelid: this.data.modeldata.modelid, mods: {} }], `model_${this.data.modeldata.modelid}`);
-                //TODO proper -1 conversion in perser
-                if (this.data.modeldata.animid != 0xffff && this.data.modeldata.animid != 0x7fff) {
-                    model.setAnimation(this.data.modeldata.animid);
+                let modelrender = ctx.renderer.makeUIRenderer(model.getSceneElements(), 0);
+                let render = async () => {
+                    let width = canvas.clientWidth;
+                    let height = canvas.clientHeight;
+                    if (width == 0 || height == 0) { return; }
+                    let img = modelrender.takePicture(width, height, camconfig);
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    let ctx2d = canvas.getContext("2d")!;
+                    ctx2d.putImageData(img, 0, 0);
+                    if (animated && !animcb) {
+                        requestAnimationFrame(render);
+                    }
                 }
-                render.addSceneElement(model);
-                render.addSceneElement({ getSceneElements() { return { options: { hideFloor: true, camMode: "item" } } } });
-                let camdata = this.data.modeldata.positiondata!;
-                updateItemCamera(render, 0, camdata.translate_x / 4, camdata.translate_y / 4, camdata.rotate_x, camdata.rotate_y, camdata.rotate_z, camdata.zoom * 8);
+                let animcb = 0;
+                let animated = false;
+                if (this.data.modeldata.animid != 0x7fff && this.data.modeldata.animid != 0xffff) {
+                    model.setAnimation(this.data.modeldata.animid);
+                    animated = true;
+                }
+                let observer = new ResizeObserver(render);
+                observer.observe(canvas);
+                disposelist.push(() => {
+                    cancelAnimationFrame(animcb);
+                    observer.disconnect();
+                    modelrender.dispose();
+                });
+                model.model.then(render);
                 el!.appendChild(canvas);
-                disposelist.push(() => render.dispose());
+                (canvas as any).render = render;
             }
             clickable = true;
         } else {
@@ -281,7 +325,7 @@ class RsInterfaceComponent {
         if (clickable) {
             style += "pointer-events:initial;";
         }
-        let title = this.data.rightclickopts.join("\n");
+        let title = this.data.rightclickopts.filter(q => q).join("\n");
 
         if (mode == "html") {
             let html = "";
