@@ -11,19 +11,11 @@ export abstract class AstNode {
     constructor(originalindex: number) {
         this.originalindex = originalindex;
     }
-    debugString(indent: string, calli: ClientscriptObfuscation) {
-        return `${indent} unknown op\n${this.debugStringArgs(indent, calli)}`;
+    getName(calli: ClientscriptObfuscation): { name: string, extra: string } {
+        return { name: "unk", extra: "" };
     }
-    debugStringArgs(indent: string, calli: ClientscriptObfuscation) {
-        let res = "";
-        if (this.children.length != 0) {
-            // res += `\n${indent}(\n`;
-            for (let child of this.children) {
-                res += `${child.debugString(indent + "  ", calli)}\n`;
-            }
-            // res += `${indent})`;
-        }
-        return res;
+    getCode(calli: ClientscriptObfuscation): string {
+        return `unk(${this.children.map(q => q.getCode(calli)).join(",")})`
     }
     push(node: AstNode) {
         node.parent?.remove(node);
@@ -35,6 +27,14 @@ export abstract class AstNode {
         this.children.unshift(node);
         node.parent = this;
     }
+    replaceChild(oldnode: AstNode, newnode: AstNode) {
+        newnode.parent?.remove(newnode);
+        let index = this.children.indexOf(oldnode);
+        if (index == -1) { throw new Error("tried to replace node that isn't a child"); }
+        newnode.parent = this;
+        oldnode.parent = null;
+        this.children[index] = newnode;
+    }
     remove(node: AstNode) {
         let index = this.children.indexOf(node);
         if (index == -1) { throw new Error("tried to remove node that isn't a child"); }
@@ -43,34 +43,90 @@ export abstract class AstNode {
     }
 }
 
+class VarAssignNode extends AstNode {
+    varops: AstNode[] = [];
+    getName(calli: ClientscriptObfuscation) {
+        let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? (q.op.opcode == namedClientScriptOps.poplocalstring ? "string" : "int") + q.op.imm : "??")}`;
+        return { name: name, extra: "" };
+    }
+    getCode(calli: ClientscriptObfuscation) {
+        let name = this.getName(calli);
+        return `${name.name} = ${this.children.map(q => q.getCode(calli)).join(",")}`
+    }
+}
+
 export class CodeBlockNode extends AstNode {
     scriptid: number;
     possibleSuccessors: CodeBlockNode[] = [];
+    firstPointer: CodeBlockNode | null = null;
+    lastPointer: CodeBlockNode | null = null;
+    branchEndNode: CodeBlockNode | null = null;
+    indentDepth = -1;
+
     hasUnexplainedChildren = false;
     constructor(scriptid: number, startindex: number) {
         super(startindex);
         this.scriptid = scriptid;
     }
-    debugString(indent: string, calli: ClientscriptObfuscation) {
-        let res = `============ section ${this.originalindex} ============\n`;
-        // res += this.debugStringArgs(indent, calli);
-        for (let [subline, command] of this.children.entries()) {
-            res += `${indent}${command.debugString(indent, calli)}\n`;
+    addSuccessor(block: CodeBlockNode) {
+        if (!block.firstPointer || this.originalindex < block.firstPointer.originalindex) { block.firstPointer = this; }
+        if (!block.lastPointer || this.originalindex > block.lastPointer.originalindex) { block.lastPointer = this; }
+
+        this.possibleSuccessors.push(block);
+        // this.branchEndNode = (this.possibleSuccessors.length == 1 ? this.possibleSuccessors[0] : null);
+    }
+    findNext(indent: number) {
+        this.indentDepth = indent;
+        if (this.possibleSuccessors.length == 0) {
+            this.branchEndNode = null;
+        } else if (this.possibleSuccessors.length == 1) {
+            if (this.possibleSuccessors[0].originalindex <= this.originalindex) {
+                this.branchEndNode = null;//looping jump
+            } else {
+                this.branchEndNode = this.possibleSuccessors[0];
+            }
+        } else {
+            let optionstates = this.possibleSuccessors as (CodeBlockNode | null)[];
+            while (true) {
+                let first: CodeBlockNode | null = null;
+                for (let op of optionstates) {
+                    if (op && (first == null || op.originalindex < first.originalindex)) {
+                        first = op;
+                    }
+                }
+                if (!first) {
+                    this.branchEndNode = null;
+                    break;
+                }
+                if (optionstates.every(q => !q || q == first)) {
+                    this.branchEndNode = first;
+                    break;
+                }
+                optionstates[optionstates.indexOf(first)] = first.findNext(indent + 1);
+            }
         }
-        if (this.possibleSuccessors.some(q => q.originalindex == this.originalindex + this.children.length)) {
-            res += `${indent}${" ".repeat(5 + 1 + 5)} merge into next\n`;
+        return this.branchEndNode;
+    }
+    getName(calli: ClientscriptObfuscation) {
+        return { name: `code block`, extra: "" };
+    }
+    getCode(calli: ClientscriptObfuscation) {
+        let code = "";
+        code += `============ section ${this.originalindex} ${this.branchEndNode?.originalindex ?? "nope"} ============\n`;
+        // code += `${node.originalindex.toString().padStart(4, " ")}: ${(indent + optext.name).slice(0, 20).padEnd(20, " ")}`;
+        // code += optext.extra;
+        // code += "\n";
+        for (let child of this.children) {
+            code += `${(child.originalindex + ":").padEnd(4 + this.indentDepth * 4, " ")} ` + child.getCode(calli) + "\n";
         }
-        return res;
+        return code;
     }
 }
 
 export class RawOpcodeNode extends AstNode {
     op: ClientScriptOp;
     opinfo: OpcodeInfo;
-    knownStackDiff: {
-        in: StackDiff,
-        out: StackDiff
-    } | null = null;
+    knownStackDiff: { in: StackDiff, out: StackDiff } | null = null;
     opnr: number;
     constructor(index: number, op: ClientScriptOp, opinfo: OpcodeInfo, opnr: number) {
         super(index);
@@ -78,15 +134,12 @@ export class RawOpcodeNode extends AstNode {
         this.opnr = opnr;
         this.opinfo = opinfo;
     }
-    debugString(indent: string, calli: ClientscriptObfuscation) {
+    getName(calli: ClientscriptObfuscation) {
         let opinfo = calli.decodedMappings.get(this.op.opcode);
         if (!opinfo) { throw new Error("unknown op"); }
-        let name = knownClientScriptOpNames[this.op.opcode] ?? "unk";
+        let name = knownClientScriptOpNames[this.op.opcode] ?? `unk${this.op.opcode}`;
         let res = "";
-        res += this.debugStringArgs(indent, calli);
-        res += `${indent}${this.originalindex.toString().padStart(4, " ")}: `;
-        let immobj = (typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj}"` : (this.op.imm_obj ?? "").toString());
-        res += `${this.op.opcode.toString().padStart(5, " ")} ${(name ?? "unk").slice(0, 15).padEnd(15, " ")} ${this.op.imm.toString().padStart(10, " ")} ${immobj.padStart(10, " ")}`;
+        res += (typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj}"` : (this.op.imm_obj ?? "").toString());
         //TODO make subclass for this?
         if (this.knownStackDiff) {
             res += ` ${this.knownStackDiff.out}(${this.knownStackDiff.in})`;
@@ -96,10 +149,26 @@ export class RawOpcodeNode extends AstNode {
         if (opinfo.stackmaxpassthrough) {
             res += ` <${opinfo.stackmaxpassthrough}>`;
         }
-        if (opinfo.optype == "branch" || opinfo.id == namedClientScriptOps.jump) {
-            res += `  jumpto ${this.opnr + 1 + this.op.imm}`;
+        return { name: name, extra: res };
+    }
+    getCode(calli: ClientscriptObfuscation) {
+        let opinfo = calli.decodedMappings.get(this.op.opcode);
+        if (!opinfo) { throw new Error("unknown op"); }
+        let { name, extra } = this.getName(calli);
+        if (this.op.opcode == namedClientScriptOps.pushconst) {
+            return typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"` : "" + this.op.imm_obj;
         }
-        return res;
+        if (this.op.opcode == namedClientScriptOps.pushlocalint) {
+            return `int${this.op.imm}`;
+        } else if (this.op.opcode == namedClientScriptOps.pushlocalstring) {
+            return `string${this.op.imm}`;
+        }
+        if (opinfo.optype == "branch") {
+            name += `<${this.op.imm + this.originalindex + 1}>`;
+        } else if (opinfo.optype == "gosub") {
+            name += `<${this.op.imm}>`
+        }
+        return `${name}(${this.children.map(q => q.getCode(calli)).join(",")})`;
     }
 }
 
@@ -119,10 +188,23 @@ class RewriteCursor {
             target = target.children[0];
             this.cursorStack.push(target);
         }
-        return this.cursorStack.at(-1)!;
+        return this.cursorStack.at(-1) ?? null;
     }
     remove() {
-
+        let node = this.current();
+        let newcurrent = this.prev();
+        if (!node) { throw new Error("no node selected"); }
+        if (!node.parent) { throw new Error("cannot remove root node"); }
+        node.parent.remove(node);
+        return newcurrent;
+    }
+    replaceNode(newnode: AstNode) {
+        let node = this.current();
+        if (!node) { throw new Error("no node selected"); }
+        if (!node.parent) { throw new Error("cannot replace root node"); }
+        node.parent.replaceChild(node, newnode);
+        this.cursorStack[this.cursorStack.length - 1] = newnode;
+        return newnode;
     }
     next() {
         let currentnode = this.cursorStack.at(-1);
@@ -178,7 +260,7 @@ function getNodeStackOut(node: AstNode) {
             out.add(node.opinfo.stackchange);
             out.minzero();
             if (node.opinfo.stackmaxpassthrough) {
-                out.add(node.opinfo.stackmaxpassthrough)
+                out.add(node.opinfo.stackmaxpassthrough);
             }
         }
     }
@@ -192,10 +274,14 @@ function getNodeStackIn(node: AstNode) {
             out.add(node.knownStackDiff.in);
         } else if (node.opinfo.stackchange) {
             out.sub(node.opinfo.stackchange);
-            if (node.opinfo.stackmaxpassthrough) {
-                out.add(node.opinfo.stackmaxpassthrough)
-            }
             out.minzero();
+            if (node.opinfo.stackmaxpassthrough) {
+                out.add(node.opinfo.stackmaxpassthrough);
+            }
+        }
+    } else if (node instanceof VarAssignNode) {
+        for (let child of node.varops) {
+            out.add(getNodeStackIn(child));
         }
     }
     return out;
@@ -203,8 +289,30 @@ function getNodeStackIn(node: AstNode) {
 
 export function translateAst(ast: CodeBlockNode) {
     let cursor = new RewriteCursor(ast);
+
+    //merge variable assign nodes
+    let currentassignnode: VarAssignNode | null = null;
+    for (let node = cursor.goToStart(); node; node = cursor.next()) {
+        let isassign = node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocalstring)
+        if (isassign) {
+            if (currentassignnode && currentassignnode.parent != node.parent) {
+                throw new Error("ast is expected to be flat at this stage");
+            }
+            if (!currentassignnode) {
+                currentassignnode = new VarAssignNode(node.originalindex);
+                cursor.replaceNode(currentassignnode);
+            } else {
+                cursor.remove();
+            }
+            currentassignnode.varops.push(node);
+        } else {
+            currentassignnode = null;
+        }
+    }
+
+    //find call arguments
     let usablestackdata: AstNode[] = [];
-    for (let node = cursor.current(); node; node = cursor.next()) {
+    for (let node = cursor.goToStart(); node; node = cursor.next()) {
         let argtype = getNodeStackIn(node);
         let outtype = getNodeStackOut(node);
         while (!argtype.isEmpty() && usablestackdata.length != 0) {
@@ -249,25 +357,19 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             return false;
         }
         if (node.opinfo.id == namedClientScriptOps.return) {
-            let script = calli.candidates.get(section.scriptid);
-            if (!script || !script.returnType) {
+            let script = calli.scriptargs.get(section.scriptid);
+            if (!script || !script.returns) {
                 section.hasUnexplainedChildren = true;
                 return false;
             }
-            node.knownStackDiff = {
-                in: script.returnType,
-                out: new StackDiff()
-            };
+            node.knownStackDiff = { in: script.returns, out: new StackDiff() };
         } else if (node.opinfo.id == namedClientScriptOps.gosub) {
-            let script = calli.candidates.get(node.op.imm);
-            if (!script || !script.returnType || !script.argtype) {
+            let script = calli.scriptargs.get(node.op.imm);
+            if (!script || !script.returns || !script.args) {
                 section.hasUnexplainedChildren = true;
                 return false;
             }
-            node.knownStackDiff = {
-                in: script.argtype,
-                out: script.returnType
-            };
+            node.knownStackDiff = { in: script.args, out: script.returns };
         } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
             node.knownStackDiff = {
                 in: new StackDiff(0, 0, node.op.imm),
@@ -385,7 +487,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         //check if other flows merge into this one
         let addrsection = sections.find(q => q.originalindex == index);
         if (addrsection && addrsection != currentsection) {
-            currentsection.possibleSuccessors.push(addrsection);
+            currentsection.addSuccessor(addrsection);
             currentsection = addrsection;
         }
 
@@ -396,9 +498,9 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             let nextblock = getorMakeSection(nextindex);
             let jumpblock = getorMakeSection(jumpindex);
             if (info.id != namedClientScriptOps.jump) {
-                currentsection.possibleSuccessors.push(nextblock);
+                currentsection.addSuccessor(nextblock);
             }
-            currentsection.possibleSuccessors.push(jumpblock);
+            currentsection.addSuccessor(jumpblock);
             currentsection = nextblock;
         } else if (opnode.opinfo.optype == "return") {
             if (index != ops.length - 1) {
@@ -410,10 +512,10 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             if (!cases) { throw new Error("no matching cases in script"); }
 
             let nextblock = getorMakeSection(nextindex);
-            currentsection.possibleSuccessors.push(nextblock)
+            currentsection.addSuccessor(nextblock);
             for (let cond of cases) {
                 let jumpblock = getorMakeSection(nextindex + cond.label);
-                currentsection.possibleSuccessors.push(jumpblock);
+                currentsection.addSuccessor(jumpblock);
             }
             currentsection = nextblock;
         }
@@ -429,7 +531,8 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
     let script = parse.clientscript.read(buf, source);
     let sections = generateAst(calli, script, script.opcodedata, fileid);
-    sections = sections.map(q => translateAst(q));
+    sections.forEach(translateAst);
+    for (let node: CodeBlockNode | null = sections[0]; node; node = node.findNext(0));
 
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
@@ -437,7 +540,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     res += `script ${fileid} ${returntype} (${argtype})\n`;
 
     for (let section of sections) {
-        res += section.debugString("", calli);
+        res += section.getCode(calli);
     }
     return res;
 }

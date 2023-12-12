@@ -8,6 +8,9 @@ import { clientscript } from "../../generated/clientscript";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
 import { osrsOpnames } from "./osrsopnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { crc32 } from "../libs/crc32util";
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
 const lastNonObfuscatedBuild = 668;
@@ -38,6 +41,12 @@ export const namedClientScriptOps = {
     pushint: 0,
     pushlong: 54,
     pushstring: 3,
+
+    //local var assign
+    pushlocalint: 33,
+    poplocalint: 34,
+    pushlocalstring: 35,
+    poplocalstring: 36,
 
     //variable number of args
     joinstring: 37,
@@ -106,6 +115,23 @@ export class OpcodeInfo {
             this.type = "unknown";
         }
     }
+    static fromJson(json: ReturnType<OpcodeInfo["toJson"]>) {
+        let r = new OpcodeInfo(json.scrambledid, json.id, json.type == "unknown" ? detectableImmediates : [json.type]);
+        r.optype = json.optype;
+        r.stackchange = StackDiff.fromJson(json.stackchange);
+        r.stackmaxpassthrough = StackDiff.fromJson(json.stackmaxpassthrough);
+        return r;
+    }
+    toJson() {
+        return {
+            id: this.id,
+            scrambledid: this.scrambledid,
+            stackchange: this.stackchange?.toJson(),
+            stackmaxpassthrough: this.stackmaxpassthrough?.toJson(),
+            type: this.type,
+            optype: this.optype
+        }
+    }
 }
 
 export class StackDiff {
@@ -113,6 +139,13 @@ export class StackDiff {
     long: number;
     string: number;
     vararg: number;
+    static fromJson(json: ReturnType<StackDiff["toJson"]> | undefined | null) {
+        if (!json) { return null; }
+        return new StackDiff(json.int, json.long, json.string, json.vararg)
+    }
+    toJson() {
+        return { ...this };
+    }
     constructor(int = 0, long = 0, string = 0, vararg = 0) {
         this.int = int;
         this.long = long;
@@ -388,20 +421,74 @@ async function getReferenceOpcodeDump() {
 export class ClientscriptObfuscation {
     mappings = new Map<number, OpcodeInfo>();
     decodedMappings = new Map<number, OpcodeInfo>();
-    candidates: Map<number, ScriptCandidate> = new Map();
     callibrated = false;
     opidcounter = 10000;
-    missedParseOps: number[] = [];
     source: CacheFileSource;
     varmeta: Map<number, Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never>> = new Map();
+    scriptargs = new Map<number, { args: StackDiff, returns: StackDiff }>();
+    candidates = new Map<number, ScriptCandidate>();
+
+    static async fromJson(source: CacheFileSource, json: ReturnType<ClientscriptObfuscation["toJson"]>) {
+        if (json.buildnr != source.getBuildNr()) {
+            throw new Error("build numbers of json deob and loaded cache don't match");
+        }
+        let r = new ClientscriptObfuscation(source);
+        for (let opjson of json.mappings) {
+            let op = OpcodeInfo.fromJson(opjson);
+            r.mappings.set(op.scrambledid, op);
+            r.decodedMappings.set(op.id, op);
+        }
+        r.opidcounter = json.opidcounter;
+        r.callibrated = true;
+        r.scriptargs = new Map(json.scriptargs.map(v => [v.id, { args: StackDiff.fromJson(v.args)!, returns: StackDiff.fromJson(v.returns)! }]));
+        await r.preloadData(true);
+        return r;
+    }
+
+    toJson() {
+        let r = {
+            buildnr: this.source.getBuildNr(),
+            mappings: [...this.mappings.values()].map(v => v.toJson()),
+            opidcounter: this.opidcounter,
+            scriptargs: [...this.scriptargs].map(([k, v]) => ({ id: k, args: v.args.toJson(), returns: v.returns.toJson() }))
+        }
+        return r;
+    }
+
+    static async getSaveName(source: CacheFileSource) {
+        let index = await source.getCacheIndex(cacheMajors.clientscript);
+        let firstindex = index.find(q => q);//[0] might be undefined
+        if (!firstindex) { throw new Error("cache has no clientscripts"); }
+        let firstscript = await source.getFileById(firstindex.major, firstindex.minor);
+        let crc = crc32(firstscript);
+        return `cache/opcodes-build${source.getBuildNr()}-${crc}.json`;
+    }
+
+    async save() {
+        if (typeof fs == "undefined") {
+            throw new Error("no filesystem access");
+        }
+        let json = this.toJson();
+        let filedata = JSON.stringify(json);
+        let filename = await ClientscriptObfuscation.getSaveName(this.source);
+        await fs.mkdir(path.dirname(filename), { recursive: true });
+        await fs.writeFile(filename, filedata);
+    }
 
     private constructor(source: CacheFileSource) {
         this.source = source;
     }
 
-    static async create(source: CacheFileSource) {
+    static async create(source: CacheFileSource, nocached = false) {
+        if (!nocached) {
+            try {
+                let file = await fs.readFile(await this.getSaveName(source), "utf8");
+                let json = JSON.parse(file);
+                return this.fromJson(source, json);
+            } catch { }
+        }
         let res = new ClientscriptObfuscation(source);
-        await res.preloadData();
+        await res.preloadData(false);
         return res;
     }
 
@@ -414,7 +501,7 @@ export class ClientscriptObfuscation {
         return op;
     }
 
-    async preloadData() {
+    async preloadData(skipcandidates: boolean) {
         let loadVars = async (subid: number) => {
             let archieve = await this.source.getArchiveById(cacheMajors.config, subid);
             return new Map(archieve.map(q => [q.fileid, varInfoParser.read(q.buffer, this.source)]));
@@ -428,24 +515,26 @@ export class ClientscriptObfuscation {
             ] as const)));
         }
 
-        let index = await this.source.getCacheIndex(cacheMajors.clientscript);
-        this.candidates.clear();
-        let source = this.source;
-        await trickleTasksTwoStep(10, function* () {
-            for (let entry of index) {
-                if (!entry) { continue; }
-                yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
-                    id: entry.minor,
-                    solutioncount: 0,
-                    buf,
-                    script: parse.clientscriptdata.read(buf, source),
-                    scriptcontents: null,
-                    argtype: null,
-                    returnType: null,
-                    unknowns: new Map()
-                }));
-            }
-        }, q => this.candidates.set(q.id, q));
+        if (!skipcandidates) {
+            let index = await this.source.getCacheIndex(cacheMajors.clientscript);
+            this.candidates.clear();
+            let source = this.source;
+            await trickleTasksTwoStep(10, function* () {
+                for (let entry of index) {
+                    if (!entry) { continue; }
+                    yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
+                        id: entry.minor,
+                        solutioncount: 0,
+                        buf,
+                        script: parse.clientscriptdata.read(buf, source),
+                        scriptcontents: null,
+                        argtype: null,
+                        returnType: null,
+                        unknowns: new Map()
+                    }));
+                }
+            }, q => this.candidates.set(q.id, q));
+        }
     }
 
     async generateDump() {
@@ -457,7 +546,7 @@ export class ClientscriptObfuscation {
                 scripts.push({ id: cand.id, scriptdata: cand.script, scriptops: cand.scriptcontents });
             }
         }
-        console.log(`dumped ${scripts.length}/${cands.size} scripts`);
+        console.log(`dumped ${scripts.length} /${cands.size} scripts`);
         return {
             buildnr: this.source.getBuildNr(),
             scripts,
@@ -468,7 +557,7 @@ export class ClientscriptObfuscation {
     async runAutoCallibrate(source: CacheFileSource) {
         if (source.getBuildNr() <= lastNonObfuscatedBuild) {
             this.setNonObbedMappings();
-        } else {
+        } else if (!this.callibrated) {
             let ref = await getReferenceOpcodeDump();
             await this.runCallibration(ref);
         }
@@ -600,6 +689,7 @@ function parseCandidateContents(calli: ClientscriptObfuscation) {
         if (!cand.scriptcontents) { continue; }
         cand.returnType = getReturnType(calli, cand.scriptcontents);
         cand.argtype = getArgType(cand.script);
+        calli.scriptargs.set(cand.id, { args: cand.argtype, returns: cand.returnType });
     }
 }
 

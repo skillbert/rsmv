@@ -1,7 +1,9 @@
 import { sqliteExec, sqliteOpenDatabase, sqlitePrepare, sqliteRunStatement } from "../libs/sqlite3wrap";
 import type * as sqlite3 from "sqlite3";
+import * as fs from "fs/promises";
+import * as path from "path";
 
-const dbpath = "./fscache.sqlite3";
+const dbpath = "./cache/fscache.sqlite3";
 
 export class FileSourceFsCache {
     ready: Promise<void>;
@@ -23,6 +25,7 @@ export class FileSourceFsCache {
     constructor(filename: string) {
         this.isready = false;
         this.ready = (async () => {
+            await fs.mkdir(path.dirname(filename), { recursive: true });
             let database = await sqliteOpenDatabase(filename, { create: true, write: true });
 
             await sqliteExec(database, `CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
