@@ -14,8 +14,8 @@ export abstract class AstNode {
     getName(calli: ClientscriptObfuscation): { name: string, extra: string } {
         return { name: "unk", extra: "" };
     }
-    getCode(calli: ClientscriptObfuscation): string {
-        return `unk(${this.children.map(q => q.getCode(calli)).join(",")})`
+    getCode(calli: ClientscriptObfuscation, indent: number): string {
+        return `unk(${this.children.map(q => q.getCode(calli, indent)).join(",")})`
     }
     push(node: AstNode) {
         node.parent?.remove(node);
@@ -49,9 +49,9 @@ class VarAssignNode extends AstNode {
         let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? (q.op.opcode == namedClientScriptOps.poplocalstring ? "string" : "int") + q.op.imm : "??")}`;
         return { name: name, extra: "" };
     }
-    getCode(calli: ClientscriptObfuscation) {
+    getCode(calli: ClientscriptObfuscation, indent: number) {
         let name = this.getName(calli);
-        return `${name.name} = ${this.children.map(q => q.getCode(calli)).join(",")}`
+        return `${name.name} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`
     }
 }
 
@@ -61,7 +61,6 @@ export class CodeBlockNode extends AstNode {
     firstPointer: CodeBlockNode | null = null;
     lastPointer: CodeBlockNode | null = null;
     branchEndNode: CodeBlockNode | null = null;
-    indentDepth = -1;
 
     hasUnexplainedChildren = false;
     constructor(scriptid: number, startindex: number) {
@@ -71,22 +70,29 @@ export class CodeBlockNode extends AstNode {
     addSuccessor(block: CodeBlockNode) {
         if (!block.firstPointer || this.originalindex < block.firstPointer.originalindex) { block.firstPointer = this; }
         if (!block.lastPointer || this.originalindex > block.lastPointer.originalindex) { block.lastPointer = this; }
-
+        if (this.possibleSuccessors.includes(block)) { throw new Error("added same successor twice"); }
+        if (!block) { throw new Error("added null successor"); }
         this.possibleSuccessors.push(block);
-        // this.branchEndNode = (this.possibleSuccessors.length == 1 ? this.possibleSuccessors[0] : null);
     }
-    findNext(indent: number) {
-        this.indentDepth = indent;
+    mergeBlock(block: CodeBlockNode) {
+        for (let child of block.children) {
+            child.parent = this;
+        }
+        this.children.push(...block.children);
+        this.possibleSuccessors = block.possibleSuccessors ?? [];
+        this.branchEndNode = block.branchEndNode;
+    }
+    findNext() {
         if (this.possibleSuccessors.length == 0) {
             this.branchEndNode = null;
         } else if (this.possibleSuccessors.length == 1) {
             if (this.possibleSuccessors[0].originalindex <= this.originalindex) {
-                this.branchEndNode = null;//looping jump
+                this.branchEndNode = null;//TODO looping jump
             } else {
                 this.branchEndNode = this.possibleSuccessors[0];
             }
         } else {
-            let optionstates = this.possibleSuccessors as (CodeBlockNode | null)[];
+            let optionstates = this.possibleSuccessors.slice() as (CodeBlockNode | null)[];
             while (true) {
                 let first: CodeBlockNode | null = null;
                 for (let op of optionstates) {
@@ -102,7 +108,7 @@ export class CodeBlockNode extends AstNode {
                     this.branchEndNode = first;
                     break;
                 }
-                optionstates[optionstates.indexOf(first)] = first.findNext(indent + 1);
+                optionstates[optionstates.indexOf(first)] = first.findNext();
             }
         }
         return this.branchEndNode;
@@ -110,16 +116,108 @@ export class CodeBlockNode extends AstNode {
     getName(calli: ClientscriptObfuscation) {
         return { name: `code block`, extra: "" };
     }
-    getCode(calli: ClientscriptObfuscation) {
+    getCode(calli: ClientscriptObfuscation, indent: number) {
         let code = "";
-        code += `============ section ${this.originalindex} ${this.branchEndNode?.originalindex ?? "nope"} ============\n`;
+        // code += `============ section ${this.originalindex} ${this.branchEndNode?.originalindex ?? "nope"} ============\n`;
         // code += `${node.originalindex.toString().padStart(4, " ")}: ${(indent + optext.name).slice(0, 20).padEnd(20, " ")}`;
         // code += optext.extra;
         // code += "\n";
         for (let child of this.children) {
-            code += `${(child.originalindex + ":").padEnd(4 + this.indentDepth * 4, " ")} ` + child.getCode(calli) + "\n";
+            code += `${(child.originalindex + ":").padEnd(4 + indent * 4, " ")} ` + child.getCode(calli, indent) + "\n";
         }
         return code;
+    }
+}
+
+type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=";
+class BinaryOpStatement extends AstNode {
+    type: BinaryOpType;
+    left: AstNode;
+    right: AstNode;
+    constructor(type: BinaryOpType, originalindex: number, left: AstNode, right: AstNode) {
+        super(originalindex);
+        this.type = type;
+        this.left = left;
+        this.right = right;
+        this.children.push(left, right);
+        left.parent = this;
+        right.parent = this;
+    }
+
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        return `(${this.left.getCode(calli, indent)} ${this.type} ${this.right.getCode(calli, indent)})`;
+    }
+}
+
+class SwitchStatementNode extends AstNode {
+    branches: { value: number, block: CodeBlockNode }[] = [];
+    valueop: AstNode;
+    defaultbranch: CodeBlockNode;
+    constructor(valueop: RawOpcodeNode, scriptjson: clientscript, nodes: CodeBlockNode[]) {
+        super(valueop.originalindex);
+        if (valueop.children.length != 1) { throw new Error("switch value expected"); }
+        this.valueop = valueop.children[0];
+        this.valueop.parent = this;
+
+        let cases = scriptjson.switches[valueop.op.imm];
+        if (!cases) { throw new Error("no matching cases in script"); }
+        if (nodes.length != cases.length + 1) { throw new Error("switch cases and nodes don't match"); }
+        for (let [index, casev] of cases.entries()) {
+            let node = nodes[index];
+            this.branches.push({ value: casev.value, block: node });
+            node.parent = this;
+            this.children.push(node);
+            if (node.originalindex != valueop.originalindex + 1 + casev.label) {
+                throw new Error("switch branches don't match");
+            }
+        }
+        this.defaultbranch = nodes.at(-1)!;
+        this.defaultbranch.parent = this;
+    }
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        let res = "";
+        res += `switch(${this.valueop.getCode(calli, indent)}){\n`;
+        for (let branch of this.branches) {
+            res += `case ${branch.value}:{\n`;
+            res += branch.block.getCode(calli, indent + 1);
+            res += "}\n";
+        }
+        res += `default:{\n`;
+        res += this.defaultbranch.getCode(calli, indent);
+        res += `}`;
+        return res;
+    }
+}
+
+class IfStatementNode extends AstNode {
+    truebranch: CodeBlockNode;
+    falsebranch: CodeBlockNode | null;
+    statement: AstNode;
+    endblock: CodeBlockNode;
+    constructor(statement: AstNode, endblock: CodeBlockNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null) {
+        if (truebranch == falsebranch) { throw new Error("unexpected"); }
+        super(statement.originalindex);
+        this.endblock = endblock;
+        this.statement = statement;
+        this.truebranch = truebranch;
+        this.falsebranch = falsebranch;
+        this.children.push(statement, truebranch);
+        statement.parent = this;
+        truebranch.parent = this;
+        if (falsebranch) {
+            this.children.push(falsebranch);
+            falsebranch.parent = this;
+        }
+    }
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        let res = `if(${this.statement.getCode(calli, indent)}){\n`;
+        res += `${this.truebranch?.getCode(calli, indent + 1)}`;
+        if (this.falsebranch) {
+            res += `${" ".repeat(indent * 4 + 4)} }else{\n`;
+            res += `${this.falsebranch?.getCode(calli, indent + 1)}`;
+        }
+        res += `${" ".repeat(indent * 4 + 4)} }`;
+        return res;
     }
 }
 
@@ -151,7 +249,7 @@ export class RawOpcodeNode extends AstNode {
         }
         return { name: name, extra: res };
     }
-    getCode(calli: ClientscriptObfuscation) {
+    getCode(calli: ClientscriptObfuscation, indent: number) {
         let opinfo = calli.decodedMappings.get(this.op.opcode);
         if (!opinfo) { throw new Error("unknown op"); }
         let { name, extra } = this.getName(calli);
@@ -170,22 +268,23 @@ export class RawOpcodeNode extends AstNode {
                 if (this.opinfo.id == namedClientScriptOps.pushvar) {
                     return name;
                 } else {
-                    return `${name} = ${this.children.map(q => q.getCode(calli)).join(",")}`;
+                    return `${name} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`;
                 }
             }
         }
-        if (opinfo.optype == "branch") {
+        if (opinfo.optype == "branch" || opinfo.id == namedClientScriptOps.jump) {
             name += `<${this.op.imm + this.originalindex + 1}>`;
         } else if (opinfo.optype == "gosub") {
-            name += `<${this.op.imm}>`
+            name += `<${this.op.imm}>`;
         }
-        return `${name}(${this.children.map(q => q.getCode(calli)).join(",")})`;
+        return `${name}(${this.children.map(q => q.getCode(calli, indent)).join(",")})`;
     }
 }
 
 class RewriteCursor {
     rootnode: AstNode;
     cursorStack: AstNode[] = [];
+    stalled = true;
     constructor(node: AstNode) {
         this.rootnode = node;
         this.goToStart();
@@ -193,8 +292,11 @@ class RewriteCursor {
     current() {
         return this.cursorStack.at(-1) ?? null;
     }
-    findFirstChild(target: AstNode) {
-        this.cursorStack.push(target);
+    setFirstChild(target: AstNode, stall = false) {
+        this.stalled = stall;
+        if (target != this.cursorStack.at(-1)) {
+            this.cursorStack.push(target);
+        }
         while (target.children.length != 0) {
             target = target.children[0];
             this.cursorStack.push(target);
@@ -218,6 +320,10 @@ class RewriteCursor {
         return newnode;
     }
     next() {
+        if (this.stalled) {
+            this.stalled = false;
+            return this.current();
+        }
         let currentnode = this.cursorStack.at(-1);
         let parentnode = this.cursorStack.at(-2);
         if (!currentnode) { return null; }
@@ -229,19 +335,26 @@ class RewriteCursor {
             return parentnode;
         }
         let newnode = parentnode.children[index + 1];
-        return this.findFirstChild(newnode);
+        return this.setFirstChild(newnode);
     }
     prev() {
+        if (this.stalled) {
+            this.stalled = false;
+            return this.current();
+        }
         let currentnode = this.cursorStack.at(-1);
         let parentnode = this.cursorStack.at(-2);
         if (!currentnode) { return null; }
         if (currentnode.children.length != 0) {
             let newnode = currentnode.children.at(-1)!;
-            this.cursorStack.push(currentnode);
+            this.cursorStack.push(newnode);
             return newnode;
         }
         this.cursorStack.pop();
-        if (!parentnode) { return null; }
+        if (!parentnode) {
+            this.stalled = true;
+            return null;
+        }
 
         let index = parentnode.children.indexOf(currentnode);
         if (index == 0) {
@@ -251,14 +364,22 @@ class RewriteCursor {
         this.cursorStack.push(newnode);
         return newnode;
     }
-    goToStart() {
+    setNextNode(node: AstNode) {
+        this.stalled = true;
         this.cursorStack.length = 0;
-        return this.findFirstChild(this.rootnode);
+        for (let current: AstNode | null = node; current; current = current.parent) {
+            this.cursorStack.unshift(current);
+        }
+    }
+    goToStart() {
+        this.stalled = false;
+        this.cursorStack.length = 0;
+        return this.setFirstChild(this.rootnode);
     }
     goToEnd() {
+        this.stalled = false;
         this.cursorStack.length = 0;
-        this.cursorStack.push(this.rootnode);
-        return this.rootnode;
+        return null;
     }
 }
 
@@ -343,6 +464,79 @@ export function translateAst(ast: CodeBlockNode) {
         }
     }
     return ast;
+}
+function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
+    let cursor = new RewriteCursor(ast);
+    //find if statements
+    for (let node = cursor.goToStart(); node; node = cursor.next()) {
+        if (node instanceof RawOpcodeNode && node.opinfo.optype == "branch") {
+            let parent = node.parent;
+            if (!(parent instanceof CodeBlockNode) || parent.possibleSuccessors.length != 2) { throw new Error("if op parent is not compatible"); }
+            if (parent.children.at(-1) != node) { throw new Error("if op is not last op in codeblock"); }
+            if (!parent.branchEndNode) { throw new Error("if statement parent end node expected"); }
+            //TODO move this insto if class
+            let optype: BinaryOpType;
+            if (node.op.opcode == namedClientScriptOps.branch_eq) { optype = "=="; }
+            else if (node.op.opcode == namedClientScriptOps.branch_gt) { optype = ">"; }
+            else if (node.op.opcode == namedClientScriptOps.branch_gteq) { optype = ">="; }
+            else if (node.op.opcode == namedClientScriptOps.branch_lt) { optype = "<"; }
+            else if (node.op.opcode == namedClientScriptOps.branch_lteq) { optype = "<="; }
+            else if (node.op.opcode == namedClientScriptOps.branch_not) { optype = "!="; }
+            else { throw new Error("unknown branch type"); }
+
+            let trueblock = parent.possibleSuccessors[1];
+            let falseblock: CodeBlockNode | null = parent.possibleSuccessors[0];
+            if (falseblock.children.length == 1 && falseblock.children[0] instanceof RawOpcodeNode && falseblock.children[0].opinfo.id == namedClientScriptOps.jump) {
+                if (falseblock.possibleSuccessors.length != 1) { throw new Error("jump successor branch expected"); }
+                falseblock = falseblock.possibleSuccessors[0];
+                if (falseblock == parent.branchEndNode) {
+                    falseblock = null;
+                }
+            }
+            if (!(trueblock instanceof CodeBlockNode)) { throw new Error("true branch isn't a codeblock"); }
+            if (falseblock && !(falseblock instanceof CodeBlockNode)) { throw new Error("false branch exists but is not a codeblock"); }
+            let condnode = new BinaryOpStatement(optype, node.originalindex, node.children[0], node.children[1]);
+
+            let grandparent = parent?.parent;
+            if (parent instanceof CodeBlockNode && parent.children.length == 1 && grandparent instanceof IfStatementNode && grandparent.endblock == parent.branchEndNode) {
+                if (grandparent.truebranch == trueblock && grandparent.falsebranch == parent) {
+                    let combinedcond = new BinaryOpStatement("||", grandparent.originalindex, grandparent.statement, condnode);
+                    grandparent.statement = combinedcond;
+                    grandparent.falsebranch = falseblock;
+                    continue;
+                } else if (grandparent.falsebranch == falseblock && grandparent.truebranch == parent) {
+                    let combinedcond = new BinaryOpStatement("&&", grandparent.originalindex, grandparent.statement, condnode);
+                    grandparent.statement = combinedcond;
+                    grandparent.truebranch = trueblock;
+                    continue;
+                }
+            }
+
+            let ifstatement = new IfStatementNode(condnode, parent.branchEndNode, trueblock, falseblock);
+            cursor.replaceNode(ifstatement);
+            cursor.setFirstChild(ifstatement, true);
+        }
+        if (node instanceof RawOpcodeNode && node.opinfo.id == namedClientScriptOps.switch) {
+            if (!(node.parent instanceof CodeBlockNode)) { throw new Error("code block expected"); }
+            let casestatement = new SwitchStatementNode(node, scriptjson, node.parent.possibleSuccessors);
+            cursor.replaceNode(casestatement);
+            cursor.setFirstChild(casestatement, true);
+        }
+        if (node instanceof CodeBlockNode && node.branchEndNode) {
+            let allowed = true;
+            for (let subnode = node.parent; subnode; subnode = subnode.parent) {
+                if (subnode instanceof CodeBlockNode && subnode.branchEndNode == node.branchEndNode) {
+                    allowed = false;
+                    break;
+                }
+            }
+            if (allowed) {
+                cursor.prev();
+                node.mergeBlock(node.branchEndNode);
+            }
+        }
+    }
+
 }
 
 function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscation) {
@@ -474,7 +668,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         let info = calli.decodedMappings.get(op.opcode)!;
         if (!info) { throw new Error("tried to add unknown op to AST"); }
 
-        if (info.optype == "branch") {
+        if (info.optype == "branch" || info.id == namedClientScriptOps.jump) {
             let jumpindex = nextindex + op.imm;
             getorMakeSection(nextindex);
             getorMakeSection(jumpindex);
@@ -497,7 +691,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
         currentsection.push(opnode);
 
-        if (opnode.opinfo.optype == "branch") {
+        if (opnode.opinfo.optype == "branch" || info.id == namedClientScriptOps.jump) {
             let jumpindex = nextindex + op.imm;
             let nextblock = getorMakeSection(nextindex);
             let jumpblock = getorMakeSection(jumpindex);
@@ -515,12 +709,12 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             let cases = script.switches[opnode.op.imm];
             if (!cases) { throw new Error("no matching cases in script"); }
 
-            let nextblock = getorMakeSection(nextindex);
-            currentsection.addSuccessor(nextblock);
             for (let cond of cases) {
                 let jumpblock = getorMakeSection(nextindex + cond.label);
                 currentsection.addSuccessor(jumpblock);
             }
+            let nextblock = getorMakeSection(nextindex);
+            currentsection.addSuccessor(nextblock);
             currentsection = nextblock;
         }
     }
@@ -535,16 +729,18 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
     let script = parse.clientscript.read(buf, source);
     let sections = generateAst(calli, script, script.opcodedata, fileid);
-    sections.forEach(translateAst);
-    for (let node: CodeBlockNode | null = sections[0]; node; node = node.findNext(0));
+    let program = sections[0];
+    for (let node: CodeBlockNode | null = program; node; node = node.findNext());
+    sections.forEach(q => translateAst(q));
+    fixControlFlow(program, script);
 
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
     let res = "";
     res += `script ${fileid} ${returntype} (${argtype})\n`;
-
-    for (let section of sections) {
-        res += section.getCode(calli);
-    }
+    res += program.getCode(calli, 0);
+    // for (let section of sections) {
+    //     res += section.getCode(calli);
+    // }
     return res;
 }

@@ -79,7 +79,6 @@ export const knownClientScriptOpNames: Record<number, string> = {
 }
 
 const branchInstructions = [
-    namedClientScriptOps.jump,
     namedClientScriptOps.branch_not,
     namedClientScriptOps.branch_eq,
     namedClientScriptOps.branch_lt,
