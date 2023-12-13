@@ -221,7 +221,8 @@ export type ScriptCandidate = {
     scriptcontents: ClientScriptOp[] | null,
     returnType: StackDiff | null,
     argtype: StackDiff | null,
-    unknowns: Map<number, OpcodeInfo>
+    unknowns: Map<number, OpcodeInfo>,
+    didmatch: boolean
 };
 
 type ReferenceScript = {
@@ -424,7 +425,7 @@ export class ClientscriptObfuscation {
     callibrated = false;
     opidcounter = 10000;
     source: CacheFileSource;
-    varmeta: Map<number, Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never>> = new Map();
+    varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
     scriptargs = new Map<number, { args: StackDiff, returns: StackDiff }>();
     candidates = new Map<number, ScriptCandidate>();
 
@@ -511,7 +512,10 @@ export class ClientscriptObfuscation {
         if (this.source.getBuildNr() > 900) {
             this.varmeta = new Map(await Promise.all(Object.entries(variableSources).map(async q => [
                 q[1].key,
-                await loadVars(q[1].index)
+                {
+                    name: q[0],
+                    vars: await loadVars(q[1].index)
+                }
             ] as const)));
         }
 
@@ -530,7 +534,8 @@ export class ClientscriptObfuscation {
                         scriptcontents: null,
                         argtype: null,
                         returnType: null,
-                        unknowns: new Map()
+                        unknowns: new Map(),
+                        didmatch: false
                     }));
                 }
             }, q => this.candidates.set(q.id, q));
@@ -565,6 +570,7 @@ export class ClientscriptObfuscation {
     async runCallibrationFrom(previousCallibration: ClientscriptObfuscation) {
         let refscript = await previousCallibration.generateDump();
         await this.runCallibration(refscript);
+        console.log("callibrated", this);
     }
     setNonObbedMappings() {
         //originally all <0x80 were ints
@@ -610,6 +616,7 @@ export class ClientscriptObfuscation {
             if (offset != buf.byteLength) {
                 return false;
             }
+            cand.didmatch = true;
             for (let [k, v] of unconfirmed) {
                 let info = new OpcodeInfo(k, v.opcode, [opcodeToType(v.opcode)]);
                 this.mappings.set(k, info);
@@ -677,6 +684,20 @@ export class ClientscriptObfuscation {
         let opname = knownClientScriptOpNames[res.id] ?? "unknown";
 
         return { opcode: res.id, imm: imm.imm, imm_obj: imm.imm_obj, opname } satisfies ClientScriptOp;
+    }
+    getClientVarMeta(varint: number) {
+        let groupid = (varint >> 24) & 0xff;
+        let varid = (varint >> 8) & 0xffff;
+        let group = this.varmeta.get(groupid);
+        let varmeta = group?.vars.get(varid);
+        if (!group || !varmeta) { return null; }
+        let diff = new StackDiff();
+        if ([36, 50].includes(varmeta.type)) { diff.string++; }
+        else if ([35, 49, 56, 71, 110, 115, 116].includes(varmeta.type)) { diff.long++; }
+        else { diff.int++; }
+        let type = (diff.int ? "int" as const : diff.long ? "long" as const : "string" as const);
+
+        return { name: group.name, varid, diff, type };
     }
 }
 

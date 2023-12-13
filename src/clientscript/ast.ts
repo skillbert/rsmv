@@ -163,6 +163,17 @@ export class RawOpcodeNode extends AstNode {
         } else if (this.op.opcode == namedClientScriptOps.pushlocalstring) {
             return `string${this.op.imm}`;
         }
+        if (this.opinfo.id == namedClientScriptOps.pushvar || this.opinfo.id == namedClientScriptOps.popvar) {
+            let varmeta = calli.getClientVarMeta(this.op.imm);
+            if (varmeta) {
+                let name = `var${varmeta.name}_${varmeta.varid}`;
+                if (this.opinfo.id == namedClientScriptOps.pushvar) {
+                    return name;
+                } else {
+                    return `${name} = ${this.children.map(q => q.getCode(calli)).join(",")}`;
+                }
+            }
+        }
         if (opinfo.optype == "branch") {
             name += `<${this.op.imm + this.originalindex + 1}>`;
         } else if (opinfo.optype == "gosub") {
@@ -376,23 +387,16 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                 out: new StackDiff(0, 0, 1)
             }
         } else if (node.opinfo.id == namedClientScriptOps.pushvar || node.opinfo.id == namedClientScriptOps.popvar) {
-            let groupid = (node.op.imm >> 24) & 0xff;
-            let varid = (node.op.imm >> 8) & 0xffff;
-            let group = calli.varmeta.get(groupid);
-            let varmeta = group?.get(varid);
-            if (!group || !varmeta) {
+            let varmeta = calli.getClientVarMeta(node.op.imm);
+            if (!varmeta) {
                 section.hasUnexplainedChildren = true;
                 return false;
             }
-            let diff = new StackDiff();
-            if ([36, 50].includes(varmeta.type)) { diff.string++; }
-            else if ([35, 49, 56, 71, 110, 115, 116].includes(varmeta.type)) { diff.long++; }
-            else { diff.int++; }
             let ispop = node.opinfo.id == namedClientScriptOps.popvar;
 
             node.knownStackDiff = {
-                in: (ispop ? diff : new StackDiff()),
-                out: (ispop ? new StackDiff() : diff)
+                in: (ispop ? varmeta.diff : new StackDiff()),
+                out: (ispop ? new StackDiff() : varmeta.diff)
             };
         } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
             if (node.op.imm == 0) {
