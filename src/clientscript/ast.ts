@@ -194,8 +194,10 @@ class SwitchStatementNode extends AstNode {
         let cases = scriptjson.switches[valueop.op.imm];
         if (!cases) { throw new Error("no matching cases in script"); }
         if (nodes.length != cases.length + 1) { throw new Error("switch cases and nodes don't match"); }
-        for (let [index, casev] of cases.entries()) {
-            let node = nodes[index];
+        for (let casev of cases) {
+            //TODO multiple values can point to the same case
+            let node = nodes.find(q => q.originalindex == valueop.originalindex + 1 + casev.label);
+            if (!node) { throw new Error("switch case branch not found"); }
             this.branches.push({ value: casev.value, block: node });
             node.parent = this;
             node.maxEndIndex = endindex;
@@ -206,8 +208,8 @@ class SwitchStatementNode extends AstNode {
         }
 
 
-        let defaultblock: CodeBlockNode | null = nodes.at(-1)!;
-        if (defaultblock.children.length == 1 && defaultblock.children[0] instanceof RawOpcodeNode && defaultblock.children[0].opinfo.id == namedClientScriptOps.jump) {
+        let defaultblock: CodeBlockNode | null = nodes.find(q => q.originalindex == valueop.originalindex + 1) ?? null;
+        if (defaultblock && defaultblock.children.length == 1 && defaultblock.children[0] instanceof RawOpcodeNode && defaultblock.children[0].opinfo.id == namedClientScriptOps.jump) {
             if (defaultblock.possibleSuccessors.length != 1) { throw new Error("jump successor branch expected"); }
             defaultblock = defaultblock.possibleSuccessors[0];
             if (defaultblock.originalindex == endindex) {
@@ -788,7 +790,9 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
             for (let cond of cases) {
                 let jumpblock = getorMakeSection(nextindex + cond.label);
-                currentsection.addSuccessor(jumpblock);
+                if (!currentsection.possibleSuccessors.includes(jumpblock)) {
+                    currentsection.addSuccessor(jumpblock);
+                }
             }
             let nextblock = getorMakeSection(nextindex);
             currentsection.addSuccessor(nextblock);
