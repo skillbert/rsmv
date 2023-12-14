@@ -4,6 +4,19 @@ import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps } from "./callibrator";
 
+function codeIndent(amount: number, linenr = -1) {
+    return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ");
+}
+
+function findFirstAddress(node: AstNode) {
+    let addr = node.originalindex;
+    //has to be the very first child
+    for (let sub = node; sub; sub = sub.children[0]) {
+        addr = Math.min(addr, sub.originalindex);
+    }
+    return addr;
+}
+
 export abstract class AstNode {
     parent: AstNode | null = null;
     children: AstNode[] = [];
@@ -61,6 +74,7 @@ export class CodeBlockNode extends AstNode {
     firstPointer: CodeBlockNode | null = null;
     lastPointer: CodeBlockNode | null = null;
     branchEndNode: CodeBlockNode | null = null;
+    maxEndIndex = -1;
 
     hasUnexplainedChildren = false;
     constructor(scriptid: number, startindex: number) {
@@ -123,7 +137,7 @@ export class CodeBlockNode extends AstNode {
         // code += optext.extra;
         // code += "\n";
         for (let child of this.children) {
-            code += `${(child.originalindex + ":").padEnd(4 + indent * 4, " ")} ` + child.getCode(calli, indent) + "\n";
+            code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
         }
         return code;
     }
@@ -149,11 +163,29 @@ class BinaryOpStatement extends AstNode {
     }
 }
 
+class WhileLoopStatementNode extends AstNode {
+    statement: AstNode;
+    body: CodeBlockNode;
+    constructor(originnode: IfStatementNode) {
+        super(originnode.originalindex);
+        if (originnode.falsebranch) { throw new Error("cannot have else branch in loop"); }
+        this.statement = originnode.statement;
+        this.statement.parent = this;
+        this.body = originnode.truebranch;
+    }
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        let res = `while(${this.statement.getCode(calli, indent)}){\n`;
+        res += this.body.getCode(calli, indent + 1);
+        res += `${codeIndent(indent)}}`;
+        return res;
+    }
+}
+
 class SwitchStatementNode extends AstNode {
     branches: { value: number, block: CodeBlockNode }[] = [];
     valueop: AstNode;
-    defaultbranch: CodeBlockNode;
-    constructor(valueop: RawOpcodeNode, scriptjson: clientscript, nodes: CodeBlockNode[]) {
+    defaultbranch: CodeBlockNode | null = null;
+    constructor(valueop: RawOpcodeNode, scriptjson: clientscript, nodes: CodeBlockNode[], endindex: number) {
         super(valueop.originalindex);
         if (valueop.children.length != 1) { throw new Error("switch value expected"); }
         this.valueop = valueop.children[0];
@@ -166,25 +198,44 @@ class SwitchStatementNode extends AstNode {
             let node = nodes[index];
             this.branches.push({ value: casev.value, block: node });
             node.parent = this;
+            node.maxEndIndex = endindex;
             this.children.push(node);
             if (node.originalindex != valueop.originalindex + 1 + casev.label) {
                 throw new Error("switch branches don't match");
             }
         }
-        this.defaultbranch = nodes.at(-1)!;
-        this.defaultbranch.parent = this;
+
+
+        let defaultblock: CodeBlockNode | null = nodes.at(-1)!;
+        if (defaultblock.children.length == 1 && defaultblock.children[0] instanceof RawOpcodeNode && defaultblock.children[0].opinfo.id == namedClientScriptOps.jump) {
+            if (defaultblock.possibleSuccessors.length != 1) { throw new Error("jump successor branch expected"); }
+            defaultblock = defaultblock.possibleSuccessors[0];
+            if (defaultblock.originalindex == endindex) {
+                defaultblock = null;
+            }
+        }
+
+        if (defaultblock) {
+            this.defaultbranch = defaultblock;
+            this.defaultbranch.parent = this;
+            this.defaultbranch.maxEndIndex = endindex;
+            this.children.push(defaultblock);
+        }
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let res = "";
         res += `switch(${this.valueop.getCode(calli, indent)}){\n`;
         for (let branch of this.branches) {
-            res += `case ${branch.value}:{\n`;
-            res += branch.block.getCode(calli, indent + 1);
-            res += "}\n";
+            res += `${codeIndent(indent + 1, branch.block.originalindex)}case ${branch.value}:{\n`;
+            res += branch.block.getCode(calli, indent + 2);
+            res += `${codeIndent(indent + 1)}}\n`;
         }
-        res += `default:{\n`;
-        res += this.defaultbranch.getCode(calli, indent);
-        res += `}`;
+        if (this.defaultbranch) {
+            res += `${codeIndent(indent + 1)}default:{\n`;
+            res += this.defaultbranch.getCode(calli, indent + 2);
+            res += `${codeIndent(indent + 1)}}\n`;
+        }
+        res += `${codeIndent(indent)}}`;
         return res;
     }
 }
@@ -194,29 +245,35 @@ class IfStatementNode extends AstNode {
     falsebranch: CodeBlockNode | null;
     statement: AstNode;
     endblock: CodeBlockNode;
-    constructor(statement: AstNode, endblock: CodeBlockNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null) {
+    constructor(statement: AstNode, endblock: CodeBlockNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null, endindex: number) {
         if (truebranch == falsebranch) { throw new Error("unexpected"); }
         super(statement.originalindex);
         this.endblock = endblock;
+
         this.statement = statement;
-        this.truebranch = truebranch;
-        this.falsebranch = falsebranch;
-        this.children.push(statement, truebranch);
+        this.children.push(statement);
         statement.parent = this;
+
+        this.truebranch = truebranch;
+        this.children.push(truebranch);
         truebranch.parent = this;
+        truebranch.maxEndIndex = endindex;
+
+        this.falsebranch = falsebranch;
         if (falsebranch) {
             this.children.push(falsebranch);
             falsebranch.parent = this;
+            falsebranch.maxEndIndex = endindex;
         }
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let res = `if(${this.statement.getCode(calli, indent)}){\n`;
         res += `${this.truebranch?.getCode(calli, indent + 1)}`;
         if (this.falsebranch) {
-            res += `${" ".repeat(indent * 4 + 4)} }else{\n`;
-            res += `${this.falsebranch?.getCode(calli, indent + 1)}`;
+            res += `${codeIndent(indent)}}else{\n`;
+            res += `${this.falsebranch.getCode(calli, indent + 1)}`;
         }
-        res += `${" ".repeat(indent * 4 + 4)} }`;
+        res += `${codeIndent(indent)}}`;
         return res;
     }
 }
@@ -276,6 +333,8 @@ export class RawOpcodeNode extends AstNode {
             name += `<${this.op.imm + this.originalindex + 1}>`;
         } else if (opinfo.optype == "gosub") {
             name += `<${this.op.imm}>`;
+        } else if (this.op.imm != 0) {
+            name += `<${this.op.imm}>`;
         }
         return `${name}(${this.children.map(q => q.getCode(calli, indent)).join(",")})`;
     }
@@ -310,6 +369,13 @@ class RewriteCursor {
         if (!node.parent) { throw new Error("cannot remove root node"); }
         node.parent.remove(node);
         return newcurrent;
+    }
+    rebuildStack() {
+        let current = this.current();
+        this.cursorStack.length = 0;
+        for (let node = current; node; node = node.parent) {
+            this.cursorStack.unshift(node);
+        }
     }
     replaceNode(newnode: AstNode) {
         let node = this.current();
@@ -512,25 +578,36 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                 }
             }
 
-            let ifstatement = new IfStatementNode(condnode, parent.branchEndNode, trueblock, falseblock);
+            let ifstatement = new IfStatementNode(condnode, parent.branchEndNode, trueblock, falseblock, parent.branchEndNode.originalindex);
             cursor.replaceNode(ifstatement);
             cursor.setFirstChild(ifstatement, true);
         }
         if (node instanceof RawOpcodeNode && node.opinfo.id == namedClientScriptOps.switch) {
-            if (!(node.parent instanceof CodeBlockNode)) { throw new Error("code block expected"); }
-            let casestatement = new SwitchStatementNode(node, scriptjson, node.parent.possibleSuccessors);
+            if (!(node.parent instanceof CodeBlockNode) || !node.parent.branchEndNode) { throw new Error("code block expected"); }
+            let casestatement = new SwitchStatementNode(node, scriptjson, node.parent.possibleSuccessors, node.parent.branchEndNode.originalindex);
             cursor.replaceNode(casestatement);
             cursor.setFirstChild(casestatement, true);
         }
-        if (node instanceof CodeBlockNode && node.branchEndNode) {
-            let allowed = true;
-            for (let subnode = node.parent; subnode; subnode = subnode.parent) {
-                if (subnode instanceof CodeBlockNode && subnode.branchEndNode == node.branchEndNode) {
-                    allowed = false;
-                    break;
-                }
+        if (node instanceof RawOpcodeNode && node.opinfo.id == namedClientScriptOps.jump) {
+            let target = node.originalindex + 1 + node.op.imm;
+            let parent = node.parent;
+            if (parent instanceof CodeBlockNode && parent.maxEndIndex == target) {
+                //strip obsolete closing bracket jumps
+                cursor.remove();
+                continue;
+            } else {
+                let grandparent = node.parent?.parent;
+                let grandgrandparent = grandparent?.parent;
+                if (!(grandparent instanceof IfStatementNode) || !(grandgrandparent instanceof CodeBlockNode)) { throw new Error("unexpected"); }
+                if (grandgrandparent.children.at(-1) != grandparent || findFirstAddress(grandparent) != target) { throw new Error("unexpected"); }
+                let loopstatement = new WhileLoopStatementNode(grandparent);
+                grandgrandparent.replaceChild(grandparent, loopstatement);
+                cursor.rebuildStack();
+                cursor.remove();
             }
-            if (allowed) {
+        }
+        if (node instanceof CodeBlockNode && node.branchEndNode) {
+            if (node.maxEndIndex == -1 || node.branchEndNode.originalindex < node.maxEndIndex) {
                 cursor.prev();
                 node.mergeBlock(node.branchEndNode);
             }
@@ -726,21 +803,27 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
     let calli = source.getDecodeArgs().clientScriptDeob;
     if (!(calli instanceof ClientscriptObfuscation)) { throw new Error("no deob"); }
+    const full = true;
 
     let script = parse.clientscript.read(buf, source);
     let sections = generateAst(calli, script, script.opcodedata, fileid);
     let program = sections[0];
     for (let node: CodeBlockNode | null = program; node; node = node.findNext());
-    sections.forEach(q => translateAst(q));
-    fixControlFlow(program, script);
+    if (full) {
+        sections.forEach(q => translateAst(q));
+        fixControlFlow(program, script);
+    }
 
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
     let res = "";
     res += `script ${fileid} ${returntype} (${argtype})\n`;
-    res += program.getCode(calli, 0);
-    // for (let section of sections) {
-    //     res += section.getCode(calli);
-    // }
+    if (full) {
+        res += program.getCode(calli, 0);
+    } else {
+        for (let section of sections) {
+            res += section.getCode(calli, 0);
+        }
+    }
     return res;
 }
