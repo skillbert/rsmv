@@ -1,7 +1,7 @@
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { FileParser, parse } from "../opdecoder";
-import { trickleTasksTwoStep } from "../utils";
+import { posmod, trickleTasksTwoStep } from "../utils";
 import { DecodeState } from "../opcode_reader";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { clientscript } from "../../generated/clientscript";
@@ -100,10 +100,8 @@ export class OpcodeInfo {
     possibleTypes: Set<ImmediateType>;
     type: ImmediateType | "unknown";
     optype: OpTypes | "unknown" = "unknown";
-    stackchange: StackDiff | null = null;
-    stackmaxpassthrough: StackDiff | null = null;
+    stackinfo = new StackInOut();
     stackchangeproofs = new Set<CodeBlockNode>();//TODO remove
-    //TODO should probly construct this from the ClientscriptObfuscation and automatically set the mappings
     constructor(scrambledid: number, id: number, possibles: ImmediateType[]) {
         this.scrambledid = scrambledid;
         this.id = id;
@@ -117,22 +115,146 @@ export class OpcodeInfo {
     static fromJson(json: ReturnType<OpcodeInfo["toJson"]>) {
         let r = new OpcodeInfo(json.scrambledid, json.id, json.type == "unknown" ? detectableImmediates : [json.type]);
         r.optype = json.optype;
-        r.stackchange = StackDiff.fromJson(json.stackchange);
-        r.stackmaxpassthrough = StackDiff.fromJson(json.stackmaxpassthrough);
+        r.stackinfo = new StackInOut(ValueList.fromJson(json.stackin), ValueList.fromJson(json.stackout));
         return r;
     }
     toJson() {
         return {
             id: this.id,
             scrambledid: this.scrambledid,
-            stackchange: this.stackchange?.toJson(),
-            stackmaxpassthrough: this.stackmaxpassthrough?.toJson(),
+            stackin: this.stackinfo.in.toJson(),
+            stackout: this.stackinfo.out.toJson(),
             type: this.type,
             optype: this.optype
         }
     }
 }
+export type StackType = "int" | "long" | "string" | "vararg";
+export class ValueList {
+    values: StackType[];
+    constructor(values: StackType[] = []) {
+        this.values = values;
+    }
+    static fromFlipped(other: ValueList) {
+        return new ValueList(other.values.slice().reverse());
+    }
+    pushone(type: StackType) { this.values.push(type); }
+    int() { this.values.push("int"); }
+    long() { this.values.push("long"); }
+    string() { this.values.push("string"); }
+    isEmpty() { return this.values.length == 0; }
 
+    pop(list: ValueList) {
+        if (!this.tryPop(list)) { throw new Error("tried to pop values set that are not on stack"); }
+    }
+    popReversed(list: ValueList) {
+        if (!this.tryPopReversed(list)) { throw new Error("tried to pop values set that are not on stack"); }
+    }
+    tryPopReversed(list: ValueList) {
+        if (list.getFlippedOverlap(this) == list.values.length) {
+            this.values.length -= list.values.length;
+            return true;
+        } else {
+            return false;
+        }
+    }
+    tryPop(list: ValueList) {
+        if (this.getOverlap(list) == list.values.length) {
+            this.values.length -= list.values.length;
+            return true;
+        } else {
+            return false;
+        }
+    }
+    push(list: ValueList) {
+        this.values.push(...list.values);
+    }
+    pushReversed(list: ValueList) {
+        for (let i = list.values.length - 1; i >= 0; i--) {
+            this.values.push(list.values[i]);
+        }
+    }
+    clone() {
+        return new ValueList(this.values.slice());
+    }
+    getFlippedOverlap(other: ValueList) {
+        let overlap = Math.min(this.values.length, other.values.length);
+        for (let i = 0; i < overlap; i++) {
+            if (other.values[other.values.length - 1 - i] != this.values[i]) {
+                overlap = i;
+                break;
+            }
+        }
+        return overlap;
+    }
+    getOverlap(other: ValueList) {
+        let overlap = Math.min(this.values.length, other.values.length);
+        for (let i = 0; i < overlap; i++) {
+            if (other.values[other.values.length - 1 - i] != this.values[this.values.length - 1 - i]) {
+                overlap = i;
+                break;
+            }
+        }
+        return overlap;
+    }
+    leastCommon(other: ValueList) {
+        return this.values.splice(0, this.values.length - this.getOverlap(other));
+    }
+    leastCommonFlipped(other: ValueList) {
+        let overlap = this.getFlippedOverlap(other);
+        let res = this.values.slice(this.values.length - 1 - overlap);
+        this.values.length -= overlap;
+        return res;
+    }
+    cancelout(other: ValueList) {
+        let overlap = this.getOverlap(other);
+        let res = this.values.slice(this.values.length - overlap);
+        this.values.length -= overlap;
+        other.values.length -= overlap;
+        return res;
+    }
+    toJson() { return this.values; }
+    static fromJson(v: ReturnType<ValueList["toJson"]>) { return new ValueList(v); }
+    getStackdiff() {
+        let r = new StackDiff();
+        for (let v of this.values) {
+            if (v == "int") { r.int++; }
+            if (v == "string") { r.string++; }
+            if (v == "long") { r.long++; }
+            if (v == "vararg") { r.vararg++; }
+        }
+        return r;
+    }
+}
+export class StackInOut {
+    in = new ValueList();
+    out = new ValueList();
+    initializedin = false;
+    initializedout = false;
+    initializedthrough = false;
+    constructor(inlist?: ValueList, outlist?: ValueList) {
+        this.in = inlist ?? new ValueList();
+        this.out = outlist ?? new ValueList();
+        this.initializedin = !!inlist;
+        this.initializedout = !!outlist;
+        this.initializedthrough = this.initializedin && this.initializedout;
+    }
+    getBottomOverlap() {
+        let maxlen = Math.min(this.in.values.length, this.out.values.length);
+        for (let i = 0; i < maxlen; i++) {
+            if (this.in.values[i] != this.out.values[i]) {
+                return i;
+            }
+        }
+        return maxlen;
+    }
+    totalChange() {
+        return this.out.values.length - this.in.values.length;
+    }
+    getCode() {
+        return `${this.out.values.join(",")}(${this.in.values.join(",")})`;
+    }
+}
 export class StackDiff {
     int: number;
     long: number;
@@ -210,6 +332,20 @@ export class StackDiff {
     clone() {
         return new StackDiff().add(this);
     }
+    getArglist() {
+        let ntypes = +!!this.int + +!!this.string + +!!this.long + +!!this.vararg;
+        if (ntypes > 1) {
+            //can't know the order of the args
+            return null;
+        } else {
+            let inargs = new ValueList();
+            inargs.values.push(...Array<StackType>(this.int).fill("int"));
+            inargs.values.push(...Array<StackType>(this.string).fill("string"));
+            inargs.values.push(...Array<StackType>(this.long).fill("long"));
+            inargs.values.push(...Array<StackType>(this.vararg).fill("vararg"));
+            return inargs;
+        }
+    }
 }
 
 export type ScriptCandidate = {
@@ -218,7 +354,7 @@ export type ScriptCandidate = {
     buf: Buffer,
     script: clientscriptdata,
     scriptcontents: ClientScriptOp[] | null,
-    returnType: StackDiff | null,
+    returnType: ValueList | null,
     argtype: StackDiff | null,
     unknowns: Map<number, OpcodeInfo>,
     didmatch: boolean
@@ -425,7 +561,12 @@ export class ClientscriptObfuscation {
     opidcounter = 10000;
     source: CacheFileSource;
     varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
-    scriptargs = new Map<number, { args: StackDiff, returns: StackDiff }>();
+    scriptargs = new Map<number, {
+        args: StackDiff,
+        returns: ValueList
+        arglist: ValueList | null,//seperate entries since order is not well defined
+        returnlist: ValueList | null,//is null when order can be ambiguous
+    }>();
     candidates = new Map<number, ScriptCandidate>();
 
     static async fromJson(source: CacheFileSource, json: ReturnType<ClientscriptObfuscation["toJson"]>) {
@@ -440,7 +581,16 @@ export class ClientscriptObfuscation {
         }
         r.opidcounter = json.opidcounter;
         r.callibrated = true;
-        r.scriptargs = new Map(json.scriptargs.map(v => [v.id, { args: StackDiff.fromJson(v.args)!, returns: StackDiff.fromJson(v.returns)! }]));
+        r.scriptargs = new Map(json.scriptargs.map(v => {
+            let args = StackDiff.fromJson(v.args)!;
+            let returns = ValueList.fromJson(v.returns);
+            return [v.id, {
+                args: args,
+                returns: returns!,
+                arglist: args.getArglist(),
+                returnlist: returns.getStackdiff().getArglist()
+            }];
+        }));
         await r.preloadData(true);
         return r;
     }
@@ -643,6 +793,7 @@ export class ClientscriptObfuscation {
         console.log(`callibrated in ${itercount + 1} iterations`);
 
         await findOpcodeImmidiates(this);
+        this.callibrated = true;
         parseCandidateContents(this);
 
         for (let op of this.mappings.values()) {
@@ -654,8 +805,7 @@ export class ClientscriptObfuscation {
                 op.optype = "branch";
             }
         }
-        this.callibrated = true;
-        await findOpcodeTypes(this);
+        findOpcodeTypes(this);
     }
     readOpcode: ReadOpCallback = (state: DecodeState) => {
         if (!this.callibrated) { throw new Error("clientscript deob not callibrated yet"); }
@@ -709,7 +859,12 @@ function parseCandidateContents(calli: ClientscriptObfuscation) {
         if (!cand.scriptcontents) { continue; }
         cand.returnType = getReturnType(calli, cand.scriptcontents);
         cand.argtype = getArgType(cand.script);
-        calli.scriptargs.set(cand.id, { args: cand.argtype, returns: cand.returnType });
+        calli.scriptargs.set(cand.id, {
+            args: cand.argtype,
+            returns: cand.returnType,
+            arglist: cand.argtype.getArglist(),
+            returnlist: cand.returnType.getStackdiff().getArglist()
+        });
     }
 }
 
@@ -953,7 +1108,7 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
     }
 }
 
-async function findOpcodeTypes(calli: ClientscriptObfuscation) {
+function findOpcodeTypes(calli: ClientscriptObfuscation) {
     parseCandidateContents(calli);
 
     //TODO merge with previous loop?
@@ -964,131 +1119,279 @@ async function findOpcodeTypes(calli: ClientscriptObfuscation) {
         allsections.push(...sections);
     }
     allsections.sort((a, b) => a.children.length - b.children.length);
+    globalThis.allsections = allsections;//TODO remove
 
     type StackDiffEquation = {
         section: CodeBlockNode,
-        ops: Map<number, number>,
-        constant: StackDiff,
-        dependon: Set<OpcodeInfo>
+        unknowns: Set<OpcodeInfo>
     }
 
-    let opmap = new Map<number, StackDiffEquation[]>();
-    let allequations: StackDiffEquation[] = [];
-    for (let section of allsections) {
-        if (section.hasUnexplainedChildren) { continue; }
-        let ops = new Map<number, number>();
-        let constant = new StackDiff();
-        let dependon = new Set<OpcodeInfo>();
-        for (let node of section.children) {
-            if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
+    let testSection = (eq: StackDiffEquation) => {
+        let { section, unknowns } = eq;
+        if (Array.isArray(globalThis.test) && section.scriptid == globalThis.test[0] && section.originalindex == globalThis.test[1]) {
+            console.log(section.getCode(calli, 0))
+            debugger;
+        }
+        if (section.hasUnexplainedChildren) { return false; }
+        let frontstack = new ValueList();
+        let backstack = new ValueList();
+        for (let i = 0; i < section.children.length; i++) {
+            let node = section.children[i];
+            if (!(node instanceof RawOpcodeNode)) { throw new Error("unescpted"); }
             if (node.knownStackDiff) {
-                constant.sub(node.knownStackDiff.in).add(node.knownStackDiff.out);
-            } else if (node.opinfo.stackchange) {
-                constant.add(node.opinfo.stackchange);
-                dependon.add(node.opinfo);
+                frontstack.popReversed(node.knownStackDiff.in);
+                frontstack.pushReversed(node.knownStackDiff.out);
             } else {
-                let count = ops.get(node.op.opcode) ?? 0;
-                ops.set(node.op.opcode, count + 1);
-            }
-        }
-        let eq: StackDiffEquation = { section, ops, constant, dependon };
-        for (let op of ops.keys()) {
-            let entry = opmap.get(op);
-            if (!entry) {
-                entry = [];
-                opmap.set(op, entry);
-            }
-            entry.push(eq);
-        }
-        allequations.push(eq);
-    }
-    opmap.forEach(q => q.sort((a, b) => a.ops.size - b.ops.size));
-
-    let activeEquations: StackDiffEquation[] = allequations;
-    for (let expandedsearch of [false, true]) {
-        activeEquations = allequations;
-        let didsolve = true;
-        while (didsolve) {
-            activeEquations.sort((a, b) => a.ops.size - b.ops.size);
-            console.log("active equations", activeEquations.length);
-            let newequations: StackDiffEquation[] = [];
-            didsolve = false;
-            for (let eq of activeEquations) {
-                if (!expandedsearch && eq.constant.vararg != 0) {
-                    //ignore sections that have a type string constant in them that might indicate a if_seton* opcode
-                    continue;
-                }
-                if (eq.ops.size == 0) {
-                    if (!eq.constant.isEmpty()) {
-                        throw new Error("equation failed");
-                    }
-                    //ignore 0=0 equation
-                } else if (eq.ops.size == 1) {
-                    let opid = firstKey(eq.ops);
-                    let op = calli.decodedMappings.get(opid)!;
-                    let numberofops = eq.ops.get(opid)!;
-                    let newdiff = new StackDiff().sub(eq.constant).intdiv(numberofops);
-                    if (op.stackchange && !op.stackchange.equals(newdiff)) {
-                        let debugref = allsections.filter(q => q.children.some(q => (q instanceof RawOpcodeNode) && q.op.opcode == opid));
-                        throw new Error("second equation leads to different result");
-                    }
-                    op.stackchange = newdiff;
-                    op.stackchangeproofs.add(eq.section);
-                    didsolve = true;
+                let info = node.opinfo.stackinfo;
+                if (!info.initializedin) {
+                    info.in = ValueList.fromFlipped(frontstack);
+                    info.initializedin = true;
                 } else {
-                    //TODO do some rewriting here
-                    let neweq: StackDiffEquation | null = null;
-                    for (let [op, amount] of eq.ops) {
-                        let info = calli.decodedMappings.get(op);
-                        if (info?.stackchange) {
-                            neweq ??= {
-                                section: eq.section,
-                                ops: new Map(eq.ops),
-                                constant: new StackDiff().add(eq.constant),
-                                dependon: new Set(eq.dependon)
-                            };
-                            neweq.ops.delete(op);
-                            for (let i = 0; i < amount; i++) {
-                                neweq.constant.add(info.stackchange);
-                            }
-                            neweq.dependon.add(info);
-                            didsolve = true;
+                    let shortage = info.in.values.length - info.in.getFlippedOverlap(frontstack)
+                    let inoutoverlap = info.in.getOverlap(info.out);
+                    if (shortage > 0) {
+                        if (info.initializedthrough) {
+                            if (inoutoverlap < shortage) { throw new Error("not compatible"); }
+                            info.out.values.length -= shortage;
+                            inoutoverlap -= shortage;
                         }
+                        info.in.values.length -= shortage;
                     }
-                    newequations.push(neweq ?? eq);
+                    frontstack.popReversed(info.in);
+                    if (!info.initializedthrough && info.initializedout && info.initializedin) {
+                        // info.initializedthrough = true;
+                        // foundset.add(node.opinfo.id);
+                    }
                 }
+                if (!info.initializedthrough || !info.initializedout) {
+                    break;
+                }
+                frontstack.pushReversed(info.out);
             }
-            activeEquations = newequations;
         }
-    }
+        for (let i = 0; i < section.children.length; i++) {
+            let node = section.children[section.children.length - 1 - i];
+            if (!(node instanceof RawOpcodeNode)) { throw new Error("unescpted"); }
 
-
-    for (let section of allsections) {
-        if (section.hasUnexplainedChildren) { continue; }
-        let stack = new StackDiff();
-        for (let node of section.children) {
-            if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
             if (node.knownStackDiff) {
-                stack.sub(node.knownStackDiff.in).add(node.knownStackDiff.out);
-            } else if (node.opinfo.stackchange) {
-                node.opinfo.stackmaxpassthrough ??= new StackDiff(100, 100, 100);
-                node.opinfo.stackmaxpassthrough.min(stack);
-                stack.add(node.opinfo.stackchange);
-                node.opinfo.stackmaxpassthrough.min(stack);
+                backstack.popReversed(node.knownStackDiff.out);
+                backstack.pushReversed(node.knownStackDiff.in);
             } else {
-                break;
-            }
-            if (stack.int < 0 || stack.long < 0 || stack.string < 0 || stack.vararg < 0) {
-                let qq = 1;
+                let info = node.opinfo.stackinfo;
+                if (!info.initializedout) {
+                    info.out = ValueList.fromFlipped(backstack);
+                    info.initializedout = true;
+                } else {
+                    let shortage = info.out.values.length - info.out.getFlippedOverlap(backstack);
+                    let inoutoverlap = info.in.getOverlap(info.out);
+                    if (shortage > 0) {
+                        if (info.initializedthrough) {
+                            if (inoutoverlap < shortage) { throw new Error("not compatible"); }
+                            info.in.values.length -= shortage;
+                            inoutoverlap -= shortage;
+                        }
+                        info.out.values.length -= shortage;
+                    }
+                    if (!info.initializedthrough && info.initializedout && info.initializedin) {
+                        // info.initializedthrough = true;
+                        // foundset.add(node.opinfo.id);
+                    }
+                    backstack.popReversed(info.out);
+                }
+                if (!info.initializedthrough || !info.initializedin) {
+                    break;
+                }
+                backstack.pushReversed(info.in);
             }
         }
+
+        let unkcount = 0;
+        let unktype: OpcodeInfo | null = null;
+        let totalstack = 0;
+        unknowns.clear();
+        for (let child of section.children) {
+            if (!(child instanceof RawOpcodeNode)) { throw new Error("unescpted"); }
+            if (child.knownStackDiff) {
+                totalstack += child.knownStackDiff.totalChange();
+            } else if (child.opinfo.stackinfo.initializedthrough) {
+                totalstack += child.opinfo.stackinfo.totalChange();
+            } else {
+                unktype = child.opinfo;
+                unknowns.add(child.opinfo);
+                unkcount++;
+            }
+        }
+        if (unktype && unknowns.size == 1) {
+            if (posmod(totalstack, unkcount) != 0) { throw new Error("stack different is not evenly dividable between equal ops"); }
+            let diffeach = totalstack / unkcount + unktype.stackinfo.totalChange();
+            if (diffeach > 0) {
+                unktype.stackinfo.out.values.length -= diffeach;
+            } else if (diffeach < 0) {
+                unktype.stackinfo.in.values.length -= -diffeach;
+            }
+            unktype.stackinfo.initializedthrough = true;
+            unknowns.delete(unktype);
+            foundset.add(unktype.id);
+        }
+
+        for (let unk of unknowns) {
+            let prev = opmap.get(unk.id);
+            if (!prev) {
+                prev = new Set();
+                prev.add(eq);
+                opmap.set(unk.id, prev);
+            }
+            prev.add(eq);
+        }
+
+        return true;
     }
 
-    return activeEquations;
+    let opmap = new Map<number, Set<StackDiffEquation>>();
+    let pendingEquations: StackDiffEquation[] = [];
+    let pendingEquationSet = new Set<StackDiffEquation>();
+    let foundset = new Set<number>();
+    for (let section of allsections) {
+        let eq: StackDiffEquation = { section, unknowns: new Set() };
+        testSection(eq);
+        pendingEquations.push(eq);
+    }
+    let shittyeq = pendingEquations.find(q => q.section.scriptid == 3 && q.section.originalindex == 70);
+    for (let i = 0; i < 4; i++) {
+        for (let eq of pendingEquations) {
+            testSection(eq);
+        }
+        if (shittyeq) {
+            testSection(shittyeq);
+            testSection(shittyeq);
+        }
+        let total = 0;
+        let partial = 0;
+        let done = 0;
+        for (let op of calli.mappings.values()) {
+            if (op.stackinfo.initializedin || op.stackinfo.initializedout) { partial++; }
+            if (op.stackinfo.initializedthrough) { done++; }
+            total++;
+        }
+        console.log("total", total, "done", done, "partial", partial, "incomplete", total - done);
+    }
+    // while (foundset.size != 0) {
+    //     for (let op of foundset) {
+    //         let opdata = opmap.get(op);
+    //         if (opdata) {
+    //             for (let eq of opdata) {
+    //                 if (!pendingEquationSet.has(eq)) {
+    //                     pendingEquationSet.add(eq);
+    //                     pendingEquations.push(eq);
+    //                 }
+    //             }
+    //         } else {
+    //             let qq = 0;//this shouldnt happen, not sure why
+    //         }
+    //         foundset.delete(op);
+    //     }
+
+    //     pendingEquations.sort((a, b) => a.unknowns.size - b.unknowns.size);
+    //     for (let eq of pendingEquations) {
+    //         testSection(eq);
+    //     }
+    //     let total = 0;
+    //     let partial = 0;
+    //     let done = 0;
+    //     for (let op of calli.mappings.values()) {
+    //         if (op.stackinfo.initializedin || op.stackinfo.initializedout) { partial++; }
+    //         if (op.stackinfo.initializedthrough) { done++; }
+    //         total++;
+    //     }
+    //     console.log("total", total, "done", done, "partial", partial, "incomplete", total - done);
+    // }
+
+    // let activeEquations: StackDiffEquation[] = pendingEquations;
+    // for (let expandedsearch of [false, true]) {
+    //     activeEquations = pendingEquations;
+    //     let didsolve = true;
+    //     while (didsolve) {
+    //         activeEquations.sort((a, b) => a.ops.size - b.ops.size);
+    //         console.log("active equations", activeEquations.length);
+    //         let newequations: StackDiffEquation[] = [];
+    //         didsolve = false;
+    //         for (let eq of activeEquations) {
+    //             if (!expandedsearch && eq.constant.vararg != 0) {
+    //                 //ignore sections that have a type string constant in them that might indicate a if_seton* opcode
+    //                 continue;
+    //             }
+    //             if (eq.ops.size == 0) {
+    //                 if (!eq.constant.isEmpty()) {
+    //                     throw new Error("equation failed");
+    //                 }
+    //                 //ignore 0=0 equation
+    //             } else if (eq.ops.size == 1) {
+    //                 let opid = firstKey(eq.ops);
+    //                 let op = calli.decodedMappings.get(opid)!;
+    //                 let numberofops = eq.ops.get(opid)!;
+    //                 let newdiff = new StackDiff().sub(eq.constant).intdiv(numberofops);
+    //                 if (op.stackchange && !op.stackchange.equals(newdiff)) {
+    //                     let debugref = allsections.filter(q => q.children.some(q => (q instanceof RawOpcodeNode) && q.op.opcode == opid));
+    //                     throw new Error("second equation leads to different result");
+    //                 }
+    //                 op.stackchange = newdiff;
+    //                 op.stackchangeproofs.add(eq.section);
+    //                 didsolve = true;
+    //             } else {
+    //                 //TODO do some rewriting here
+    //                 let neweq: StackDiffEquation | null = null;
+    //                 for (let [op, amount] of eq.ops) {
+    //                     let info = calli.decodedMappings.get(op);
+    //                     if (info?.stackchange) {
+    //                         neweq ??= {
+    //                             section: eq.section,
+    //                             ops: new Map(eq.ops),
+    //                             constant: new StackDiff().add(eq.constant),
+    //                             dependon: new Set(eq.dependon)
+    //                         };
+    //                         neweq.ops.delete(op);
+    //                         for (let i = 0; i < amount; i++) {
+    //                             neweq.constant.add(info.stackchange);
+    //                         }
+    //                         neweq.dependon.add(info);
+    //                         didsolve = true;
+    //                     }
+    //                 }
+    //                 newequations.push(neweq ?? eq);
+    //             }
+    //         }
+    //         activeEquations = newequations;
+    //     }
+    // }
+
+
+    // for (let section of allsections) {
+    //     if (section.hasUnexplainedChildren) { continue; }
+    //     let stack = new StackDiff();
+    //     for (let node of section.children) {
+    //         if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
+    //         if (node.knownStackDiff) {
+    //             stack.sub(node.knownStackDiff.in).add(node.knownStackDiff.out);
+    //         } else if (node.opinfo.stackchange) {
+    //             node.opinfo.stackmaxpassthrough ??= new StackDiff(100, 100, 100);
+    //             node.opinfo.stackmaxpassthrough.min(stack);
+    //             stack.add(node.opinfo.stackchange);
+    //             node.opinfo.stackmaxpassthrough.min(stack);
+    //         } else {
+    //             break;
+    //         }
+    //         if (stack.int < 0 || stack.long < 0 || stack.string < 0 || stack.vararg < 0) {
+    //             let qq = 1;
+    //         }
+    //     }
+    // }
+
+    // return activeEquations;
 }
 
 
 export async function prepareClientScript(source: CacheFileSource) {
+    // source.decodeArgs.clientScriptDeob = null;//TODO remove
     if (!source.decodeArgs.clientScriptDeob) {
         let deob = await ClientscriptObfuscation.create(source);
         globalThis.deob = deob;//TODO remove
@@ -1106,22 +1409,22 @@ export function getArgType(script: clientscriptdata | clientscript) {
 }
 
 export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptOp[]) {
-    let res = new StackDiff();
+    let res = new ValueList();
     //the jagex compiler appends a default return with null constants to the script, even if this would be dead code
     for (let i = ops.length - 2; i >= 0; i--) {
         let op = ops[i];
         let opinfo = calli.decodedMappings.get(op.opcode);
         if (!opinfo) { throw new Error("unnexpected"); }
         if (opinfo.id == namedClientScriptOps.pushconst) {
-            if (op.imm == 0) { res.int++; }
-            if (op.imm == 1) { res.long++; }
-            if (op.imm == 2) { res.string++; }
+            if (op.imm == 0) { res.int(); }
+            if (op.imm == 1) { res.long(); }
+            if (op.imm == 2) { res.string(); }
         } else if (opinfo.id == namedClientScriptOps.pushint) {
-            res.int++;
+            res.int();
         } else if (opinfo.id == namedClientScriptOps.pushlong) {
-            res.long++;
+            res.long();
         } else if (opinfo.id == namedClientScriptOps.pushstring) {
-            res.string++;
+            res.string();
         } else {
             break;
         }
