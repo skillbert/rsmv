@@ -8,15 +8,6 @@ function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
     return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
 }
 
-function findFirstAddress(node: AstNode) {
-    let addr = node.originalindex;
-    //has to be the very first child
-    for (let sub = node; sub; sub = sub.children[0]) {
-        addr = Math.min(addr, sub.originalindex);
-    }
-    return addr;
-}
-
 export abstract class AstNode {
     parent: AstNode | null = null;
     knownStackDiff: StackInOut | null = null;
@@ -73,7 +64,7 @@ class VarAssignNode extends AstNode {
     varops: AstNode[] = [];
     knownStackDiff = new StackInOut(new ValueList(), new ValueList());
     getName(calli: ClientscriptObfuscation) {
-        let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? (q.op.opcode == namedClientScriptOps.poplocalstring ? "string" : "int") + q.op.imm : "??")}`;
+        let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? q.getName(calli).name : "??")}`;
         return { name: name, extra: "" };
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
@@ -81,7 +72,7 @@ class VarAssignNode extends AstNode {
         return `${name.name} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`
     }
     addVar(node: AstNode) {
-        this.varops.push(node);
+        this.varops.unshift(node);
         this.knownStackDiff.in.push(getNodeStackIn(node));
     }
 }
@@ -294,14 +285,21 @@ class IfStatementNode extends AstNode {
 
         //true
         this.truebranch = truebranch;
-        this.push(truebranch);
         truebranch.maxEndIndex = this.ifEndIndex;
 
         //false
         this.falsebranch = falsebranch;
         if (falsebranch) {
-            this.push(falsebranch);
             falsebranch.maxEndIndex = this.ifEndIndex;
+        }
+
+        //need the children in the original order to make sure && and || merges correctly
+        if (falsebranch && falsebranch.originalindex < truebranch.originalindex) {
+            this.push(falsebranch);
+        }
+        this.push(truebranch);
+        if (falsebranch && falsebranch.originalindex > truebranch.originalindex) {
+            this.push(falsebranch);
         }
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
@@ -332,6 +330,18 @@ export class RawOpcodeNode extends AstNode {
         let opinfo = calli.decodedMappings.get(this.op.opcode);
         if (!opinfo) { throw new Error("unknown op"); }
         let name = knownClientScriptOpNames[this.op.opcode] ?? `unk${this.op.opcode}`;
+        if (opinfo.id == namedClientScriptOps.poplocalint || opinfo.id == namedClientScriptOps.pushlocalint) {
+            name = `int${this.op.imm}`;
+        } else if (opinfo.id == namedClientScriptOps.poplocalstring || opinfo.id == namedClientScriptOps.pushlocalstring) {
+            name = `string${this.op.imm}`;
+        } else if (opinfo.id == namedClientScriptOps.popvar || opinfo.id == namedClientScriptOps.pushvar) {
+            let varmeta = calli.getClientVarMeta(this.op.imm);
+            if (varmeta) {
+                name = `var${varmeta.name}_${varmeta.varid}`;
+            } else {
+                name = `varunk_${this.op.imm}`;
+            }
+        }
         let res = "";
         res += (typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj}"` : (this.op.imm_obj ?? "").toString());
         res += ` ${(this.knownStackDiff ?? this.opinfo.stackinfo).getCode() ?? "unkstack"}`;
@@ -344,21 +354,25 @@ export class RawOpcodeNode extends AstNode {
         if (this.op.opcode == namedClientScriptOps.pushconst) {
             return typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"` : "" + this.op.imm_obj;
         }
-        if (this.op.opcode == namedClientScriptOps.pushlocalint) {
-            return `int${this.op.imm}`;
-        } else if (this.op.opcode == namedClientScriptOps.pushlocalstring) {
-            return `string${this.op.imm}`;
+        if (this.op.opcode == namedClientScriptOps.pushlocalint || this.op.opcode == namedClientScriptOps.pushlocalstring || this.op.opcode == namedClientScriptOps.pushvar) {
+            return name;
         }
-        if (this.opinfo.id == namedClientScriptOps.pushvar || this.opinfo.id == namedClientScriptOps.popvar) {
-            let varmeta = calli.getClientVarMeta(this.op.imm);
-            if (varmeta) {
-                let name = `var${varmeta.name}_${varmeta.varid}`;
-                if (this.opinfo.id == namedClientScriptOps.pushvar) {
-                    return name;
+        if (this.children.length == 2) {
+            if (this.op.opcode == namedClientScriptOps.plus) {
+                return `(${this.children[0].getCode(calli, indent)} + ${this.children[1].getCode(calli, indent)})`;
+            }
+        }
+        if (this.op.opcode == namedClientScriptOps.joinstring) {
+            let res = "`";
+            for (let child of this.children) {
+                if (child instanceof RawOpcodeNode && child.opinfo.id == namedClientScriptOps.pushconst && typeof child.op.imm_obj == "string") {
+                    res += child.op.imm_obj;
                 } else {
-                    return `${name} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`;
+                    res += `\${${child.getCode(calli, indent)}}`;
                 }
             }
+            res += "`";
+            return res;
         }
         if (opinfo.optype == "branch" || opinfo.id == namedClientScriptOps.jump) {
             name += `[${this.op.imm + this.originalindex + 1}]`;
@@ -513,7 +527,7 @@ export function translateAst(ast: CodeBlockNode) {
     //merge variable assign nodes
     let currentassignnode: VarAssignNode | null = null;
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
-        let isassign = node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocalstring)
+        let isassign = node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocalstring || node.op.opcode == namedClientScriptOps.popvar)
         if (isassign) {
             if (currentassignnode && currentassignnode.parent != node.parent) {
                 throw new Error("ast is expected to be flat at this stage");

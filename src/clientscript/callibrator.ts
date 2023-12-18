@@ -74,7 +74,10 @@ export const namedClientScriptOps = {
     //unknown original ids
     pushconst: 9001,
     tribyte1: 9002,
-    tribyte2: 9003
+    tribyte2: 9003,
+
+    //math stuff
+    plus: 10000
 }
 
 export const knownClientScriptOpNames: Record<number, string> = {
