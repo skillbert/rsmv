@@ -59,9 +59,14 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 				continue;
 			}
 			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
-			let res = mode.read(file.buffer, logicalid, source);
 
-			if (res instanceof Promise) { res = await res; }
+			try {
+				var res = mode.read(file.buffer, logicalid, source);
+				if (res instanceof Promise) { res = await res; }
+			} catch (e) {
+				output.log(`file ${logicalid.join(".")}: ${e}`);
+				continue;
+			}
 			if (batchSubfile || batchMaxFiles != -1) {
 				let maxedbatchsize = currentBatch && batchMaxFiles != -1 && currentBatch.outputs.length >= batchMaxFiles;
 				let newarch = currentBatch && currentBatch.arch != arch

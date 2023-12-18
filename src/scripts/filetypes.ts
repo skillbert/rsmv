@@ -449,8 +449,8 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 		...noArchiveIndex(cacheMajors.clientscript),
 		...throwOnNonSimple,
 		async prepareDump(out, source) { await prepareClientScript(source) },
-		async read(buf, fileid, source) {
-			return await renderClientScript(source, buf, fileid[0]);
+		read(buf, fileid, source) {
+			return renderClientScript(source, buf, fileid[0]);
 		}
 	}
 }

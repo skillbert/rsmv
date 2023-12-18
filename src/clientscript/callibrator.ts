@@ -64,6 +64,10 @@ export const namedClientScriptOps = {
     branch_gt: 10,
     branch_lteq: 31,
     branch_gteq: 32,
+    branch_unk11619: 11619,
+    branch_unk11611: 11611,
+    branch_unk11613: 11613,
+    branch_unk11606: 11606,
     switch: 51,
     return: 21,
 
@@ -84,7 +88,11 @@ const branchInstructions = [
     namedClientScriptOps.branch_lt,
     namedClientScriptOps.branch_gt,
     namedClientScriptOps.branch_lteq,
-    namedClientScriptOps.branch_gteq
+    namedClientScriptOps.branch_gteq,
+    namedClientScriptOps.branch_unk11619,
+    namedClientScriptOps.branch_unk11611,
+    namedClientScriptOps.branch_unk11613,
+    namedClientScriptOps.branch_unk11606
 ];
 
 export type ClientScriptOp = {
@@ -1275,118 +1283,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         }
         console.log("total", total, "done", done, "partial", partial, "incomplete", total - done);
     }
-    // while (foundset.size != 0) {
-    //     for (let op of foundset) {
-    //         let opdata = opmap.get(op);
-    //         if (opdata) {
-    //             for (let eq of opdata) {
-    //                 if (!pendingEquationSet.has(eq)) {
-    //                     pendingEquationSet.add(eq);
-    //                     pendingEquations.push(eq);
-    //                 }
-    //             }
-    //         } else {
-    //             let qq = 0;//this shouldnt happen, not sure why
-    //         }
-    //         foundset.delete(op);
-    //     }
-
-    //     pendingEquations.sort((a, b) => a.unknowns.size - b.unknowns.size);
-    //     for (let eq of pendingEquations) {
-    //         testSection(eq);
-    //     }
-    //     let total = 0;
-    //     let partial = 0;
-    //     let done = 0;
-    //     for (let op of calli.mappings.values()) {
-    //         if (op.stackinfo.initializedin || op.stackinfo.initializedout) { partial++; }
-    //         if (op.stackinfo.initializedthrough) { done++; }
-    //         total++;
-    //     }
-    //     console.log("total", total, "done", done, "partial", partial, "incomplete", total - done);
-    // }
-
-    // let activeEquations: StackDiffEquation[] = pendingEquations;
-    // for (let expandedsearch of [false, true]) {
-    //     activeEquations = pendingEquations;
-    //     let didsolve = true;
-    //     while (didsolve) {
-    //         activeEquations.sort((a, b) => a.ops.size - b.ops.size);
-    //         console.log("active equations", activeEquations.length);
-    //         let newequations: StackDiffEquation[] = [];
-    //         didsolve = false;
-    //         for (let eq of activeEquations) {
-    //             if (!expandedsearch && eq.constant.vararg != 0) {
-    //                 //ignore sections that have a type string constant in them that might indicate a if_seton* opcode
-    //                 continue;
-    //             }
-    //             if (eq.ops.size == 0) {
-    //                 if (!eq.constant.isEmpty()) {
-    //                     throw new Error("equation failed");
-    //                 }
-    //                 //ignore 0=0 equation
-    //             } else if (eq.ops.size == 1) {
-    //                 let opid = firstKey(eq.ops);
-    //                 let op = calli.decodedMappings.get(opid)!;
-    //                 let numberofops = eq.ops.get(opid)!;
-    //                 let newdiff = new StackDiff().sub(eq.constant).intdiv(numberofops);
-    //                 if (op.stackchange && !op.stackchange.equals(newdiff)) {
-    //                     let debugref = allsections.filter(q => q.children.some(q => (q instanceof RawOpcodeNode) && q.op.opcode == opid));
-    //                     throw new Error("second equation leads to different result");
-    //                 }
-    //                 op.stackchange = newdiff;
-    //                 op.stackchangeproofs.add(eq.section);
-    //                 didsolve = true;
-    //             } else {
-    //                 //TODO do some rewriting here
-    //                 let neweq: StackDiffEquation | null = null;
-    //                 for (let [op, amount] of eq.ops) {
-    //                     let info = calli.decodedMappings.get(op);
-    //                     if (info?.stackchange) {
-    //                         neweq ??= {
-    //                             section: eq.section,
-    //                             ops: new Map(eq.ops),
-    //                             constant: new StackDiff().add(eq.constant),
-    //                             dependon: new Set(eq.dependon)
-    //                         };
-    //                         neweq.ops.delete(op);
-    //                         for (let i = 0; i < amount; i++) {
-    //                             neweq.constant.add(info.stackchange);
-    //                         }
-    //                         neweq.dependon.add(info);
-    //                         didsolve = true;
-    //                     }
-    //                 }
-    //                 newequations.push(neweq ?? eq);
-    //             }
-    //         }
-    //         activeEquations = newequations;
-    //     }
-    // }
-
-
-    // for (let section of allsections) {
-    //     if (section.hasUnexplainedChildren) { continue; }
-    //     let stack = new StackDiff();
-    //     for (let node of section.children) {
-    //         if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
-    //         if (node.knownStackDiff) {
-    //             stack.sub(node.knownStackDiff.in).add(node.knownStackDiff.out);
-    //         } else if (node.opinfo.stackchange) {
-    //             node.opinfo.stackmaxpassthrough ??= new StackDiff(100, 100, 100);
-    //             node.opinfo.stackmaxpassthrough.min(stack);
-    //             stack.add(node.opinfo.stackchange);
-    //             node.opinfo.stackmaxpassthrough.min(stack);
-    //         } else {
-    //             break;
-    //         }
-    //         if (stack.int < 0 || stack.long < 0 || stack.string < 0 || stack.vararg < 0) {
-    //             let qq = 1;
-    //         }
-    //     }
-    // }
-
-    // return activeEquations;
 }
 
 
