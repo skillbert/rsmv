@@ -173,7 +173,7 @@ export class CodeBlockNode extends AstNode {
 type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=" | "(unk)";
 class BinaryOpStatement extends AstNode {
     type: BinaryOpType;
-    knownStackDiff = new StackInOut(new ValueList(["int", "int"]), new ValueList(["int"]));
+    knownStackDiff = new StackInOut(new ValueList(["int", "int"]), new ValueList(["int"]));//TODO not correct, we also use this for longs
     constructor(type: BinaryOpType, originalindex: number) {
         super(originalindex);
         this.type = type;
@@ -512,6 +512,7 @@ function getNodeStackOut(node: AstNode) {
     console.log("unknown stack out");
     return new ValueList();
 }
+globalThis.getNodeOut = getNodeStackOut;
 
 function getNodeStackIn(node: AstNode) {
     if (node.knownStackDiff) {
@@ -523,6 +524,7 @@ function getNodeStackIn(node: AstNode) {
     console.log("unknown stack in");
     return new ValueList();
 }
+globalThis.getNodeIn = getNodeStackIn;
 
 export function translateAst(ast: CodeBlockNode) {
     let cursor = new RewriteCursor(ast);
@@ -676,7 +678,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                         let loopstatement = new WhileLoopStatementNode(codeblock, ifnode);
                         originalparent.replaceChild(codeblock, loopstatement);
                         loopstatement.push(ifnode);
-                        loopstatement.push(codeblock);
+                        loopstatement.push(ifnode.truebranch);
                         cursor.rebuildStack();
                         cursor.remove();
                         break;
@@ -720,25 +722,24 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
     for (let node of section.children) {
         if (!(node instanceof RawOpcodeNode)) {
             section.hasUnexplainedChildren = true;
-            return false;
+            // return false;
+            continue;
         }
         if (node.opinfo.id == namedClientScriptOps.return) {
             let script = calli.scriptargs.get(section.scriptid);
             if (!script || !script.returns) {
                 section.hasUnexplainedChildren = true;
-                return false;
+                // return false;
+                continue;
             }
             node.knownStackDiff = new StackInOut(script.returns, new ValueList());
         } else if (node.opinfo.id == namedClientScriptOps.gosub) {
             let script = calli.scriptargs.get(node.op.imm);
-            if (!script || !script.returns || !script.args) {
-                section.hasUnexplainedChildren = true;
-                return false;
-            }
-            if (!script.arglist || !script.returnlist) {
+            if (!script || !script.arglist || !script.returnlist) {
                 //scripts with multiple different argument types have ambiguous argument order
                 section.hasUnexplainedChildren = true;
-                return false;
+                // return false;
+                continue;
             } else {
                 // node.knownStackDiff = new StackInOut(script.arglist, ValueList.fromFlipped(script.returns));
                 node.knownStackDiff = new StackInOut(script.arglist, script.returnlist);
@@ -752,7 +753,8 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             let varmeta = calli.getClientVarMeta(node.op.imm);
             if (!varmeta) {
                 section.hasUnexplainedChildren = true;
-                return false;
+                // return false;
+                continue;
             }
             let ispop = node.opinfo.id == namedClientScriptOps.popvar;
 
@@ -802,7 +804,7 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             section.hasUnexplainedChildren = true;
         }
     }
-    return true;
+    // return true;
 }
 
 export function generateAst(calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {

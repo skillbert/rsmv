@@ -103,6 +103,11 @@ const branchInstructions = [
     namedClientScriptOps.branch_unk11625
 ];
 
+type StackDiffEquation = {
+    section: CodeBlockNode,
+    unknowns: Set<OpcodeInfo>
+}
+
 export type ClientScriptOp = {
     opcode: number,
     imm: number,
@@ -117,7 +122,7 @@ export class OpcodeInfo {
     type: ImmediateType | "unknown";
     optype: OpTypes | "unknown" = "unknown";
     stackinfo = new StackInOut();
-    stackchangeproofs = new Set<CodeBlockNode>();//TODO remove
+    stackChangeConstraints = new Set<StackDiffEquation>();
     constructor(scrambledid: number, id: number, possibles: ImmediateType[]) {
         this.scrambledid = scrambledid;
         this.id = id;
@@ -1137,11 +1142,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
     allsections.sort((a, b) => a.children.length - b.children.length);
     globalThis.allsections = allsections;//TODO remove
 
-    type StackDiffEquation = {
-        section: CodeBlockNode,
-        unknowns: Set<OpcodeInfo>
-    }
-
     let testSection = (eq: StackDiffEquation) => {
         let { section, unknowns } = eq;
         if (Array.isArray(globalThis.test) && section.scriptid == globalThis.test[0] && section.originalindex == globalThis.test[1]) {
@@ -1248,6 +1248,11 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             unktype.stackinfo.initializedthrough = true;
             unknowns.delete(unktype);
             foundset.add(unktype.id);
+        } else if (unknowns.size > 1) {
+            for (let unk of unknowns) {
+                let mapping = calli.decodedMappings.get(unk.id)!;
+                mapping.stackChangeConstraints.add(eq);
+            }
         }
 
         for (let unk of unknowns) {
@@ -1268,6 +1273,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
     let pendingEquationSet = new Set<StackDiffEquation>();
     let foundset = new Set<number>();
     for (let section of allsections) {
+        if (section.hasUnexplainedChildren) { continue; }
         let eq: StackDiffEquation = { section, unknowns: new Set() };
         testSection(eq);
         pendingEquations.push(eq);
@@ -1279,12 +1285,14 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         let total = 0;
         let partial = 0;
         let done = 0;
+        let missing = new Set<OpcodeInfo>()
         for (let op of calli.mappings.values()) {
-            if (op.stackinfo.initializedin || op.stackinfo.initializedout) { partial++; }
             if (op.stackinfo.initializedthrough) { done++; }
+            else if (op.stackinfo.initializedin || op.stackinfo.initializedout) { partial++; }
+            else { missing.add(op); }
             total++;
         }
-        console.log("total", total, "done", done, "partial", partial - done, "incomplete", total - done);
+        console.log("total", total, "done", done, "partial", partial, "incomplete", missing.size);
     }
     pendingEquations.sort((a, b) => a.unknowns.size - b.unknowns.size);
     globalThis.eqs = pendingEquations;//TODO remove
