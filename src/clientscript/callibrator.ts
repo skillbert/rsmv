@@ -68,6 +68,8 @@ export const namedClientScriptOps = {
     branch_unk11611: 11611,
     branch_unk11613: 11613,
     branch_unk11606: 11606,
+    branch_unk11624: 11624,
+    branch_unk11625: 11625,
     switch: 51,
     return: 21,
 
@@ -92,10 +94,13 @@ const branchInstructions = [
     namedClientScriptOps.branch_gt,
     namedClientScriptOps.branch_lteq,
     namedClientScriptOps.branch_gteq,
+    //probably comparing longs
     namedClientScriptOps.branch_unk11619,
     namedClientScriptOps.branch_unk11611,
     namedClientScriptOps.branch_unk11613,
-    namedClientScriptOps.branch_unk11606
+    namedClientScriptOps.branch_unk11606,
+    namedClientScriptOps.branch_unk11624,
+    namedClientScriptOps.branch_unk11625
 ];
 
 export type ClientScriptOp = {
@@ -1267,14 +1272,9 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         testSection(eq);
         pendingEquations.push(eq);
     }
-    let shittyeq = pendingEquations.find(q => q.section.scriptid == 3 && q.section.originalindex == 70);
     for (let i = 0; i < 4; i++) {
         for (let eq of pendingEquations) {
             testSection(eq);
-        }
-        if (shittyeq) {
-            testSection(shittyeq);
-            testSection(shittyeq);
         }
         let total = 0;
         let partial = 0;
@@ -1284,7 +1284,12 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             if (op.stackinfo.initializedthrough) { done++; }
             total++;
         }
-        console.log("total", total, "done", done, "partial", partial, "incomplete", total - done);
+        console.log("total", total, "done", done, "partial", partial - done, "incomplete", total - done);
+    }
+    pendingEquations.sort((a, b) => a.unknowns.size - b.unknowns.size);
+    globalThis.eqs = pendingEquations;//TODO remove
+    for (let eq of pendingEquations) {
+
     }
 }
 

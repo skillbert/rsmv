@@ -165,6 +165,9 @@ export class CodeBlockNode extends AstNode {
         if (this.parent) { code += `${codeIndent(indent - 1)}}`; }
         return code;
     }
+    dump() {
+        console.log(this.getCode(globalThis.deob, 0));//TODO remove
+    }
 }
 
 type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=" | "(unk)";
@@ -270,15 +273,15 @@ class IfStatementNode extends AstNode {
     statement!: AstNode;
     endblock: CodeBlockNode;
     knownStackDiff = new StackInOut(new ValueList(["int"]), new ValueList());
-    ifEndIndex: number;
+    ifEndIndex!: number;
     constructor(statement: AstNode, endblock: CodeBlockNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null, endindex: number) {
         if (truebranch == falsebranch) { throw new Error("unexpected"); }
         super(statement.originalindex);
-        this.ifEndIndex = endindex;
         this.endblock = endblock;
-        this.setBranches(statement, truebranch, falsebranch);
+        this.setBranches(statement, truebranch, falsebranch, endindex);
     }
-    setBranches(statement: AstNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null) {
+    setBranches(statement: AstNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null, endindex: number) {
+        this.ifEndIndex = endindex;
         //statement
         this.statement = statement;
         this.push(statement);
@@ -308,7 +311,7 @@ class IfStatementNode extends AstNode {
         if (this.falsebranch) {
             res += `else`;
             //skip brackets for else if construct
-            if (this.falsebranch instanceof CodeBlockNode && this.falsebranch.children[0] instanceof IfStatementNode) {
+            if (this.falsebranch instanceof CodeBlockNode && this.falsebranch.children.length == 1 && this.falsebranch.children[0] instanceof IfStatementNode) {
                 res += " " + this.falsebranch.children[0].getCode(calli, indent);
             } else {
                 res += this.falsebranch.getCode(calli, indent);
@@ -597,6 +600,10 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                     falseblock = null;
                 }
             }
+            if (trueblock == parent.branchEndNode) {
+                //empty true branch
+                trueblock = new CodeBlockNode(trueblock.scriptid, trueblock.originalindex);
+            }
             if (!(trueblock instanceof CodeBlockNode)) { throw new Error("true branch isn't a codeblock"); }
             if (falseblock && !(falseblock instanceof CodeBlockNode)) { throw new Error("false branch exists but is not a codeblock"); }
 
@@ -618,18 +625,24 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             condnode.pushList(node.children);
 
             let grandparent = parent?.parent;
-            if (parent instanceof CodeBlockNode && parent.children.length == 1 && grandparent instanceof IfStatementNode && grandparent.endblock == parent.branchEndNode) {
-                if (grandparent.truebranch == trueblock && grandparent.falsebranch == parent) {
-                    let combinedcond = new BinaryOpStatement("||", grandparent.originalindex);
+            if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.endblock == parent.branchEndNode) {
+                let isor = grandparent.truebranch == trueblock && grandparent.falsebranch == parent;
+                let isand = grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
+                if (isor || isand) {
+                    if (parent.children.length != 1) {
+                        parent.remove(node);
+                        condnode.pushList(parent.children);
+                        //TODO make some sort of in-line codeblock node for this
+                        // console.log("merging if statements while 2nd if wasn't parsed completely, stack will be invalid");
+                    }
+                    let combinedcond = new BinaryOpStatement((isor ? "||" : "&&"), grandparent.originalindex);
                     combinedcond.push(grandparent.statement);
                     combinedcond.push(condnode);
-                    grandparent.setBranches(combinedcond, grandparent.truebranch, falseblock);
-                    continue;
-                } else if (grandparent.falsebranch == falseblock && grandparent.truebranch == parent) {
-                    let combinedcond = new BinaryOpStatement("&&", grandparent.originalindex);
-                    combinedcond.push(grandparent.statement);
-                    combinedcond.push(condnode);
-                    grandparent.setBranches(combinedcond, trueblock, grandparent.falsebranch);
+                    if (isor) {
+                        grandparent.setBranches(combinedcond, grandparent.truebranch, falseblock, parent.branchEndNode.originalindex);
+                    } else {
+                        grandparent.setBranches(combinedcond, trueblock, grandparent.falsebranch, parent.branchEndNode.originalindex);
+                    }
                     continue;
                 }
             }
@@ -879,6 +892,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     let sections = generateAst(calli, script, script.opcodedata, fileid);
     let program = new CodeBlockNode(fileid, 0);
     globalThis[`cs${fileid}`] = program;//TODO remove
+    globalThis[`css${fileid}`] = sections;
     if (full) {
         program.addSuccessor(sections[0]);
         for (let node: CodeBlockNode | null = program; node; node = node.findNext());
