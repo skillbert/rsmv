@@ -2,7 +2,19 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
-import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, ValueList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps } from "./callibrator";
+import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, StackList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps, StackConstants } from "./callibrator";
+
+/**
+ * known issues
+ * - If all branches (and default) of a switch statement return, then the last branch is emptied and its contents are placed after the end of the block (technically still correct)
+ *   - has to do with the way the branching detection works (AstNode.findNext)
+ * - some op arguments still not fogured out
+ * - none of this is tested for older build
+ *   - probably breaks at the build where pushconst ops were merged (~700?)
+ */
+
+
+
 
 function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
     return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
@@ -62,7 +74,7 @@ export abstract class AstNode {
 
 class VarAssignNode extends AstNode {
     varops: AstNode[] = [];
-    knownStackDiff = new StackInOut(new ValueList(), new ValueList());
+    knownStackDiff = new StackInOut(new StackList(), new StackList());
     getName(calli: ClientscriptObfuscation) {
         let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? q.getName(calli).name : "??")}`;
         return { name: name, extra: "" };
@@ -85,7 +97,7 @@ export class CodeBlockNode extends AstNode {
     branchEndNode: CodeBlockNode | null = null;
     maxEndIndex = -1;
 
-    knownStackDiff = new StackInOut(new ValueList(), new ValueList());
+    knownStackDiff = new StackInOut(new StackList(), new StackList());
     hasUnexplainedChildren = false;
     constructor(scriptid: number, startindex: number, children?: AstNode[]) {
         super(startindex);
@@ -173,7 +185,7 @@ export class CodeBlockNode extends AstNode {
 type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=" | "(unk)";
 class BinaryOpStatement extends AstNode {
     type: BinaryOpType;
-    knownStackDiff = new StackInOut(new ValueList(["int", "int"]), new ValueList(["int"]));//TODO not correct, we also use this for longs
+    knownStackDiff = new StackInOut(new StackList(["int", "int"]), new StackList(["int"]));//TODO not correct, we also use this for longs
     constructor(type: BinaryOpType, originalindex: number) {
         super(originalindex);
         this.type = type;
@@ -191,7 +203,7 @@ class BinaryOpStatement extends AstNode {
 class WhileLoopStatementNode extends AstNode {
     statement: AstNode;
     body: CodeBlockNode;
-    knownStackDiff = new StackInOut(new ValueList(), new ValueList());
+    knownStackDiff = new StackInOut(new StackList(), new StackList());
     constructor(parentblock: CodeBlockNode, originnode: IfStatementNode) {
         super(parentblock.originalindex);
         if (originnode.falsebranch) { throw new Error("cannot have else branch in loop"); }
@@ -210,7 +222,7 @@ class SwitchStatementNode extends AstNode {
     branches: { value: number, block: CodeBlockNode }[] = [];
     valueop: AstNode | null;
     defaultbranch: CodeBlockNode | null = null;
-    knownStackDiff = new StackInOut(new ValueList(["int"]), new ValueList());
+    knownStackDiff = new StackInOut(new StackList(["int"]), new StackList());
     constructor(switchop: RawOpcodeNode, scriptjson: clientscript, nodes: CodeBlockNode[], endindex: number) {
         super(switchop.originalindex);
         this.valueop = switchop.children[0] ?? null;
@@ -243,6 +255,7 @@ class SwitchStatementNode extends AstNode {
         if (defaultblock) {
             this.push(defaultblock);
             defaultblock.maxEndIndex = endindex;
+            this.defaultbranch = defaultblock;
         }
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
@@ -272,7 +285,7 @@ class IfStatementNode extends AstNode {
     falsebranch!: CodeBlockNode | null;
     statement!: AstNode;
     endblock: CodeBlockNode;
-    knownStackDiff = new StackInOut(new ValueList(["int"]), new ValueList());
+    knownStackDiff = new StackInOut(new StackList(["int"]), new StackList());
     ifEndIndex!: number;
     constructor(statement: AstNode, endblock: CodeBlockNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null, endindex: number) {
         if (truebranch == falsebranch) { throw new Error("unexpected"); }
@@ -510,7 +523,7 @@ function getNodeStackOut(node: AstNode) {
         return node.opinfo.stackinfo.out;
     }
     console.log("unknown stack out");
-    return new ValueList();
+    return new StackList();
 }
 globalThis.getNodeOut = getNodeStackOut;
 
@@ -522,7 +535,7 @@ function getNodeStackIn(node: AstNode) {
         return node.opinfo.stackinfo.in;
     }
     console.log("unknown stack in");
-    return new ValueList();
+    return new StackList();
 }
 globalThis.getNodeIn = getNodeStackIn;
 
@@ -553,19 +566,14 @@ export function translateAst(ast: CodeBlockNode) {
     let usablestackdata: AstNode[] = [];
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
         let argtype = getNodeStackIn(node).clone();
-        let outtype = getNodeStackOut(node);
         while (!argtype.isEmpty() && usablestackdata.length != 0) {
             let stackel = usablestackdata.at(-1)!;
             let outtype = getNodeStackOut(stackel);
-            // if (outtype.isEmpty() || !outtype.lteq(argtype)) { break; }
-            if (outtype.isEmpty() || outtype.getOverlap(argtype) != outtype.values.length) { break; }
+            if (outtype.isEmpty() || argtype.tryPop(outtype) != 0) { break; }
             node.unshift(stackel);
             usablestackdata.pop();
-            // argtype.sub(outtype);
-            argtype.pop(outtype);
         }
-        //TODO push opcodes to fill rest of argtype in case we called break
-        // node.children.unshift({somethingwithpoptype:argtype});
+        let outtype = getNodeStackOut(node);
         if (outtype.isEmpty()) {
             usablestackdata = [];
         } else {
@@ -725,6 +733,9 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             // return false;
             continue;
         }
+        // if (node.opinfo.id == 10063) {
+        //     node.knownStackDiff = new StackInOut(new ValueList(["int", "int", "int", "int"]), new ValueList(["int"]));
+        // }
         if (node.opinfo.id == namedClientScriptOps.return) {
             let script = calli.scriptargs.get(section.scriptid);
             if (!script || !script.returns) {
@@ -732,12 +743,13 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                 // return false;
                 continue;
             }
-            node.knownStackDiff = new StackInOut(script.returns, new ValueList());
+            node.knownStackDiff = new StackInOut(script.returns, new StackList());
         } else if (node.opinfo.id == namedClientScriptOps.gosub) {
             let script = calli.scriptargs.get(node.op.imm);
             if (!script || !script.arglist || !script.returnlist) {
                 //scripts with multiple different argument types have ambiguous argument order
                 section.hasUnexplainedChildren = true;
+                //TODO this branch is no longer possible
                 // return false;
                 continue;
             } else {
@@ -746,8 +758,8 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             }
         } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
             node.knownStackDiff = new StackInOut(
-                new ValueList(Array(node.op.imm).fill("string")),
-                new ValueList(["string"])
+                new StackList(Array(node.op.imm).fill("string")),
+                new StackList(["string"])
             )
         } else if (node.opinfo.id == namedClientScriptOps.pushvar || node.opinfo.id == namedClientScriptOps.popvar) {
             let varmeta = calli.getClientVarMeta(node.op.imm);
@@ -758,19 +770,21 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             }
             let ispop = node.opinfo.id == namedClientScriptOps.popvar;
 
-            let value = new ValueList([varmeta.type]);
-            let other = new ValueList();
+            let value = new StackList([varmeta.type]);
+            let other = new StackList();
             node.knownStackDiff = new StackInOut(
                 (ispop ? value : other),
                 (ispop ? other : value)
             );
         } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
             if (node.op.imm == 0) {
-                node.knownStackDiff = new StackInOut(new ValueList(), new ValueList(["int"]));
                 if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
                 lastintconst = node.op.imm_obj;
+                node.knownStackDiff = new StackInOut(new StackList(), new StackList(["int"]));
+                node.knownStackDiff.constout = new StackConstants(node.op.imm_obj);
             } else if (node.op.imm == 1) {
-                node.knownStackDiff = new StackInOut(new ValueList(), new ValueList(["long"]));
+                node.knownStackDiff = new StackInOut(new StackList(), new StackList(["long"]));
+                node.knownStackDiff.constout = new StackConstants(node.op.imm_obj);
             } else if (node.op.imm == 2) {
                 let stringconst = node.op.imm_obj as string;
                 //a string like this indicates a vararg set where this string indicates the types
@@ -781,20 +795,22 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                     //otherwise ignore the equation
                     if (stringconst.length >= 3) {
                         //TODO throw if wrong
-                        let indiff = new ValueList(varargmatch[1].split("").flatMap<StackType>(q => q == "i" ? "int" : q == "l" ? "long" : q == "s" ? "string" : null!));
+                        let indiff = new StackList(varargmatch[1].split("").flatMap<StackType>(q => q == "i" ? "int" : q == "l" ? "long" : q == "s" ? "string" : null!));
                         //variable number of ints
                         if (stringconst.includes("Y")) {
                             indiff.int();//number of ints to take from stack
                             for (let i = 0; i < lastintconst; i++) { indiff.int(); }
                         }
                         indiff.values.reverse();//revere convention for the solver
-                        node.knownStackDiff = new StackInOut(indiff, new ValueList(["vararg"]));
+                        node.knownStackDiff = new StackInOut(indiff, new StackList(["vararg"]));
                     } else {
                         section.hasUnexplainedChildren = true;
+                        continue;
                     }
                 } else {
-                    node.knownStackDiff = new StackInOut(new ValueList(), new ValueList(["string"]));
+                    node.knownStackDiff = new StackInOut(new StackList(), new StackList(["string"]));
                 }
+                node.knownStackDiff.constout = new StackConstants(node.op.imm_obj);
             } else {
                 throw new Error("unexpected");
             }
