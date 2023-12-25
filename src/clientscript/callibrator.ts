@@ -79,7 +79,19 @@ export const namedClientScriptOps = {
     tribyte2: 9003,
 
     //math stuff
-    plus: 10000
+    plus: 10000,
+    minus: 10991,
+    intdiv: 10001,
+    strtolower: 10003,//not sure
+    strcmp: 10004,//0 for equal, might be string - operator
+    intmod: 10005,
+    strconcat: 10060,
+    inttostring: 10687,
+
+    //interface stuff
+    if_setop: 10072
+    //11601=get clientvar int? push clientvar int with id imm>>11??
+    //11602=set
 }
 
 export const knownClientScriptOpNames: Record<number, string> = {
@@ -87,7 +99,7 @@ export const knownClientScriptOpNames: Record<number, string> = {
     ...Object.fromEntries(Object.entries(namedClientScriptOps).map(q => [q[1], q[0]]))
 }
 
-const branchInstructions = [
+export const branchInstructions = [
     namedClientScriptOps.branch_not,
     namedClientScriptOps.branch_eq,
     namedClientScriptOps.branch_lt,
@@ -120,7 +132,6 @@ export class OpcodeInfo {
     id: number;
     possibleTypes: Set<ImmediateType>;
     type: ImmediateType | "unknown";
-    optype: OpTypes | "unknown" = "unknown";
     stackinfo = new StackInOut();
     stackChangeConstraints = new Set<StackDiffEquation>();
     constructor(scrambledid: number, id: number, possibles: ImmediateType[]) {
@@ -135,7 +146,6 @@ export class OpcodeInfo {
     }
     static fromJson(json: ReturnType<OpcodeInfo["toJson"]>) {
         let r = new OpcodeInfo(json.scrambledid, json.id, json.type == "unknown" ? detectableImmediates : [json.type]);
-        r.optype = json.optype;
         r.stackinfo = new StackInOut(StackList.fromJson(json.stackin), StackList.fromJson(json.stackout));
         return r;
     }
@@ -145,8 +155,7 @@ export class OpcodeInfo {
             scrambledid: this.scrambledid,
             stackin: this.stackinfo.in.toJson(),
             stackout: this.stackinfo.out.toJson(),
-            type: this.type,
-            optype: this.optype
+            type: this.type
         }
     }
 }
@@ -158,11 +167,14 @@ export class StackConstants {
             this.values.push(v);
         }
     }
-    popList(other: StackList) {
-        this.values.length -= other.total();
+    popList(other: StackList, endoffset?: number) {
+        this.values.length -= other.total(endoffset);
     }
-    pushList(other: StackList) {
-        for (let i = other.total(); i > 0; i--) { this.values.push(null); }
+    pushOne(other: StackConst | undefined) {
+        this.values.push(other ?? null);
+    }
+    pushList(other: StackList, endoffset?: number) {
+        for (let i = other.total(endoffset); i > 0; i--) { this.values.push(null); }
     }
     push(other: StackConstants) {
         this.values.push(...other.values);
@@ -181,23 +193,31 @@ export class StackList {
     constructor(values: StackTypeExt[] = []) {
         this.values = values;
     }
-    static fromFlipped(other: StackList) {
-        return new StackList(other.values.slice().reverse());
-    }
     pushone(type: StackType) { this.values.push(type); }
     int() { this.values.push("int"); }
     long() { this.values.push("long"); }
     string() { this.values.push("string"); }
     isEmpty() { return this.values.length == 0; }
-    total() {
+    total(endoffset = 0) {
         let r = 0;
-        for (let v of this.values) {
+        for (let i = this.values.length - 1; i >= endoffset; i--) {
+            let v = this.values[i];
             if (v instanceof StackDiff) { r += v.total(); }
             else { r++; }
         }
         return r;
     }
-
+    hasSimple(other: StackList) {
+        let len = other.values.length - 1;
+        if (this.values.length < len) { return false; }
+        for (let i = 0; i <= len; i++) {
+            let otherval = other.values[len - i];
+            if (typeof otherval != "string") { return false; }
+            let val = this.values[this.values.length - 1 - i];
+            if (typeof val != "string" || val != otherval) { return false; }
+        }
+        return true;
+    }
     pop(list: StackList, limit = 0) {
         if (this.tryPop(list, limit) != 0) {
             throw new Error("missing pop values on stack");
@@ -213,56 +233,67 @@ export class StackList {
             list.values.reverse();
         }
     }
+    tryPopUnordered(otherval: StackDiff) {
+        while (!otherval.isEmpty()) {
+            if (this.values.length == 0) { return false; }
+            let val = this.values[this.values.length - 1];
+            if (val instanceof StackDiff) {
+                if (otherval.lteq(val)) {
+                    val.sub(otherval);
+                    otherval.sub(otherval);
+                } else if (val.lteq(otherval)) {
+                    otherval.sub(val);
+                    val.sub(val);
+                    this.values.pop();
+                } else {
+                    return false;
+                }
+            } else {
+                let amount = otherval.getSingle(val);
+                if (amount <= 0) { return false; }
+                otherval.setSingle(val, amount - 1);
+                this.values.pop();
+            }
+        }
+        return true;
+    }
+    tryPopSingle(otherval: StackType) {
+        if (this.values.length == 0) { return false; }
+        let val = this.values[this.values.length - 1];
+        if (val instanceof StackDiff) {
+            let amount = val.getSingle(otherval);
+            if (amount <= 0) { return false; }
+            val.setSingle(otherval, amount - 1);
+            if (val.isEmpty()) { this.values.pop(); }
+        } else {
+            if (val != otherval) { return false; }
+            this.values.pop();
+        }
+        return true;
+    }
     tryPop(list: StackList, limit = 0) {
-        let currentunrattle: StackDiff | null = null;
         //sort of using 1 based indexing like a freak!!, there is in fact a situation where you'd need 1 based indices
         let otherindex = list.values.length;
         while (otherindex > limit) {
-            if (this.values.length == 0) { break; }
-            let val = this.values[this.values.length - 1];
-            let otherval: StackTypeExt = currentunrattle ?? list.values[otherindex - 1];
+            let otherval: StackTypeExt = list.values[otherindex - 1];
             if (otherval instanceof StackDiff) {
-                if (!currentunrattle) {
-                    currentunrattle = otherval.clone();
-                } else if (currentunrattle != otherval) {
-                    throw new Error("unexpected");
-                }
-                if (val instanceof StackDiff) {
-                    if (!currentunrattle.lteq(val)) { break; }
-                    val.sub(currentunrattle);
-                    otherindex--;
-                } else {
-                    let amount = currentunrattle.getSingle(val);
-                    if (amount <= 0) { break; }
-                    currentunrattle.setSingle(val, amount - 1);
-                    this.values.pop();
-                }
-                if (currentunrattle.isEmpty()) {
-                    currentunrattle = null;
-                    otherindex--;
-                }
+                if (!this.tryPopUnordered(otherval.clone())) { break; }
+                otherindex--;
             } else {
-                if (val instanceof StackDiff) {
-                    let amount = val.getSingle(otherval);
-                    if (amount <= 0) { break; }
-                    val.setSingle(otherval, amount - 1);
-                    if (val.isEmpty()) { this.values.pop(); }
-                    otherindex--;
-                } else {
-                    if (val != otherval) { break; }
-                    this.values.pop();
-                    otherindex--;
-                }
+                if (!this.tryPopSingle(otherval)) { break; }
+                otherindex--;
             }
-        }
-        if (currentunrattle) {
-            console.log("partial pop");
-            // throw new Error("unexpected");
         }
         return otherindex - limit;
     }
     push(list: StackList) {
-        this.values.push(...list.values);
+        for (let val of list.values) {
+            if (val instanceof StackDiff) {
+                this.values.push(val.clone());
+            } else {
+                this.values.push(val);
+            }
+        }
     }
     clone() {
         return new StackList(this.values.map(q => q instanceof StackDiff ? q.clone() : q));
@@ -298,7 +329,7 @@ export class StackList {
 export class StackInOut {
     in = new StackList();
     out = new StackList();
-    constout: StackConstants | null = null;
+    constout: StackConst = null;
     initializedin = false;
     initializedout = false;
     initializedthrough = false;
@@ -319,10 +350,13 @@ export class StackInOut {
         return maxlen;
     }
     totalChange() {
-        return this.out.values.length - this.in.values.length;
+        return this.out.total() - this.in.total();
     }
     getCode() {
         return `${this.out.values.join(",")}(${this.in.values.join(",")})`;
+    }
+    toString() {
+        return `${this.out + "" || "void"}${this.initializedthrough ? "" : "??"}(${this.in})`;
     }
 }
 export class StackDiff {
@@ -727,6 +761,7 @@ export class ClientscriptObfuscation {
             } catch { }
         }
         let res = new ClientscriptObfuscation(source);
+        globalThis.deob = res;//TODO remove
         await res.preloadData(false);
         return res;
     }
@@ -884,16 +919,6 @@ export class ClientscriptObfuscation {
         await findOpcodeImmidiates(this);
         this.callibrated = true;
         parseCandidateContents(this);
-
-        for (let op of this.mappings.values()) {
-            if (op.id == namedClientScriptOps.gosub) {
-                op.optype = "gosub";
-            } else if (op.id == namedClientScriptOps.return) {
-                op.optype = "return";
-            } else if (branchInstructions.includes(op.id)) {
-                op.optype = "branch";
-            }
-        }
         findOpcodeTypes(this);
     }
     readOpcode: ReadOpCallback = (state: DecodeState) => {
@@ -1220,6 +1245,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
 
         //scan through the ops from front to back
         let frontstack = new StackList();
+        //TODO currently unused
         let frontstackconsts = new StackConstants();
         for (let i = 0; i < section.children.length; i++) {
             let node = section.children[i];
@@ -1227,33 +1253,35 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             if (node.knownStackDiff) {
                 frontstack.pop(node.knownStackDiff.in);
                 frontstack.push(node.knownStackDiff.out);
+
                 frontstackconsts.popList(node.knownStackDiff.in);
                 if (node.knownStackDiff.constout) {
-                    frontstackconsts.push(node.knownStackDiff.constout);
+                    frontstackconsts.pushOne(node.knownStackDiff.constout);
                 } else {
                     frontstackconsts.pushList(node.knownStackDiff.out);
                 }
             } else {
                 let info = node.opinfo.stackinfo;
                 if (!info.initializedin) {
-                    info.in = StackList.fromFlipped(frontstack);
+                    info.in = frontstack.clone();
                     info.initializedin = true;
                 } else {
                     let shortage = frontstack.tryPop(info.in);
                     if (shortage > 0) {
                         if (info.initializedthrough) {
-                            if (info.in.tryPopReverse(info.out, shortage) != 0) {
+                            if (info.out.tryPopReverse(info.in, info.in.values.length - shortage) != 0) {
                                 throw new Error("not compatible");
                             }
-                            info.out.values.length -= shortage;
                         }
                         info.in.values.splice(0, shortage);
                     }
+                    frontstackconsts.popList(info.in);
                 }
                 if (!info.initializedthrough || !info.initializedout) {
                     break;
                 }
                 frontstack.push(info.out);
+                frontstackconsts.pushList(info.out);
             }
         }
 
@@ -1269,16 +1297,15 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             } else {
                 let info = node.opinfo.stackinfo;
                 if (!info.initializedout) {
-                    info.out = StackList.fromFlipped(backstack);
+                    info.out = backstack.clone();
                     info.initializedout = true;
                 } else {
                     let shortage = backstack.tryPop(info.out);
                     if (shortage > 0) {
                         if (info.initializedthrough) {
-                            if (info.out.tryPopReverse(info.in, shortage) != 0) {
+                            if (info.in.tryPopReverse(info.out, info.out.values.length - shortage) != 0) {
                                 throw new Error("not compatible");
                             }
-                            info.in.values.length -= shortage;
                         }
                         info.out.values.splice(0, shortage);
                     }
@@ -1317,6 +1344,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             unktype.stackinfo.initializedthrough = true;
             unknowns.delete(unktype);
             foundset.add(unktype.id);
+            unktype.stackChangeConstraints.add(eq);
         } else if (unknowns.size > 1) {
             for (let unk of unknowns) {
                 let mapping = calli.decodedMappings.get(unk.id)!;
@@ -1339,7 +1367,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
 
     let opmap = new Map<number, Set<StackDiffEquation>>();
     let pendingEquations: StackDiffEquation[] = [];
-    let pendingEquationSet = new Set<StackDiffEquation>();
     let foundset = new Set<number>();
     for (let section of allsections) {
         if (section.hasUnexplainedChildren) { continue; }
@@ -1375,7 +1402,6 @@ export async function prepareClientScript(source: CacheFileSource) {
     // source.decodeArgs.clientScriptDeob = null;//TODO remove
     if (!source.decodeArgs.clientScriptDeob) {
         let deob = await ClientscriptObfuscation.create(source);
-        globalThis.deob = deob;//TODO remove
         source.decodeArgs.clientScriptDeob = deob;
         await deob.runAutoCallibrate(source);
     }
@@ -1410,6 +1436,7 @@ export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptO
             break;
         }
     }
+    res.values.reverse();
     return res;
 }
 

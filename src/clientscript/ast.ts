@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
-import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, StackList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps, StackConstants } from "./callibrator";
+import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, StackList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps, StackConstants, branchInstructions, StackConst } from "./callibrator";
 
 /**
  * known issues
@@ -114,7 +114,8 @@ export class CodeBlockNode extends AstNode {
             block.lastPointer = this;
             block.maxEndIndex = this.originalindex;
         }
-        if (this.possibleSuccessors.includes(block)) { throw new Error("added same successor twice"); }
+        //successors are required to be duplicate when there is a 0 jump branch
+        // if (this.possibleSuccessors.includes(block)) { throw new Error("added same successor twice"); }
         if (!block) { throw new Error("added null successor"); }
         this.possibleSuccessors.push(block);
     }
@@ -178,7 +179,7 @@ export class CodeBlockNode extends AstNode {
         return code;
     }
     dump() {
-        console.log(this.getCode(globalThis.deob, 0));//TODO remove
+        console.log(`[${this.scriptid},${this.originalindex}]\n` + this.getCode(globalThis.deob, 0));//TODO remove
     }
 }
 
@@ -334,6 +335,21 @@ class IfStatementNode extends AstNode {
     }
 }
 
+export class FunctionBindNode extends AstNode {
+    scriptid = -1;
+    constructor(originalindex: number, types: StackList) {
+        super(originalindex);
+        let intype = types.clone();
+        intype.values.unshift("int");//function id
+        this.knownStackDiff = new StackInOut(intype, new StackList(["int", "vararg"]));
+    }
+
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
+        return `bind[${scriptid}](${this.children.slice(1).map(q => q.getCode(calli, indent))})`;
+    }
+}
+
 export class RawOpcodeNode extends AstNode {
     op: ClientScriptOp;
     opinfo: OpcodeInfo;
@@ -377,6 +393,18 @@ export class RawOpcodeNode extends AstNode {
             if (this.op.opcode == namedClientScriptOps.plus) {
                 return `(${this.children[0].getCode(calli, indent)} + ${this.children[1].getCode(calli, indent)})`;
             }
+            if (this.op.opcode == namedClientScriptOps.minus) {
+                return `(${this.children[0].getCode(calli, indent)} - ${this.children[1].getCode(calli, indent)})`;
+            }
+            if (this.op.opcode == namedClientScriptOps.intdiv) {
+                return `(${this.children[0].getCode(calli, indent)} / ${this.children[1].getCode(calli, indent)})`;
+            }
+            if (this.op.opcode == namedClientScriptOps.intmod) {
+                return `(${this.children[0].getCode(calli, indent)} % ${this.children[1].getCode(calli, indent)})`;
+            }
+            if (this.op.opcode == namedClientScriptOps.strconcat) {
+                return `(${this.children[0].getCode(calli, indent)} strcat ${this.children[1].getCode(calli, indent)})`;
+            }
         }
         if (this.op.opcode == namedClientScriptOps.joinstring) {
             let res = "`";
@@ -390,9 +418,9 @@ export class RawOpcodeNode extends AstNode {
             res += "`";
             return res;
         }
-        if (opinfo.optype == "branch" || opinfo.id == namedClientScriptOps.jump) {
+        if (opinfo.id == namedClientScriptOps.jump || branchInstructions.includes(opinfo.id)) {
             name += `[${this.op.imm + this.originalindex + 1}]`;
-        } else if (opinfo.optype == "gosub") {
+        } else if (opinfo.id == namedClientScriptOps.gosub) {
             name += `[${this.op.imm}]`;
         } else if (this.op.imm != 0) {
             name += `[${this.op.imm}]`;
@@ -525,7 +553,6 @@ function getNodeStackOut(node: AstNode) {
     console.log("unknown stack out");
     return new StackList();
 }
-globalThis.getNodeOut = getNodeStackOut;
 
 function getNodeStackIn(node: AstNode) {
     if (node.knownStackDiff) {
@@ -537,7 +564,6 @@ function getNodeStackIn(node: AstNode) {
     console.log("unknown stack in");
     return new StackList();
 }
-globalThis.getNodeIn = getNodeStackIn;
 
 export function translateAst(ast: CodeBlockNode) {
     let cursor = new RewriteCursor(ast);
@@ -562,23 +588,53 @@ export function translateAst(ast: CodeBlockNode) {
         }
     }
 
-    //find call arguments
-    let usablestackdata: AstNode[] = [];
-    for (let node = cursor.goToStart(); node; node = cursor.next()) {
+    let expandNode = (node: AstNode) => {
         let argtype = getNodeStackIn(node).clone();
+        // for (let child of node.children) {
+        //     argtype.pop(getNodeStackOut(child));
+        // }
         while (!argtype.isEmpty() && usablestackdata.length != 0) {
-            let stackel = usablestackdata.at(-1)!;
+            let { stackel, stackconst } = usablestackdata.at(-1)!;
             let outtype = getNodeStackOut(stackel);
+            if (argtype.hasSimple(bindargs)) {
+                if (typeof stackconst != "string") { throw new Error("expected vararg string"); }
+                usablestackdata.pop();
+                let bindnode: FunctionBindNode;
+                if (outtype.values.length == 1 && outtype.values[0] == "vararg") {
+                    if (!stackel.knownStackDiff) { throw new Error("unexpected"); }
+                    bindnode = new FunctionBindNode(stackel.originalindex, stackel.knownStackDiff.in);
+                    bindnode.pushList(stackel.children);
+                } else {
+                    let maybearraylen = usablestackdata.at(-1)?.stackconst;
+                    let args = varArgtype(stackconst, maybearraylen);
+                    if (!args) { throw new Error("vararg const string expected"); }
+                    bindnode = new FunctionBindNode(stackel.originalindex, args);
+                }
+                expandNode(bindnode);
+                stackel.parent!.replaceChild(stackel, bindnode);
+
+                outtype = getNodeStackOut(bindnode);
+                stackel = bindnode;
+            }
             if (outtype.isEmpty() || argtype.tryPop(outtype) != 0) { break; }
             node.unshift(stackel);
             usablestackdata.pop();
         }
+
+        //update usable stack data
         let outtype = getNodeStackOut(node);
         if (outtype.isEmpty()) {
-            usablestackdata = [];
+            usablestackdata.length = 0;
         } else {
-            usablestackdata.push(node);
+            usablestackdata.push({ stackel: node, stackconst: node.knownStackDiff?.constout ?? null });
         }
+    }
+
+    //find call arguments
+    let bindargs = new StackList(["int", "vararg"]);
+    let usablestackdata: { stackel: AstNode, stackconst: StackConst }[] = [];
+    for (let node = cursor.goToStart(); node; node = cursor.next()) {
+        expandNode(node);
     }
     return ast;
 }
@@ -586,7 +642,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
     let cursor = new RewriteCursor(ast);
     //find if statements
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
-        if (node instanceof RawOpcodeNode && node.opinfo.optype == "branch") {
+        if (node instanceof RawOpcodeNode && branchInstructions.includes(node.opinfo.id)) {
             let parent = node.parent;
             if (!(parent instanceof CodeBlockNode) || parent.possibleSuccessors.length != 2) { throw new Error("if op parent is not compatible"); }
             if (parent.children.at(-1) != node) { throw new Error("if op is not last op in codeblock"); }
@@ -709,6 +765,24 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
 
 }
 
+function varArgtype(stringconst: string, lastintconst: number | unknown) {
+    //a string like this indicates a vararg set where this string indicates the types
+    //treat the entire thing as one vararg
+    let varargmatch = stringconst.match(/^([ils]*)Y?$/);
+    if (!varargmatch) {
+        return null;
+    }
+    //TODO throw if wrong
+    let indiff = new StackList(varargmatch[1].split("").flatMap<StackType>(q => q == "i" ? "int" : q == "l" ? "long" : q == "s" ? "string" : null!));
+    //variable number of ints
+    if (stringconst.includes("Y")) {
+        if (typeof lastintconst != "number") { throw new Error("parsing vararg array, but legnth type was not an int"); }
+        for (let i = 0; i < lastintconst; i++) { indiff.int(); }
+        indiff.int();//the length of the array on stack
+    }
+    return indiff;
+}
+
 function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscation) {
 
     const problemops = [
@@ -724,13 +798,11 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
         10815,
         10735,//either this or 10736
     ];
-    //allsections.filter(q=>q.children.some(w=>w.op.opcode==10735)).slice(0,30).forEach(q=>console.log(q.getCode(deob,0)))
 
     let lastintconst = -1;
     for (let node of section.children) {
         if (!(node instanceof RawOpcodeNode)) {
             section.hasUnexplainedChildren = true;
-            // return false;
             continue;
         }
         // if (node.opinfo.id == 10063) {
@@ -740,7 +812,6 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             let script = calli.scriptargs.get(section.scriptid);
             if (!script || !script.returns) {
                 section.hasUnexplainedChildren = true;
-                // return false;
                 continue;
             }
             node.knownStackDiff = new StackInOut(script.returns, new StackList());
@@ -750,7 +821,6 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                 //scripts with multiple different argument types have ambiguous argument order
                 section.hasUnexplainedChildren = true;
                 //TODO this branch is no longer possible
-                // return false;
                 continue;
             } else {
                 // node.knownStackDiff = new StackInOut(script.arglist, ValueList.fromFlipped(script.returns));
@@ -765,7 +835,6 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             let varmeta = calli.getClientVarMeta(node.op.imm);
             if (!varmeta) {
                 section.hasUnexplainedChildren = true;
-                // return false;
                 continue;
             }
             let ispop = node.opinfo.id == namedClientScriptOps.popvar;
@@ -781,36 +850,27 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                 if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
                 lastintconst = node.op.imm_obj;
                 node.knownStackDiff = new StackInOut(new StackList(), new StackList(["int"]));
-                node.knownStackDiff.constout = new StackConstants(node.op.imm_obj);
+                node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 1) {
                 node.knownStackDiff = new StackInOut(new StackList(), new StackList(["long"]));
-                node.knownStackDiff.constout = new StackConstants(node.op.imm_obj);
+                node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 2) {
                 let stringconst = node.op.imm_obj as string;
+                node.knownStackDiff = new StackInOut(new StackList(), new StackList(["string"]));
+                node.knownStackDiff.constout = node.op.imm_obj;
+                
                 //a string like this indicates a vararg set where this string indicates the types
                 //treat the entire thing as one vararg
-                let varargmatch = stringconst.match(/^([ils]*)Y?$/);
-                if (varargmatch) {
-                    //only make use of this construct if it is at least 3 chars long
-                    //otherwise ignore the equation
-                    if (stringconst.length >= 3) {
-                        //TODO throw if wrong
-                        let indiff = new StackList(varargmatch[1].split("").flatMap<StackType>(q => q == "i" ? "int" : q == "l" ? "long" : q == "s" ? "string" : null!));
-                        //variable number of ints
-                        if (stringconst.includes("Y")) {
-                            indiff.int();//number of ints to take from stack
-                            for (let i = 0; i < lastintconst; i++) { indiff.int(); }
-                        }
-                        indiff.values.reverse();//revere convention for the solver
-                        node.knownStackDiff = new StackInOut(indiff, new StackList(["vararg"]));
-                    } else {
-                        section.hasUnexplainedChildren = true;
-                        continue;
-                    }
-                } else {
-                    node.knownStackDiff = new StackInOut(new StackList(), new StackList(["string"]));
+                //only make use of this construct if it is at least 3 chars long
+                //otherwise ignore the equation
+                let argtype = varArgtype(stringconst, lastintconst);
+                if (stringconst.length >= 3 && argtype) {
+                    node.knownStackDiff = new StackInOut(argtype, new StackList(["vararg"]));
+                    node.knownStackDiff.constout = node.op.imm_obj;
+                } else if (argtype) {
+                    section.hasUnexplainedChildren = true;
+                    continue;
                 }
-                node.knownStackDiff.constout = new StackConstants(node.op.imm_obj);
             } else {
                 throw new Error("unexpected");
             }
@@ -844,7 +904,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         let info = calli.decodedMappings.get(op.opcode)!;
         if (!info) { throw new Error("tried to add unknown op to AST"); }
 
-        if (info.optype == "branch" || info.id == namedClientScriptOps.jump) {
+        if (info.id == namedClientScriptOps.jump || branchInstructions.includes(info.id)) {
             let jumpindex = nextindex + op.imm;
             getorMakeSection(nextindex);
             getorMakeSection(jumpindex);
@@ -867,7 +927,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
         currentsection.push(opnode);
 
-        if (opnode.opinfo.optype == "branch" || info.id == namedClientScriptOps.jump) {
+        if (info.id == namedClientScriptOps.jump || branchInstructions.includes(info.id)) {
             let jumpindex = nextindex + op.imm;
             let nextblock = getorMakeSection(nextindex);
             let jumpblock = getorMakeSection(jumpindex);
@@ -876,7 +936,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             }
             currentsection.addSuccessor(jumpblock);
             currentsection = nextblock;
-        } else if (opnode.opinfo.optype == "return") {
+        } else if (opnode.opinfo.id == namedClientScriptOps.return) {
             if (index != ops.length - 1) {
                 //dead code will be handled elsewhere
                 currentsection = getorMakeSection(nextindex);
@@ -903,6 +963,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
 export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
     let calli = source.getDecodeArgs().clientScriptDeob;
+    globalThis.deob = calli;//TODO remove
     if (!(calli instanceof ClientscriptObfuscation)) { throw new Error("no deob"); }
     const full = globalThis.deep ?? true;//TODO remove
 
