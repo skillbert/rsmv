@@ -11,7 +11,7 @@ import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 
 type HTMLResult = string;
-export type RsInterfaceElement = { el: HTMLElement, dispose: (() => void)[] };
+export type RsInterfaceElement = { el: HTMLElement, dispose: (() => void)[], rootcomps: RsInterfaceComponent[] };
 
 type UiRenderContext = {
     source: CacheFileSource,
@@ -60,6 +60,8 @@ export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRend
     css += ".rs-interface-container{position:absolute;top:0px;left:0px;right:0px;bottom:0px;display:flex;align-items:center;justify-content:center;}";
     css += ".rs-interface-container-sub{position:relative;outline:1px solid green;}";
     css += ".rs-model{position:absolute;top:0px;left:0px;width:100%;height:100%;}";
+    css += ".rs-componentmeta{}";
+    css += ".rs-componentmeta-children{padding-left:15px;}";
 
     let basewidth = 520;
     let baseheight = 340;
@@ -103,14 +105,17 @@ export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRend
         root.appendChild(container);
         let disposelist: (() => void)[] = [];
 
+        let rootcomps: RsInterfaceComponent[] = [];
         for (let comp of comps.values()) {
             if (comp.data.parentid == 0xffff || !comps.has(comp.data.parentid)) {
                 let sub = await comp.toHtml(ctx, "dom");
                 disposelist.push(...sub.dispose);
                 container.appendChild(sub.el);
+                rootcomps.push(comp);
             }
         }
-        return { el: root, dispose: disposelist } as RsInterfaceElement as any;
+        globalThis.comp = rootcomps;//TODO remove
+        return { el: root, dispose: disposelist, rootcomps } as RsInterfaceElement as any;
     }
 }
 
@@ -186,7 +191,7 @@ function cssSize(data: interfaces) {
     return css;
 }
 
-class RsInterfaceComponent {
+export class RsInterfaceComponent {
     data: interfaces;
     parent: RsInterfaceComponent | null = null;
     children: RsInterfaceComponent[] = [];
@@ -342,6 +347,7 @@ class RsInterfaceComponent {
             return {
                 el,
                 dispose: disposelist,
+                rootcomps: [this]
             } as RsInterfaceElement as any;
         }
     }
