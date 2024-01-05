@@ -189,7 +189,7 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			return buildReference(name, parent, result);
 		}
 	}
-
+	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	let opcodetype = buildParser(null, (chunkdef["$opcode"] ?? "unsigned byte"), typedef);
 	let opts: Record<string, { op: number, parser: ChunkParser }> = {};
 	for (let key in chunkdef) {
@@ -206,7 +206,6 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 	}
 
 	let map = new Map<number, { key: string, parser: ChunkParser }>();
-	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	for (let key in opts) {
 		let opt = opts[key];
 		map.set(opt.op, { key: key, parser: opt.parser });
@@ -711,8 +710,9 @@ function arrayNullTerminatedParser(args: unknown[], parent: ChunkParentCallback,
 				if (debugdata) {
 					debugdata.opcodes.push({ op: "$opcode", index: oldscan, stacksize: state.stack.length });
 				}
-				if (header == 0) { break; }
 				ctx.$opcode = header;
+				let endint = endvalue.read(state);
+				if (header == endint) { break; }
 				r.push(subtype.read(state));
 			}
 			state.hiddenstack.pop();
@@ -748,7 +748,7 @@ function arrayNullTerminatedParser(args: unknown[], parent: ChunkParentCallback,
 		return buildReference(name, parent, {
 			stackdepth: child.stackdepth + 1,
 			resolve(v, old) {
-				if (!Array.isArray(v)) { throw new Error("array expcted"); }
+				if (!Array.isArray(v)) { throw new Error("array expected"); }
 				//possibly do this for all elements in the array if needed and allowed by performance
 				return child.resolve(v[0], old);
 			}
@@ -757,8 +757,10 @@ function arrayNullTerminatedParser(args: unknown[], parent: ChunkParentCallback,
 
 	if (args.length < 1) throw new Error(`'read' variables interpretted as an array must contain items: ${JSON.stringify(args)}`);
 	let sizearg = (args.length >= 2 ? args[0] : "variable unsigned short");
+	let endintarg = (args.length >= 3 ? args[1] : 0);
 	let lengthtype = buildParser(null, sizearg, typedef);
-	let subtype = buildParser(resolveReference, args[args.length >= 2 ? 1 : 0], typedef);
+	let endvalue = buildParser(null, endintarg, typedef);
+	let subtype = buildParser(resolveReference, args[args.length - 1], typedef);
 	return r;
 }
 
