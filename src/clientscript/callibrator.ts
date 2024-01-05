@@ -1,5 +1,5 @@
 import { CacheFileSource } from "../cache";
-import { cacheMajors } from "../constants";
+import { cacheConfigPages, cacheMajors } from "../constants";
 import { FileParser, parse } from "../opdecoder";
 import { posmod, trickleTasksTwoStep } from "../utils";
 import { DecodeState } from "../opcode_reader";
@@ -11,6 +11,7 @@ import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { crc32 } from "../libs/crc32util";
+import { params } from "../../generated/params";
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
 const lastNonObfuscatedBuild = 668;
@@ -80,13 +81,18 @@ export const namedClientScriptOps = {
 
     //math stuff
     plus: 10000,
-    minus: 10991,
+    minus: 10006,
     intdiv: 10001,
     strtolower: 10003,//not sure
     strcmp: 10004,//0 for equal, might be string - operator
     intmod: 10005,
     strconcat: 10060,
     inttostring: 10687,
+
+    //enums
+    enum_getvalue: 10063,
+    struct_getparam: 10023,
+    item_getparam: 10110,
 
     //interface stuff
     if_setop: 10072
@@ -114,6 +120,39 @@ export const branchInstructions = [
     namedClientScriptOps.branch_unk11624,
     namedClientScriptOps.branch_unk11625
 ];
+
+
+// export const dynamicOps = [
+//     42,
+//     43,
+//     10023,
+//     10024,
+//     10025,
+//     10063,
+//     10110,
+//     10672,
+//     10699,
+//     10717,//unknown (int,intkey,int) intkey seems to be shiftleft 4, return value can almost be anything, have seen 1-3 strings/ints probably loads an entire dbrow
+//     10735,
+//     10736,
+//     10815,
+//     10885,
+// ];
+
+export const dynamicOps = [
+    42,// PUSH_VARC_INT can somehow also push long?
+    43,
+    10023,
+    10063,
+    10110,
+    10672,
+    10699,
+    10717,
+    10735,//either this or 10736
+    10815,
+    10885,
+];
+
 
 type StackDiffEquation = {
     section: CodeBlockNode,
@@ -167,6 +206,19 @@ export class StackConstants {
             this.values.push(v);
         }
     }
+    applyInOut(other: StackInOut) {
+        let addedlength = other.out.values.length - other.in.values.length;
+        if (this.values.length < other.in.values.length) {
+            // console.log("ignored conststack inout that had to many through values");
+        }
+        if (addedlength > 0) {
+            for (let i = 0; i < addedlength; i++) {
+                this.values.push(null);
+            }
+        } else {
+            this.values.length = Math.max(0, this.values.length + addedlength);
+        }
+    }
     popList(other: StackList, endoffset?: number) {
         this.values.length -= other.total(endoffset);
     }
@@ -206,6 +258,25 @@ export class StackList {
             else { r++; }
         }
         return r;
+    }
+    tryShift(n: number) {
+        let count = 0;
+        let sliceindex = -1;
+        for (let i = 0; i < this.values.length; i++) {
+            let val = this.values[i];
+            if (val instanceof StackDiff) {
+                count += val.total();
+            } else {
+                count++;
+            }
+            if (count >= n) {
+                sliceindex = i + 1;
+                break;
+            }
+        }
+        if (count != n) { return false; }
+        this.values.splice(0, sliceindex);
+        return true;
     }
     hasSimple(other: StackList) {
         let len = other.values.length - 1;
@@ -497,7 +568,6 @@ type ReferenceCallibration = {
 };
 
 type ImmediateType = "byte" | "int" | "tribyte" | "switch" | "long" | "string";
-type OpTypes = "standard" | "return" | "gosub" | "seton" | "branch";
 
 export type ReadOpCallback = (state: DecodeState) => ClientScriptOp;
 
@@ -653,25 +723,6 @@ async function getReferenceOpcodeDump() {
         let refcalli = await ClientscriptObfuscation.create(refsource);
         rootcalli.setNonObbedMappings();
         await refcalli.runCallibrationFrom(rootcalli);
-
-        //2 opcodes have the tribyte type
-        let tribyte1 = new OpcodeInfo(0x0314, namedClientScriptOps.tribyte1, ["tribyte"]);
-        let tribyte2 = new OpcodeInfo(0x025d, namedClientScriptOps.tribyte2, ["tribyte"]);
-        refcalli.mappings.set(tribyte1.scrambledid, tribyte1);
-        refcalli.mappings.set(tribyte2.scrambledid, tribyte2);
-        refcalli.decodedMappings.set(tribyte1.id, tribyte1);
-        refcalli.decodedMappings.set(tribyte2.id, tribyte2);
-
-        //opcodes with unknown original opcode, but still in the id<0x80 range so they have 4 byte imm
-        let specialReferenceOps = [0x0023, 0x003b, 0x003f, 0x00a4, 0x00a8, 0x00f6, 0x0175, 0x01a0, 0x022f, 0x0273, 0x02c2, 0x033a, 0x0374, 0x03a1, 0x0456, 0x04ea, 0x04f4, 0x0501, 0x0559, 0x059d, 0x0676, 0x072d, 0x077d, 0x0798, 0x07a0, 0x07d8, 0x080f, 0x0838];
-        for (let op of specialReferenceOps) {
-            if (refcalli.mappings.get(op) == undefined) {
-                refcalli.declareOp(op, ["int"]);
-                // let newop = new OpcodeInfo(op, refcalli.opidcounter++, ["int"]);
-                // refcalli.mappings.set(op, newop);
-                // refcalli.decodedMappings.set(newop.id, newop);
-            }
-        }
         return refcalli.generateDump();
     })();
     return referenceOpcodeDump;
@@ -684,6 +735,7 @@ export class ClientscriptObfuscation {
     opidcounter = 10000;
     source: CacheFileSource;
     varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
+    parammeta = new Map<number, params>();
     scriptargs = new Map<number, {
         args: StackDiff,
         returns: StackList
@@ -790,6 +842,12 @@ export class ClientscriptObfuscation {
                     vars: await loadVars(q[1].index)
                 }
             ] as const)));
+
+            this.parammeta.clear();
+            let paramindex = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.params);
+            for (let file of paramindex) {
+                this.parammeta.set(file.fileid, parse.params.read(file.buffer, this.source));
+            }
         }
 
         if (!skipcandidates) {
@@ -955,13 +1013,16 @@ export class ClientscriptObfuscation {
         let varmeta = group?.vars.get(varid);
         if (!group || !varmeta) { return null; }
         let diff = new StackDiff();
-        if ([36, 50].includes(varmeta.type)) { diff.string++; }
-        else if ([35, 49, 56, 71, 110, 115, 116].includes(varmeta.type)) { diff.long++; }
-        else { diff.int++; }
-        let type = (diff.int ? "int" as const : diff.long ? "long" as const : "string" as const);
-
+        let type = typeToPrimitive(varmeta.type);
+        diff.setSingle(type, 1);
         return { name: group.name, varid, diff, type };
     }
+}
+
+export function typeToPrimitive(typeint: number): StackType {
+    if ([36, 50].includes(typeint)) { return "string"; }
+    else if ([35, 49, 56, 71, 110, 115, 116].includes(typeint)) { return "long"; }
+    else { return "int"; }
 }
 
 function parseCandidateContents(calli: ClientscriptObfuscation) {
@@ -1241,7 +1302,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             console.log(section.getCode(calli, 0))
             debugger;
         }
-        if (section.hasUnexplainedChildren) { return false; }
 
         //scan through the ops from front to back
         let frontstack = new StackList();
@@ -1249,7 +1309,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         let frontstackconsts = new StackConstants();
         for (let i = 0; i < section.children.length; i++) {
             let node = section.children[i];
-            if (!(node instanceof RawOpcodeNode)) { throw new Error("unescpted"); }
+            if (!(node instanceof RawOpcodeNode) || node.unknownstack) { break; }
             if (node.knownStackDiff) {
                 frontstack.pop(node.knownStackDiff.in);
                 frontstack.push(node.knownStackDiff.out);
@@ -1289,7 +1349,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         let backstack = new StackList();
         for (let i = 0; i < section.children.length; i++) {
             let node = section.children[section.children.length - 1 - i];
-            if (!(node instanceof RawOpcodeNode)) { throw new Error("unescpted"); }
+            if (!(node instanceof RawOpcodeNode) || node.unknownstack) { break; }
 
             if (node.knownStackDiff) {
                 backstack.pop(node.knownStackDiff.out);
@@ -1320,9 +1380,13 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         let unkcount = 0;
         let unktype: OpcodeInfo | null = null;
         let totalstack = 0;
+        let hasproblemops = false;
         unknowns.clear();
         for (let child of section.children) {
-            if (!(child instanceof RawOpcodeNode)) { throw new Error("unescpted"); }
+            if (!(child instanceof RawOpcodeNode) || child.unknownstack) {
+                hasproblemops = true;
+                break;
+            }
             if (child.knownStackDiff) {
                 totalstack += child.knownStackDiff.totalChange();
             } else if (child.opinfo.stackinfo.initializedthrough) {
@@ -1333,22 +1397,21 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
                 unkcount++;
             }
         }
-        if (unktype && unknowns.size == 1) {
+        if (!hasproblemops && !unktype && totalstack != 0) { throw new Error("total stack doesn't add up to 0"); }
+        if (!hasproblemops && unktype && unknowns.size == 1) {
             if (posmod(totalstack, unkcount) != 0) { throw new Error("stack different is not evenly dividable between equal ops"); }
             let diffeach = totalstack / unkcount + unktype.stackinfo.totalChange();
+            //might fail if order at front of stack is unknown
+            let success = true;
             if (diffeach > 0) {
-                unktype.stackinfo.out.values.length -= diffeach;
+                success = unktype.stackinfo.out.tryShift(diffeach);
             } else if (diffeach < 0) {
-                unktype.stackinfo.in.values.length -= -diffeach;
+                success = unktype.stackinfo.in.tryShift(-diffeach);
             }
-            unktype.stackinfo.initializedthrough = true;
-            unknowns.delete(unktype);
-            foundset.add(unktype.id);
-            unktype.stackChangeConstraints.add(eq);
-        } else if (unknowns.size > 1) {
-            for (let unk of unknowns) {
-                let mapping = calli.decodedMappings.get(unk.id)!;
-                mapping.stackChangeConstraints.add(eq);
+            if (success) {
+                unktype.stackinfo.initializedthrough = true;
+                unknowns.delete(unktype);
+                foundset.add(unktype.id);
             }
         }
 
@@ -1361,20 +1424,22 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             }
             prev.add(eq);
         }
-
-        return true;
     }
 
     let opmap = new Map<number, Set<StackDiffEquation>>();
     let pendingEquations: StackDiffEquation[] = [];
     let foundset = new Set<number>();
     for (let section of allsections) {
-        if (section.hasUnexplainedChildren) { continue; }
         let eq: StackDiffEquation = { section, unknowns: new Set() };
+        for (let op of section.children) {
+            if (op instanceof RawOpcodeNode) {
+                op.opinfo.stackChangeConstraints.add(eq);
+            }
+        }
         testSection(eq);
         pendingEquations.push(eq);
     }
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
         for (let eq of pendingEquations) {
             testSection(eq);
         }
@@ -1399,12 +1464,13 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
 
 
 export async function prepareClientScript(source: CacheFileSource) {
-    // source.decodeArgs.clientScriptDeob = null;//TODO remove
     if (!source.decodeArgs.clientScriptDeob) {
         let deob = await ClientscriptObfuscation.create(source);
         source.decodeArgs.clientScriptDeob = deob;
         await deob.runAutoCallibrate(source);
+        globalThis.deob = deob;//TODO remove
     }
+    return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation;
 }
 
 export function getArgType(script: clientscriptdata | clientscript) {
@@ -1439,6 +1505,23 @@ export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptO
     res.values.reverse();
     return res;
 }
+
+//TODO remove/hide
+globalThis.getop = (opid: string) => {
+    let id = -1;
+    //don't use match because it breaks console hints
+    if (opid.startsWith("unk")) {
+        id = +opid.slice(3);
+    } else {
+        for (let op in knownClientScriptOpNames) {
+            if (knownClientScriptOpNames[op] == opid) {
+                id = +op;
+            }
+        }
+    }
+    let calli: ClientscriptObfuscation = globalThis.deob;
+    return calli.decodedMappings.get(id);
+};
 
 function firstKey<T>(map: Map<T, any>) {
     return map.keys().next().value as T;

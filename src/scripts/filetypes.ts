@@ -603,7 +603,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	test: { parser: FileParser.fromJson(`["struct",\n  \n]`), lookup: anyFileIndex() },
 
-	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: source => prepareClientScript(source) },
+	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: source => { prepareClientScript(source); } },
 });
 
 const npcmodels: DecodeModeFactory = function () {

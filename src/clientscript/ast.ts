@@ -2,17 +2,17 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
-import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, StackList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps, StackConstants, branchInstructions, StackConst } from "./callibrator";
+import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, StackList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps, StackConstants, branchInstructions, StackConst, prepareClientScript, typeToPrimitive, dynamicOps } from "./callibrator";
 
 /**
  * known issues
  * - If all branches (and default) of a switch statement return, then the last branch is emptied and its contents are placed after the end of the block (technically still correct)
  *   - has to do with the way the branching detection works (AstNode.findNext)
- * - some op arguments still not fogured out
- * - none of this is tested for older build
+ * - some op arguments still not figured out
+ * - none of this is tested for older builds
  *   - probably breaks at the build where pushconst ops were merged (~700?)
  */
-
+//get script names from https://api.runewiki.org/hashes?rev=930
 
 
 
@@ -98,7 +98,6 @@ export class CodeBlockNode extends AstNode {
     maxEndIndex = -1;
 
     knownStackDiff = new StackInOut(new StackList(), new StackList());
-    hasUnexplainedChildren = false;
     constructor(scriptid: number, startindex: number, children?: AstNode[]) {
         super(startindex);
         this.scriptid = scriptid;
@@ -173,7 +172,7 @@ export class CodeBlockNode extends AstNode {
         // code += "\n";
         if (this.parent) { code += `{\n`; indent++; }
         for (let child of this.children) {
-            code += `${codeIndent(indent, child.originalindex, this.hasUnexplainedChildren)}${child.getCode(calli, indent)}\n`;
+            code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
         }
         if (this.parent) { code += `${codeIndent(indent - 1)}}`; }
         return code;
@@ -336,7 +335,6 @@ class IfStatementNode extends AstNode {
 }
 
 export class FunctionBindNode extends AstNode {
-    scriptid = -1;
     constructor(originalindex: number, types: StackList) {
         super(originalindex);
         let intype = types.clone();
@@ -353,6 +351,7 @@ export class FunctionBindNode extends AstNode {
 export class RawOpcodeNode extends AstNode {
     op: ClientScriptOp;
     opinfo: OpcodeInfo;
+    unknownstack = false;//multiple possible explanations for stack usage
     constructor(index: number, op: ClientScriptOp, opinfo: OpcodeInfo) {
         super(index);
         this.op = op;
@@ -589,10 +588,11 @@ export function translateAst(ast: CodeBlockNode) {
     }
 
     let expandNode = (node: AstNode) => {
+        if (node instanceof CodeBlockNode) { return; }
         let argtype = getNodeStackIn(node).clone();
-        // for (let child of node.children) {
-        //     argtype.pop(getNodeStackOut(child));
-        // }
+        for (let i = node.children.length - 1; i >= 0; i--) {
+            argtype.pop(getNodeStackOut(node.children[i]));
+        }
         while (!argtype.isEmpty() && usablestackdata.length != 0) {
             let { stackel, stackconst } = usablestackdata.at(-1)!;
             let outtype = getNodeStackOut(stackel);
@@ -776,7 +776,9 @@ function varArgtype(stringconst: string, lastintconst: number | unknown) {
     let indiff = new StackList(varargmatch[1].split("").flatMap<StackType>(q => q == "i" ? "int" : q == "l" ? "long" : q == "s" ? "string" : null!));
     //variable number of ints
     if (stringconst.includes("Y")) {
-        if (typeof lastintconst != "number") { throw new Error("parsing vararg array, but legnth type was not an int"); }
+        if (typeof lastintconst != "number") {
+            throw new Error("parsing vararg array, but legnth type was not an int");
+        }
         for (let i = 0; i < lastintconst; i++) { indiff.int(); }
         indiff.int();//the length of the array on stack
     }
@@ -784,46 +786,43 @@ function varArgtype(stringconst: string, lastintconst: number | unknown) {
 }
 
 function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscation) {
+    let consts = new StackConstants();
+    let constsknown = true;
 
-    const problemops = [
-        // 42,//42 PUSH_VARC_INT can somehow also push long?
-        // 43,
-        10023,
-        10672,
-        10110,
-        10717,
-        10063,
-        10885,
-        10699,
-        10815,
-        10735,//either this or 10736
-    ];
 
-    let lastintconst = -1;
+
     for (let node of section.children) {
         if (!(node instanceof RawOpcodeNode)) {
-            section.hasUnexplainedChildren = true;
             continue;
         }
-        // if (node.opinfo.id == 10063) {
-        //     node.knownStackDiff = new StackInOut(new ValueList(["int", "int", "int", "int"]), new ValueList(["int"]));
-        // }
-        if (node.opinfo.id == namedClientScriptOps.return) {
-            let script = calli.scriptargs.get(section.scriptid);
-            if (!script || !script.returns) {
-                section.hasUnexplainedChildren = true;
-                continue;
+
+        if (node.opinfo.id == namedClientScriptOps.struct_getparam || node.opinfo.id == namedClientScriptOps.item_getparam) {
+            //args are structid/itemid,paramid
+            let paramid = consts.values.at(-1);
+            if (constsknown && typeof paramid == "number") {
+                let param = calli.parammeta.get(paramid);
+                if (!param) {
+                    console.log("unknown param " + paramid);
+                } else {
+                    let outtype = (param.type ? typeToPrimitive(param.type.vartype) : "int");
+                    node.knownStackDiff = new StackInOut(new StackList(["int", "int"]), new StackList([outtype]));
+                }
             }
-            node.knownStackDiff = new StackInOut(script.returns, new StackList());
+        } else if (node.opinfo.id == namedClientScriptOps.enum_getvalue) {
+            //args are intypeid,outtypeid,enum,lookup
+            let outtypeid = consts.values.at(-3);
+            if (constsknown && typeof outtypeid == "number") {
+                let outtype = typeToPrimitive(outtypeid);
+                node.knownStackDiff = new StackInOut(new StackList(["int", "int", "int", "int"]), new StackList([outtype]));
+            }
+        } else if (node.opinfo.id == namedClientScriptOps.return) {
+            let script = calli.scriptargs.get(section.scriptid);
+            if (script && script.returns) {
+                node.knownStackDiff = new StackInOut(script.returns, new StackList());
+            }
         } else if (node.opinfo.id == namedClientScriptOps.gosub) {
             let script = calli.scriptargs.get(node.op.imm);
-            if (!script || !script.arglist || !script.returnlist) {
-                //scripts with multiple different argument types have ambiguous argument order
-                section.hasUnexplainedChildren = true;
-                //TODO this branch is no longer possible
-                continue;
-            } else {
-                // node.knownStackDiff = new StackInOut(script.arglist, ValueList.fromFlipped(script.returns));
+            if (script && script.arglist && script.returnlist) {
                 node.knownStackDiff = new StackInOut(script.arglist, script.returnlist);
             }
         } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
@@ -833,22 +832,19 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             )
         } else if (node.opinfo.id == namedClientScriptOps.pushvar || node.opinfo.id == namedClientScriptOps.popvar) {
             let varmeta = calli.getClientVarMeta(node.op.imm);
-            if (!varmeta) {
-                section.hasUnexplainedChildren = true;
-                continue;
-            }
-            let ispop = node.opinfo.id == namedClientScriptOps.popvar;
+            if (varmeta) {
+                let ispop = node.opinfo.id == namedClientScriptOps.popvar;
 
-            let value = new StackList([varmeta.type]);
-            let other = new StackList();
-            node.knownStackDiff = new StackInOut(
-                (ispop ? value : other),
-                (ispop ? other : value)
-            );
+                let value = new StackList([varmeta.type]);
+                let other = new StackList();
+                node.knownStackDiff = new StackInOut(
+                    (ispop ? value : other),
+                    (ispop ? other : value)
+                );
+            }
         } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
             if (node.op.imm == 0) {
                 if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
-                lastintconst = node.op.imm_obj;
                 node.knownStackDiff = new StackInOut(new StackList(), new StackList(["int"]));
                 node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 1) {
@@ -858,17 +854,19 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                 let stringconst = node.op.imm_obj as string;
                 node.knownStackDiff = new StackInOut(new StackList(), new StackList(["string"]));
                 node.knownStackDiff.constout = node.op.imm_obj;
-                
+
                 //a string like this indicates a vararg set where this string indicates the types
                 //treat the entire thing as one vararg
                 //only make use of this construct if it is at least 3 chars long
                 //otherwise ignore the equation
-                let argtype = varArgtype(stringconst, lastintconst);
-                if (stringconst.length >= 3 && argtype) {
+                let varargmatch = stringconst.match(/^([ils]*)Y?$/);
+                if (varargmatch && stringconst.length >= 3) {
+                    let argtype = varArgtype(stringconst, consts.values.at(-1));
+                    if (!argtype) { throw new Error("unexpected"); }
                     node.knownStackDiff = new StackInOut(argtype, new StackList(["vararg"]));
                     node.knownStackDiff.constout = node.op.imm_obj;
-                } else if (argtype) {
-                    section.hasUnexplainedChildren = true;
+                } else if (varargmatch) {
+                    node.unknownstack = true;
                     continue;
                 }
             } else {
@@ -876,8 +874,18 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             }
         }
 
-        if (problemops.includes(node.op.opcode)) {
-            section.hasUnexplainedChildren = true;
+        if (node.opinfo.id == namedClientScriptOps.pushconst) {
+            consts.pushOne(node.op.imm_obj);
+        } else if (node.knownStackDiff?.initializedthrough) {
+            consts.applyInOut(node.knownStackDiff);
+        } else if (node.opinfo.stackinfo.initializedthrough) {
+            consts.applyInOut(node.opinfo.stackinfo);
+        } else {
+            constsknown = false;
+        }
+
+        if (!node.knownStackDiff && dynamicOps.includes(node.op.opcode)) {
+            node.unknownstack = true;
         }
     }
     // return true;
@@ -962,9 +970,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 }
 
 export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
-    let calli = source.getDecodeArgs().clientScriptDeob;
-    globalThis.deob = calli;//TODO remove
-    if (!(calli instanceof ClientscriptObfuscation)) { throw new Error("no deob"); }
+    let calli = await prepareClientScript(source);
     const full = globalThis.deep ?? true;//TODO remove
 
     let script = parse.clientscript.read(buf, source);
