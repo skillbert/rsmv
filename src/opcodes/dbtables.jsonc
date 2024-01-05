@@ -1,0 +1,19 @@
+{
+    "0x01":{"name":"unk01","read":["struct",
+        ["cols","ubyte"],
+        ["columndata",["nullarray","ubyte",255,["struct",
+            ["id",["ref","$opcode",0,7]],
+            ["$i",0],
+            ["columns",["chunkedarray","ubyte",[
+                ["type","varushort"]
+            ],[
+                ["$colindex",["accum","$i",1]],
+                ["unk",["opt","$opcode&0x80 && $colindex==1","ubyte"]],//this is dumb, there is currently no way to read a byte between chunkedarray chunks
+                ["default",["opt","$opcode&0x80",["match",["ref","type"],{
+                    "0x24":"string",
+                    "other":"int"
+                }]]]
+            ]]]
+        ]]]
+    ]}
+}

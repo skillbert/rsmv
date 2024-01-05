@@ -1,0 +1,23 @@
+{
+    "0x03":{"name":"unk01","read":["struct",
+        ["cols","ubyte"],
+        ["columndata",["nullarray","ubyte",255,["struct",
+            ["id",["ref","$opcode",0,7]],
+            ["$rowcount",-1],
+            ["columns",["chunkedarray","ubyte",[
+                ["type","varushort"]
+            ],[
+                ["$initrowcount",["match",["ref","$rowcount"],{
+                    "-1":["accum","$rowcount","ubyte","hold"],
+                    "other":["ref","$rowcount"]
+                    }]],
+                //this is currently wrong, the values are interweaved in the other direction
+                ["value",["array",["ref","$rowcount"],["match",["ref","type"],{
+                    "0x24":"string",
+                    "other":"int"
+                }]]]
+            ]]]
+        ]]]
+    ]},
+    "0x04":{"name":"table","read":"varushort"}
+}
