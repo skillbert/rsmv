@@ -13,11 +13,13 @@ import * as path from "path";
 import { crc32 } from "../libs/crc32util";
 import { params } from "../../generated/params";
 
+import "./codeparser";//TODO remove
+
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
 const lastNonObfuscatedBuild = 668;
 const firstModernOpsBuild = 751;
 
-const variableSources = {
+export const variableSources = {
     player: { key: 0, index: 60 },
     npc: { key: 1, index: 61 },
     client: { key: 2, index: 62 },

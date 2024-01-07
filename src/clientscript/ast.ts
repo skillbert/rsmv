@@ -36,6 +36,7 @@ export abstract class AstNode {
     }
     pushList(nodes: AstNode[]) {
         for (let node of nodes) {
+            if (node.parent == this) { continue; }
             node.parent = null;//prevents parent array shuffle
             this.push(node);
         }
@@ -72,7 +73,7 @@ export abstract class AstNode {
     }
 }
 
-class VarAssignNode extends AstNode {
+export class VarAssignNode extends AstNode {
     varops: AstNode[] = [];
     knownStackDiff = new StackInOut(new StackList(), new StackList());
     getName(calli: ClientscriptObfuscation) {
@@ -182,8 +183,8 @@ export class CodeBlockNode extends AstNode {
     }
 }
 
-type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=" | "(unk)";
-class BinaryOpStatement extends AstNode {
+export type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=" | "(unk)";
+export class BinaryOpStatement extends AstNode {
     type: BinaryOpType;
     knownStackDiff = new StackInOut(new StackList(["int", "int"]), new StackList(["int"]));//TODO not correct, we also use this for longs
     constructor(type: BinaryOpType, originalindex: number) {
@@ -200,16 +201,19 @@ class BinaryOpStatement extends AstNode {
     }
 }
 
-class WhileLoopStatementNode extends AstNode {
+export class WhileLoopStatementNode extends AstNode {
     statement: AstNode;
     body: CodeBlockNode;
     knownStackDiff = new StackInOut(new StackList(), new StackList());
-    constructor(parentblock: CodeBlockNode, originnode: IfStatementNode) {
-        super(parentblock.originalindex);
+    constructor(originalindex: number, statement: AstNode, body: CodeBlockNode) {
+        super(originalindex);
+        this.statement = statement;
+        this.body = body;
+    }
+    static fromIfStatement(originalindex: number, originnode: IfStatementNode) {
         if (originnode.falsebranch) { throw new Error("cannot have else branch in loop"); }
         if (!originnode.parent) { throw new Error("unexpected"); }
-        this.statement = originnode.statement;
-        this.body = originnode.truebranch;
+        return new WhileLoopStatementNode(originalindex, originnode.statement, originnode.truebranch);
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let res = `while(${this.statement.getCode(calli, indent)})`;
@@ -218,15 +222,27 @@ class WhileLoopStatementNode extends AstNode {
     }
 }
 
-class SwitchStatementNode extends AstNode {
+export class SwitchStatementNode extends AstNode {
     branches: { value: number, block: CodeBlockNode }[] = [];
     valueop: AstNode | null;
     defaultbranch: CodeBlockNode | null = null;
     knownStackDiff = new StackInOut(new StackList(["int"]), new StackList());
-    constructor(switchop: RawOpcodeNode, scriptjson: clientscript, nodes: CodeBlockNode[], endindex: number) {
-        super(switchop.originalindex);
-        this.valueop = switchop.children[0] ?? null;
-        this.pushList(switchop.children);
+    constructor(originalindex: number, valueop: AstNode | null, defaultnode: CodeBlockNode | null, branches: { value: number, block: CodeBlockNode }[]) {
+        super(originalindex);
+        this.valueop = valueop;
+        this.defaultbranch = defaultnode;
+        this.branches = branches;
+        if (valueop) {
+            this.push(valueop);
+        }
+        this.pushList(branches.map(q => q.block));
+        if (defaultnode) {
+            this.push(defaultnode);
+        }
+    }
+    static create(switchop: RawOpcodeNode, scriptjson: clientscript, nodes: CodeBlockNode[], endindex: number) {
+        let valueop: AstNode | null = switchop.children[0] ?? null;
+        let branches: { value: number, block: CodeBlockNode }[] = [];
 
         let cases = scriptjson.switches[switchop.op.imm];
         if (!cases) { throw new Error("no matching cases in script"); }
@@ -234,14 +250,12 @@ class SwitchStatementNode extends AstNode {
             //TODO multiple values can point to the same case
             let node = nodes.find(q => q.originalindex == switchop.originalindex + 1 + casev.label);
             if (!node) { throw new Error("switch case branch not found"); }
-            this.branches.push({ value: casev.value, block: node });
-            this.push(node);
+            branches.push({ value: casev.value, block: node });
             node.maxEndIndex = endindex;
             if (node.originalindex != switchop.originalindex + 1 + casev.label) {
                 throw new Error("switch branches don't match");
             }
         }
-
 
         let defaultblock: CodeBlockNode | null = nodes.find(q => q.originalindex == switchop.originalindex + 1) ?? null;
         if (defaultblock && defaultblock.children.length == 1 && defaultblock.children[0] instanceof RawOpcodeNode && defaultblock.children[0].opinfo.id == namedClientScriptOps.jump) {
@@ -253,10 +267,9 @@ class SwitchStatementNode extends AstNode {
         }
 
         if (defaultblock) {
-            this.push(defaultblock);
             defaultblock.maxEndIndex = endindex;
-            this.defaultbranch = defaultblock;
         }
+        return new SwitchStatementNode(switchop.originalindex, valueop, defaultblock, branches);
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let res = "";
@@ -280,20 +293,17 @@ class SwitchStatementNode extends AstNode {
     }
 }
 
-class IfStatementNode extends AstNode {
+export class IfStatementNode extends AstNode {
     truebranch!: CodeBlockNode;
     falsebranch!: CodeBlockNode | null;
     statement!: AstNode;
-    endblock: CodeBlockNode;
     knownStackDiff = new StackInOut(new StackList(["int"]), new StackList());
     ifEndIndex!: number;
-    constructor(statement: AstNode, endblock: CodeBlockNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null, endindex: number) {
-        if (truebranch == falsebranch) { throw new Error("unexpected"); }
-        super(statement.originalindex);
-        this.endblock = endblock;
-        this.setBranches(statement, truebranch, falsebranch, endindex);
+    constructor(originalindex: number) {
+        super(originalindex);
     }
     setBranches(statement: AstNode, truebranch: CodeBlockNode, falsebranch: CodeBlockNode | null, endindex: number) {
+        if (truebranch == falsebranch) { throw new Error("unexpected"); }
         this.ifEndIndex = endindex;
         //statement
         this.statement = statement;
@@ -314,7 +324,7 @@ class IfStatementNode extends AstNode {
             this.push(falsebranch);
         }
         this.push(truebranch);
-        if (falsebranch && falsebranch.originalindex > truebranch.originalindex) {
+        if (falsebranch && falsebranch.originalindex >= truebranch.originalindex) {
             this.push(falsebranch);
         }
     }
@@ -691,7 +701,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             condnode.pushList(node.children);
 
             let grandparent = parent?.parent;
-            if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.endblock == parent.branchEndNode) {
+            if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.ifEndIndex == parent.branchEndNode.originalindex) {
                 let isor = grandparent.truebranch == trueblock && grandparent.falsebranch == parent;
                 let isand = grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
                 if (isor || isand) {
@@ -713,13 +723,14 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                 }
             }
 
-            let ifstatement = new IfStatementNode(condnode, parent.branchEndNode, trueblock, falseblock, parent.branchEndNode.originalindex);
+            let ifstatement = new IfStatementNode(condnode.originalindex);
+            ifstatement.setBranches(condnode, trueblock, falseblock, parent.branchEndNode.originalindex);
             cursor.replaceNode(ifstatement);
             cursor.setFirstChild(ifstatement, true);
         }
         if (node instanceof RawOpcodeNode && node.opinfo.id == namedClientScriptOps.switch) {
             if (!(node.parent instanceof CodeBlockNode) || !node.parent.branchEndNode) { throw new Error("code block expected"); }
-            let casestatement = new SwitchStatementNode(node, scriptjson, node.parent.possibleSuccessors, node.parent.branchEndNode.originalindex);
+            let casestatement = SwitchStatementNode.create(node, scriptjson, node.parent.possibleSuccessors, node.parent.branchEndNode.originalindex);
             cursor.replaceNode(casestatement);
             cursor.setFirstChild(casestatement, true);
         }
@@ -739,7 +750,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                         if (codeblock.children.at(-1) != ifnode) { throw new Error("unexpected"); }
 
                         let originalparent = codeblock.parent;
-                        let loopstatement = new WhileLoopStatementNode(codeblock, ifnode);
+                        let loopstatement = WhileLoopStatementNode.fromIfStatement(codeblock.originalindex, ifnode);
                         originalparent.replaceChild(codeblock, loopstatement);
                         loopstatement.push(ifnode);
                         loopstatement.push(ifnode.truebranch);
@@ -762,7 +773,6 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             }
         }
     }
-
 }
 
 function varArgtype(stringconst: string, lastintconst: number | unknown) {
@@ -788,8 +798,6 @@ function varArgtype(stringconst: string, lastintconst: number | unknown) {
 function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscation) {
     let consts = new StackConstants();
     let constsknown = true;
-
-
 
     for (let node of section.children) {
         if (!(node instanceof RawOpcodeNode)) {
