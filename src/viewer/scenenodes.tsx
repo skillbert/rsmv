@@ -11,7 +11,7 @@ import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomiza
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode, ThreeJsRenderer } from "./threejsrender";
 import { cacheFileJsonModes, cacheFileDecodeModes } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
-import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap } from "./scriptsui";
+import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap, UIScriptConsole } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { runMapRender } from "../map";
@@ -34,6 +34,8 @@ import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked } from '../map/backends';
 import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
+import { CliApiContext, cliApi } from '../clicommands';
+import * as cmdts from "cmd-ts";
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -2343,6 +2345,41 @@ function TestFilesScript(p: UiScriptProps) {
 		</React.Fragment>
 	)
 }
+
+function RawCliScript(p: UiScriptProps) {
+	let [text, setText] = React.useState(p.initialArgs);
+
+	let run = async () => {
+		let output = new UIScriptOutput();
+		let ctx: CliApiContext = {
+			getConsole() { return output; },
+			getFs(name: string) { return output.makefs(name); },
+			getDefaultCache() { return p.source; }
+		};
+
+		p.onRun(output, text);
+		let api = cliApi(ctx);
+
+		let res = await cmdts.runSafely(api.subcommands, text.split(/\s+/g));
+		if (output.state == "running") {
+			output.setState(res._tag == "error" ? "error" : "done");
+		}
+		if (res._tag == "error") {
+			output.log(res.error.config.message);
+		} else {
+			output.log("script done");
+		}
+	}
+
+	return (
+		<React.Fragment>
+			<p>Run CLI code</p>
+			<input type="text" value={text} onInput={e => setText(e.currentTarget.value)} />
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+
 type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, initialArgs: string, source: CacheFileSource, ctx: UIContext };
 const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	test: TestFilesScript,
@@ -2350,7 +2387,8 @@ const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	preview: PreviewFilesScript,
 	historic: ExtractHistoricScript,
 	maprender: MaprenderScript,
-	diff: CacheDiffScript
+	diff: CacheDiffScript,
+	cli: RawCliScript
 }
 
 function ScriptsUI(p: LookupModeProps) {

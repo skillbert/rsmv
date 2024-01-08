@@ -11,7 +11,7 @@ import { quickChatLookup } from "./scripts/quickchatlookup";
 import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
 import { fileHistory } from "./scripts/filehistory";
 import { openrs2Ids } from "./scripts/openrs2ids";
-import { cluecoords } from "./scripts/cluecoords";
+import { extractCluecoords } from "./scripts/cluecoords";
 import { CacheFileSource } from "./cache";
 
 
@@ -72,6 +72,18 @@ export function cliApi(ctx: CliApiContext) {
 			opts.outmode = "hextext";
 			opts.maxerrs = 500;
 			await output.run(testDecode, errdir, source, mode, args.files, opts);
+		}
+	});
+
+	const cluecoords = command({
+		name: "download",
+		args: {
+			...filesource,
+			...saveArg("extract")
+		},
+		handler: async (args) => {
+			let output = ctx.getConsole();
+			await output.run(extractCluecoords, args.save, await args.source());
 		}
 	});
 
@@ -219,7 +231,7 @@ export function cliApi(ctx: CliApiContext) {
 	})
 
 	let subcommands = cmdts.subcommands({
-		name: "cli",
+		name: "",
 		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords }
 	});
 

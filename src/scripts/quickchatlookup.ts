@@ -42,5 +42,5 @@ export async function quickChatLookup(output: ScriptOutput, outdir: ScriptFS, so
 	}
 	iter(cats[85], "");
 
-	outdir.writeFile("quickchat.json", prettyJson(hotkeys));
+	await outdir.writeFile("quickchat.json", prettyJson(hotkeys));
 }

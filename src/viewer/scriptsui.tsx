@@ -129,7 +129,7 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: und
 		return fs;
 	}
 
-	async run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: [...ARGS]) => Promise<RET>, ...args: ARGS): Promise<RET | null> {
+	async run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: ARGS) => Promise<RET>, ...args: ARGS): Promise<RET | null> {
 		try {
 			return await fn(this, ...args);
 		} catch (e) {

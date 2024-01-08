@@ -39,6 +39,9 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 		}
 		let api = cliApi(clictx);
 		let res = await cmdts.runSafely(api.subcommands, args.split(/\s+/g));
+		if (cliconsole.state == "running") {
+			cliconsole.setState(res._tag == "error" ? "error" : "done");
+		}
 		if (res._tag == "error") {
 			console.error(res.error.config.message);
 			outputs.code = res.error.config.exitCode;

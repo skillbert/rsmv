@@ -32,6 +32,7 @@ export async function scrapePlayerAvatars(output: ScriptOutput, outdir: ScriptFS
 		scene = await ThreejsSceneCache.create(engine);
 	}
 	for await (let file of fetchPlayerAvatars(skip, max)) {
+		if (output.state != "running") { break; }
 		if (parsed) {
 			let data = await avatarToModel(scene!.engine, file.buf, false);
 			await outdir.writeFile(`playerdata_${file.name}.json`, prettyJson(data.info.avatar));
