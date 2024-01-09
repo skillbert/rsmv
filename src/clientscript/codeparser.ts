@@ -1,18 +1,85 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BinaryOpStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode } from "./ast";
-import { ClientscriptObfuscation, knownClientScriptOpNames, namedClientScriptOps, variableSources } from "./callibrator";
+import { AstNode, BinaryConditionalOpStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction } from "./ast";
+import { ClientscriptObfuscation } from "./callibrator";
+import { binaryOpIds, binaryOpSymbols, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt } from "./definitions";
+import prettyJson from "json-stringify-pretty-compact";
 
 const whitespace = /^\s*/;
+const newline = /^\s*?\n/;
 const unmatchable = /$./;
-const reserverd = "if,while,break,continue,else,switch".split(",");
-const binaryops = ["+", "-", "/", "*", "%", "||", "&&", ">=", "<=", "==", "!=", ">", "<"];
+const reserverd = "if,while,break,continue,else,switch,strcat,script".split(",");
+const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
+const binaryops = [...binaryOpSymbols.values()];
 const binaryopsoremtpy = binaryops.concat("");
 
+globalThis.prettyjson = prettyJson;
+
 export function clientscriptParser(deob: ClientscriptObfuscation) {
+
+    function makeStringConst(str: string) {
+        let constop = getopinfo(namedClientScriptOps.pushconst);
+        let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 2, imm_obj: str }, constop);
+        node.knownStackDiff = new StackInOut(new StackList([]), new StackList(["string"]));
+        node.knownStackDiff.constout = str;
+        return node;
+    }
+
+    function makeIntConst(int: number) {
+        let constop = getopinfo(namedClientScriptOps.pushconst);
+        let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 0, imm_obj: int }, constop);
+        node.knownStackDiff = new StackInOut(new StackList([]), new StackList(["int"]));
+        node.knownStackDiff.constout = int;
+        return node;
+    }
+
     function getopinfo(id: number) {
-        let res = deob.decodedMappings.get(id);
-        if (!res) { throw new Error("named op not found"); }
-        return res;
+        return deob.getNamedOp(id);
+    }
+
+    function* stackdiff() {
+        let [match, int, long, string, vararg] = yield (/^\((\d+),(\d+),(\d+),(\d+)\)/);
+        return new StackDiff(+int, +long, +string, +vararg);
+    }
+
+    function* stacklist() {
+        let items: StackTypeExt[] = [];
+        while (items.length == 0 || (yield has(","))) {
+            let match = yield [stackdiff, "int", "long", "string", "vararg", ""];
+            if (match == "") {
+                if (items.length == 0) { break; }
+                yield unmatchable;
+            }
+            items.push(match);
+        }
+        return new StackList(items);
+    }
+
+    function* stringInterpolation() {
+        yield "`";
+        let parts: AstNode[] = [];
+        let str = "";
+        while (true) {
+            let next = yield ["${", "`", /^[\s\S]/];
+            if (next == "\\") {
+                str += yield (/^[\s\S]/);
+            } else if (next == "${") {
+                parts.push(makeStringConst(str));
+                str = "";
+                yield whitespace;
+                parts.push(yield valueStatement);
+                yield whitespace;
+                yield "}";
+            } else if (next == "`") {
+                parts.push(makeStringConst(str));
+                break;
+            } else {
+                str += next;
+            }
+        }
+        let strjoin = getopinfo(namedClientScriptOps.joinstring);
+        let node = new RawOpcodeNode(-1, { opcode: strjoin.id, imm: parts.length, imm_obj: null }, strjoin);
+        node.pushList(parts);
+        return node;
     }
 
     function* stringliteral() {
@@ -26,15 +93,12 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
                 value += next;
             }
         }
-        let constop = getopinfo(namedClientScriptOps.pushconst);
-        return new RawOpcodeNode(-1, { opcode: constop.id, imm: 2, imm_obj: value }, constop);
+        return makeStringConst(value);
     }
 
     function* intliteral() {
         let digits = yield (/^-?\d+/);
-        let value = parseInt(digits, 10);
-        let constop = getopinfo(namedClientScriptOps.pushconst);
-        return new RawOpcodeNode(-1, { opcode: constop.id, imm: 0, imm_obj: value }, constop);
+        return makeIntConst(parseInt(digits, 10));
     }
 
     function* longliteral() {
@@ -46,6 +110,17 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         const [name]: [string] = yield (/^[a-zA-Z]\w*/);
         if (reserverd.includes(name)) { yield unmatchable; }
         return name;
+    }
+
+    function* valueList() {
+        let args: any[] = [];
+        while (true) {
+            args.push(yield valueStatement);
+            yield whitespace;
+            if (!(yield has(","))) { break; }
+            yield whitespace;
+        }
+        return args;
     }
 
     function* call() {
@@ -60,14 +135,26 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         }
         yield "(";
         yield whitespace;
-        let args: any[] = [];
-        while (!(yield has(")"))) {
-            if (args.length != 0) {
-                yield ",";
-                yield whitespace;
-            }
-            args.push(yield valueStatement);
+        let args: AstNode[];
+        if (yield has(")")) {
+            args = [];
+        } else {
+            args = yield valueList;
             yield whitespace;
+            yield ")";
+        }
+
+        if (funcname == "bind") {
+            let res = new FunctionBindNode(-1, new StackList());//TODO need this list in order to compile
+
+            let constop = getopinfo(namedClientScriptOps.pushconst);
+            let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 0, imm_obj: metaid }, constop);
+            node.knownStackDiff = new StackInOut(new StackList([]), new StackList(["int"]));
+            node.knownStackDiff.constout = metaid;
+
+            res.push(node);
+            res.pushList(args);
+            return res;
         }
 
         let fnid = -1;
@@ -81,8 +168,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
                 }
             }
         }
-        let fn = deob.decodedMappings.get(fnid);
-        if (!fn) { throw new Error("function name not found " + funcname); }
+        let fn = getopinfo(fnid);
         let node = new RawOpcodeNode(-1, { opcode: fnid, imm: metaid, imm_obj: null }, fn);
         node.pushList(args);
         return node;
@@ -90,7 +176,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
 
     function* assignStatement() {
         let varnames: string[] = [];
-        while (!(yield has("="))) {
+        while (!(yield has(/^=(?!=)/))) {
             if (varnames.length != 0) {
                 yield ",";
                 yield whitespace;
@@ -98,8 +184,14 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
             varnames.push(yield varname);
             yield whitespace;
         }
-        yield whitespace;
-        let value = yield valueStatement;
+        let values: AstNode[];
+        //deal with incomplete code where the assigned variables are unknown but somewhere on stack
+        if (yield has(newline)) {
+            values = [];
+        } else {
+            yield whitespace;
+            values = yield [valueList, "\n"];
+        }
         let node = new VarAssignNode(-1);
 
         node.varops = varnames.map(q => {
@@ -115,10 +207,10 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
             } else if (m[1] == "int") {
                 let popintop = getopinfo(namedClientScriptOps.poplocalint);
                 return new RawOpcodeNode(-1, { opcode: popintop.id, imm: varid, imm_obj: null }, popintop);
-                // } else if (m[2] == "long") {
+                // } else if (m[1] == "long") {
                 // let popintop=getopinfo(namedClientScriptOps.poplocalint);
                 //     return new RawOpcodeNode(-1, { opcode: poplongop.id, imm: varid, imm_obj: null }, poplongop);
-            } else if (m[3] == "string") {
+            } else if (m[1] == "string") {
                 let popstringop = getopinfo(namedClientScriptOps.poplocalstring);
                 return new RawOpcodeNode(-1, { opcode: popstringop.id, imm: varid, imm_obj: null }, popstringop);
             } else {
@@ -126,7 +218,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
             }
         });
 
-        node.children.push(value);
+        node.pushList(values);
 
         return node;
     }
@@ -216,10 +308,10 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         } else if (m[1] == "int") {
             let popintop = getopinfo(namedClientScriptOps.pushlocalint);
             return new RawOpcodeNode(-1, { opcode: popintop.id, imm: varid, imm_obj: null }, popintop);
-            // } else if (m[2] == "long") {
+            // } else if (m[1] == "long") {
             // let popintop=getopinfo(namedClientScriptOps.poplocalint);
             //     return new RawOpcodeNode(-1, { opcode: poplongop.id, imm: varid, imm_obj: null }, poplongop);
-        } else if (m[3] == "string") {
+        } else if (m[1] == "string") {
             let popstringop = getopinfo(namedClientScriptOps.pushlocalstring);
             return new RawOpcodeNode(-1, { opcode: popstringop.id, imm: varid, imm_obj: null }, popstringop);
         } else {
@@ -237,7 +329,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* whileStatement() {
-        yield "if";
+        yield "while";
         yield whitespace;
         yield "(";
         yield whitespace;
@@ -249,14 +341,21 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* valueStatement() {
-        let left = yield [incorrectBinaryOp, bracketedValue, call, readVariable, literal];
+        let left = yield [incorrectBinaryOp, bracketedValue, call, readVariable, stringInterpolation, literal];
         yield whitespace;
         //TODO doesn't currently account for operator precedence
         let op = yield binaryopsoremtpy;
         if (op == "") { return left; }
         yield whitespace;
         let right = yield valueStatement;
-        let node = new BinaryOpStatement(op, -1);
+        let opid = binaryOpIds.get(op);
+        if (!opid) { throw new Error("unexpected"); }
+        let node: AstNode;
+        if (binaryconditionals.includes(op)) {
+            node = new BinaryConditionalOpStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
+        } else {
+            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, deob.getNamedOp(opid));
+        }
         node.children.push(left, right);
         return node;
     }
@@ -265,17 +364,13 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         yield "(";
         yield whitespace;
         let op = yield binaryops;
-
-        let statements: any[] = [];
-        yield whitespace;
-        while (true) {
-            let next = yield [statement, ""];
-            if (next == "") { break; }
-            statements.push(next);
-            yield whitespace;
+        //need at least one whitespace to prevent matching x=(-5)
+        if ((yield whitespace) == "") {
+            yield unmatchable;
         }
+        let statements = yield statementlist;
         yield ")";
-        let node = new BinaryOpStatement(op, -1);
+        let node = new BinaryConditionalOpStatement(op, -1);
         node.pushList(statements);
         return node;
     }
@@ -285,7 +380,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* statement() {
-        return yield [assignStatement, ifStatement, whileStatement, switchStatement, valueStatement];
+        return yield [ifStatement, whileStatement, switchStatement, assignStatement, valueStatement];
     }
 
     function* statementlist() {
@@ -307,13 +402,53 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         return new CodeBlockNode(-1, -1, statements);
     }
 
+    function* functionFile() {
+        yield "script";
+        yield whitespace;
+        let [name]: [string] = yield (/^\w+/);
+        yield whitespace;
+        let returntype: StackList = yield stacklist;
+        yield whitespace;
+        yield "(";
+        yield whitespace;
+        let argtype: StackList = yield stacklist;
+        yield whitespace;
+        yield ")";
+        yield whitespace;
+        let ops: AstNode[] = yield statementlist;
+        let codeblock = new CodeBlockNode(-1, -1, ops);
+        let res = new ClientScriptFunction(name, returntype, argtype);
+        res.push(codeblock);
+        return res;
+    }
+
     function runparse(code: string) {
-        let res = parse(code, statementlist());
-        if (res.success) {
-            (res.result as any) = new CodeBlockNode(-1, -1, res.result);
-        }
+        let res = parse<ClientScriptFunction>(code, functionFile() as any);
         return res;
     }
 
     return { runparse, deob };
+}
+
+//TODO remove
+globalThis.testy = async () => {
+    const fs = require("fs");
+    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-1999");
+    let codefiles = [...codefs.extract.filesMap.values()].map(q => q.data.replace(/^\d+:/gm, "")); 1;
+    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-1999");
+    jsonfs.extract.filesMap.delete(".schema-clientscript.json");
+    let jsonfiles = [...jsonfs.extract.filesMap.values()];
+    let subtest = (index: number) => {
+        let parseresult = clientscriptParser(globalThis.deob).runparse(codefiles[index]);
+        if (!parseresult.success) { return parseresult; }
+        let roundtripped = prettyJson(parseresult.result.getOpcodes(globalThis.deob));
+        let jsondata = JSON.parse(jsonfiles[index].data).opcodedata;
+        jsondata.forEach(q => { delete q.opname });
+        let original = prettyJson(jsondata);
+
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", original);
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", roundtripped);
+        return { roundtripped, original, exact: original == roundtripped };
+    }
+    return { subtest, codefiles, codefs, jsonfs, jsonfiles };
 }

@@ -1297,13 +1297,11 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return res;
 			},
 			write(state, v) {
-				if (typeof v != "number") { throw new Error("number expected"); }
 				let cali = state.args.clientScriptDeob as ClientscriptObfuscation | undefined;;
-				if (cali) {
-					throw new Error("TODO");
-					// v = (cali as ClientscriptObfuscation).reverseTranslate(v);
+				if (!cali) {
+					throw new Error("opcode callibration not set for clientscript with obfuscated opcodes");
 				}
-				state.buffer.writeUint16BE(v);
+				cali.writeOpCode(state, v);
 			},
 			getJsonSchema() {
 				return {

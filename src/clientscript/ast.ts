@@ -2,7 +2,8 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
-import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, StackDiff, StackInOut, StackType, StackList, getArgType, getReturnType, knownClientScriptOpNames, namedClientScriptOps, StackConstants, branchInstructions, StackConst, prepareClientScript, typeToPrimitive, dynamicOps } from "./callibrator";
+import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript, typeToPrimitive } from "./callibrator";
+import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants } from "./definitions";
 
 /**
  * known issues
@@ -17,7 +18,44 @@ import { ClientScriptOp, ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, S
 
 
 function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
+    // linenr = -1;
     return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
+}
+
+function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
+    if (op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.pushlocalint) {
+        return `int${op.imm}`;
+    } else if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) {
+        return `string${op.imm}`;
+    } else if (op.opcode == namedClientScriptOps.popvar || op.opcode == namedClientScriptOps.pushvar) {
+        let varmeta = calli.getClientVarMeta(op.imm);
+        if (varmeta) {
+            return `var${varmeta.name}_${varmeta.varid}`;
+        } else {
+            return `varunk_${op.imm}`;
+        }
+    }
+    return knownClientScriptOpNames[op.opcode] ?? `unk${op.opcode}`;
+}
+
+function getOpcodeCallCode(calli: ClientscriptObfuscation, op: ClientScriptOp, children: AstNode[], originalindex: number, indent: number) {
+    let binarysymbol = binaryOpSymbols.get(op.opcode);
+    if (binarysymbol) {
+        if (children.length == 2) {
+            return `(${children[0].getCode(calli, indent)} ${binarysymbol} ${children[1].getCode(calli, indent)})`;
+        } else {
+            return `(${binarysymbol} ${children.map(q => q.getCode(calli, indent))})`;
+        }
+    }
+    let metastr = "";
+    if (branchInstructionsOrJump.includes(op.opcode)) {
+        metastr = `[${op.imm + originalindex + 1}]`;
+    } else if (op.opcode == namedClientScriptOps.gosub) {
+        metastr = `[${op.imm}]`;
+    } else if (op.imm != 0) {
+        metastr = `[${op.imm}]`;
+    }
+    return `${getOpcodeName(calli, op)}${metastr}(${children.map(q => q.getCode(calli, indent)).join(",")})`;
 }
 
 export abstract class AstNode {
@@ -28,12 +66,8 @@ export abstract class AstNode {
     constructor(originalindex: number) {
         this.originalindex = originalindex;
     }
-    getName(calli: ClientscriptObfuscation): { name: string, extra: string } {
-        return { name: "unk", extra: "" };
-    }
-    getCode(calli: ClientscriptObfuscation, indent: number): string {
-        return `unk(${this.children.map(q => q.getCode(calli, indent)).join(",")})`
-    }
+    abstract getCode(calli: ClientscriptObfuscation, indent: number): string;
+    abstract getOpcodes(calli: ClientscriptObfuscation): ClientScriptOp[];
     pushList(nodes: AstNode[]) {
         for (let node of nodes) {
             if (node.parent == this) { continue; }
@@ -77,12 +111,16 @@ export class VarAssignNode extends AstNode {
     varops: AstNode[] = [];
     knownStackDiff = new StackInOut(new StackList(), new StackList());
     getName(calli: ClientscriptObfuscation) {
-        let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? q.getName(calli).name : "??")}`;
+        let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? getOpcodeName(calli, q.op) : "??")}`;
         return { name: name, extra: "" };
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let name = this.getName(calli);
         return `${name.name} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`
+    }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let res = this.children.flatMap(q => q.getOpcodes(calli));
+        return res.concat(this.varops.flatMap(q => q.getOpcodes(calli)).reverse());
     }
     addVar(node: AstNode) {
         this.varops.unshift(node);
@@ -162,15 +200,8 @@ export class CodeBlockNode extends AstNode {
         }
         return this.branchEndNode;
     }
-    getName(calli: ClientscriptObfuscation) {
-        return { name: `code block`, extra: "" };
-    }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let code = "";
-        // code += `============ section ${this.originalindex} ${this.branchEndNode?.originalindex ?? "nope"} ============\n`;
-        // code += `${node.originalindex.toString().padStart(4, " ")}: ${(indent + optext.name).slice(0, 20).padEnd(20, " ")}`;
-        // code += optext.extra;
-        // code += "\n";
         if (this.parent) { code += `{\n`; indent++; }
         for (let child of this.children) {
             code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
@@ -178,26 +209,72 @@ export class CodeBlockNode extends AstNode {
         if (this.parent) { code += `${codeIndent(indent - 1)}}`; }
         return code;
     }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        return this.children.flatMap(q => q.getOpcodes(calli));
+    }
     dump() {
-        console.log(`[${this.scriptid},${this.originalindex}]\n` + this.getCode(globalThis.deob, 0));//TODO remove
+        console.log(
+            // `[${this.scriptid},${this.originalindex}]\n`+
+            this.getCode(globalThis.deob, 0)
+        );
     }
 }
 
-export type BinaryOpType = "||" | "&&" | ">" | ">=" | "<" | "<=" | "==" | "!=" | "(unk)";
-export class BinaryOpStatement extends AstNode {
-    type: BinaryOpType;
+function retargetJumps(calli: ClientscriptObfuscation, code: ClientScriptOp[], from: number, to: number) {
+    let lastop = code.at(-1);
+    let insertedcount = 0;
+    if (lastop && lastop.opcode != namedClientScriptOps.jump && from == 0) {
+        //insert jump op here
+        let jumpop = calli.getNamedOp(namedClientScriptOps.jump);
+        code.push({ opcode: jumpop.id, imm: to - 1, imm_obj: null });
+        insertedcount++;
+    }
+    for (let index = 0; index < code.length; index++) {
+        let op = code[index];
+        if (branchInstructionsOrJump.includes(op.opcode)) {
+            let target = index + 1 + op.imm;
+            if (target >= code.length - insertedcount) {
+                target += insertedcount;
+            }
+            if (target == code.length + from) {
+                target = code.length + to;
+            }
+            op.imm = target - index - 1;
+        }
+    }
+}
+
+export class BinaryConditionalOpStatement extends AstNode {
+    op: ClientScriptOp;
     knownStackDiff = new StackInOut(new StackList(["int", "int"]), new StackList(["int"]));//TODO not correct, we also use this for longs
-    constructor(type: BinaryOpType, originalindex: number) {
+    constructor(opcodeinfo: ClientScriptOp, originalindex: number) {
         super(originalindex);
-        this.type = type;
+        this.op = opcodeinfo;
     }
 
     getCode(calli: ClientscriptObfuscation, indent: number) {
-        if (this.children.length == 2) {
-            return `(${this.children[0].getCode(calli, indent)} ${this.type} ${this.children[1].getCode(calli, indent)})`;
+        return getOpcodeCallCode(calli, this.op, this.children, this.originalindex, indent);
+    }
+
+    getOpcodes(calli: ClientscriptObfuscation) {
+        if (this.children.length != 2) { throw new Error("unexpected"); }
+        let left = this.children[0].getOpcodes(calli);
+        let right = this.children[1].getOpcodes(calli);
+
+        let ops: ClientScriptOp[] = [];
+        if (this.op.opcode == namedClientScriptOps.shorting_or) {
+            //retarget true jumps to true outcome of combined statement
+            retargetJumps(calli, left, 1, right.length + 1);
+            //index 0 [false] will already point to start of right condition
+        } else if (this.op.opcode == namedClientScriptOps.shorting_and) {
+            //retarget the false jumps to one past end [false] of combined statement
+            retargetJumps(calli, left, 0, right.length);
+            //retarget true jumps to start of right statement
+            retargetJumps(calli, left, 1, 0);
         } else {
-            return `(${this.type} ${this.children.map(q => q.getCode(calli, indent)).join(" ")})`;
+            ops.push({ opcode: this.op.opcode, imm: 1, imm_obj: null });
         }
+        return [...left, ...right, ...ops];
     }
 }
 
@@ -209,6 +286,8 @@ export class WhileLoopStatementNode extends AstNode {
         super(originalindex);
         this.statement = statement;
         this.body = body;
+        this.push(statement);
+        this.push(body);
     }
     static fromIfStatement(originalindex: number, originnode: IfStatementNode) {
         if (originnode.falsebranch) { throw new Error("cannot have else branch in loop"); }
@@ -219,6 +298,14 @@ export class WhileLoopStatementNode extends AstNode {
         let res = `while(${this.statement.getCode(calli, indent)})`;
         res += this.body.getCode(calli, indent);
         return res;
+    }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let cond = this.statement.getOpcodes(calli);
+        let body = this.body.getOpcodes(calli);
+        let jump = calli.getNamedOp(namedClientScriptOps.jump);
+        cond.push({ opcode: jump.id, imm: body.length + 1, imm_obj: null });
+        body.push({ opcode: jump.id, imm: -(body.length + 1 + cond.length), imm_obj: null });
+        return [...cond, ...body];
     }
 }
 
@@ -291,6 +378,52 @@ export class SwitchStatementNode extends AstNode {
         res += `${codeIndent(indent)}}`;
         return res;
     }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let body: ClientScriptOp[] = [];
+        if (this.valueop) { body.push(...this.valueop.getOpcodes(calli)); }
+        let jump = calli.getNamedOp(namedClientScriptOps.jump);
+        let switchop = calli.getNamedOp(namedClientScriptOps.switch);
+        body.push({ opcode: switchop.id, imm: -1, imm_obj: null });//TODO switch map id
+
+        let defaultjmp: ClientScriptOp = { opcode: jump.id, imm: -1, imm_obj: null };
+        body.push(defaultjmp);
+
+        //body.push switch
+        let endops: ClientScriptOp[] = [];
+
+        let lastblock: CodeBlockNode | null = null;
+        let lastblockindex = 0;
+        for (let i = 0; i < this.branches.length; i++) {
+            let branch = this.branches[i];
+            //TODO write jump table
+            if (branch.block == lastblock) { continue; }
+            lastblock = branch.block;
+            lastblockindex = body.length;
+            body.push(...branch.block.getOpcodes(calli));
+
+            //no jump at last branch
+            if (this.defaultbranch || i != this.branches.length - 1) {
+                let jmp: ClientScriptOp = { opcode: jump.id, imm: -1, imm_obj: null };
+                body.push(jmp);
+                endops.push(jmp);
+            }
+        }
+
+        if (this.defaultbranch) {
+            defaultjmp.imm = body.length - body.indexOf(defaultjmp) - 1;
+            body.push(...this.defaultbranch.getOpcodes(calli));
+        } else {
+            endops.push(defaultjmp);
+        }
+
+        //make all jump point to the end now we know the length
+        for (let op of endops) {
+            let index = body.indexOf(op);
+            op.imm = body.length - index - 1;
+        }
+
+        return body;
+    }
 }
 
 export class IfStatementNode extends AstNode {
@@ -342,6 +475,20 @@ export class IfStatementNode extends AstNode {
         }
         return res;
     }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let cond = this.statement.getOpcodes(calli);
+        let truebranch = this.truebranch.getOpcodes(calli);
+        let falsebranch: ClientScriptOp[] = [];
+        if (this.falsebranch) {
+            falsebranch = this.falsebranch.getOpcodes(calli);
+            retargetJumps(calli, truebranch, 0, falsebranch.length)
+        }
+        //TODO rerouting true jumps past 2 in order to switch them with false at 1, this is stupid
+        retargetJumps(calli, cond, 0, truebranch.length == 1 ? 2 : truebranch.length);
+        retargetJumps(calli, cond, 1, 0);
+        if (truebranch.length == 1) { retargetJumps(calli, cond, 2, 1); }
+        return [...cond, ...truebranch, ...falsebranch];
+    }
 }
 
 export class FunctionBindNode extends AstNode {
@@ -356,6 +503,17 @@ export class FunctionBindNode extends AstNode {
         let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
         return `bind[${scriptid}](${this.children.slice(1).map(q => q.getCode(calli, indent))})`;
     }
+
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
+        if (typeof scriptid != "number") { throw new Error("unexpected"); }
+        let func = calli.scriptargs.get(scriptid);
+        let typestring = func?.arglist?.toFunctionBindString();
+        if (!typestring) { throw new Error("unknown functionbind types"); }
+        let ops = this.children.flatMap(q => q.getOpcodes(calli)).concat();
+        ops.push({ opcode: calli.getNamedOp(namedClientScriptOps.pushconst).id, imm: 2, imm_obj: typestring });
+        return ops;
+    }
 }
 
 export class RawOpcodeNode extends AstNode {
@@ -367,53 +525,13 @@ export class RawOpcodeNode extends AstNode {
         this.op = op;
         this.opinfo = opinfo;
     }
-    getName(calli: ClientscriptObfuscation) {
-        let opinfo = calli.decodedMappings.get(this.op.opcode);
-        if (!opinfo) { throw new Error("unknown op"); }
-        let name = knownClientScriptOpNames[this.op.opcode] ?? `unk${this.op.opcode}`;
-        if (opinfo.id == namedClientScriptOps.poplocalint || opinfo.id == namedClientScriptOps.pushlocalint) {
-            name = `int${this.op.imm}`;
-        } else if (opinfo.id == namedClientScriptOps.poplocalstring || opinfo.id == namedClientScriptOps.pushlocalstring) {
-            name = `string${this.op.imm}`;
-        } else if (opinfo.id == namedClientScriptOps.popvar || opinfo.id == namedClientScriptOps.pushvar) {
-            let varmeta = calli.getClientVarMeta(this.op.imm);
-            if (varmeta) {
-                name = `var${varmeta.name}_${varmeta.varid}`;
-            } else {
-                name = `varunk_${this.op.imm}`;
-            }
-        }
-        let res = "";
-        res += (typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj}"` : (this.op.imm_obj ?? "").toString());
-        res += ` ${(this.knownStackDiff ?? this.opinfo.stackinfo).getCode() ?? "unkstack"}`;
-        return { name: name, extra: res };
-    }
     getCode(calli: ClientscriptObfuscation, indent: number) {
-        let opinfo = calli.decodedMappings.get(this.op.opcode);
-        if (!opinfo) { throw new Error("unknown op"); }
-        let { name, extra } = this.getName(calli);
         if (this.op.opcode == namedClientScriptOps.pushconst) {
-            return typeof this.op.imm_obj == "string" ? `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"` : "" + this.op.imm_obj;
+            if (typeof this.op.imm_obj == "string") { return `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"`; }
+            else { return "" + this.op.imm_obj; }
         }
         if (this.op.opcode == namedClientScriptOps.pushlocalint || this.op.opcode == namedClientScriptOps.pushlocalstring || this.op.opcode == namedClientScriptOps.pushvar) {
-            return name;
-        }
-        if (this.children.length == 2) {
-            if (this.op.opcode == namedClientScriptOps.plus) {
-                return `(${this.children[0].getCode(calli, indent)} + ${this.children[1].getCode(calli, indent)})`;
-            }
-            if (this.op.opcode == namedClientScriptOps.minus) {
-                return `(${this.children[0].getCode(calli, indent)} - ${this.children[1].getCode(calli, indent)})`;
-            }
-            if (this.op.opcode == namedClientScriptOps.intdiv) {
-                return `(${this.children[0].getCode(calli, indent)} / ${this.children[1].getCode(calli, indent)})`;
-            }
-            if (this.op.opcode == namedClientScriptOps.intmod) {
-                return `(${this.children[0].getCode(calli, indent)} % ${this.children[1].getCode(calli, indent)})`;
-            }
-            if (this.op.opcode == namedClientScriptOps.strconcat) {
-                return `(${this.children[0].getCode(calli, indent)} strcat ${this.children[1].getCode(calli, indent)})`;
-            }
+            return getOpcodeName(calli, this.op);
         }
         if (this.op.opcode == namedClientScriptOps.joinstring) {
             let res = "`";
@@ -427,16 +545,12 @@ export class RawOpcodeNode extends AstNode {
             res += "`";
             return res;
         }
-        if (opinfo.id == namedClientScriptOps.jump || branchInstructions.includes(opinfo.id)) {
-            name += `[${this.op.imm + this.originalindex + 1}]`;
-        } else if (opinfo.id == namedClientScriptOps.gosub) {
-            name += `[${this.op.imm}]`;
-        } else if (this.op.imm != 0) {
-            name += `[${this.op.imm}]`;
-        }
-        return `${name}(${this.children.map(q => q.getCode(calli, indent)).join(",")})`;
-        // let diff = this.knownStackDiff ?? this.opinfo.stackinfo;
-        // return `${name}<${diff.out.values.join(",")}>${diff.initializedthrough ? "" : "??"}(${diff.in.values.join(",")})`;
+        return getOpcodeCallCode(calli, this.op, this.children, this.originalindex, indent);
+    }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let body = this.children.flatMap(q => q.getOpcodes(calli));
+        body.push({ ...this.op });
+        return body;
     }
 }
 
@@ -657,15 +771,6 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             if (!(parent instanceof CodeBlockNode) || parent.possibleSuccessors.length != 2) { throw new Error("if op parent is not compatible"); }
             if (parent.children.at(-1) != node) { throw new Error("if op is not last op in codeblock"); }
             if (!parent.branchEndNode) { throw new Error("if statement parent end node expected"); }
-            //TODO move this insto if class
-            let optype: BinaryOpType;
-            if (node.op.opcode == namedClientScriptOps.branch_eq) { optype = "=="; }
-            else if (node.op.opcode == namedClientScriptOps.branch_gt) { optype = ">"; }
-            else if (node.op.opcode == namedClientScriptOps.branch_gteq) { optype = ">="; }
-            else if (node.op.opcode == namedClientScriptOps.branch_lt) { optype = "<"; }
-            else if (node.op.opcode == namedClientScriptOps.branch_lteq) { optype = "<="; }
-            else if (node.op.opcode == namedClientScriptOps.branch_not) { optype = "!="; }
-            else { optype = "(unk)"; }
 
             let trueblock = parent.possibleSuccessors[1];
             let falseblock: CodeBlockNode | null = parent.possibleSuccessors[0];
@@ -697,7 +802,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                 falseblock = newblock;
             }
 
-            let condnode = new BinaryOpStatement(optype, node.originalindex);
+            let condnode = new BinaryConditionalOpStatement(node.op, node.originalindex);
             condnode.pushList(node.children);
 
             let grandparent = parent?.parent;
@@ -711,7 +816,8 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                         //TODO make some sort of in-line codeblock node for this
                         // console.log("merging if statements while 2nd if wasn't parsed completely, stack will be invalid");
                     }
-                    let combinedcond = new BinaryOpStatement((isor ? "||" : "&&"), grandparent.originalindex);
+                    let fakeop: ClientScriptOp = { opcode: isor ? namedClientScriptOps.shorting_or : namedClientScriptOps.shorting_and, imm: 0, imm_obj: null };
+                    let combinedcond = new BinaryConditionalOpStatement(fakeop, grandparent.originalindex);
                     combinedcond.push(grandparent.statement);
                     combinedcond.push(condnode);
                     if (isor) {
@@ -772,6 +878,55 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                 }
             }
         }
+    }
+}
+
+export class ClientScriptFunction extends AstNode {
+    name: string;
+    returntype: StackList;
+    argtype: StackList;
+    constructor(name: string, returntype: StackList, argtype: StackList) {
+        super(0);
+        this.name = name;
+        this.returntype = returntype;
+        this.argtype = argtype;
+    }
+
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        let res = `script ${this.name} ${this.returntype} (${this.argtype})\n`;
+        res += this.children[0].getCode(calli, indent);
+        return res;
+    }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let body = this.children[0].getOpcodes(calli);
+
+        //don't add the obsolete return call if there is already a return call and the type is empty
+        if (!this.returntype.isEmpty() || body.at(-1)?.opcode != namedClientScriptOps.return) {
+            let returnop = calli.getNamedOp(namedClientScriptOps.return);
+            let constop = calli.getNamedOp(namedClientScriptOps.pushconst);
+            let ret = this.returntype.clone();
+            let pushconst = (type: StackType) => {
+                if (type == "vararg") { throw new Error("unexpected"); }
+                body.push({
+                    opcode: constop.id,
+                    imm: { int: 0, long: 1, string: 2 }[type],
+                    imm_obj: { int: 0, long: [0, 0] as [number, number], string: "" }[type],
+                });
+            }
+            while (!ret.isEmpty()) {
+                let type = ret.values.pop()!;
+                if (type instanceof StackDiff) {
+                    for (let i = 0; i < type.int; i++) { pushconst("int"); }
+                    for (let i = 0; i < type.long; i++) { pushconst("long"); }
+                    for (let i = 0; i < type.string; i++) { pushconst("string"); }
+                    for (let i = 0; i < type.vararg; i++) { pushconst("vararg"); }
+                } else {
+                    pushconst(type);
+                }
+            }
+            body.push({ opcode: returnop.id, imm: 0, imm_obj: null });
+        }
+        return body;
     }
 }
 
@@ -917,10 +1072,9 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     //find all jump targets and make the sections
     for (let [index, op] of ops.entries()) {
         let nextindex = index + 1;
-        let info = calli.decodedMappings.get(op.opcode)!;
-        if (!info) { throw new Error("tried to add unknown op to AST"); }
+        let info = calli.getNamedOp(op.opcode);
 
-        if (info.id == namedClientScriptOps.jump || branchInstructions.includes(info.id)) {
+        if (branchInstructionsOrJump.includes(info.id)) {
             let jumpindex = nextindex + op.imm;
             getorMakeSection(nextindex);
             getorMakeSection(jumpindex);
@@ -930,8 +1084,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     //write the opcodes
     for (let [index, op] of ops.entries()) {
         let nextindex = index + 1;
-        let info = calli.decodedMappings.get(op.opcode)!;
-        if (!info) { throw new Error("tried to add unknown op to AST"); }
+        let info = calli.getNamedOp(op.opcode)!;
         let opnode = new RawOpcodeNode(index, op, info);
 
         //check if other flows merge into this one
@@ -943,7 +1096,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
         currentsection.push(opnode);
 
-        if (info.id == namedClientScriptOps.jump || branchInstructions.includes(info.id)) {
+        if (branchInstructionsOrJump.includes(info.id)) {
             let jumpindex = nextindex + op.imm;
             let nextblock = getorMakeSection(nextindex);
             let jumpblock = getorMakeSection(jumpindex);
@@ -977,15 +1130,10 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     return sections;
 }
 
-export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
-    let calli = await prepareClientScript(source);
-    const full = globalThis.deep ?? true;//TODO remove
-
-    let script = parse.clientscript.read(buf, source);
+export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1, full = true) {
     let sections = generateAst(calli, script, script.opcodedata, fileid);
     let program = new CodeBlockNode(fileid, 0);
-    globalThis[`cs${fileid}`] = program;//TODO remove
-    globalThis[`css${fileid}`] = sections;
+
     if (full) {
         program.addSuccessor(sections[0]);
         for (let node: CodeBlockNode | null = program; node; node = node.findNext());
@@ -995,6 +1143,17 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
         program.pushList(sections);
         for (let node: CodeBlockNode | null = program; node; node = node.findNext());
     }
+    return { program, sections }
+}
+globalThis.parseClientScriptIm = parseClientScriptIm;
+
+export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
+    let calli = await prepareClientScript(source);
+    let script = parse.clientscript.read(buf, source);
+    let full = true;//TODO remove
+    let { program, sections } = parseClientScriptIm(calli, script, fileid, full);
+    globalThis[`cs${fileid}`] = program;//TODO remove
+
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
     let res = "";
@@ -1002,9 +1161,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     if (full) {
         res += program.getCode(calli, 0);
     } else {
-        for (let section of sections) {
-            res += section.getCode(calli, 0);
-        }
+        sections.forEach(q => res += q.getCode(calli, 0));
     }
     return res;
 }
