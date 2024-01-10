@@ -516,6 +516,9 @@ export class ClientscriptObfuscation {
         } else if (op.type == "int") {
             state.buffer.writeInt32BE(v.imm, state.scan);
             state.scan += 4;
+        } else if (op.type == "tribyte") {
+            state.buffer.writeUIntBE(v.imm, state.scan, 3);
+            state.scan += 3;
         } else if (op.type == "switch") {
             if (!("imm_obj" in v)) { throw new Error("imm_obj prop expected"); }
             state.buffer.writeUInt8(v.imm, state.scan);
@@ -531,7 +534,7 @@ export class ClientscriptObfuscation {
                 state.scan += 8;
             } else if (v.imm == 2) {
                 if (typeof v.imm_obj != "string") { throw new Error("string expected"); }
-                state.buffer.write(v.imm_obj, "latin1");
+                state.buffer.write(v.imm_obj, state.scan, "latin1");
                 state.scan += v.imm_obj.length;
                 state.buffer.writeUint8(0, state.scan);
                 state.scan++;

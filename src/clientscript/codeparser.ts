@@ -1,10 +1,15 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BinaryConditionalOpStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { binaryOpIds, binaryOpSymbols, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
 
-const whitespace = /^\s*/;
+function* whitespace() {
+    while (true) {
+        let match = yield [/^\/\/.*$/m, /^\/\*[\s\S]*\*\//, /^\s+/, ""];
+        if (match === "") { break; }
+    }
+}
 const newline = /^\s*?\n/;
 const unmatchable = /$./;
 const reserverd = "if,while,break,continue,else,switch,strcat,script".split(",");
@@ -37,13 +42,14 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* stackdiff() {
-        let [match, int, long, string, vararg] = yield (/^\((\d+),(\d+),(\d+),(\d+)\)/);
+        let [match, int, long, string, vararg] = yield (/^\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
         return new StackDiff(+int, +long, +string, +vararg);
     }
 
     function* stacklist() {
         let items: StackTypeExt[] = [];
         while (items.length == 0 || (yield has(","))) {
+            yield whitespace;
             let match = yield [stackdiff, "int", "long", "string", "vararg", ""];
             if (match == "") {
                 if (items.length == 0) { break; }
@@ -308,9 +314,9 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         } else if (m[1] == "int") {
             let popintop = getopinfo(namedClientScriptOps.pushlocalint);
             return new RawOpcodeNode(-1, { opcode: popintop.id, imm: varid, imm_obj: null }, popintop);
-            // } else if (m[1] == "long") {
-            // let popintop=getopinfo(namedClientScriptOps.poplocalint);
-            //     return new RawOpcodeNode(-1, { opcode: poplongop.id, imm: varid, imm_obj: null }, poplongop);
+        } else if (m[1] == "long") {
+            let poplongop = getopinfo(namedClientScriptOps.pushlocallong);
+            return new RawOpcodeNode(-1, { opcode: poplongop.id, imm: varid, imm_obj: null }, poplongop);
         } else if (m[1] == "string") {
             let popstringop = getopinfo(namedClientScriptOps.pushlocalstring);
             return new RawOpcodeNode(-1, { opcode: popstringop.id, imm: varid, imm_obj: null }, popstringop);
@@ -336,6 +342,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         let condition = yield valueStatement;
         yield whitespace;
         yield ")";
+        yield whitespace;
         let code = yield codeBlock;
         return new WhileLoopStatementNode(-1, condition, code);
     }
@@ -352,7 +359,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         if (!opid) { throw new Error("unexpected"); }
         let node: AstNode;
         if (binaryconditionals.includes(op)) {
-            node = new BinaryConditionalOpStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
+            node = new BranchingStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
         } else {
             node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, deob.getNamedOp(opid));
         }
@@ -370,7 +377,14 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         }
         let statements = yield statementlist;
         yield ")";
-        let node = new BinaryConditionalOpStatement(op, -1);
+        let opid = binaryOpIds.get(op);
+        if (!opid) { throw new Error("unexpected"); }
+        let node: AstNode;
+        if (binaryconditionals.includes(op)) {
+            node = new BranchingStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
+        } else {
+            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, deob.getNamedOp(opid));
+        }
         node.pushList(statements);
         return node;
     }
@@ -432,23 +446,32 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
 
 //TODO remove
 globalThis.testy = async () => {
-    const fs = require("fs");
+    const fs = require("fs") as typeof import("fs");
     let codefs = await globalThis.cli("extract -m clientscripttext -i 0-1999");
-    let codefiles = [...codefs.extract.filesMap.values()].map(q => q.data.replace(/^\d+:/gm, "")); 1;
+    let codefiles = [...codefs.extract.filesMap.values()].map(q => q.data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
     let jsonfs = await globalThis.cli("extract -m clientscript -i 0-1999");
     jsonfs.extract.filesMap.delete(".schema-clientscript.json");
     let jsonfiles = [...jsonfs.extract.filesMap.values()];
     let subtest = (index: number) => {
-        let parseresult = clientscriptParser(globalThis.deob).runparse(codefiles[index]);
+        const deob = globalThis.deob as ClientscriptObfuscation;
+        let parseresult = clientscriptParser(deob).runparse(codefiles[index]);
         if (!parseresult.success) { return parseresult; }
-        let roundtripped = prettyJson(parseresult.result.getOpcodes(globalThis.deob));
-        let jsondata = JSON.parse(jsonfiles[index].data).opcodedata;
-        jsondata.forEach(q => { delete q.opname });
-        let original = prettyJson(jsondata);
+        let roundtripped = astToImJson(deob, parseresult.result);
+        let jsondata = JSON.parse(jsonfiles[index].data);
+        delete jsondata.$schema;
+        jsondata.opcodedata.forEach(q => { delete q.opname });
+        let original = prettyJson(jsondata.opcodedata);
 
-        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", original);
-        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", roundtripped);
-        return { roundtripped, original, exact: original == roundtripped };
+        let rawinput = prettyJson(jsondata);
+        let rawroundtrip = prettyJson(roundtripped);
+
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw1.json", rawinput);
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw2.json", rawroundtrip);
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", prettyJson(jsondata.opcodedata));
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", prettyJson(roundtripped.opcodedata));
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js1.js", codefiles[index]);
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.js", parseresult.result.getCode(deob, 0));
+        return { roundtripped, original, exact: rawinput == rawroundtrip };
     }
     return { subtest, codefiles, codefs, jsonfs, jsonfiles };
 }

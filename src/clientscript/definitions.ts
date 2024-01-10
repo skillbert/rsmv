@@ -23,6 +23,8 @@ export const namedClientScriptOps = {
     poplocalint: 34,
     pushlocalstring: 35,
     poplocalstring: 36,
+    pushlocallong: 9102,//TODO find this one
+    poplocallong: 9103,//TODO find this one
 
     //variable number of args
     joinstring: 37,
@@ -157,7 +159,7 @@ export type ImmediateType = "byte" | "int" | "tribyte" | "switch" | "long" | "st
 export type ClientScriptOp = {
     opcode: number,
     imm: number,
-    imm_obj: string | number | [number, number] | null,
+    imm_obj: string | number | [number, number] | { value: number, label: number }[] | null,
     opname?: string
 }
 

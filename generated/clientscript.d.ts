@@ -19,6 +19,6 @@ export type clientscript = {
 	opcodedata: {
 		opcode:number,
 		imm:number,
-		imm_obj:number|string|[number,number]|null,
+		imm_obj:number|string|[number,number]|{value:number,label:number}[]|null,
 	}[],
 };

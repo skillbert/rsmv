@@ -43,7 +43,8 @@ export type DecodeState = {
 }
 
 export type EncodeState = {
-	scan: number
+	scan: number,
+	endoffset: number,
 	buffer: Buffer,
 	args: Record<string, unknown>
 }
@@ -311,11 +312,13 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			if (typeof value != "object" || !value) { throw new Error("object expected"); }
 			for (let key of keys) {
 				let propvalue = value[key as string];
-				let refarray = refs[key];
-				if (refarray) {
-					propvalue = propvalue ?? 0;
-					for (let ref of refarray) {
-						propvalue = ref.resolve(value, propvalue);
+				if (propvalue == null) {
+					let refarray = refs[key];
+					propvalue ??= 0;
+					if (refarray) {
+						for (let ref of refarray) {
+							propvalue = ref.resolve(value, propvalue);
+						}
 					}
 				}
 				let prop = props[key];
@@ -1180,7 +1183,12 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return res;
 			},
 			write(state, v) {
-				throw new Error("not implemented");
+				let oldscan = state.scan;
+				subtype.write(state, v);
+				let len = state.scan - oldscan;
+				state.buffer.copyWithin(state.endoffset - len, oldscan, state.scan);
+				state.scan = oldscan;
+				state.endoffset -= len;
 			},
 			getTypescriptType(indent) {
 				return subtype.getTypescriptType(indent);
@@ -1318,7 +1326,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return `{\n`
 					+ `${newindent}opcode:number,\n`
 					+ `${newindent}imm:number,\n`
-					+ `${newindent}imm_obj:number|string|[number,number]|null,\n`
+					+ `${newindent}imm_obj:number|string|[number,number]|{value:number,label:number}[]|null,\n`
 					+ `${indent}}`;
 			}
 		}

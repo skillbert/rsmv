@@ -640,7 +640,7 @@ export function FileDisplay(p: { file: UIScriptFile }) {
 			el = <iframe srcDoc={filedata} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
 		} else {
 			//TODO make this not depend on wether file is Buffer or string
-			//string types so far: txt, json, batch.json
+			//string types so far: js, txt, json, batch.json
 			el = <SimpleTextViewer file={filedata} />;
 		}
 	} else {

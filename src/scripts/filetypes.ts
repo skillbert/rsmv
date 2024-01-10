@@ -16,7 +16,7 @@ import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
 import { prepareClientScript } from "../clientscript/callibrator";
-import { renderClientScript } from "../clientscript/ast";
+import { compileClientScript, renderClientScript } from "../clientscript/ast";
 import { renderRsInterface } from "./renderrsinterface";
 
 
@@ -340,7 +340,7 @@ export type DecodeMode<T = Buffer | string> = {
 	parser?: FileParser<any>,
 	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource): T | Promise<T>,
 	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
-	write(file: Buffer): Buffer,
+	write(file: Buffer, fileid: LogicalIndex, source: CacheFileSource): Buffer | Promise<Buffer>,
 	combineSubs(files: T[]): T
 } & DecodeLookup;
 
@@ -445,12 +445,18 @@ const decodeInterface2: DecodeModeFactory = () => {
 
 const decodeClientScriptText: DecodeModeFactory = () => {
 	return {
-		ext: "txt",
+		ext: "js",
 		...noArchiveIndex(cacheMajors.clientscript),
 		...throwOnNonSimple,
 		async prepareDump(out, source) { await prepareClientScript(source) },
 		read(buf, fileid, source) {
 			return renderClientScript(source, buf, fileid[0]);
+		},
+		async write(file, fileid, source) {
+			let obj = await compileClientScript(source, file.toString("utf8"));
+			let res = parse.clientscript.write(obj, source.getDecodeArgs());
+			// throw new Error("exit dryrun");
+			return res;
 		}
 	}
 }

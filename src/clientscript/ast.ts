@@ -3,6 +3,7 @@ import { clientscriptdata } from "../../generated/clientscriptdata";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript, typeToPrimitive } from "./callibrator";
+import { clientscriptParser } from "./codeparser";
 import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants } from "./definitions";
 
 /**
@@ -15,7 +16,19 @@ import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJ
  */
 //get script names from https://api.runewiki.org/hashes?rev=930
 
+/**
+ * known compiler differences
+ * - in some situations bunny hop jumps in nested ifs are merged while the jagex compiler doesn't
+ * - default return values for int can be -1 for some specialisations while this compiler doesn't know about those
+ * - this ast tree automatically strips dead code so round trips won't be identical if there dead code
+ * - when a script has no return values but the original code had an explicit return then this compiler won't output that
+ */
 
+
+function getSingleChild<T extends AstNode>(op: CodeBlockNode | null | undefined, type: { new(...args: any[]): T }) {
+    if (!op || op.children.length != 1 || !(op.children[0] instanceof type)) { return null; }
+    return op.children[0] as T;
+}
 
 function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
     // linenr = -1;
@@ -27,6 +40,8 @@ function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
         return `int${op.imm}`;
     } else if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) {
         return `string${op.imm}`;
+    } else if (op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.pushlocallong) {
+        return `long${op.imm}`;
     } else if (op.opcode == namedClientScriptOps.popvar || op.opcode == namedClientScriptOps.pushvar) {
         let varmeta = calli.getClientVarMeta(op.imm);
         if (varmeta) {
@@ -44,7 +59,7 @@ function getOpcodeCallCode(calli: ClientscriptObfuscation, op: ClientScriptOp, c
         if (children.length == 2) {
             return `(${children[0].getCode(calli, indent)} ${binarysymbol} ${children[1].getCode(calli, indent)})`;
         } else {
-            return `(${binarysymbol} ${children.map(q => q.getCode(calli, indent))})`;
+            return `(${binarysymbol} ${children.map(q => q.getCode(calli, indent)).join(" ")})`;
         }
     }
     let metastr = "";
@@ -202,11 +217,16 @@ export class CodeBlockNode extends AstNode {
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let code = "";
-        if (this.parent) { code += `{\n`; indent++; }
+        if (this.parent && !(this.parent instanceof ClientScriptFunction)) {
+            code += `{\n`;
+            indent++;
+        }
         for (let child of this.children) {
             code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
         }
-        if (this.parent) { code += `${codeIndent(indent - 1)}}`; }
+        if (this.parent && !(this.parent instanceof ClientScriptFunction)) {
+            code += `${codeIndent(indent - 1)}}`;
+        }
         return code;
     }
     getOpcodes(calli: ClientscriptObfuscation) {
@@ -244,7 +264,7 @@ function retargetJumps(calli: ClientscriptObfuscation, code: ClientScriptOp[], f
     }
 }
 
-export class BinaryConditionalOpStatement extends AstNode {
+export class BranchingStatement extends AstNode {
     op: ClientScriptOp;
     knownStackDiff = new StackInOut(new StackList(["int", "int"]), new StackList(["int"]));//TODO not correct, we also use this for longs
     constructor(opcodeinfo: ClientScriptOp, originalindex: number) {
@@ -257,24 +277,24 @@ export class BinaryConditionalOpStatement extends AstNode {
     }
 
     getOpcodes(calli: ClientscriptObfuscation) {
-        if (this.children.length != 2) { throw new Error("unexpected"); }
-        let left = this.children[0].getOpcodes(calli);
-        let right = this.children[1].getOpcodes(calli);
-
-        let ops: ClientScriptOp[] = [];
-        if (this.op.opcode == namedClientScriptOps.shorting_or) {
-            //retarget true jumps to true outcome of combined statement
-            retargetJumps(calli, left, 1, right.length + 1);
-            //index 0 [false] will already point to start of right condition
-        } else if (this.op.opcode == namedClientScriptOps.shorting_and) {
-            //retarget the false jumps to one past end [false] of combined statement
-            retargetJumps(calli, left, 0, right.length);
-            //retarget true jumps to start of right statement
-            retargetJumps(calli, left, 1, 0);
-        } else {
-            ops.push({ opcode: this.op.opcode, imm: 1, imm_obj: null });
+        if (this.op.opcode == namedClientScriptOps.shorting_or || this.op.opcode == namedClientScriptOps.shorting_and) {
+            if (this.children.length != 2) { throw new Error("unexpected"); }
+            let left = this.children[0].getOpcodes(calli);
+            let right = this.children[1].getOpcodes(calli);
+            if (this.op.opcode == namedClientScriptOps.shorting_or) {
+                //retarget true jumps to true outcome of combined statement
+                retargetJumps(calli, left, 1, right.length + 1);
+                //index 0 [false] will already point to start of right condition
+            } else {
+                //retarget the false jumps to one past end [false] of combined statement
+                retargetJumps(calli, left, 0, right.length);
+                //retarget true jumps to start of right statement
+                retargetJumps(calli, left, 1, 0);
+            }
+            return [...left, ...right];
         }
-        return [...left, ...right, ...ops];
+        let op: ClientScriptOp = { opcode: this.op.opcode, imm: 1, imm_obj: null };
+        return this.children.flatMap(q => q.getOpcodes(calli)).concat(op);
     }
 }
 
@@ -345,7 +365,8 @@ export class SwitchStatementNode extends AstNode {
         }
 
         let defaultblock: CodeBlockNode | null = nodes.find(q => q.originalindex == switchop.originalindex + 1) ?? null;
-        if (defaultblock && defaultblock.children.length == 1 && defaultblock.children[0] instanceof RawOpcodeNode && defaultblock.children[0].opinfo.id == namedClientScriptOps.jump) {
+        let defaultblockjump = getSingleChild(defaultblock, RawOpcodeNode);
+        if (defaultblock && defaultblockjump && defaultblockjump.opinfo.id == namedClientScriptOps.jump) {
             if (defaultblock.possibleSuccessors.length != 1) { throw new Error("jump successor branch expected"); }
             defaultblock = defaultblock.possibleSuccessors[0];
             if (defaultblock.originalindex == endindex) {
@@ -374,7 +395,6 @@ export class SwitchStatementNode extends AstNode {
             res += `${codeIndent(indent + 1)}default:`;
             res += this.defaultbranch.getCode(calli, indent + 1);
         }
-        res += `\n`;
         res += `${codeIndent(indent)}}`;
         return res;
     }
@@ -382,34 +402,43 @@ export class SwitchStatementNode extends AstNode {
         let body: ClientScriptOp[] = [];
         if (this.valueop) { body.push(...this.valueop.getOpcodes(calli)); }
         let jump = calli.getNamedOp(namedClientScriptOps.jump);
-        let switchop = calli.getNamedOp(namedClientScriptOps.switch);
-        body.push({ opcode: switchop.id, imm: -1, imm_obj: null });//TODO switch map id
-
+        let switchopinfo = calli.getNamedOp(namedClientScriptOps.switch);
+        let switchop: ClientScriptOp = { opcode: switchopinfo.id, imm: -1, imm_obj: [] };
         let defaultjmp: ClientScriptOp = { opcode: jump.id, imm: -1, imm_obj: null };
+        body.push(switchop);//TODO switch map id
+        let jumpstart = body.length;
         body.push(defaultjmp);
 
-        //body.push switch
         let endops: ClientScriptOp[] = [];
 
+        let jumptable: { value: number, label: number }[] = [];
         let lastblock: CodeBlockNode | null = null;
         let lastblockindex = 0;
         for (let i = 0; i < this.branches.length; i++) {
             let branch = this.branches[i];
-            //TODO write jump table
-            if (branch.block == lastblock) { continue; }
-            lastblock = branch.block;
-            lastblockindex = body.length;
-            body.push(...branch.block.getOpcodes(calli));
-
-            //no jump at last branch
-            if (this.defaultbranch || i != this.branches.length - 1) {
+            //add a jump so the previous branch skips to end (and last branch doesn't)
+            if (branch.block == lastblock) {
+                jumptable.push({ value: branch.value, label: lastblockindex });
+                continue;
+            }
+            if (lastblock) {
                 let jmp: ClientScriptOp = { opcode: jump.id, imm: -1, imm_obj: null };
                 body.push(jmp);
                 endops.push(jmp);
             }
+            lastblock = branch.block;
+            lastblockindex = body.length - jumpstart;
+            jumptable.push({ value: branch.value, label: lastblockindex });
+            body.push(...branch.block.getOpcodes(calli));
         }
 
         if (this.defaultbranch) {
+            if (lastblock) {
+                let jmp: ClientScriptOp = { opcode: jump.id, imm: -1, imm_obj: null };
+                body.push(jmp);
+                endops.push(jmp);
+            }
+
             defaultjmp.imm = body.length - body.indexOf(defaultjmp) - 1;
             body.push(...this.defaultbranch.getOpcodes(calli));
         } else {
@@ -421,6 +450,8 @@ export class SwitchStatementNode extends AstNode {
             let index = body.indexOf(op);
             op.imm = body.length - index - 1;
         }
+
+        switchop.imm_obj = jumptable;
 
         return body;
     }
@@ -467,7 +498,8 @@ export class IfStatementNode extends AstNode {
         if (this.falsebranch) {
             res += `else`;
             //skip brackets for else if construct
-            if (this.falsebranch instanceof CodeBlockNode && this.falsebranch.children.length == 1 && this.falsebranch.children[0] instanceof IfStatementNode) {
+            let subif = getSingleChild(this.falsebranch, IfStatementNode);
+            if (subif) {
                 res += " " + this.falsebranch.children[0].getCode(calli, indent);
             } else {
                 res += this.falsebranch.getCode(calli, indent);
@@ -481,7 +513,8 @@ export class IfStatementNode extends AstNode {
         let falsebranch: ClientScriptOp[] = [];
         if (this.falsebranch) {
             falsebranch = this.falsebranch.getOpcodes(calli);
-            retargetJumps(calli, truebranch, 0, falsebranch.length)
+            truebranch.push({ opcode: calli.getNamedOp(namedClientScriptOps.jump).id, imm: falsebranch.length, imm_obj: null });
+            // retargetJumps(calli, truebranch, 0, falsebranch.length)
         }
         //TODO rerouting true jumps past 2 in order to switch them with false at 1, this is stupid
         retargetJumps(calli, cond, 0, truebranch.length == 1 ? 2 : truebranch.length);
@@ -530,7 +563,7 @@ export class RawOpcodeNode extends AstNode {
             if (typeof this.op.imm_obj == "string") { return `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"`; }
             else { return "" + this.op.imm_obj; }
         }
-        if (this.op.opcode == namedClientScriptOps.pushlocalint || this.op.opcode == namedClientScriptOps.pushlocalstring || this.op.opcode == namedClientScriptOps.pushvar) {
+        if (this.op.opcode == namedClientScriptOps.pushlocalint || this.op.opcode == namedClientScriptOps.poplocallong || this.op.opcode == namedClientScriptOps.pushlocalstring || this.op.opcode == namedClientScriptOps.pushvar) {
             return getOpcodeName(calli, this.op);
         }
         if (this.op.opcode == namedClientScriptOps.joinstring) {
@@ -694,7 +727,7 @@ export function translateAst(ast: CodeBlockNode) {
     //merge variable assign nodes
     let currentassignnode: VarAssignNode | null = null;
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
-        let isassign = node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocalstring || node.op.opcode == namedClientScriptOps.popvar)
+        let isassign = node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocallong || node.op.opcode == namedClientScriptOps.poplocalstring || node.op.opcode == namedClientScriptOps.popvar)
         if (isassign) {
             if (currentassignnode && currentassignnode.parent != node.parent) {
                 throw new Error("ast is expected to be flat at this stage");
@@ -766,6 +799,16 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
     let cursor = new RewriteCursor(ast);
     //find if statements
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
+        if (node instanceof IfStatementNode) {
+            //detect an or statement that wasn't caught before (a bit late, there should be a better way to do this)
+            let subif = getSingleChild(node.falsebranch, IfStatementNode);
+            if (subif && subif.truebranch == node.truebranch) {
+                let combined = new BranchingStatement({ opcode: namedClientScriptOps.shorting_or, imm: 0, imm_obj: null }, node.statement.originalindex);
+                combined.push(node.statement);
+                combined.push(subif.statement);
+                node.setBranches(combined, node.truebranch, subif.falsebranch, subif.ifEndIndex);
+            }
+        }
         if (node instanceof RawOpcodeNode && branchInstructions.includes(node.opinfo.id)) {
             let parent = node.parent;
             if (!(parent instanceof CodeBlockNode) || parent.possibleSuccessors.length != 2) { throw new Error("if op parent is not compatible"); }
@@ -774,7 +817,8 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
 
             let trueblock = parent.possibleSuccessors[1];
             let falseblock: CodeBlockNode | null = parent.possibleSuccessors[0];
-            if (falseblock.children.length == 1 && falseblock.children[0] instanceof RawOpcodeNode && falseblock.children[0].opinfo.id == namedClientScriptOps.jump) {
+            let falseblockjump = getSingleChild(falseblock, RawOpcodeNode);
+            if (falseblockjump && falseblockjump.opinfo.id == namedClientScriptOps.jump) {
                 if (falseblock.possibleSuccessors.length != 1) { throw new Error("jump successor branch expected"); }
                 falseblock = falseblock.possibleSuccessors[0];
                 if (falseblock == parent.branchEndNode) {
@@ -802,22 +846,22 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                 falseblock = newblock;
             }
 
-            let condnode = new BinaryConditionalOpStatement(node.op, node.originalindex);
+            let condnode = new BranchingStatement(node.op, node.originalindex);
             condnode.pushList(node.children);
 
             let grandparent = parent?.parent;
             if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.ifEndIndex == parent.branchEndNode.originalindex) {
                 let isor = grandparent.truebranch == trueblock && grandparent.falsebranch == parent;
-                let isand = grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
+                let isand = condnode.children.length <= 2 && grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
                 if (isor || isand) {
-                    if (parent.children.length != 1) {
-                        parent.remove(node);
-                        condnode.pushList(parent.children);
-                        //TODO make some sort of in-line codeblock node for this
-                        // console.log("merging if statements while 2nd if wasn't parsed completely, stack will be invalid");
+                    parent.remove(node);
+                    //TODO make some sort of in-line codeblock node for this
+                    // console.log("merging if statements while 2nd if wasn't parsed completely, stack will be invalid");
+                    while (parent.children.length != 0) {
+                        condnode.unshift(parent.children[0]);
                     }
                     let fakeop: ClientScriptOp = { opcode: isor ? namedClientScriptOps.shorting_or : namedClientScriptOps.shorting_and, imm: 0, imm_obj: null };
-                    let combinedcond = new BinaryConditionalOpStatement(fakeop, grandparent.originalindex);
+                    let combinedcond = new BranchingStatement(fakeop, grandparent.originalindex);
                     combinedcond.push(grandparent.statement);
                     combinedcond.push(condnode);
                     if (isor) {
@@ -855,6 +899,11 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                         if (codeblock.originalindex != target) { continue; }
                         if (codeblock.children.at(-1) != ifnode) { throw new Error("unexpected"); }
 
+                        //TODO this is silly, there might be more instructions in the enclosing block, make sure these aren't lost
+                        //mostly seems to affect expansions of var++ and ++var constructs which are currently not supported
+                        for (let i = codeblock.children.length - 2; i >= 0; i--) {
+                            ifnode.statement.unshift(codeblock.children[i]);
+                        }
                         let originalparent = codeblock.parent;
                         let loopstatement = WhileLoopStatementNode.fromIfStatement(codeblock.originalindex, ifnode);
                         originalparent.replaceChild(codeblock, loopstatement);
@@ -1146,6 +1195,46 @@ export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clie
     return { program, sections }
 }
 globalThis.parseClientScriptIm = parseClientScriptIm;
+
+export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFunction) {
+    let opdata = func.getOpcodes(calli);
+    let allargs = func.argtype.getStackdiff();
+    let script: clientscript = {
+        byte0: 0,
+        switchsize: -1,
+        switches: [],
+        longargcount: allargs.long,
+        stringargcount: allargs.string,
+        intargcount: allargs.int,
+        locallongcount: allargs.long,
+        localstringcount: allargs.string,
+        localintcount: allargs.int,
+        instructioncount: opdata.length,
+        opcodedata: opdata,
+    }
+    for (let op of opdata) {
+        if (op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.pushlocalint) { script.localintcount = Math.max(script.localintcount, op.imm + 1); }
+        if (op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.pushlocallong) { script.locallongcount = Math.max(script.locallongcount, op.imm + 1); }
+        if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) { script.localstringcount = Math.max(script.localstringcount, op.imm + 1); }
+
+        if (op.opcode == namedClientScriptOps.switch) {
+            op.imm = script.switches.push(op.imm_obj as any) - 1;
+            op.imm_obj = null;
+        }
+    }
+    //1+foreach(2+sublen*(4+4))
+    script.switchsize = 1 + script.switches.reduce((a, v) => a + 2 + v.length * (4 + 4), 0);
+    return script;
+}
+
+export async function compileClientScript(source: CacheFileSource, code: string) {
+    let calli = await prepareClientScript(source);
+
+    let parseresult = clientscriptParser(calli).runparse(code);
+    if (!parseresult.success) { throw new Error("failed to parse clientscript", { cause: parseresult.failedOn }); }
+    if (parseresult.remaining != "") { throw new Error("failed to parse clientscript, left over: " + parseresult.remaining.slice(0, 100)); }
+    return astToImJson(calli, parseresult.result);
+}
 
 export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
     let calli = await prepareClientScript(source);

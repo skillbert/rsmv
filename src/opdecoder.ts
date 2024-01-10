@@ -62,16 +62,21 @@ export class FileParser<T> {
 		return this.readInternal(state) as T;
 	}
 
-	write(obj: T) {
+	write(obj: T, args?: Record<string, any>) {
 		let state: opcode_reader.EncodeState = {
 			buffer: scratchbuf,
 			scan: 0,
+			endoffset: scratchbuf.byteLength,
 			args: {
-				clientVersion: 1000//TODO
+				clientVersion: 1000,//TODO
+				...args
 			}
 		};
 		this.parser.write(state, obj);
-		if (state.scan > scratchbuf.byteLength) { throw new Error("tried to write file larger than scratchbuffer size"); }
+		if (state.scan > state.endoffset) { throw new Error("tried to write file larger than scratchbuffer size"); }
+		//append footer data to end of normal data
+		state.buffer.copyWithin(state.scan, state.endoffset, scratchbuf.byteLength);
+		state.scan += scratchbuf.byteLength - state.endoffset;
 		//do the weird prototype slice since we need a copy, not a ref
 		let r: Buffer = Uint8Array.prototype.slice.call(scratchbuf, 0, state.scan);
 		//clear it for next use

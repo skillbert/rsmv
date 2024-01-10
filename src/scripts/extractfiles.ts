@@ -119,7 +119,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 			}
 			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
 			let newfile = await outdir.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);
-			arch[fileid.subindex].buffer = mode.write(newfile);
+			arch[fileid.subindex].buffer = await mode.write(newfile, logicalid, source);
 		}
 		await archedited();
 	}
@@ -164,7 +164,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 			let arch = getarch(archid.major, archid.minor, mode);
 
 			let raw = await diffdir.readFileBuffer(file);
-			let buf = mode.write(raw);
+			let buf = await mode.write(raw, logicalid, source);
 			arch.files.push({ subid: archid.subid, file: buf });
 
 			continue;
