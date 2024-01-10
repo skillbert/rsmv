@@ -1076,6 +1076,31 @@ export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptO
     return res;
 }
 
+export function writeOpcodeFile(calli: ClientscriptObfuscation) {
+    let res = "";
+    for (let op of calli.mappings.values()) {
+        let opname = knownClientScriptOpNames[op.id] ?? `unk${op.id}`;
+        if (opname == "return" || opname == "switch") { continue; }
+        if (op.stackinfo.initializedthrough) {
+            res += `declare function ${opname}(${op.stackinfo.in.toTypeScriptVarlist()}):${op.stackinfo.out.toTypeScriptReturnType()};\n`;
+        } else {
+            res += `declare function ${opname}(...args:any[]):any;\n`;
+        }
+    }
+    return res;
+}
+
+export function writeClientVarFile(calli: ClientscriptObfuscation) {
+    let res = "";
+    for (let domain of calli.varmeta.values()) {
+        res += `// ===== ${domain.name} =====\n`;
+        for (let [id, meta] of domain.vars) {
+            res += `declare var var${domain.name}_${id}: ${{ int: "number", long: "BigInt", string: "string", vararg: "any" }[typeToPrimitive(meta.type)]};\n`;
+        }
+    }
+    return res;
+}
+
 //TODO remove/hide
 globalThis.getop = (opid: string) => {
     let id = -1;

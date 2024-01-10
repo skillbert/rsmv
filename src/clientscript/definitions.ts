@@ -357,6 +357,39 @@ export class StackList {
         }
         return res;
     }
+    toTypeScriptVarlist() {
+        let res = "";
+        let counts = new StackDiff();
+        for (let part of this.values) {
+            if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts); }
+            else if (part == "int") { res += `int${counts.int++}:number,`; }
+            else if (part == "long") { res += `long${counts.long++}:BigInt,`; }
+            else if (part == "string") { res += `string${counts.string++}:string,`; }
+            else if (part == "vararg") { res += "vararg:any,"; }
+            else throw new Error("unsupported stack type");
+        }
+        if (res.endsWith(",")) {
+            res = res.slice(0, -1);
+        }
+        return res;
+    }
+    toTypeScriptReturnType() {
+        if (this.values.length == 1) {
+            let type = this.values[0];
+            if (type instanceof StackDiff) {
+                if (type.int != 0) { return "number"; }
+                if (type.long != 0) { return "BigInt"; }
+                if (type.string != 0) { return "string"; }
+                if (type.vararg != 0) { return "any"; }
+            } else {
+                if (type == "int") { return "number"; }
+                if (type == "long") { return "BigInt"; }
+                if (type == "string") { return "string"; }
+                if (type == "vararg") { return "any"; }
+            }
+        }
+        return `[${this.toTypeScriptVarlist()}]`;
+    }
     toJson() { return this.values; }
     static fromJson(v: ReturnType<StackList["toJson"]>) { return new StackList(v); }
     getStackdiff() {
@@ -521,6 +554,14 @@ export class StackDiff {
         res += "l".repeat(this.long);
         res += "s".repeat(this.string);
         if (this.vararg != 0) { throw new Error("vararg not supported"); }
+        return res;
+    }
+    toTypeScriptVarlist(nameoffset: StackDiff) {
+        let res = "";
+        for (let i = 0; i < this.int; i++) { res += `int${nameoffset.int++}:number,`; }
+        for (let i = 0; i < this.long; i++) { res += `long${nameoffset.long++}:BigInt,`; }
+        for (let i = 0; i < this.string; i++) { res += `string${nameoffset.string++}:string,`; }
+        for (let i = 0; i < this.vararg; i++) { res += `vararg${nameoffset.string++}:any,`; }
         return res;
     }
 }

@@ -15,7 +15,7 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
-import { prepareClientScript } from "../clientscript/callibrator";
+import { prepareClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript/callibrator";
 import { compileClientScript, renderClientScript } from "../clientscript/ast";
 import { renderRsInterface } from "./renderrsinterface";
 
@@ -445,10 +445,15 @@ const decodeInterface2: DecodeModeFactory = () => {
 
 const decodeClientScriptText: DecodeModeFactory = () => {
 	return {
-		ext: "js",
+		ext: "ts",
 		...noArchiveIndex(cacheMajors.clientscript),
 		...throwOnNonSimple,
-		async prepareDump(out, source) { await prepareClientScript(source) },
+		async prepareDump(out, source) {
+			let calli = await prepareClientScript(source);
+			out.writeFile("tsconfig.json", "{}");//empty tsconfig to make the folder a project
+			out.writeFile("opcodes.d.ts", writeOpcodeFile(calli));
+			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
+		},
 		read(buf, fileid, source) {
 			return renderClientScript(source, buf, fileid[0]);
 		},

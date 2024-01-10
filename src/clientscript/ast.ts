@@ -31,8 +31,8 @@ function getSingleChild<T extends AstNode>(op: CodeBlockNode | null | undefined,
 }
 
 function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
-    // linenr = -1;
-    return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
+    // return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
+    return "    ".repeat(amount);
 }
 
 function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
@@ -61,6 +61,12 @@ function getOpcodeCallCode(calli: ClientscriptObfuscation, op: ClientScriptOp, c
         } else {
             return `(${binarysymbol} ${children.map(q => q.getCode(calli, indent)).join(" ")})`;
         }
+    }
+    if (op.opcode == namedClientScriptOps.return) {
+        return `return ${children.length == 1 ? children[0].getCode(calli, indent) : `[${children.map(q => q.getCode(calli, indent)).join(",")}]`}`;
+    }
+    if (op.opcode == namedClientScriptOps.gosub) {
+        return `script${op.imm}(${children.map(q => q.getCode(calli, indent)).join(",")})`;
     }
     let metastr = "";
     if (branchInstructionsOrJump.includes(op.opcode)) {
@@ -131,7 +137,7 @@ export class VarAssignNode extends AstNode {
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let name = this.getName(calli);
-        return `${name.name} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`
+        return `var ${this.varops.length == 1 ? "" : "["}${name.name}${this.varops.length == 1 ? "" : "]"} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`
     }
     getOpcodes(calli: ClientscriptObfuscation) {
         let res = this.children.flatMap(q => q.getOpcodes(calli));
@@ -217,14 +223,14 @@ export class CodeBlockNode extends AstNode {
     }
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let code = "";
-        if (this.parent && !(this.parent instanceof ClientScriptFunction)) {
+        if (this.parent) {
             code += `{\n`;
             indent++;
         }
         for (let child of this.children) {
             code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
         }
-        if (this.parent && !(this.parent instanceof ClientScriptFunction)) {
+        if (this.parent) {
             code += `${codeIndent(indent - 1)}}`;
         }
         return code;
@@ -951,7 +957,7 @@ export class ClientScriptFunction extends AstNode {
     }
 
     getCode(calli: ClientscriptObfuscation, indent: number) {
-        let res = `script ${this.name} ${this.returntype} (${this.argtype})\n`;
+        let res = `${codeIndent(indent)}function ${this.name.match(/^\d/) ? `script${this.name}` : this.name}(${this.argtype.toTypeScriptVarlist()}):${this.returntype.toTypeScriptReturnType()}`;
         res += this.children[0].getCode(calli, indent);
         return res;
     }
@@ -1254,10 +1260,11 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
+    let func = new ClientScriptFunction(fileid + "", returntype, new StackList([argtype]));
     let res = "";
-    res += `script ${fileid} ${returntype} (${argtype})\n`;
     if (full) {
-        res += program.getCode(calli, 0);
+        func.push(program);
+        res += func.getCode(calli, 0);
     } else {
         sections.forEach(q => res += q.getCode(calli, 0));
     }

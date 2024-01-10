@@ -12,7 +12,7 @@ function* whitespace() {
 }
 const newline = /^\s*?\n/;
 const unmatchable = /$./;
-const reserverd = "if,while,break,continue,else,switch,strcat,script".split(",");
+const reserverd = "if,while,break,continue,else,switch,strcat,script,return".split(",");
 const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
 const binaryops = [...binaryOpSymbols.values()];
 const binaryopsoremtpy = binaryops.concat("");
@@ -192,7 +192,27 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         return node;
     }
 
+    function* returnStatement() {
+        yield "return";
+        yield whitespace;
+        let values: AstNode[];
+        if (yield has("[")) {
+            yield whitespace;
+            values = yield valueList
+            yield whitespace;
+            yield "]";
+        } else {
+            values = [yield valueStatement];
+        }
+        let returnop = getopinfo(namedClientScriptOps.return);
+        let res = new RawOpcodeNode(-1, { opcode: returnop.id, imm: 0, imm_obj: null }, returnop);
+        res.pushList(values);
+        return res;
+    }
+
     function* assignStatement() {
+        let hasvarkeyword = yield has("var");
+        yield whitespace;
         let varnames: string[] = [];
         while (!(yield has(/^=(?!=)/))) {
             if (varnames.length != 0) {
@@ -406,16 +426,18 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* statement() {
-        return yield [ifStatement, whileStatement, switchStatement, assignStatement, valueStatement];
+        return yield [ifStatement, whileStatement, switchStatement, returnStatement, assignStatement, valueStatement];
     }
 
     function* statementlist() {
         let statements: any[] = [];
         yield whitespace;
         while (true) {
-            let next = yield [statement, ""];
+            let next = yield [";", statement, ""];
             if (next == "") { break; }
-            statements.push(next);
+            if (next != ";") {
+                statements.push(next);
+            }
             yield whitespace;
         }
         return statements;
