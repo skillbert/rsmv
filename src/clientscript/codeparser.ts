@@ -29,6 +29,15 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         return node;
     }
 
+    function makeLongConst(int1: number, int2: number) {
+        let constop = getopinfo(namedClientScriptOps.pushconst);
+        let val: [number, number] = [int1, int2];
+        let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 1, imm_obj: val }, constop);
+        node.knownStackDiff = new StackInOut(new StackList([]), new StackList(["long"]));
+        node.knownStackDiff.constout = val;
+        return node;
+    }
+
     function makeIntConst(int: number) {
         let constop = getopinfo(namedClientScriptOps.pushconst);
         let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 0, imm_obj: int }, constop);
@@ -103,13 +112,16 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* intliteral() {
-        let digits = yield (/^-?\d+/);
+        let [digits] = yield (/^-?\d+\b/);
         return makeIntConst(parseInt(digits, 10));
     }
 
     function* longliteral() {
-        //TODO
-        yield unmatchable;
+        let [match, int] = yield (/^(-\d+)n\b/);
+        let bigint = BigInt(int) & 0xffff_ffff_ffff_ffffn;
+        let upper = Number((bigint >> 32n) & 0xffff_ffffn);
+        let lower = Number(bigint & 0xffff_ffffn);
+        return makeLongConst(upper, lower);
     }
 
     function* varname() {

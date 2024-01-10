@@ -561,6 +561,15 @@ export class RawOpcodeNode extends AstNode {
     getCode(calli: ClientscriptObfuscation, indent: number) {
         if (this.op.opcode == namedClientScriptOps.pushconst) {
             if (typeof this.op.imm_obj == "string") { return `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"`; }
+            else if (Array.isArray(this.op.imm_obj)) {
+                //build our bigint as unsigned
+                let int = (BigInt(this.op.imm_obj[0] as number) << 32n) | BigInt(this.op.imm_obj[1] as number);
+                if (this.op.imm_obj[0] as number & 0x8000_0000) {
+                    //subtract complement when most significant bit is set
+                    int = int - 0x1_0000_0000_0000_0000n;
+                }
+                return `${int}n`;
+            }
             else { return "" + this.op.imm_obj; }
         }
         if (this.op.opcode == namedClientScriptOps.pushlocalint || this.op.opcode == namedClientScriptOps.poplocallong || this.op.opcode == namedClientScriptOps.pushlocalstring || this.op.opcode == namedClientScriptOps.pushvar) {

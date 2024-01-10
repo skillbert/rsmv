@@ -414,7 +414,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	}
 	if (hasElectrion && source.type == "autofs") {
 		let fs = new CLIScriptFS(source.location);
-		cache = await selectFsCache(fs);
+		cache = await selectFsCache(fs, { writable: !!globalThis.writecache ?? false });//TODO propper ui for this
 	}
 	if (source.type == "live") {
 		cache = new CacheDownloader();

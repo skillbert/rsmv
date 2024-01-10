@@ -529,8 +529,8 @@ export class ClientscriptObfuscation {
                 state.scan += 4;
             } else if (v.imm == 1) {
                 if (!Array.isArray(v.imm_obj) || v.imm_obj.length != 2 || typeof v.imm_obj[0] != "number" || typeof v.imm_obj[1] != "number") { throw new Error("array with 2 ints expected"); }
-                state.buffer.writeInt32BE(v.imm_obj[0], state.scan + 0);
-                state.buffer.writeInt32BE(v.imm_obj[0], state.scan + 4);
+                state.buffer.writeUInt32BE(v.imm_obj[0], state.scan + 0);
+                state.buffer.writeUInt32BE(v.imm_obj[0], state.scan + 4);
                 state.scan += 8;
             } else if (v.imm == 2) {
                 if (typeof v.imm_obj != "string") { throw new Error("string expected"); }
