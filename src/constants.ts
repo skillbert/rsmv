@@ -49,7 +49,7 @@ export const cacheMajors = {
 //represents the largest build number that this application is aware off
 //is used as default value when a cache is considered "current"
 //only needs to be updated when backward incompatible code paths are added
-export const latestBuildNumber = 927;
+export const latestBuildNumber = 934;
 
 export const cacheMapFiles = {
 	locations: 0,
@@ -67,6 +67,7 @@ export const cacheConfigPages = {
 	animgroups: 32,
 	mapscenes: 34,
 	maplabels: 36,
+	dbtables: 40,
 
 	//used before 488 (feb 2008)
 	locs_old: 6,

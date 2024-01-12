@@ -7,6 +7,7 @@ export type dbtables = {
 		cols: number,
 		columndata: {
 			id: number,
+			flags: number,
 			columns: {
 				type: number,
 				unk: number | null,

@@ -7,6 +7,7 @@ export type dbrows = {
 		cols: number,
 		columndata: {
 			id: number,
+			flags: number,
 			columns: {
 				type: number,
 				value: (string|number)[],

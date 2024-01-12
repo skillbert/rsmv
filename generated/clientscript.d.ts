@@ -3,16 +3,16 @@
 // run `npm run filetypes` to rebuild
 
 export type clientscript = {
-	byte0: (number|0),
-	switchsize: (number|0),
+	byte0: number,
+	switchsize: number,
 	switches: {
 		value: number,
 		label: number,
 	}[][],
-	longargcount: (number|0),
+	longargcount: number,
 	stringargcount: number,
 	intargcount: number,
-	locallongcount: (number|0),
+	locallongcount: number,
 	localstringcount: number,
 	localintcount: number,
 	instructioncount: number,

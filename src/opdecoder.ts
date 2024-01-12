@@ -131,6 +131,7 @@ function allParsers() {
 		cutscenes: FileParser.fromJson<import("../generated/cutscenes").cutscenes>(require("./opcodes/cutscenes.jsonc")),
 		clientscript: FileParser.fromJson<import("../generated/clientscript").clientscript>(require("./opcodes/clientscript.jsonc")),
 		clientscriptdata: FileParser.fromJson<import("../generated/clientscriptdata").clientscriptdata>(require("./opcodes/clientscriptdata.jsonc")),
-		interfaces: FileParser.fromJson<import("../generated/interfaces").interfaces>(require("./opcodes/interfaces.jsonc"))
+		interfaces: FileParser.fromJson<import("../generated/interfaces").interfaces>(require("./opcodes/interfaces.jsonc")),
+		dbtables: FileParser.fromJson<import("../generated/dbtables").dbtables>(require("./opcodes/dbtables.jsonc"))
 	}
 }

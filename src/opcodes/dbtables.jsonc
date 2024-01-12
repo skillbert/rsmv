@@ -2,7 +2,8 @@
     "0x01":{"name":"unk01","read":["struct",
         ["cols","ubyte"],
         ["columndata",["nullarray","ubyte",255,["struct",
-            ["id",["ref","$opcode",0,7]],
+            ["id",["ref","$opcode",[0,6]]],
+            ["flags",["ref","$opcode",[6,2]]],
             ["$i",0],
             ["columns",["chunkedarray","ubyte",[
                 ["type","varushort"]
