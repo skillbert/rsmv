@@ -1017,18 +1017,21 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
 }
 
 export class ClientScriptFunction extends AstNode {
-    name: string;
+    scriptid: number;
     returntype: StackList;
     argtype: StackList;
-    constructor(name: string, returntype: StackList, argtype: StackList) {
+    constructor(scriptid: number, returntype: StackList, argtype: StackList) {
         super(0);
-        this.name = name;
+        this.scriptid = scriptid;
         this.returntype = returntype;
         this.argtype = argtype;
     }
 
     getCode(calli: ClientscriptObfuscation, indent: number) {
-        let res = `${codeIndent(indent)}function ${this.name.match(/^\d/) ? `script${this.name}` : this.name}(${this.argtype.toTypeScriptVarlist()}):${this.returntype.toTypeScriptReturnType()}`;
+        let meta = calli.scriptargs.get(this.scriptid);
+        let res = "";
+        res += `//${meta?.scriptname ?? "unknown name"}\n`;
+        res += `${codeIndent(indent)}function script${this.scriptid}(${this.argtype.toTypeScriptVarlist()}):${this.returntype.toTypeScriptReturnType()}`;
         res += this.children[0].getCode(calli, indent);
         return res;
     }
@@ -1349,7 +1352,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
-    let func = new ClientScriptFunction(fileid + "", returntype, new StackList([argtype]));
+    let func = new ClientScriptFunction(fileid, returntype, new StackList([argtype]));
     let res = "";
     if (full) {
         func.push(program);

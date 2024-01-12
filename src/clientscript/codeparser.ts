@@ -465,7 +465,8 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         yield whitespace;
         let ops: AstNode[] = yield statementlist;
         let codeblock = new CodeBlockNode(-1, -1, ops);
-        let res = new ClientScriptFunction(name, returntype, argtype);
+        let namematch = name.match(/^script(\d+)$/);
+        let res = new ClientScriptFunction((namematch ? +namematch[1] : -1), returntype, argtype);
         res.push(codeblock);
         return res;
     }

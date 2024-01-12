@@ -14,6 +14,7 @@ import { params } from "../../generated/params";
 import { clientscriptParser } from "./codeparser";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
+import { reverseHashes } from "../libs/rshashnames";
 
 globalThis.parser = clientscriptParser;
 
@@ -70,6 +71,7 @@ export class OpcodeInfo {
 
 export type ScriptCandidate = {
     id: number,
+    scriptname: string,
     solutioncount: number,
     buf: Buffer,
     script: clientscriptdata,
@@ -262,6 +264,7 @@ export class ClientscriptObfuscation {
     varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
     parammeta = new Map<number, params>();
     scriptargs = new Map<number, {
+        scriptname: string,
         args: StackDiff,
         returns: StackList
         arglist: StackList | null,//seperate entries since order is not well defined
@@ -285,6 +288,7 @@ export class ClientscriptObfuscation {
             let args = StackDiff.fromJson(v.args)!;
             let returns = StackList.fromJson(v.returns);
             return [v.id, {
+                scriptname: "",
                 args: args,
                 returns: returns!,
                 arglist: args.getArglist(),
@@ -387,6 +391,7 @@ export class ClientscriptObfuscation {
                     if (!entry) { continue; }
                     yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
                         id: entry.minor,
+                        scriptname: reverseHashes.get(index[entry.minor].name!) ?? "",
                         solutioncount: 0,
                         buf,
                         script: parse.clientscriptdata.read(buf, source),
@@ -429,7 +434,7 @@ export class ClientscriptObfuscation {
     async runCallibrationFrom(previousCallibration: ClientscriptObfuscation) {
         let refscript = await previousCallibration.generateDump();
         await this.runCallibration(refscript);
-        console.log("callibrated", this);
+        // console.log("callibrated", this);
     }
     setNonObbedMappings() {
         //originally all <0x80 were ints
@@ -611,6 +616,7 @@ function parseCandidateContents(calli: ClientscriptObfuscation) {
         cand.returnType = getReturnType(calli, cand.scriptcontents);
         cand.argtype = getArgType(cand.script);
         calli.scriptargs.set(cand.id, {
+            scriptname: cand.scriptname,
             args: cand.argtype,
             returns: cand.returnType,
             arglist: cand.argtype.getArglist(),
