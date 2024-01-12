@@ -1,5 +1,5 @@
 //from runestar cs2 repo
-export const osrsOpnames = {
+export const osrsOpnames: Record<number, string> = {
     "0": "PUSH_CONSTANT_INT",
     "1": "PUSH_VAR",
     "2": "POP_VAR",

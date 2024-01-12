@@ -13,6 +13,7 @@ import { crc32 } from "../libs/crc32util";
 import { params } from "../../generated/params";
 import { clientscriptParser } from "./codeparser";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources } from "./definitions";
+import { dbtables } from "../../generated/dbtables";
 
 globalThis.parser = clientscriptParser;
 
@@ -25,7 +26,7 @@ export type StackDiffEquation = {
     unknowns: Set<OpcodeInfo>
 }
 
-
+//TODO move to file
 let varInfoParser = new FileParser<{ type: number }>({
     "0x03": { "name": "type", "read": "ubyte" },
     "0x04": { "name": "0x04", "read": "ubyte" },
@@ -257,6 +258,7 @@ export class ClientscriptObfuscation {
     callibrated = false;
     opidcounter = 10000;
     source: CacheFileSource;
+    dbtables = new Map<number, dbtables>();
     varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
     parammeta = new Map<number, params>();
     scriptargs = new Map<number, {
@@ -355,6 +357,9 @@ export class ClientscriptObfuscation {
             let archieve = await this.source.getArchiveById(cacheMajors.config, subid);
             return new Map(archieve.map(q => [q.fileid, varInfoParser.read(q.buffer, this.source)]));
         }
+
+        let dbtables = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.dbtables);
+        this.dbtables = new Map(dbtables.map(q => [q.fileid, parse.dbtables.read(q.buffer, this.source)]));
 
         //only tested on current 932 caches
         if (this.source.getBuildNr() > 900) {
@@ -1073,31 +1078,6 @@ export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptO
         }
     }
     res.values.reverse();
-    return res;
-}
-
-export function writeOpcodeFile(calli: ClientscriptObfuscation) {
-    let res = "";
-    for (let op of calli.mappings.values()) {
-        let opname = knownClientScriptOpNames[op.id] ?? `unk${op.id}`;
-        if (opname == "return" || opname == "switch") { continue; }
-        if (op.stackinfo.initializedthrough) {
-            res += `declare function ${opname}(${op.stackinfo.in.toTypeScriptVarlist()}):${op.stackinfo.out.toTypeScriptReturnType()};\n`;
-        } else {
-            res += `declare function ${opname}(...args:any[]):any;\n`;
-        }
-    }
-    return res;
-}
-
-export function writeClientVarFile(calli: ClientscriptObfuscation) {
-    let res = "";
-    for (let domain of calli.varmeta.values()) {
-        res += `// ===== ${domain.name} =====\n`;
-        for (let [id, meta] of domain.vars) {
-            res += `declare var var${domain.name}_${id}: ${{ int: "number", long: "BigInt", string: "string", vararg: "any" }[typeToPrimitive(meta.type)]};\n`;
-        }
-    }
     return res;
 }
 

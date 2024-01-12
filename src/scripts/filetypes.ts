@@ -15,9 +15,10 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
-import { prepareClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript/callibrator";
+import { prepareClientScript } from "../clientscript/callibrator";
 import { compileClientScript, renderClientScript } from "../clientscript/ast";
 import { renderRsInterface } from "./renderrsinterface";
+import { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser";
 
 
 type CacheFileId = {
@@ -579,6 +580,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	oldmaterials: { parser: parse.oldmaterials, lookup: singleMinorIndex(cacheMajors.materials, 0) },
 	quickchatcats: { parser: parse.quickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
 	quickchatlines: { parser: parse.quickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
+	dbtables: { parser: parse.dbtables, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables) },
 
 	overlays: { parser: parse.mapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
 	identitykit: { parser: parse.identitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },

@@ -1,3 +1,4 @@
+import { rs3opnames } from "./opnames";
 import { osrsOpnames } from "./osrsopnames";
 
 export const variableSources = {
@@ -66,7 +67,7 @@ export const namedClientScriptOps = {
     intdiv: 10001,
     strtolower: 10003,//not sure
     strcmp: 10004,//0 for equal, might be string - operator
-    intmod: 10005,
+    intmod: 10005,//todo is wrong, this is bitwise and
     strconcat: 10060,
     inttostring: 10687,
 
@@ -74,6 +75,11 @@ export const namedClientScriptOps = {
     enum_getvalue: 10063,
     struct_getparam: 10023,
     item_getparam: 10110,
+    quest_getparam: 10885,
+    npc_getparam: 10699,
+    cc_getparam: 10672,
+    mec_getparam: 10815,
+    dbrow_getfield: 10717,
 
     //interface stuff
     if_setop: 10072
@@ -82,7 +88,7 @@ export const namedClientScriptOps = {
 }
 
 export const knownClientScriptOpNames: Record<number, string> = {
-    ...osrsOpnames,
+    ...rs3opnames,
     ...Object.fromEntries(Object.entries(namedClientScriptOps).map(q => [q[1], q[0]]))
 }
 
@@ -139,19 +145,22 @@ export const branchInstructionsOrJump = [
     namedClientScriptOps.jump
 ]
 
+export const getParamOps = [
+    namedClientScriptOps.cc_getparam,
+    namedClientScriptOps.mec_getparam,
+    namedClientScriptOps.npc_getparam,
+    namedClientScriptOps.item_getparam,
+    namedClientScriptOps.quest_getparam,
+    namedClientScriptOps.struct_getparam,
+]
 
 export const dynamicOps = [
-    42,// PUSH_VARC_INT can somehow also push long?
-    43,
-    10023,
-    10063,
-    10110,
-    10672,
-    10699,
-    10717,
-    10735,//either this or 10736
-    10815,
-    10885,
+    ...getParamOps,
+    namedClientScriptOps.pushvar,
+    namedClientScriptOps.popvar,
+    namedClientScriptOps.enum_getvalue,
+    namedClientScriptOps.dbrow_getfield,//dbrow_getfield
+    10735,//dbrow_findnext
 ];
 
 export type ImmediateType = "byte" | "int" | "tribyte" | "switch" | "long" | "string";

@@ -1,7 +1,7 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson } from "./ast";
-import { ClientscriptObfuscation } from "./callibrator";
-import { binaryOpIds, binaryOpSymbols, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt } from "./definitions";
+import { ClientscriptObfuscation, typeToPrimitive } from "./callibrator";
+import { binaryOpIds, binaryOpSymbols, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
 
 function* whitespace() {
@@ -508,4 +508,33 @@ globalThis.testy = async () => {
         return { roundtripped, original, exact: rawinput == rawroundtrip };
     }
     return { subtest, codefiles, codefs, jsonfs, jsonfiles };
+}
+
+export function writeOpcodeFile(calli: ClientscriptObfuscation) {
+    let res = "";
+    for (let op of calli.mappings.values()) {
+        let opname = knownClientScriptOpNames[op.id] ?? `unk${op.id}`;
+        if (reserverd.includes(opname)) { continue; }
+        if (op.id == namedClientScriptOps.enum_getvalue) {
+            res += `declare function ${opname}(int0:number,int1:number,int2:number,int3:number):any;\n`;
+        } else if (op.id == namedClientScriptOps.dbrow_getfield) {
+            res += `declare function ${opname}(int0:number,int1:number,int2:number):any;\n`;
+        } else if (!dynamicOps.includes(op.id) && op.stackinfo.initializedthrough) {
+            res += `declare function ${opname}(${op.stackinfo.in.toTypeScriptVarlist()}):${op.stackinfo.out.toTypeScriptReturnType()};\n`;
+        } else {
+            res += `declare function ${opname}(...args:any[]):any;\n`;
+        }
+    }
+    return res;
+}
+
+export function writeClientVarFile(calli: ClientscriptObfuscation) {
+    let res = "";
+    for (let domain of calli.varmeta.values()) {
+        res += `// ===== ${domain.name} =====\n`;
+        for (let [id, meta] of domain.vars) {
+            res += `declare var var${domain.name}_${id}: ${{ int: "number", long: "BigInt", string: "string", vararg: "any" }[typeToPrimitive(meta.type)]};\n`;
+        }
+    }
+    return res;
 }

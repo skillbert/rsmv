@@ -4,7 +4,7 @@ import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript, typeToPrimitive } from "./callibrator";
 import { clientscriptParser } from "./codeparser";
-import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps } from "./definitions";
 
 /**
  * known issues
@@ -25,9 +25,13 @@ import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJ
  */
 
 
-function getSingleChild<T extends AstNode>(op: CodeBlockNode | null | undefined, type: { new(...args: any[]): T }) {
+function getSingleChild<T extends AstNode>(op: AstNode | null | undefined, type: { new(...args: any[]): T }) {
     if (!op || op.children.length != 1 || !(op.children[0] instanceof type)) { return null; }
     return op.children[0] as T;
+}
+
+function isNamedOp(op: AstNode, id: number): op is RawOpcodeNode {
+    return op instanceof RawOpcodeNode && op.op.opcode == id;
 }
 
 function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
@@ -128,8 +132,33 @@ export abstract class AstNode {
     }
 }
 
+type ComposedopType = "++x" | "--x" | "x++" | "x--";
+export class ComposedOp extends AstNode {
+    type: ComposedopType;
+    varid: number;
+    internalOps: AstNode[] = [];
+    constructor(originalindex: number, type: ComposedopType, varid: number) {
+        super(originalindex);
+        this.type = type;
+        this.varid = varid;
+    }
+    getCode(calli: ClientscriptObfuscation, indent: number) {
+        if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
+        let n = `int${this.varid}`;
+        if (this.type == "++x") { return `++${n}`; }
+        else if (this.type == "--x") { return `--${n}`; }
+        else if (this.type == "x++") { return `${n}++`; }
+        else if (this.type == "x--") { return `${n}--`; }
+        else throw new Error("unexpected op type " + this.type)
+    }
+    getOpcodes(calli: ClientscriptObfuscation) {
+        if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
+        return this.internalOps.flatMap(q => q.getOpcodes(calli));
+    }
+}
+
 export class VarAssignNode extends AstNode {
-    varops: AstNode[] = [];
+    varops: RawOpcodeNode[] = [];
     knownStackDiff = new StackInOut(new StackList(), new StackList());
     getName(calli: ClientscriptObfuscation) {
         let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? getOpcodeName(calli, q.op) : "??")}`;
@@ -143,7 +172,7 @@ export class VarAssignNode extends AstNode {
         let res = this.children.flatMap(q => q.getOpcodes(calli));
         return res.concat(this.varops.flatMap(q => q.getOpcodes(calli)).reverse());
     }
-    addVar(node: AstNode) {
+    addVar(node: RawOpcodeNode) {
         this.varops.unshift(node);
         this.knownStackDiff.in.push(getNodeStackIn(node));
     }
@@ -227,6 +256,7 @@ export class CodeBlockNode extends AstNode {
             code += `{\n`;
             indent++;
         }
+        // code += `${codeIndent(indent, this.originalindex)}//[${this.scriptid},${this.originalindex}]\n`;
         for (let child of this.children) {
             code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
         }
@@ -739,11 +769,51 @@ function getNodeStackIn(node: AstNode) {
 export function translateAst(ast: CodeBlockNode) {
     let cursor = new RewriteCursor(ast);
 
+    //detect x++ and variants
+    for (let i = 0; i < ast.children.length - 3; i++) {
+        let prepushx = ast.children[i - 1];
+        let pushx = ast.children[i];
+        let push1 = ast.children[i + 1];
+        let plusminus = ast.children[i + 2];
+        let popx = ast.children[i + 3];
+        let postpushx = ast.children[i + 4];
+        if (
+            isNamedOp(pushx, namedClientScriptOps.pushlocalint) &&
+            isNamedOp(push1, namedClientScriptOps.pushconst) &&
+            (isNamedOp(plusminus, namedClientScriptOps.plus) || isNamedOp(plusminus, namedClientScriptOps.minus)) &&
+            isNamedOp(popx, namedClientScriptOps.poplocalint) &&
+            pushx.op.imm == popx.op.imm
+        ) {
+            let isminus = plusminus.op.opcode == namedClientScriptOps.minus;
+            let ispre = isNamedOp(prepushx, namedClientScriptOps.pushlocalint) && prepushx.op.imm == popx.op.imm;
+            let ispost = !ispre && isNamedOp(postpushx, namedClientScriptOps.pushlocalint) && postpushx.op.imm == popx.op.imm;
+            if (ispre || ispost) {
+                let op = new ComposedOp(popx.originalindex, (isminus ? (ispre ? "x--" : "--x") : (ispre ? "x++" : "++x")), popx.op.imm);
+                ast.remove(pushx);
+                ast.remove(push1);
+                ast.remove(plusminus);
+                ast.replaceChild(popx, op);
+
+                op.internalOps.push(pushx);
+                op.internalOps.push(push1);
+                op.internalOps.push(plusminus);
+                op.internalOps.push(popx);
+                if (ispre) {
+                    ast.remove(prepushx);
+                    op.internalOps.unshift(prepushx);
+                } else {
+                    ast.remove(postpushx);
+                    op.internalOps.push(postpushx);
+                }
+                op.knownStackDiff = new StackInOut(new StackList(), new StackList(["int"]));
+            }
+        }
+    }
+
     //merge variable assign nodes
     let currentassignnode: VarAssignNode | null = null;
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
-        let isassign = node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocallong || node.op.opcode == namedClientScriptOps.poplocalstring || node.op.opcode == namedClientScriptOps.popvar)
-        if (isassign) {
+        if (node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocallong || node.op.opcode == namedClientScriptOps.poplocalstring || node.op.opcode == namedClientScriptOps.popvar)) {
             if (currentassignnode && currentassignnode.parent != node.parent) {
                 throw new Error("ast is expected to be flat at this stage");
             }
@@ -760,37 +830,38 @@ export function translateAst(ast: CodeBlockNode) {
     }
 
     let expandNode = (node: AstNode) => {
-        if (node instanceof CodeBlockNode) { return; }
-        let argtype = getNodeStackIn(node).clone();
-        for (let i = node.children.length - 1; i >= 0; i--) {
-            argtype.pop(getNodeStackOut(node.children[i]));
-        }
-        while (!argtype.isEmpty() && usablestackdata.length != 0) {
-            let { stackel, stackconst } = usablestackdata.at(-1)!;
-            let outtype = getNodeStackOut(stackel);
-            if (argtype.hasSimple(bindargs)) {
-                if (typeof stackconst != "string") { throw new Error("expected vararg string"); }
-                usablestackdata.pop();
-                let bindnode: FunctionBindNode;
-                if (outtype.values.length == 1 && outtype.values[0] == "vararg") {
-                    if (!stackel.knownStackDiff) { throw new Error("unexpected"); }
-                    bindnode = new FunctionBindNode(stackel.originalindex, stackel.knownStackDiff.in);
-                    bindnode.pushList(stackel.children);
-                } else {
-                    let maybearraylen = usablestackdata.at(-1)?.stackconst;
-                    let args = varArgtype(stackconst, maybearraylen);
-                    if (!args) { throw new Error("vararg const string expected"); }
-                    bindnode = new FunctionBindNode(stackel.originalindex, args);
-                }
-                expandNode(bindnode);
-                stackel.parent!.replaceChild(stackel, bindnode);
-
-                outtype = getNodeStackOut(bindnode);
-                stackel = bindnode;
+        if (!(node instanceof ComposedOp) && !(node instanceof CodeBlockNode)) {
+            let argtype = getNodeStackIn(node).clone();
+            for (let i = node.children.length - 1; i >= 0; i--) {
+                argtype.pop(getNodeStackOut(node.children[i]));
             }
-            if (outtype.isEmpty() || argtype.tryPop(outtype) != 0) { break; }
-            node.unshift(stackel);
-            usablestackdata.pop();
+            while (!argtype.isEmpty() && usablestackdata.length != 0) {
+                let { stackel, stackconst } = usablestackdata.at(-1)!;
+                let outtype = getNodeStackOut(stackel);
+                if (argtype.hasSimple(bindargs)) {
+                    if (typeof stackconst != "string") { throw new Error("expected vararg string"); }
+                    usablestackdata.pop();
+                    let bindnode: FunctionBindNode;
+                    if (outtype.values.length == 1 && outtype.values[0] == "vararg") {
+                        if (!stackel.knownStackDiff) { throw new Error("unexpected"); }
+                        bindnode = new FunctionBindNode(stackel.originalindex, stackel.knownStackDiff.in);
+                        bindnode.pushList(stackel.children);
+                    } else {
+                        let maybearraylen = usablestackdata.at(-1)?.stackconst;
+                        let args = varArgtype(stackconst, maybearraylen);
+                        if (!args) { throw new Error("vararg const string expected"); }
+                        bindnode = new FunctionBindNode(stackel.originalindex, args);
+                    }
+                    expandNode(bindnode);
+                    stackel.parent!.replaceChild(stackel, bindnode);
+
+                    outtype = getNodeStackOut(bindnode);
+                    stackel = bindnode;
+                }
+                if (outtype.isEmpty() || argtype.tryPop(outtype) != 0) { break; }
+                node.unshift(stackel);
+                usablestackdata.pop();
+            }
         }
 
         //update usable stack data
@@ -1023,7 +1094,21 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             continue;
         }
 
-        if (node.opinfo.id == namedClientScriptOps.struct_getparam || node.opinfo.id == namedClientScriptOps.item_getparam) {
+        if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
+            //args are rowid,tablefield,subrow
+            let tablefield = consts.values.at(-2);
+            if (typeof tablefield == "number") {
+                let dbtable = (tablefield >> 12) & 0xffff;
+                let columnid = (tablefield >> 4) & 0xff;
+                let unk = tablefield & 0xf;
+                let column = calli.dbtables.get(dbtable)?.unk01?.columndata.find(q => q.id == columnid);
+                if (column) {
+                    let out = (unk != 0 ? [typeToPrimitive(column.columns[unk - 1].type)] : column.columns.map(q => typeToPrimitive(q.type)));
+                    node.knownStackDiff = new StackInOut(new StackList(["int", "int", "int"]), new StackList(out));
+                }
+            }
+        }
+        if (getParamOps.includes(node.opinfo.id)) {
             //args are structid/itemid,paramid
             let paramid = consts.values.at(-1);
             if (constsknown && typeof paramid == "number") {
@@ -1032,7 +1117,11 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                     console.log("unknown param " + paramid);
                 } else {
                     let outtype = (param.type ? typeToPrimitive(param.type.vartype) : "int");
-                    node.knownStackDiff = new StackInOut(new StackList(["int", "int"]), new StackList([outtype]));
+                    let inputs = new StackList();
+                    //all getparams except for cc_getparam require a target
+                    if (node.opinfo.id != namedClientScriptOps.cc_getparam) { inputs.pushone("int"); }
+                    inputs.pushone("int");
+                    node.knownStackDiff = new StackInOut(inputs, new StackList([outtype]));
                 }
             }
         } else if (node.opinfo.id == namedClientScriptOps.enum_getvalue) {
