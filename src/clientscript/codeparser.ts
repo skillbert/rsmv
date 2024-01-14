@@ -1,7 +1,7 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson } from "./ast";
-import { ClientscriptObfuscation, typeToPrimitive } from "./callibrator";
-import { binaryOpIds, binaryOpSymbols, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps } from "./definitions";
+import { ClientscriptObfuscation } from "./callibrator";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
 
 function* whitespace() {

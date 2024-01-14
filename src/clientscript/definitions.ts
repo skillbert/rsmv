@@ -1,5 +1,4 @@
 import { rs3opnames } from "./opnames";
-import { osrsOpnames } from "./osrsopnames";
 
 export const variableSources = {
     player: { key: 0, index: 60 },
@@ -24,8 +23,8 @@ export const namedClientScriptOps = {
     poplocalint: 34,
     pushlocalstring: 35,
     poplocalstring: 36,
-    pushlocallong: 9102,//TODO find this one
-    poplocallong: 9103,//TODO find this one
+    pushlocallong: 11603,
+    poplocallong: 11607,
 
     //variable number of args
     joinstring: 37,
@@ -81,10 +80,188 @@ export const namedClientScriptOps = {
     mec_getparam: 10815,
     dbrow_getfield: 10717,
 
+    //arrays
+    define_array: 11631,
+    pop_array: 46,
+    push_array: 45,
+
     //interface stuff
     if_setop: 10072
     //11601=get clientvar int? push clientvar int with id imm>>11??
     //11602=set
+}
+
+// from runestar cs2-rs3
+export const subtypes = {
+    int: 0,
+    boolean: 1,
+    type_2: 2,
+    quest: 3,
+    questhelp: 4,
+    cursor: 5,
+    seq: 6,
+    colour: 7,
+    loc_shape: 8,
+    component: 9,
+    idkit: 10,
+    midi: 11,
+    npc_mode: 12,
+    namedobj: 13,
+    synth: 14,
+    type_15: 15,
+    area: 16,
+    stat: 17,
+    npc_stat: 18,
+    writeinv: 19,
+    mesh: 20,
+    maparea: 21,
+    coordgrid: 22,
+    graphic: 23,
+    chatphrase: 24,
+    fontmetrics: 25,
+    enum: 26,
+    type_27: 27,
+    jingle: 28,
+    chatcat: 29,
+    loc: 30,
+    model: 31,
+    npc: 32,
+    obj: 33,
+    player_uid: 34,
+    type_35: 35,
+    string: 36,
+    spotanim: 37,
+    npc_uid: 38,
+    inv: 39,
+    texture: 40,
+    category: 41,
+    char: 42,
+    laser: 43,
+    bas: 44,
+    type_45: 45,
+    collision_geometry: 46,
+    physics_model: 47,
+    physics_control_modifier: 48,
+    clanhash: 49,
+    coordfine: 50,
+    cutscene: 51,
+    itemcode: 53,
+    type_54: 54,
+    mapsceneicon: 55,
+    clanforumqfc: 56,
+    vorbis: 57,
+    verify_object: 58,
+    mapelement: 59,
+    categorytype: 60,
+    social_network: 61,
+    hitmark: 62,
+    package: 63,
+    particle_effector: 64,
+    type_65: 65,
+    particle_emitter: 66,
+    plogtype: 67,
+    unsigned_int: 68,
+    skybox: 69,
+    skydecor: 70,
+    hash64: 71,
+    inputtype: 72,
+    struct: 73,
+    dbrow: 74,
+    type_75: 75,
+    type_76: 76,
+    type_77: 77,
+    type_78: 78,
+    type_79: 79,
+    type_80: 80,
+    type_81: 81,
+    type_83: 83,
+    type_84: 84,
+    type_85: 85,
+    type_86: 86,
+    type_87: 87,
+    type_88: 88,
+    gwc_platform: 89,
+    type_90: 90,
+    type_91: 91,
+    type_92: 92,
+    type_93: 93,
+    bug_template: 94,
+    billing_auth_flag: 95,
+    account_feature_flag: 96,
+    interface: 97,
+    toplevelinterface: 98,
+    overlayinterface: 99,
+    clientinterface: 100,
+    movespeed: 101,
+    material: 102,
+    seqgroup: 103,
+    temp_hiscore: 104,
+    temp_hiscore_length_type: 105,
+    temp_hiscore_display_type: 106,
+    temp_hiscore_contribute_result: 107,
+    audiogroup: 108,
+    audiomixbuss: 109,
+    long: 110,
+    crm_channel: 111,
+    http_image: 112,
+    pop_up_display_behaviour: 113,
+    poll: 114,
+    type_115: 115,
+    type_116: 116,
+    pointlight: 117,
+    player_group: 118,
+    player_group_status: 119,
+    player_group_invite_result: 120,
+    player_group_modify_result: 121,
+    player_group_join_or_create_result: 122,
+    player_group_affinity_modify_result: 123,
+    player_group_delta_type: 124,
+    client_type: 125,
+    telemetry_interval: 126,
+    type_127: 127,
+    type_128: 128,
+    type_129: 129,
+    type_130: 130,
+    achievement: 131,
+    stylesheet: 133,
+    type_200: 200,
+    type_201: 201,
+    type_202: 202,
+    type_203: 203,
+    type_204: 204,
+    type_205: 205,
+    type_206: 206,
+    type_207: 207,
+    type_208: 208,
+    var_reference: 209,
+
+    //used internally when the type is unknowable (literals in code)
+    loose_int: 501,
+    loose_long: 502,
+    loose_string: 503
+    //max 511 (9bit) or overflow elsewhere in code
+}
+
+const stringtypes = [
+    subtypes.string,
+    subtypes.coordfine,
+    subtypes.loose_string
+];
+const longtypes = [
+    subtypes.type_35,
+    subtypes.clanhash,
+    subtypes.clanforumqfc,
+    subtypes.hash64,
+    subtypes.long,
+    subtypes.type_115,
+    subtypes.type_116,
+    subtypes.loose_long
+];
+
+export function typeToPrimitive(typeint: number): "int" | "long" | "string" {
+    if (stringtypes.includes(typeint)) { return "string"; }
+    else if (longtypes.includes(typeint)) { return "long"; }
+    else { return "int"; }
 }
 
 export const knownClientScriptOpNames: Record<number, string> = {
@@ -94,20 +271,26 @@ export const knownClientScriptOpNames: Record<number, string> = {
 
 globalThis.knownClientScriptOpNames = knownClientScriptOpNames;
 
-export const branchInstructions = [
+export const branchInstructionsInt = [
     namedClientScriptOps.branch_not,
     namedClientScriptOps.branch_eq,
     namedClientScriptOps.branch_lt,
     namedClientScriptOps.branch_gt,
     namedClientScriptOps.branch_lteq,
     namedClientScriptOps.branch_gteq,
-    //probably comparing longs
+]
+export const branchInstructionsLong = [
     namedClientScriptOps.branch_unk11619,
     namedClientScriptOps.branch_unk11611,
     namedClientScriptOps.branch_unk11613,
     namedClientScriptOps.branch_unk11606,
     namedClientScriptOps.branch_unk11624,
     namedClientScriptOps.branch_unk11625
+]
+
+export const branchInstructions = [
+    ...branchInstructionsInt,
+    ...branchInstructionsLong
 ];
 
 export const binaryOpSymbols = new Map([
@@ -413,10 +596,36 @@ export class StackList {
         }
         return r;
     }
+    toStackDiff() {
+        let res = new StackDiff();
+        for (let part of this.values) {
+            if (part instanceof StackDiff) { res.add(part); }
+            else { res.setSingle(part, res.getSingle(part) + 1); }
+        }
+        return res;
+    }
+    toLooseSubtypes() {
+        let res: number[] = [];
+        for (let value of this.values) {
+            if (value instanceof StackDiff) {
+                if (value.vararg != 0) { throw new Error("vararg doesn't have a vm type"); }
+                for (let i = 0; i < value.int; i++) { res.push(subtypes.loose_int); }
+                for (let i = 0; i < value.long; i++) { res.push(subtypes.loose_long); }
+                for (let i = 0; i < value.string; i++) { res.push(subtypes.loose_string); }
+            }
+            else if (value == "int") { res.push(subtypes.loose_int); }
+            else if (value == "long") { res.push(subtypes.loose_long); }
+            else if (value == "string") { res.push(subtypes.loose_string); }
+            else throw new Error("vararg doesn't have a vm type");
+        }
+        return res;
+    }
 }
 export class StackInOut {
     in = new StackList();
     out = new StackList();
+    exactin: number[] | null = null;
+    exactout: number[] | null = null;
     constout: StackConst = null;
     initializedin = false;
     initializedout = false;
@@ -427,6 +636,12 @@ export class StackInOut {
         this.initializedin = !!inlist;
         this.initializedout = !!outlist;
         this.initializedthrough = this.initializedin && this.initializedout;
+    }
+    static fromExact(inlist: number[], outlist: number[]) {
+        let res = new StackInOut(new StackList(inlist.map(typeToPrimitive)), new StackList(outlist.map(typeToPrimitive)))
+        res.exactin = inlist;
+        res.exactout = outlist;
+        return res;
     }
     getBottomOverlap() {
         let maxlen = Math.min(this.in.values.length, this.out.values.length);

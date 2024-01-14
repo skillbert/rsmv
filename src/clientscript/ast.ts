@@ -2,9 +2,9 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
-import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript, typeToPrimitive } from "./callibrator";
+import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript } from "./callibrator";
 import { clientscriptParser } from "./codeparser";
-import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong } from "./definitions";
 
 /**
  * known issues
@@ -430,6 +430,7 @@ export class SwitchStatementNode extends AstNode {
         if (this.defaultbranch) {
             res += `${codeIndent(indent + 1)}default:`;
             res += this.defaultbranch.getCode(calli, indent + 1);
+            res += `\n`;
         }
         res += `${codeIndent(indent)}}`;
         return res;
@@ -744,7 +745,7 @@ class RewriteCursor {
     }
 }
 
-function getNodeStackOut(node: AstNode) {
+export function getNodeStackOut(node: AstNode) {
     if (node.knownStackDiff) {
         return node.knownStackDiff.out;
     }
@@ -755,7 +756,7 @@ function getNodeStackOut(node: AstNode) {
     return new StackList();
 }
 
-function getNodeStackIn(node: AstNode) {
+export function getNodeStackIn(node: AstNode) {
     if (node.knownStackDiff) {
         return node.knownStackDiff.in;
     }
@@ -1068,7 +1069,8 @@ export class ClientScriptFunction extends AstNode {
     }
 }
 
-function varArgtype(stringconst: string, lastintconst: number | unknown) {
+export function varArgtype(stringconst: string | unknown, lastintconst: number | unknown) {
+    if (typeof stringconst != "string") { return null; }
     //a string like this indicates a vararg set where this string indicates the types
     //treat the entire thing as one vararg
     let varargmatch = stringconst.match(/^([ils]*)Y?$/);
@@ -1080,7 +1082,7 @@ function varArgtype(stringconst: string, lastintconst: number | unknown) {
     //variable number of ints
     if (stringconst.includes("Y")) {
         if (typeof lastintconst != "number") {
-            throw new Error("parsing vararg array, but legnth type was not an int");
+            throw new Error("parsing vararg array, but length type was not an int");
         }
         for (let i = 0; i < lastintconst; i++) { indiff.int(); }
         indiff.int();//the length of the array on stack
@@ -1103,15 +1105,16 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             if (typeof tablefield == "number") {
                 let dbtable = (tablefield >> 12) & 0xffff;
                 let columnid = (tablefield >> 4) & 0xff;
-                let unk = tablefield & 0xf;
+                let subfield = tablefield & 0xf;
                 let column = calli.dbtables.get(dbtable)?.unk01?.columndata.find(q => q.id == columnid);
                 if (column) {
-                    let out = (unk != 0 ? [typeToPrimitive(column.columns[unk - 1].type)] : column.columns.map(q => typeToPrimitive(q.type)));
-                    node.knownStackDiff = new StackInOut(new StackList(["int", "int", "int"]), new StackList(out));
+                    node.knownStackDiff = StackInOut.fromExact(
+                        [subtypes.dbrow, subtypes.int, subtypes.int],
+                        (subfield != 0 ? [column.columns[subfield - 1].type] : column.columns.map(q => q.type))
+                    )
                 }
             }
-        }
-        if (getParamOps.includes(node.opinfo.id)) {
+        } else if (getParamOps.includes(node.opinfo.id)) {
             //args are structid/itemid,paramid
             let paramid = consts.values.at(-1);
             if (constsknown && typeof paramid == "number") {
@@ -1119,20 +1122,25 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                 if (!param) {
                     console.log("unknown param " + paramid);
                 } else {
-                    let outtype = (param.type ? typeToPrimitive(param.type.vartype) : "int");
+                    let outtype = [param.type ? param.type.vartype : 0]
                     let inputs = new StackList();
                     //all getparams except for cc_getparam require a target
                     if (node.opinfo.id != namedClientScriptOps.cc_getparam) { inputs.pushone("int"); }
                     inputs.pushone("int");
-                    node.knownStackDiff = new StackInOut(inputs, new StackList([outtype]));
+                    node.knownStackDiff = new StackInOut(inputs, new StackList(outtype.map(typeToPrimitive)));
+                    //don't set in type because it's probably different eg pointer to npc etc
+                    node.knownStackDiff.exactout = outtype;
                 }
             }
         } else if (node.opinfo.id == namedClientScriptOps.enum_getvalue) {
             //args are intypeid,outtypeid,enum,lookup
             let outtypeid = consts.values.at(-3);
-            if (constsknown && typeof outtypeid == "number") {
-                let outtype = typeToPrimitive(outtypeid);
-                node.knownStackDiff = new StackInOut(new StackList(["int", "int", "int", "int"]), new StackList([outtype]));
+            let intypeid = consts.values.at(-4);
+            if (constsknown && typeof outtypeid == "number" && typeof intypeid == "number") {
+                node.knownStackDiff = StackInOut.fromExact(
+                    [subtypes.int, subtypes.int, subtypes.enum, intypeid],
+                    [outtypeid],
+                )
             }
         } else if (node.opinfo.id == namedClientScriptOps.return) {
             let script = calli.scriptargs.get(section.scriptid);
@@ -1154,24 +1162,23 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             if (varmeta) {
                 let ispop = node.opinfo.id == namedClientScriptOps.popvar;
 
-                let value = new StackList([varmeta.type]);
-                let other = new StackList();
-                node.knownStackDiff = new StackInOut(
-                    (ispop ? value : other),
-                    (ispop ? other : value)
+                let value = [varmeta.fulltype];
+                node.knownStackDiff = StackInOut.fromExact(
+                    (ispop ? value : []),
+                    (ispop ? [] : value)
                 );
             }
         } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
             if (node.op.imm == 0) {
                 if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
-                node.knownStackDiff = new StackInOut(new StackList(), new StackList(["int"]));
+                node.knownStackDiff = StackInOut.fromExact([], [subtypes.loose_int]);
                 node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 1) {
-                node.knownStackDiff = new StackInOut(new StackList(), new StackList(["long"]));
+                node.knownStackDiff = StackInOut.fromExact([], [subtypes.loose_long]);
                 node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 2) {
                 let stringconst = node.op.imm_obj as string;
-                node.knownStackDiff = new StackInOut(new StackList(), new StackList(["string"]));
+                node.knownStackDiff = StackInOut.fromExact([], [subtypes.loose_string]);
                 node.knownStackDiff.constout = node.op.imm_obj;
 
                 //a string like this indicates a vararg set where this string indicates the types
@@ -1184,6 +1191,7 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                     if (!argtype) { throw new Error("unexpected"); }
                     node.knownStackDiff = new StackInOut(argtype, new StackList(["vararg"]));
                     node.knownStackDiff.constout = node.op.imm_obj;
+                    node.knownStackDiff.exactin = argtype.toLooseSubtypes();
                 } else if (varargmatch) {
                     node.unknownstack = true;
                     continue;
@@ -1289,17 +1297,21 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1, full = true) {
     let sections = generateAst(calli, script, script.opcodedata, fileid);
     let program = new CodeBlockNode(fileid, 0);
-
     if (full) {
         program.addSuccessor(sections[0]);
         for (let node: CodeBlockNode | null = program; node; node = node.findNext());
-        sections.forEach(q => translateAst(q));
+        sections.forEach(translateAst);
         fixControlFlow(program, script);
     } else {
         program.pushList(sections);
         for (let node: CodeBlockNode | null = program; node; node = node.findNext());
     }
-    return { program, sections }
+
+    let returntype = getReturnType(calli, script.opcodedata);
+    let argtype = getArgType(script);
+    let func = new ClientScriptFunction(fileid, returntype, new StackList([argtype]));
+    func.push(program);
+    return { func, sections }
 }
 globalThis.parseClientScriptIm = parseClientScriptIm;
 
@@ -1347,15 +1359,11 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     let calli = await prepareClientScript(source);
     let script = parse.clientscript.read(buf, source);
     let full = true;//TODO remove
-    let { program, sections } = parseClientScriptIm(calli, script, fileid, full);
-    globalThis[`cs${fileid}`] = program;//TODO remove
+    let { func, sections } = parseClientScriptIm(calli, script, fileid, full);
+    globalThis[`cs${fileid}`] = func;//TODO remove
 
-    let returntype = getReturnType(calli, script.opcodedata);
-    let argtype = getArgType(script);
-    let func = new ClientScriptFunction(fileid, returntype, new StackList([argtype]));
     let res = "";
     if (full) {
-        func.push(program);
         res += func.getCode(calli, 0);
     } else {
         sections.forEach(q => res += q.getCode(calli, 0));

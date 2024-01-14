@@ -12,9 +12,11 @@ import * as path from "path";
 import { crc32 } from "../libs/crc32util";
 import { params } from "../../generated/params";
 import { clientscriptParser } from "./codeparser";
-import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources } from "./definitions";
+import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources, typeToPrimitive } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
+
+import "./subtypedetector";
 
 globalThis.parser = clientscriptParser;
 
@@ -75,7 +77,7 @@ export type ScriptCandidate = {
     solutioncount: number,
     buf: Buffer,
     script: clientscriptdata,
-    scriptcontents: ClientScriptOp[] | null,
+    scriptcontents: clientscript | null,
     returnType: StackList | null,
     argtype: StackDiff | null,
     unknowns: Map<number, OpcodeInfo>,
@@ -405,14 +407,32 @@ export class ClientscriptObfuscation {
             }, q => this.candidates.set(q.id, q));
         }
     }
+    parseCandidateContents() {
+        for (let cand of this.candidates.values()) {
+            try {
+                cand.scriptcontents ??= parse.clientscript.read(cand.buf, this.source, { clientScriptDeob: this });
+            } catch (e) { }
+
+            if (!cand.scriptcontents) { continue; }
+            cand.returnType = getReturnType(this, cand.scriptcontents.opcodedata);
+            cand.argtype = getArgType(cand.script);
+            this.scriptargs.set(cand.id, {
+                scriptname: cand.scriptname,
+                args: cand.argtype,
+                returns: cand.returnType,
+                arglist: cand.argtype.getArglist(),
+                returnlist: cand.returnType.getStackdiff().getArglist()
+            });
+        }
+    }
 
     async generateDump() {
         let cands = this.candidates;
         let scripts: ReferenceScript[] = [];
-        parseCandidateContents(this);
+        this.parseCandidateContents();
         for (let cand of cands.values()) {
             if (cand.scriptcontents) {
-                scripts.push({ id: cand.id, scriptdata: cand.script, scriptops: cand.scriptcontents });
+                scripts.push({ id: cand.id, scriptdata: cand.script, scriptops: cand.scriptcontents.opcodedata });
             }
         }
         console.log(`dumped ${scripts.length} /${cands.size} scripts`);
@@ -509,7 +529,7 @@ export class ClientscriptObfuscation {
 
         await findOpcodeImmidiates(this);
         this.callibrated = true;
-        parseCandidateContents(this);
+        this.parseCandidateContents();
         findOpcodeTypes(this);
     }
     writeOpCode = (state: EncodeState, v: unknown) => {
@@ -588,40 +608,14 @@ export class ClientscriptObfuscation {
         let group = this.varmeta.get(groupid);
         let varmeta = group?.vars.get(varid);
         if (!group || !varmeta) { return null; }
-        let diff = new StackDiff();
-        let type = typeToPrimitive(varmeta.type);
-        diff.setSingle(type, 1);
-        return { name: group.name, varid, diff, type };
+        let fulltype = varmeta.type;
+        let type = typeToPrimitive(fulltype);
+        return { name: group.name, varid, type, fulltype };
     }
     getNamedOp(id: number) {
         let opinfo = this.decodedMappings.get(id);
         if (!opinfo) { throw new Error(`op with named id ${id} not found`); }
         return opinfo;
-    }
-}
-
-export function typeToPrimitive(typeint: number): StackType {
-    if ([36, 50].includes(typeint)) { return "string"; }
-    else if ([35, 49, 56, 71, 110, 115, 116].includes(typeint)) { return "long"; }
-    else { return "int"; }
-}
-
-function parseCandidateContents(calli: ClientscriptObfuscation) {
-    for (let cand of calli.candidates.values()) {
-        try {
-            cand.scriptcontents ??= parse.clientscript.read(cand.buf, calli.source, { clientScriptDeob: calli }).opcodedata;
-        } catch (e) { }
-
-        if (!cand.scriptcontents) { continue; }
-        cand.returnType = getReturnType(calli, cand.scriptcontents);
-        cand.argtype = getArgType(cand.script);
-        calli.scriptargs.set(cand.id, {
-            scriptname: cand.scriptname,
-            args: cand.argtype,
-            returns: cand.returnType,
-            arglist: cand.argtype.getArglist(),
-            returnlist: cand.returnType.getStackdiff().getArglist()
-        });
     }
 }
 
@@ -866,13 +860,13 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
 }
 
 function findOpcodeTypes(calli: ClientscriptObfuscation) {
-    parseCandidateContents(calli);
+    calli.parseCandidateContents();
 
     //TODO merge with previous loop?
     let allsections: CodeBlockNode[] = [];
     for (let cand of calli.candidates.values()) {
         if (!cand.scriptcontents) { continue }
-        let sections = generateAst(calli, cand.script, cand.scriptcontents, cand.id);
+        let sections = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         allsections.push(...sections);
     }
     allsections.sort((a, b) => a.children.length - b.children.length);
