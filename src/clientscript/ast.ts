@@ -4,7 +4,7 @@ import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript } from "./callibrator";
 import { clientscriptParser } from "./codeparser";
-import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack } from "./definitions";
 
 /**
  * known issues
@@ -1129,7 +1129,7 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                     inputs.pushone("int");
                     node.knownStackDiff = new StackInOut(inputs, new StackList(outtype.map(typeToPrimitive)));
                     //don't set in type because it's probably different eg pointer to npc etc
-                    node.knownStackDiff.exactout = outtype;
+                    node.knownStackDiff.exactout = ExactStack.fromList(outtype);
                 }
             }
         } else if (node.opinfo.id == namedClientScriptOps.enum_getvalue) {
@@ -1191,7 +1191,7 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
                     if (!argtype) { throw new Error("unexpected"); }
                     node.knownStackDiff = new StackInOut(argtype, new StackList(["vararg"]));
                     node.knownStackDiff.constout = node.op.imm_obj;
-                    node.knownStackDiff.exactin = argtype.toLooseSubtypes();
+                    node.knownStackDiff.exactin = ExactStack.fromList(argtype.toLooseSubtypes());
                 } else if (varargmatch) {
                     node.unknownstack = true;
                     continue;

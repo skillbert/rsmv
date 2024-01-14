@@ -1,6 +1,6 @@
 import { CodeBlockNode, RawOpcodeNode, VarAssignNode, generateAst, getNodeStackIn, getNodeStackOut, parseClientScriptIm, translateAst, varArgtype } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
-import { StackConstants, StackDiff, StackInOut, StackList, StackType, branchInstructionsInt, branchInstructionsLong, dynamicOps, getParamOps, knownClientScriptOpNames, namedClientScriptOps, subtypes, typeToPrimitive } from "./definitions";
+import { ExactStack, StackConstants, StackDiff, StackInOut, StackList, StackType, branchInstructionsInt, branchInstructionsLong, dynamicOps, getParamOps, knownClientScriptOpNames, namedClientScriptOps, subtypes, typeToPrimitive } from "./definitions";
 
 //to test
 //await cli("extract --mode clientscripttext -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
@@ -38,7 +38,7 @@ const looseOps = [
     291825664,
     290506752,
     156178433,
-    
+
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
     dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
@@ -150,14 +150,9 @@ class CombinedExactStack {
         }
 
         if (stackinout.exactin) {
-            for (let i = stackinout.exactin.length - 1; i >= 0; i--) {
-                let type = stackinout.exactin[i];
-                let stack = typeToPrimitive(type);
-                if (stack == "int") { this.ctx.entangle(knownDependency(type), this.intstack.pop()); }
-                else if (stack == "long") { this.ctx.entangle(knownDependency(type), this.longstack.pop()); }
-                else if (stack == "string") { this.ctx.entangle(knownDependency(type), this.stringstack.pop()); }
-                else { throw new Error("unexpected"); }
-            }
+            for (let i = stackinout.exactin.int.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(stackinout.exactin.int[i]), this.intstack.pop()); }
+            for (let i = stackinout.exactin.long.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(stackinout.exactin.long[i]), this.longstack.pop()); }
+            for (let i = stackinout.exactin.string.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(stackinout.exactin.string[i]), this.stringstack.pop()); }
         } else {
             let stackin = stackinout.in;
             //need to do inputs in correct order because of vararg
@@ -185,14 +180,9 @@ class CombinedExactStack {
         }
 
         if (stackinout.exactout) {
-            for (let i = 0; i < stackinout.exactout.length; i++) {
-                let type = stackinout.exactout[i];
-                let stack = typeToPrimitive(type);
-                if (stack == "int") { this.intstack.push(knownDependency(type)); }
-                else if (stack == "long") { this.longstack.push(knownDependency(type)); }
-                else if (stack == "string") { this.stringstack.push(knownDependency(type)); }
-                else { throw new Error("unexpected"); }
-            }
+            for (let i = 0; i < stackinout.exactout.int.length; i++) { this.intstack.push(knownDependency(stackinout.exactout.int[i])); }
+            for (let i = 0; i < stackinout.exactout.long.length; i++) { this.longstack.push(knownDependency(stackinout.exactout.long[i])); }
+            for (let i = 0; i < stackinout.exactout.string.length; i++) { this.stringstack.push(knownDependency(stackinout.exactout.string[i])); }
         } else {
             //only ensure order per primitive type
             let totalout = stackinout.out.getStackdiff();
@@ -252,6 +242,26 @@ export function detectSubtypes(calli: ClientscriptObfuscation) {
         }
         activekeys = nextactivekeys;
     }
+    for (let op of calli.mappings.values()) {
+        if (!op.stackinfo.initializedthrough) { continue; }
+        let exactin = new ExactStack();
+        let diffin = op.stackinfo.in.getStackdiff();
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.loose_int); }
+        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.loose_long); }
+        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.loose_string); }
+
+        let exactout = new ExactStack();
+        let diffout = op.stackinfo.out.getStackdiff();
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.loose_int); }
+        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.loose_long); }
+        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.loose_string); }
+
+        op.stackinfo.exactin = exactin;
+        op.stackinfo.exactout = exactout;
+    }
+    // for (let [id,func] of calli.scriptargs) {
+    //     func.
+    // }
     return knowntypes;
 }
 

@@ -242,6 +242,13 @@ export const subtypes = {
     //max 511 (9bit) or overflow elsewhere in code
 }
 
+export function subtypeToTs(subt: number) {
+    let res = Object.entries(subtypes).find(q => q[1] == subt)?.[0] ?? "unk";
+    if (res == "boolean") { res = "cs2bool"; }
+    if (res == "enum") { res = "cs2enum"; }
+    return res;
+}
+
 const stringtypes = [
     subtypes.string,
     subtypes.coordfine,
@@ -549,14 +556,14 @@ export class StackList {
         }
         return res;
     }
-    toTypeScriptVarlist() {
+    toTypeScriptVarlist(exacttype?: ExactStack | null) {
         let res = "";
         let counts = new StackDiff();
         for (let part of this.values) {
             if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts); }
-            else if (part == "int") { res += `int${counts.int++}:number,`; }
-            else if (part == "long") { res += `long${counts.long++}:BigInt,`; }
-            else if (part == "string") { res += `string${counts.string++}:string,`; }
+            else if (part == "int") { res += `int${counts.int}:${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"},`; counts.int++; }
+            else if (part == "long") { res += `long${counts.long}:${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"},`; counts.long++; }
+            else if (part == "string") { res += `string${counts.string}:${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"},`; counts.string++; }
             else if (part == "vararg") { res += "vararg:any,"; }
             else throw new Error("unsupported stack type");
         }
@@ -565,20 +572,22 @@ export class StackList {
         }
         return res;
     }
-    toTypeScriptReturnType() {
+    toTypeScriptReturnType(exacttype?: ExactStack | null) {
         if (this.values.length == 1) {
             let type = this.values[0];
             if (type instanceof StackDiff) {
-                if (type.int != 0) { return "number"; }
-                if (type.long != 0) { return "BigInt"; }
-                if (type.string != 0) { return "string"; }
+                if (type.int != 0) { return (exacttype ? subtypeToTs(exacttype.int[0]) : "number"); }
+                if (type.long != 0) { return (exacttype ? subtypeToTs(exacttype.long[0]) : "BigInt"); }
+                if (type.string != 0) { return (exacttype ? subtypeToTs(exacttype.string[0]) : "string"); }
                 if (type.vararg != 0) { return "any"; }
             } else {
-                if (type == "int") { return "number"; }
-                if (type == "long") { return "BigInt"; }
-                if (type == "string") { return "string"; }
+                if (type == "int") { return (exacttype ? subtypeToTs(exacttype.int[0]) : "number");; }
+                if (type == "long") { return (exacttype ? subtypeToTs(exacttype.long[0]) : "BigInt");; }
+                if (type == "string") { return (exacttype ? subtypeToTs(exacttype.string[0]) : "string");; }
                 if (type == "vararg") { return "any"; }
             }
+        } else if (this.values.length == 0) {
+            return "void";
         }
         return `[${this.toTypeScriptVarlist()}]`;
     }
@@ -621,11 +630,24 @@ export class StackList {
         return res;
     }
 }
+
+export class ExactStack {
+    int: number[] = [];
+    long: number[] = [];
+    string: number[] = [];
+    static fromList(types: number[]) {
+        let res = new ExactStack();
+        for (let type of types) {
+            res[typeToPrimitive(type)].push(type);
+        }
+        return res;
+    }
+}
 export class StackInOut {
     in = new StackList();
     out = new StackList();
-    exactin: number[] | null = null;
-    exactout: number[] | null = null;
+    exactin: ExactStack | null = null;
+    exactout: ExactStack | null = null;
     constout: StackConst = null;
     initializedin = false;
     initializedout = false;
@@ -638,9 +660,9 @@ export class StackInOut {
         this.initializedthrough = this.initializedin && this.initializedout;
     }
     static fromExact(inlist: number[], outlist: number[]) {
-        let res = new StackInOut(new StackList(inlist.map(typeToPrimitive)), new StackList(outlist.map(typeToPrimitive)))
-        res.exactin = inlist;
-        res.exactout = outlist;
+        let res = new StackInOut(new StackList(inlist.map(typeToPrimitive)), new StackList(outlist.map(typeToPrimitive)));
+        res.exactin = ExactStack.fromList(inlist);
+        res.exactout = ExactStack.fromList(outlist);
         return res;
     }
     getBottomOverlap() {
