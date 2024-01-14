@@ -578,7 +578,7 @@ export class FunctionBindNode extends AstNode {
         let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
         if (typeof scriptid != "number") { throw new Error("unexpected"); }
         let func = calli.scriptargs.get(scriptid);
-        let typestring = func?.arglist?.toFunctionBindString();
+        let typestring = func?.stack.in.toFunctionBindString();
         if (!typestring) { throw new Error("unknown functionbind types"); }
         let ops = this.children.flatMap(q => q.getOpcodes(calli)).concat();
         ops.push({ opcode: calli.getNamedOp(namedClientScriptOps.pushconst).id, imm: 2, imm_obj: typestring });
@@ -1032,7 +1032,7 @@ export class ClientScriptFunction extends AstNode {
         let meta = calli.scriptargs.get(this.scriptid);
         let res = "";
         res += `//${meta?.scriptname ?? "unknown name"}\n`;
-        res += `${codeIndent(indent)}function script${this.scriptid}(${this.argtype.toTypeScriptVarlist()}):${this.returntype.toTypeScriptReturnType()}`;
+        res += `${codeIndent(indent)}function script${this.scriptid}(${this.argtype.toTypeScriptVarlist(meta?.stack.exactin)}):${this.returntype.toTypeScriptReturnType(meta?.stack.exactout)}`;
         res += this.children[0].getCode(calli, indent);
         return res;
     }
@@ -1144,13 +1144,14 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             }
         } else if (node.opinfo.id == namedClientScriptOps.return) {
             let script = calli.scriptargs.get(section.scriptid);
-            if (script && script.returns) {
-                node.knownStackDiff = new StackInOut(script.returns, new StackList());
+            if (script) {
+                node.knownStackDiff = new StackInOut(script.stack.out, new StackList());
+                node.knownStackDiff.exactin = script.stack.exactout;
             }
         } else if (node.opinfo.id == namedClientScriptOps.gosub) {
             let script = calli.scriptargs.get(node.op.imm);
-            if (script && script.arglist && script.returnlist) {
-                node.knownStackDiff = new StackInOut(script.arglist, script.returnlist);
+            if (script) {
+                node.knownStackDiff = script.stack;
             }
         } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
             node.knownStackDiff = new StackInOut(

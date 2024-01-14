@@ -56,15 +56,14 @@ export class OpcodeInfo {
     }
     static fromJson(json: ReturnType<OpcodeInfo["toJson"]>) {
         let r = new OpcodeInfo(json.scrambledid, json.id, json.type == "unknown" ? detectableImmediates : [json.type]);
-        r.stackinfo = new StackInOut(StackList.fromJson(json.stackin), StackList.fromJson(json.stackout));
+        r.stackinfo = StackInOut.fromJson(json.stackinfo);
         return r;
     }
     toJson() {
         return {
             id: this.id,
             scrambledid: this.scrambledid,
-            stackin: this.stackinfo.in.toJson(),
-            stackout: this.stackinfo.out.toJson(),
+            stackinfo: this.stackinfo.toJson(),
             type: this.type
         }
     }
@@ -267,10 +266,7 @@ export class ClientscriptObfuscation {
     parammeta = new Map<number, params>();
     scriptargs = new Map<number, {
         scriptname: string,
-        args: StackDiff,
-        returns: StackList
-        arglist: StackList | null,//seperate entries since order is not well defined
-        returnlist: StackList | null,//is null when order can be ambiguous
+        stack: StackInOut
     }>();
     candidates = new Map<number, ScriptCandidate>();
 
@@ -287,14 +283,9 @@ export class ClientscriptObfuscation {
         r.opidcounter = json.opidcounter;
         r.callibrated = true;
         r.scriptargs = new Map(json.scriptargs.map(v => {
-            let args = StackDiff.fromJson(v.args)!;
-            let returns = StackList.fromJson(v.returns);
             return [v.id, {
                 scriptname: "",
-                args: args,
-                returns: returns!,
-                arglist: args.getArglist(),
-                returnlist: returns.getStackdiff().getArglist()
+                stack: StackInOut.fromJson(v.stack)
             }];
         }));
         await r.preloadData(true);
@@ -306,7 +297,7 @@ export class ClientscriptObfuscation {
             buildnr: this.source.getBuildNr(),
             mappings: [...this.mappings.values()].map(v => v.toJson()),
             opidcounter: this.opidcounter,
-            scriptargs: [...this.scriptargs].map(([k, v]) => ({ id: k, args: v.args.toJson(), returns: v.returns.toJson() }))
+            scriptargs: [...this.scriptargs].map(([k, v]) => ({ id: k, stack: v.stack.toJson() }))
         }
         return r;
     }
@@ -418,10 +409,13 @@ export class ClientscriptObfuscation {
             cand.argtype = getArgType(cand.script);
             this.scriptargs.set(cand.id, {
                 scriptname: cand.scriptname,
-                args: cand.argtype,
-                returns: cand.returnType,
-                arglist: cand.argtype.getArglist(),
-                returnlist: cand.returnType.getStackdiff().getArglist()
+                stack: new StackInOut(
+                    cand.argtype.getArglist(),
+                    //need to get rid of known stack order here since the runescript compiler doesn't adhere to it
+                    //known cases:
+                    // pop_intstring_discard order seems to not care about order
+                    cand.returnType.toStackDiff().getArglist()
+                )
             });
         }
     }

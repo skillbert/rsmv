@@ -64,9 +64,9 @@ export const namedClientScriptOps = {
     plus: 10000,
     minus: 10006,
     intdiv: 10001,
+    intmul: 10028,
     strtolower: 10003,//not sure
     strcmp: 10004,//0 for equal, might be string - operator
-    intmod: 10005,//todo is wrong, this is bitwise and
     strconcat: 10060,
     inttostring: 10687,
 
@@ -322,7 +322,7 @@ export const binaryOpSymbols = new Map([
     [namedClientScriptOps.plus, "+"],
     [namedClientScriptOps.minus, "-"],
     [namedClientScriptOps.intdiv, "/"],
-    [namedClientScriptOps.intmod, "%"],
+    [namedClientScriptOps.intmul, "*"],
 
     //string
     [namedClientScriptOps.strconcat, "strcat"],
@@ -560,7 +560,7 @@ export class StackList {
         let res = "";
         let counts = new StackDiff();
         for (let part of this.values) {
-            if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts); }
+            if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, exacttype); }
             else if (part == "int") { res += `int${counts.int}:${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"},`; counts.int++; }
             else if (part == "long") { res += `long${counts.long}:${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"},`; counts.long++; }
             else if (part == "string") { res += `string${counts.string}:${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"},`; counts.string++; }
@@ -591,8 +591,10 @@ export class StackList {
         }
         return `[${this.toTypeScriptVarlist()}]`;
     }
-    toJson() { return this.values; }
-    static fromJson(v: ReturnType<StackList["toJson"]>) { return new StackList(v); }
+    toJson() { return this.values.map(q => typeof q == "string" ? q : q.toJson()); }
+    static fromJson(v: ReturnType<StackList["toJson"]>) {
+        return new StackList(v.map(q => typeof q == "string" ? q : StackDiff.fromJson(q)!));
+    }
     getStackdiff() {
         let r = new StackDiff();
         for (let v of this.values) {
@@ -642,6 +644,16 @@ export class ExactStack {
         }
         return res;
     }
+    static fromJson(json: ReturnType<ExactStack['toJson']>) {
+        let res = new ExactStack();
+        res.int = json.int;
+        res.long = json.long;
+        res.string = json.string;
+        return res;
+    }
+    toJson() {
+        return this;
+    }
 }
 export class StackInOut {
     in = new StackList();
@@ -682,6 +694,24 @@ export class StackInOut {
     }
     toString() {
         return `${this.out + "" || "void"}${this.initializedthrough ? "" : "??"}(${this.in})`;
+    }
+    toJson() {
+        return {
+            in: this.in.toJson(),
+            out: this.out.toJson(),
+            initializedthrough: this.initializedthrough,
+            exactin: this.exactin?.toJson(),
+            exactout: this.exactout?.toJson()
+        }
+    }
+    static fromJson(json: ReturnType<StackInOut["toJson"]>) {
+        let res = new StackInOut(StackList.fromJson(json.in), StackList.fromJson(json.out));
+        res.initializedthrough = json.initializedthrough;
+        res.initializedin = json.initializedthrough;
+        res.initializedout = json.initializedthrough;
+        res.exactin = (json.exactin ? ExactStack.fromJson(json.exactin) : null);
+        res.exactout = (json.exactout ? ExactStack.fromJson(json.exactout) : null);
+        return res;
     }
 }
 export class StackDiff {
@@ -802,11 +832,20 @@ export class StackDiff {
         if (this.vararg != 0) { throw new Error("vararg not supported"); }
         return res;
     }
-    toTypeScriptVarlist(nameoffset: StackDiff) {
+    toTypeScriptVarlist(nameoffset: StackDiff, exacttype?: ExactStack | null) {
         let res = "";
-        for (let i = 0; i < this.int; i++) { res += `int${nameoffset.int++}:number,`; }
-        for (let i = 0; i < this.long; i++) { res += `long${nameoffset.long++}:BigInt,`; }
-        for (let i = 0; i < this.string; i++) { res += `string${nameoffset.string++}:string,`; }
+        for (let i = 0; i < this.int; i++) {
+            res += `int${nameoffset.int}:${exacttype ? subtypeToTs(exacttype.int[nameoffset.int]) : "number"},`;
+            nameoffset.int++;
+        }
+        for (let i = 0; i < this.long; i++) {
+            res += `long${nameoffset.long}:${exacttype ? subtypeToTs(exacttype.long[nameoffset.long]) : "BigInt"},`;
+            nameoffset.long++;
+        }
+        for (let i = 0; i < this.string; i++) {
+            res += `string${nameoffset.string++}:${exacttype ? subtypeToTs(exacttype.string[nameoffset.string]) : "string"},`;
+            nameoffset.string++;
+        }
         for (let i = 0; i < this.vararg; i++) { res += `vararg${nameoffset.string++}:any,`; }
         return res;
     }

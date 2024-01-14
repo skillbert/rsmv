@@ -543,7 +543,7 @@ export function writeClientVarFile(calli: ClientscriptObfuscation) {
     for (let domain of calli.varmeta.values()) {
         res += `// ===== ${domain.name} =====\n`;
         for (let [id, meta] of domain.vars) {
-            res += `declare var var${domain.name}_${id}: ${{ int: "number", long: "BigInt", string: "string", vararg: "any" }[typeToPrimitive(meta.type)]};\n`;
+            res += `declare var var${domain.name}_${id}: ${subtypeToTs(meta.type)};\n`;
         }
     }
     return res;
