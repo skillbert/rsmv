@@ -67,7 +67,9 @@ function getOpcodeCallCode(calli: ClientscriptObfuscation, op: ClientScriptOp, c
         }
     }
     if (op.opcode == namedClientScriptOps.return) {
-        return `return ${children.length == 1 ? children[0].getCode(calli, indent) : `[${children.map(q => q.getCode(calli, indent)).join(",")}]`}`;
+        if (children.length == 0) { return `return`; }
+        if (children.length == 1) { return `return ${children[0].getCode(calli, indent)}`; }
+        return `return [${children.map(q => q.getCode(calli, indent)).join(",")}]`;
     }
     if (op.opcode == namedClientScriptOps.gosub) {
         return `script${op.imm}(${children.map(q => q.getCode(calli, indent)).join(",")})`;
@@ -571,7 +573,8 @@ export class FunctionBindNode extends AstNode {
 
     getCode(calli: ClientscriptObfuscation, indent: number) {
         let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
-        return `bind[${scriptid}](${this.children.slice(1).map(q => q.getCode(calli, indent))})`;
+        if (scriptid == -1 && this.children.length == 1) { return `callback()`; }
+        return `callback(script${scriptid}${this.children.length > 1 ? "," : ""}${this.children.slice(1).map(q => q.getCode(calli, indent)).join(",")})`;
     }
 
     getOpcodes(calli: ClientscriptObfuscation) {

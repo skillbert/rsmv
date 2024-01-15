@@ -12,7 +12,7 @@ function* whitespace() {
 }
 const newline = /^\s*?\n/;
 const unmatchable = /$./;
-const reserverd = "if,while,break,continue,else,switch,strcat,script,return".split(",");
+const reserverd = "if,while,break,continue,else,switch,strcat,script,return,callback".split(",");
 const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
 const binaryops = [...binaryOpSymbols.values()];
 const binaryopsoremtpy = binaryops.concat("");
@@ -513,6 +513,10 @@ globalThis.testy = async () => {
 
 export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     let res = "";
+    res += "declare class BoundFunction{};\n";
+    res += "declare function callback():BoundFunction;\n";
+    res += "declare function callback<T extends (...args:any[])=>any>(fn:T,...args:Parameters<T>):BoundFunction;\n";
+    res += "\n";
     for (let type of Object.values(subtypes)) {
         let prim = typeToPrimitive(type);
         let name = subtypeToTs(type);

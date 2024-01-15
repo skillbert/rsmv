@@ -15,8 +15,7 @@ import { clientscriptParser } from "./codeparser";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources, typeToPrimitive } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
-
-import "./subtypedetector";
+import { detectSubtypes } from "./subtypedetector";
 
 globalThis.parser = clientscriptParser;
 
@@ -443,6 +442,7 @@ export class ClientscriptObfuscation {
         } else if (!this.callibrated) {
             let ref = await getReferenceOpcodeDump();
             await this.runCallibration(ref);
+            detectSubtypes(this);
         }
     }
     async runCallibrationFrom(previousCallibration: ClientscriptObfuscation) {
@@ -1024,11 +1024,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
             total++;
         }
         console.log("total", total, "done", done, "partial", partial, "incomplete", missing.size);
-    }
-    pendingEquations.sort((a, b) => a.unknowns.size - b.unknowns.size);
-    globalThis.eqs = pendingEquations;//TODO remove
-    for (let eq of pendingEquations) {
-
     }
 }
 

@@ -559,8 +559,13 @@ export class StackList {
     toTypeScriptVarlist(exacttype?: ExactStack | null) {
         let res = "";
         let counts = new StackDiff();
-        for (let part of this.values) {
-            if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, exacttype); }
+        for (let i = 0; i < this.values.length; i++) {
+            let part = this.values[i];
+            if (part == "int" && i + 1 < this.values.length && this.values[i + 1] == "vararg") {
+                //combine int+vararg arguments into a single boundfunction argument
+                res += "vararg:BoundFunction,";
+                i++;
+            } else if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, exacttype); }
             else if (part == "int") { res += `int${counts.int}:${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"},`; counts.int++; }
             else if (part == "long") { res += `long${counts.long}:${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"},`; counts.long++; }
             else if (part == "string") { res += `string${counts.string}:${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"},`; counts.string++; }
