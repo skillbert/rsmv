@@ -15,10 +15,8 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
-import { prepareClientScript } from "../clientscript/callibrator";
-import { compileClientScript, renderClientScript } from "../clientscript/ast";
 import { renderRsInterface } from "./renderrsinterface";
-import { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser";
+import { compileClientScript, prepareClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
 
 
 type CacheFileId = {

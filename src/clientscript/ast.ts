@@ -1,10 +1,8 @@
 import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
-import { CacheFileSource } from "../cache";
-import { parse } from "../opdecoder";
-import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript } from "./callibrator";
-import { clientscriptParser } from "./codeparser";
-import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids } from "./definitions";
+import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibrator";
+import { debugAst } from "./codewriter";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids } from "./definitions";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 /**
@@ -25,64 +23,13 @@ import { ClientScriptSubtypeSolver } from "./subtypedetector";
  * - when a script has no return values but the original code had an explicit return then this compiler won't output that
  */
 
-function getSingleChild<T extends AstNode>(op: AstNode | null | undefined, type: { new(...args: any[]): T }) {
+export function getSingleChild<T extends AstNode>(op: AstNode | null | undefined, type: { new(...args: any[]): T }) {
     if (!op || op.children.length != 1 || !(op.children[0] instanceof type)) { return null; }
     return op.children[0] as T;
 }
 
 function isNamedOp(op: AstNode, id: number): op is RawOpcodeNode {
     return op instanceof RawOpcodeNode && op.op.opcode == id;
-}
-
-function codeIndent(amount: number, linenr = -1, hasquestionmark = false) {
-    // return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
-    return "    ".repeat(amount);
-}
-
-function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
-    if (op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.pushlocalint) {
-        return `int${op.imm}`;
-    } else if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) {
-        return `string${op.imm}`;
-    } else if (op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.pushlocallong) {
-        return `long${op.imm}`;
-    } else if (op.opcode == namedClientScriptOps.popvar || op.opcode == namedClientScriptOps.pushvar) {
-        let varmeta = calli.getClientVarMeta(op.imm);
-        if (varmeta) {
-            return `var${varmeta.name}_${varmeta.varid}`;
-        } else {
-            return `varunk_${op.imm}`;
-        }
-    }
-    return knownClientScriptOpNames[op.opcode] ?? `unk${op.opcode}`;
-}
-
-function getOpcodeCallCode(calli: ClientscriptObfuscation, op: ClientScriptOp, children: AstNode[], originalindex: number, indent: number) {
-    let binarysymbol = binaryOpSymbols.get(op.opcode);
-    if (binarysymbol) {
-        if (children.length == 2) {
-            return `(${children[0].getCode(calli, indent)} ${binarysymbol} ${children[1].getCode(calli, indent)})`;
-        } else {
-            return `(${binarysymbol} ${children.map(q => q.getCode(calli, indent)).join(" ")})`;
-        }
-    }
-    if (op.opcode == namedClientScriptOps.return) {
-        if (children.length == 0) { return `return`; }
-        if (children.length == 1) { return `return ${children[0].getCode(calli, indent)}`; }
-        return `return [${children.map(q => q.getCode(calli, indent)).join(",")}]`;
-    }
-    if (op.opcode == namedClientScriptOps.gosub) {
-        return `script${op.imm}(${children.map(q => q.getCode(calli, indent)).join(",")})`;
-    }
-    let metastr = "";
-    if (branchInstructionsOrJump.includes(op.opcode)) {
-        metastr = `[${op.imm + originalindex + 1}]`;
-    } else if (op.opcode == namedClientScriptOps.gosub) {
-        metastr = `[${op.imm}]`;
-    } else if (op.imm != 0) {
-        metastr = `[${op.imm}]`;
-    }
-    return `${getOpcodeName(calli, op)}${metastr}(${children.map(q => q.getCode(calli, indent)).join(",")})`;
 }
 
 export abstract class AstNode {
@@ -93,7 +40,6 @@ export abstract class AstNode {
     constructor(originalindex: number) {
         this.originalindex = originalindex;
     }
-    abstract getCode(calli: ClientscriptObfuscation, indent: number): string;
     abstract getOpcodes(calli: ClientscriptObfuscation): ClientScriptOp[];
     pushList(nodes: AstNode[]) {
         for (let node of nodes) {
@@ -144,15 +90,6 @@ export class ComposedOp extends AstNode {
         this.type = type;
         this.varid = varid;
     }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
-        let n = `int${this.varid}`;
-        if (this.type == "++x") { return `++${n}`; }
-        else if (this.type == "--x") { return `--${n}`; }
-        else if (this.type == "x++") { return `${n}++`; }
-        else if (this.type == "x--") { return `${n}--`; }
-        else throw new Error("unexpected op type " + this.type)
-    }
     getOpcodes(calli: ClientscriptObfuscation) {
         if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
         return this.internalOps.flatMap(q => q.getOpcodes(calli));
@@ -162,14 +99,6 @@ export class ComposedOp extends AstNode {
 export class VarAssignNode extends AstNode {
     varops: RawOpcodeNode[] = [];
     knownStackDiff = new StackInOut(new StackList(), new StackList());
-    getName(calli: ClientscriptObfuscation) {
-        let name = `${this.varops.map(q => q instanceof RawOpcodeNode ? getOpcodeName(calli, q.op) : "??")}`;
-        return { name: name, extra: "" };
-    }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let name = this.getName(calli);
-        return `var ${this.varops.length == 1 ? "" : "["}${name.name}${this.varops.length == 1 ? "" : "]"} = ${this.children.map(q => q.getCode(calli, indent)).join(",")}`
-    }
     getOpcodes(calli: ClientscriptObfuscation) {
         let res = this.children.flatMap(q => q.getOpcodes(calli));
         return res.concat(this.varops.flatMap(q => q.getOpcodes(calli)).reverse());
@@ -252,29 +181,11 @@ export class CodeBlockNode extends AstNode {
         }
         return this.branchEndNode;
     }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let code = "";
-        if (this.parent) {
-            code += `{\n`;
-            indent++;
-        }
-        // code += `${codeIndent(indent, this.originalindex)}//[${this.scriptid},${this.originalindex}]\n`;
-        for (let child of this.children) {
-            code += `${codeIndent(indent, child.originalindex)}${child.getCode(calli, indent)}\n`;
-        }
-        if (this.parent) {
-            code += `${codeIndent(indent - 1)}}`;
-        }
-        return code;
-    }
     getOpcodes(calli: ClientscriptObfuscation) {
         return this.children.flatMap(q => q.getOpcodes(calli));
     }
     dump() {
-        console.log(
-            // `[${this.scriptid},${this.originalindex}]\n`+
-            this.getCode(globalThis.deob, 0)
-        );
+        debugAst(this);
     }
 }
 
@@ -308,10 +219,6 @@ export class BranchingStatement extends AstNode {
     constructor(opcodeinfo: ClientScriptOp, originalindex: number) {
         super(originalindex);
         this.op = opcodeinfo;
-    }
-
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        return getOpcodeCallCode(calli, this.op, this.children, this.originalindex, indent);
     }
 
     getOpcodes(calli: ClientscriptObfuscation) {
@@ -351,11 +258,6 @@ export class WhileLoopStatementNode extends AstNode {
         if (originnode.falsebranch) { throw new Error("cannot have else branch in loop"); }
         if (!originnode.parent) { throw new Error("unexpected"); }
         return new WhileLoopStatementNode(originalindex, originnode.statement, originnode.truebranch);
-    }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let res = `while(${this.statement.getCode(calli, indent)})`;
-        res += this.body.getCode(calli, indent);
-        return res;
     }
     getOpcodes(calli: ClientscriptObfuscation) {
         let cond = this.statement.getOpcodes(calli);
@@ -416,26 +318,6 @@ export class SwitchStatementNode extends AstNode {
             defaultblock.maxEndIndex = endindex;
         }
         return new SwitchStatementNode(switchop.originalindex, valueop, defaultblock, branches);
-    }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let res = "";
-        res += `switch(${this.valueop?.getCode(calli, indent) ?? ""}){\n`;
-        for (let [i, branch] of this.branches.entries()) {
-            res += `${codeIndent(indent + 1, branch.block.originalindex)}case ${branch.value}:`;
-            if (i + 1 < this.branches.length && this.branches[i + 1].block == branch.block) {
-                res += `\n`;
-            } else {
-                res += branch.block.getCode(calli, indent + 1);
-                res += `\n`;
-            }
-        }
-        if (this.defaultbranch) {
-            res += `${codeIndent(indent + 1)}default:`;
-            res += this.defaultbranch.getCode(calli, indent + 1);
-            res += `\n`;
-        }
-        res += `${codeIndent(indent)}}`;
-        return res;
     }
     getOpcodes(calli: ClientscriptObfuscation) {
         let body: ClientScriptOp[] = [];
@@ -531,21 +413,6 @@ export class IfStatementNode extends AstNode {
             this.push(falsebranch);
         }
     }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let res = `if(${this.statement.getCode(calli, indent)})`;
-        res += this.truebranch?.getCode(calli, indent);
-        if (this.falsebranch) {
-            res += `else`;
-            //skip brackets for else if construct
-            let subif = getSingleChild(this.falsebranch, IfStatementNode);
-            if (subif) {
-                res += " " + this.falsebranch.children[0].getCode(calli, indent);
-            } else {
-                res += this.falsebranch.getCode(calli, indent);
-            }
-        }
-        return res;
-    }
     getOpcodes(calli: ClientscriptObfuscation) {
         let cond = this.statement.getOpcodes(calli);
         let truebranch = this.truebranch.getOpcodes(calli);
@@ -570,13 +437,6 @@ export class FunctionBindNode extends AstNode {
         intype.values.unshift("int");//function id
         this.knownStackDiff = new StackInOut(intype, new StackList(["int", "vararg"]));
     }
-
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
-        if (scriptid == -1 && this.children.length == 1) { return `callback()`; }
-        return `callback(script${scriptid}${this.children.length > 1 ? "," : ""}${this.children.slice(1).map(q => q.getCode(calli, indent)).join(",")})`;
-    }
-
     getOpcodes(calli: ClientscriptObfuscation) {
         let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
         if (typeof scriptid != "number") { throw new Error("unexpected"); }
@@ -597,37 +457,6 @@ export class RawOpcodeNode extends AstNode {
         super(index);
         this.op = op;
         this.opinfo = opinfo;
-    }
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        if (this.op.opcode == namedClientScriptOps.pushconst) {
-            if (typeof this.op.imm_obj == "string") { return `"${this.op.imm_obj.replace(/(["\\])/g, "\\$1")}"`; }
-            else if (Array.isArray(this.op.imm_obj)) {
-                //build our bigint as unsigned
-                let int = (BigInt(this.op.imm_obj[0] as number) << 32n) | BigInt(this.op.imm_obj[1] as number);
-                if (this.op.imm_obj[0] as number & 0x8000_0000) {
-                    //subtract complement when most significant bit is set
-                    int = int - 0x1_0000_0000_0000_0000n;
-                }
-                return `${int}n`;
-            }
-            else { return "" + this.op.imm_obj; }
-        }
-        if (this.op.opcode == namedClientScriptOps.pushlocalint || this.op.opcode == namedClientScriptOps.poplocallong || this.op.opcode == namedClientScriptOps.pushlocalstring || this.op.opcode == namedClientScriptOps.pushvar) {
-            return getOpcodeName(calli, this.op);
-        }
-        if (this.op.opcode == namedClientScriptOps.joinstring) {
-            let res = "`";
-            for (let child of this.children) {
-                if (child instanceof RawOpcodeNode && child.opinfo.id == namedClientScriptOps.pushconst && typeof child.op.imm_obj == "string") {
-                    res += child.op.imm_obj;
-                } else {
-                    res += `\${${child.getCode(calli, indent)}}`;
-                }
-            }
-            res += "`";
-            return res;
-        }
-        return getOpcodeCallCode(calli, this.op, this.children, this.originalindex, indent);
     }
     getOpcodes(calli: ClientscriptObfuscation) {
         let body = this.children.flatMap(q => q.getOpcodes(calli));
@@ -1031,14 +860,6 @@ export class ClientScriptFunction extends AstNode {
         this.argtype = argtype;
     }
 
-    getCode(calli: ClientscriptObfuscation, indent: number) {
-        let meta = calli.scriptargs.get(this.scriptid);
-        let res = "";
-        res += `//${meta?.scriptname ?? "unknown name"}\n`;
-        res += `${codeIndent(indent)}function script${this.scriptid}(${this.argtype.toTypeScriptVarlist(meta?.stack.exactin)}):${this.returntype.toTypeScriptReturnType(meta?.stack.exactout)}`;
-        res += this.children[0].getCode(calli, indent);
-        return res;
-    }
     getOpcodes(calli: ClientscriptObfuscation) {
         let body = this.children[0].getOpcodes(calli);
 
@@ -1300,6 +1121,8 @@ export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clie
     let sections = generateAst(calli, script, script.opcodedata, fileid);
     let typectx = new ClientScriptSubtypeSolver();
     typectx.parseSections(sections);
+    typectx.addKnownFromCalli(calli);
+    typectx.solve();
     let program = new CodeBlockNode(fileid, 0);
     if (full) {
         program.addSuccessor(sections[0]);
@@ -1348,29 +1171,4 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
     //1+foreach(2+sublen*(4+4))
     script.switchsize = 1 + script.switches.reduce((a, v) => a + 2 + v.length * (4 + 4), 0);
     return script;
-}
-
-export async function compileClientScript(source: CacheFileSource, code: string) {
-    let calli = await prepareClientScript(source);
-
-    let parseresult = clientscriptParser(calli).runparse(code);
-    if (!parseresult.success) { throw new Error("failed to parse clientscript", { cause: parseresult.failedOn }); }
-    if (parseresult.remaining != "") { throw new Error("failed to parse clientscript, left over: " + parseresult.remaining.slice(0, 100)); }
-    return astToImJson(calli, parseresult.result);
-}
-
-export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
-    let calli = await prepareClientScript(source);
-    let script = parse.clientscript.read(buf, source);
-    let full = true;//TODO remove
-    let { func, sections, typectx } = parseClientScriptIm(calli, script, fileid, full);
-    globalThis[`cs${fileid}`] = func;//TODO remove
-
-    let res = "";
-    if (full) {
-        res += func.getCode(calli, 0);
-    } else {
-        sections.forEach(q => res += q.getCode(calli, 0));
-    }
-    return res;
 }

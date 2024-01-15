@@ -4,7 +4,7 @@ import { DomWrap } from "./scriptsui";
 import type { ThreejsSceneCache } from "../3d/modeltothree";
 import { ThreeJsRenderer } from "./threejsrender";
 import { interfaces } from "../../generated/interfaces";
-import { renderClientScript } from "../clientscript/ast";
+import { renderClientScript } from "../clientscript";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 

@@ -14,8 +14,9 @@ import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, S
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
-import { detectSubtypes } from "./subtypedetector";
+import { ClientScriptSubtypeSolver, detectSubtypes } from "./subtypedetector";
 import { clientscriptParser } from "./codeparser";
+import { TsWriterContext, debugAst } from "./codewriter";
 
 globalThis.parser = clientscriptParser;
 
@@ -869,7 +870,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
     let testSection = (eq: StackDiffEquation) => {
         let { section, unknowns } = eq;
         if (Array.isArray(globalThis.test) && section.scriptid == globalThis.test[0] && section.originalindex == globalThis.test[1]) {
-            console.log(section.getCode(calli, 0))
+            debugAst(eq.section);
             debugger;
         }
 
@@ -1025,17 +1026,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         }
         console.log("total", total, "done", done, "partial", partial, "incomplete", missing.size);
     }
-}
-
-
-export async function prepareClientScript(source: CacheFileSource) {
-    if (!source.decodeArgs.clientScriptDeob) {
-        let deob = await ClientscriptObfuscation.create(source);
-        source.decodeArgs.clientScriptDeob = deob;
-        await deob.runAutoCallibrate(source);
-        globalThis.deob = deob;//TODO remove
-    }
-    return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation;
 }
 
 export function getArgType(script: clientscriptdata | clientscript) {

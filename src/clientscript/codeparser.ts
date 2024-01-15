@@ -1,8 +1,10 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
+import { TsWriterContext, debugAst } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
+import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 function* whitespace() {
     while (true) {
@@ -505,7 +507,7 @@ globalThis.testy = async () => {
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", prettyJson(jsondata.opcodedata));
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", prettyJson(roundtripped.opcodedata));
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js1.js", codefiles[index]);
-        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.js", parseresult.result.getCode(deob, 0));
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.js", new TsWriterContext(deob, new ClientScriptSubtypeSolver()).getCode(parseresult.result));
         return { roundtripped, original, exact: rawinput == rawroundtrip };
     }
     return { subtest, codefiles, codefs, jsonfs, jsonfiles };
