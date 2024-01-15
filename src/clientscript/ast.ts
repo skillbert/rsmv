@@ -4,7 +4,8 @@ import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType, prepareClientScript } from "./callibrator";
 import { clientscriptParser } from "./codeparser";
-import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids } from "./definitions";
+import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 /**
  * known issues
@@ -23,7 +24,6 @@ import { binaryOpIds, binaryOpSymbols, branchInstructions, branchInstructionsOrJ
  * - this ast tree automatically strips dead code so round trips won't be identical if there dead code
  * - when a script has no return values but the original code had an explicit return then this compiler won't output that
  */
-
 
 function getSingleChild<T extends AstNode>(op: AstNode | null | undefined, type: { new(...args: any[]): T }) {
     if (!op || op.children.length != 1 || !(op.children[0] instanceof type)) { return null; }
@@ -1175,14 +1175,14 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
         } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
             if (node.op.imm == 0) {
                 if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
-                node.knownStackDiff = StackInOut.fromExact([], [subtypes.loose_int]);
+                node.knownStackDiff = StackInOut.fromExact([], [typeuuids.int++]);
                 node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 1) {
-                node.knownStackDiff = StackInOut.fromExact([], [subtypes.loose_long]);
+                node.knownStackDiff = StackInOut.fromExact([], [typeuuids.long++]);
                 node.knownStackDiff.constout = node.op.imm_obj;
             } else if (node.op.imm == 2) {
                 let stringconst = node.op.imm_obj as string;
-                node.knownStackDiff = StackInOut.fromExact([], [subtypes.loose_string]);
+                node.knownStackDiff = StackInOut.fromExact([], [typeuuids.string++]);
                 node.knownStackDiff.constout = node.op.imm_obj;
 
                 //a string like this indicates a vararg set where this string indicates the types
@@ -1219,11 +1219,9 @@ function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscatio
             node.unknownstack = true;
         }
     }
-    // return true;
 }
 
 export function generateAst(calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
-
     let sections: CodeBlockNode[] = [];
     let getorMakeSection = (index: number) => {
         if (index >= ops.length) { throw new Error("tried to jump outside script"); }
@@ -1300,6 +1298,8 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
 export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1, full = true) {
     let sections = generateAst(calli, script, script.opcodedata, fileid);
+    let typectx = new ClientScriptSubtypeSolver();
+    typectx.parseSections(sections);
     let program = new CodeBlockNode(fileid, 0);
     if (full) {
         program.addSuccessor(sections[0]);
@@ -1315,7 +1315,7 @@ export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clie
     let argtype = getArgType(script);
     let func = new ClientScriptFunction(fileid, returntype, new StackList([argtype]));
     func.push(program);
-    return { func, sections }
+    return { func, sections, typectx };
 }
 globalThis.parseClientScriptIm = parseClientScriptIm;
 
@@ -1363,7 +1363,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     let calli = await prepareClientScript(source);
     let script = parse.clientscript.read(buf, source);
     let full = true;//TODO remove
-    let { func, sections } = parseClientScriptIm(calli, script, fileid, full);
+    let { func, sections, typectx } = parseClientScriptIm(calli, script, fileid, full);
     globalThis[`cs${fileid}`] = func;//TODO remove
 
     let res = "";

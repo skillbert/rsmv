@@ -1,73 +1,37 @@
-import { CodeBlockNode, RawOpcodeNode, VarAssignNode, generateAst, getNodeStackIn, getNodeStackOut, parseClientScriptIm, translateAst, varArgtype } from "./ast";
+import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
-import { ExactStack, StackConstants, StackDiff, StackInOut, StackList, StackType, branchInstructionsInt, branchInstructionsLong, dynamicOps, getParamOps, knownClientScriptOpNames, namedClientScriptOps, subtypes, typeToPrimitive } from "./definitions";
+import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps, subtypes } from "./definitions";
 
 //to test
 //await cli("extract --mode clientscripttext -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
 
-
-type PrimitiveType = "int" | "long" | "string";
-type DependentType = "scriptargvar" | "scriptret" | "opin" | "opout" | "known";
-
-function primitiveToId(prim: PrimitiveType) {
-    //2 bits
-    return (prim == "int" ? 0 : prim == "long" ? 1 : 2);
-}
-function dependentToId(dep: DependentType) {
-    //3 bits
-    return (dep == "known" ? 0 : dep == "opin" ? 1 : dep == "opout" ? 2 : dep == "scriptargvar" ? 3 : 4);
-}
-function dependencyGroup(deptype: DependentType, id: number) {
-    return (dependentToId(deptype) << 27) | (id << 11);
-}
-function dependencyIndex(subtype: PrimitiveType, index: number) {
-    return (primitiveToId(subtype) << 9) | index;
-}
-function knownDependency(fulltype: number) {
-    return (primitiveToId(typeToPrimitive(fulltype)) << 9) | fulltype;
-}
-
 const looseOps = [
-    //TODO build these from conststants using debugKey(int)
-    156174337,
-    156473346,
-    156289027,
-    156465154,
-    155981824,
-    156069889,
-    291825664,
-    290506752,
-    156178433,
+    //TODO most of these have known types depending on literal args
+    dependencyGroup("opin", 10867) | dependencyIndex("int", 2),//ENUM_HASOUTPUT
+    dependencyGroup("opout", 10777) | dependencyIndex("int", 0),//ENUM_GETREVERSEINDEX
+    dependencyGroup("opin", 10777) | dependencyIndex("int", 3),//ENUM_GETREVERSEINDEX
+    dependencyGroup("opin", 10863) | dependencyIndex("int", 2),//ENUM_GETREVERSECOUNT
+    dependencyGroup("opin", 10670) | dependencyIndex("int", 1),//ENUM_STRING
+    dependencyGroup("opin", 10627) | dependencyIndex("int", 0),//POP_INT_DISCARD
+    dependencyGroup("opout", 11421) | dependencyIndex("int", 0),//LC_PARAM
+    dependencyGroup("opin", 10721) | dependencyIndex("int", 1),//CC_SETPARAM
+    dependencyGroup("opin", 10723) | dependencyIndex("int", 1),//DB_FIND_WITH_COUNT
 
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
     dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
-    knownDependency(subtypes.loose_int),
-    knownDependency(subtypes.loose_long),
-    knownDependency(subtypes.loose_string),
+    knownDependency(subtypes.uknown_int),
+    knownDependency(subtypes.unknown_long),
+    knownDependency(subtypes.unknown_string),
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
 ];
 globalThis.looseOps = looseOps;
 
-function debugKey(key: number) {
-    let index = key & 0x1ff;
-    let stacktype = (key >> 9) & 0x3;
-    let group = (key >> 11) & 0xffff;
-    let sourcetype = (key >> 27) & 0x7;
-    let stackstring = (stacktype == 0 ? "int" : stacktype == 1 ? "long" : "string");
-
-    if (sourcetype == 0) { return `known type ${index} ${Object.entries(subtypes).find(q => q[1] == index)?.[0]}`; }
-    if (sourcetype == 1) { return `opin ${group} ${knownClientScriptOpNames[group] ?? "unk"} ${index} ${stackstring}`; }
-    if (sourcetype == 2) { return `opout ${group} ${knownClientScriptOpNames[group] ?? "unk"} ${index} ${stackstring}`; }
-    if (sourcetype == 3) { return `script ${group} arg/local ${index} ${stackstring}`; }
-    if (sourcetype == 4) { return `script ${group} return ${index} ${stackstring}`; }
-}
-globalThis.debugkey = debugKey;
-
-class TypeContext {
+export class ClientScriptSubtypeSolver {
     map = new Map<number, Set<number>>();
     knowntypes = new Map<number, number>();
+    uuidcounter = 1;
 
     constructor() {
         for (let subtype of Object.values(subtypes)) {
@@ -104,6 +68,39 @@ class TypeContext {
             this.map.set(other, otherset);
         }
         otherset.add(key);
+    }
+
+    parseSections(sections: CodeBlockNode[]) {
+        for (let section of sections) {
+            let stack = new CombinedExactStack(this);
+            for (let op of section.children) {
+                if (!(op instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
+                if (!stack.pushopcode(op, section.scriptid)) {
+                    break;
+                }
+            }
+        }
+    }
+
+    addKnownFromCalli(calli: ClientscriptObfuscation) {
+        for (let key of this.map.keys()) {
+            let [type, stacktype, group, index] = decomposeKey(key);
+            let isin = type == "opin" || type == "scriptargvar";
+            let isscript = type == "scriptargvar" || type == "scriptret";
+            let isop = type == "opin" || type == "opout";
+            if (isscript || isop) {
+                let stackinout = (isscript ? calli.scriptargs.get(group)?.stack : calli.decodedMappings.get(group)?.stackinfo);
+                if (stackinout) {
+                    let stack = (isin ? stackinout.exactin : stackinout.exactout);
+                    if (stack) {
+                        let typedstack = stack[stacktype];
+                        if (index < typedstack.length) {
+                            this.knowntypes.set(key, typedstack[index]);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     solve() {
@@ -145,8 +142,8 @@ class CombinedExactStack {
     longstack: number[] = [];
     stringstack: number[] = [];
     consts = new StackConstants();
-    ctx: TypeContext;
-    constructor(ctx: TypeContext) {
+    ctx: ClientScriptSubtypeSolver;
+    constructor(ctx: ClientScriptSubtypeSolver) {
         this.ctx = ctx;
     }
     pushopcode(node: RawOpcodeNode, scriptid: number) {
@@ -231,53 +228,48 @@ class CombinedExactStack {
 }
 
 export function detectSubtypes(calli: ClientscriptObfuscation) {
-    let ctx = new TypeContext();
-    globalThis.subtypectx = ctx;
+    let ctx = new ClientScriptSubtypeSolver();
     for (let cand of calli.candidates.values()) {
         if (!cand.scriptcontents) { continue; }
         let sections = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
-        for (let section of sections) {
-            let stack = new CombinedExactStack(ctx);
-            for (let op of section.children) {
-                if (!(op instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
-                if (!stack.pushopcode(op, cand.id)) {
-                    break;
-                }
-            }
-        }
+        ctx.parseSections(sections);
     }
-
     ctx.solve();
-    let knowntypes = ctx.knowntypes;
+    assignKnowTypes(calli, ctx.knowntypes);
+}
+export function assignKnowTypes(calli: ClientscriptObfuscation, knowntypes: Map<number, number>) {
     for (let op of calli.mappings.values()) {
         if (!op.stackinfo.initializedthrough) { continue; }
+        if (op.id == namedClientScriptOps.push_array) {
+            debugger;
+        }
         let exactin = new ExactStack();
         let diffin = op.stackinfo.in.getStackdiff();
-        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.loose_int); }
-        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.loose_long); }
-        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.loose_string); }
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
+        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         op.stackinfo.exactin = exactin;
 
         let exactout = new ExactStack();
         let diffout = op.stackinfo.out.getStackdiff();
-        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.loose_int); }
-        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.loose_long); }
-        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.loose_string); }
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
+        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         op.stackinfo.exactout = exactout;
     }
     for (let [id, func] of calli.scriptargs) {
         let exactin = new ExactStack();
         let diffin = func.stack.in.getStackdiff();
-        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("int", i)) ?? subtypes.loose_int); }
-        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("long", i)) ?? subtypes.loose_long); }
-        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("string", i)) ?? subtypes.loose_string); }
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
+        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         func.stack.exactin = exactin;
 
         let exactout = new ExactStack();
         let diffout = func.stack.out.getStackdiff();
-        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("int", i)) ?? subtypes.loose_int); }
-        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("long", i)) ?? subtypes.loose_long); }
-        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("string", i)) ?? subtypes.loose_string); }
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
+        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         func.stack.exactout = exactout;
     }
     return knowntypes;

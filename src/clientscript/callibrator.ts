@@ -6,16 +6,16 @@ import { DecodeState, EncodeState } from "../opcode_reader";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { clientscript } from "../../generated/clientscript";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
-import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { crc32 } from "../libs/crc32util";
 import { params } from "../../generated/params";
-import { clientscriptParser } from "./codeparser";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources, typeToPrimitive } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
+import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import { detectSubtypes } from "./subtypedetector";
+import { clientscriptParser } from "./codeparser";
 
 globalThis.parser = clientscriptParser;
 
