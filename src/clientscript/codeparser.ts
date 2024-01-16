@@ -591,11 +591,11 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
 //TODO remove
 globalThis.testy = async () => {
     const fs = require("fs") as typeof import("fs");
-    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-1999");
+    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-2999");
     let codefiles = [...codefs.extract.filesMap.entries()]
         .filter(q => q[0].startsWith("clientscript"))
         .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
-    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-1999");
+    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-2999");
     jsonfs.extract.filesMap.delete(".schema-clientscript.json");
     let jsonfiles = [...jsonfs.extract.filesMap.values()];
     let subtest = (index: number) => {
@@ -606,7 +606,8 @@ globalThis.testy = async () => {
         let roundtripped = astToImJson(deob, parseresult.result);
         let jsondata = JSON.parse(jsonfiles[index].data);
         delete jsondata.$schema;
-        jsondata.opcodedata.forEach(q => { delete q.opname });
+        // jsondata.opcodedata.forEach(q => { delete q.opname });
+        roundtripped.opcodedata.forEach(q => (q as any).opname = knownClientScriptOpNames[q.opcode] ?? `unk_${q.opcode}`);
         let original = prettyJson(jsondata.opcodedata);
 
         let rawinput = prettyJson(jsondata);
@@ -617,8 +618,8 @@ globalThis.testy = async () => {
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw2.json", rawroundtrip);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", prettyJson(jsondata.opcodedata));
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", prettyJson(roundtripped.opcodedata));
-        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js1.js", originalts);
-        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.js", roundtripts);
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js1.ts", originalts);
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.ts", roundtripts);
         return { exact: rawinput == rawroundtrip, exactts: originalts == roundtripts, roundtripped, original };
     }
     return { subtest, codefiles, codefs, jsonfs, jsonfiles };
@@ -626,7 +627,7 @@ globalThis.testy = async () => {
 
 export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     let res = "";
-    res += "declare class BoundFunction{};\n";
+    res += "declare class BoundFunction{}\n";
     res += "declare function callback():BoundFunction;\n";
     res += "declare function callback<T extends (...args:any[])=>any>(fn:T,...args:Parameters<T>):BoundFunction;\n";
     res += "\n";

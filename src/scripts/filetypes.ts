@@ -449,7 +449,7 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 		...throwOnNonSimple,
 		async prepareDump(out, source) {
 			let calli = await prepareClientScript(source);
-			out.writeFile("tsconfig.json", "{}");//empty tsconfig to make the folder a project
+			out.writeFile("tsconfig.json", JSON.stringify({ "compilerOptions": { "target": "ESNext" } },undefined,"\t"));//tsconfig to make the folder a project
 			out.writeFile("opcodes.d.ts", writeOpcodeFile(calli));
 			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
 		},

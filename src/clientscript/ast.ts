@@ -715,13 +715,21 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
         if (node instanceof IfStatementNode) {
             //detect an or statement that wasn't caught before (a bit late, there should be a better way to do this)
-            let subif = getSingleChild(node.falsebranch, IfStatementNode);
-            if (subif && subif.truebranch == node.truebranch) {
+            let falseif = getSingleChild(node.falsebranch, IfStatementNode);
+            if (falseif && falseif.truebranch == node.truebranch) {
                 let combined = new BranchingStatement({ opcode: namedClientScriptOps.shorting_or, imm: 0, imm_obj: null }, node.statement.originalindex);
                 combined.push(node.statement);
-                combined.push(subif.statement);
-                node.setBranches(combined, node.truebranch, subif.falsebranch, subif.ifEndIndex);
+                combined.push(falseif.statement);
+                node.setBranches(combined, node.truebranch, falseif.falsebranch, falseif.ifEndIndex);
             }
+            let trueif = getSingleChild(node.truebranch, IfStatementNode);
+            if (trueif && trueif.falsebranch == node.falsebranch) {
+                let combined = new BranchingStatement({ opcode: namedClientScriptOps.shorting_and, imm: 0, imm_obj: null }, node.statement.originalindex);
+                combined.push(node.statement);
+                combined.push(trueif.statement);
+                node.setBranches(combined, trueif.truebranch, trueif.falsebranch, node.ifEndIndex);
+            }
+            
         }
         if (node instanceof RawOpcodeNode && branchInstructions.includes(node.opinfo.id)) {
             let parent = node.parent;
@@ -766,7 +774,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             let grandparent = parent?.parent;
             if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.ifEndIndex == parent.branchEndNode.originalindex) {
                 let isor = grandparent.truebranch == trueblock && grandparent.falsebranch == parent;
-                let isand = condnode.children.length <= 2 && grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
+                let isand = parent.children.length ==1 && grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
                 if (isor || isand) {
                     parent.remove(node);
                     //TODO make some sort of in-line codeblock node for this

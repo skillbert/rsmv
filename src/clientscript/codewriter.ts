@@ -10,6 +10,7 @@ import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJum
  * - default return values for int can be -1 for some specialisations while this compiler doesn't know about those
  * - this ast tree automatically strips dead code so round trips won't be identical if there dead code
  * - when a script has no return values but the original code had an explicit return then this compiler won't output that
+ * - the jagex compiler uses some unknown logic to put the default branch of a switch statement either at the start or end of the block
  */
 
 /**
