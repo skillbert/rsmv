@@ -15,14 +15,6 @@ import { ClientScriptSubtypeSolver } from "./subtypedetector";
  */
 //get script names from https://api.runewiki.org/hashes?rev=930
 
-/**
- * known compiler differences
- * - in some situations bunny hop jumps in nested ifs are merged while the jagex compiler doesn't
- * - default return values for int can be -1 for some specialisations while this compiler doesn't know about those
- * - this ast tree automatically strips dead code so round trips won't be identical if there dead code
- * - when a script has no return values but the original code had an explicit return then this compiler won't output that
- */
-
 export function getSingleChild<T extends AstNode>(op: AstNode | null | undefined, type: { new(...args: any[]): T }) {
     if (!op || op.children.length != 1 || !(op.children[0] instanceof type)) { return null; }
     return op.children[0] as T;
@@ -440,9 +432,12 @@ export class FunctionBindNode extends AstNode {
     getOpcodes(calli: ClientscriptObfuscation) {
         let scriptid = this.children[0]?.knownStackDiff?.constout ?? -1;
         if (typeof scriptid != "number") { throw new Error("unexpected"); }
-        let func = calli.scriptargs.get(scriptid);
-        let typestring = func?.stack.in.toFunctionBindString();
-        if (!typestring) { throw new Error("unknown functionbind types"); }
+        let typestring = "";
+        if (scriptid != -1) {
+            let func = calli.scriptargs.get(scriptid);
+            if (!func) { throw new Error("unknown functionbind types"); }
+            typestring = func.stack.in.toFunctionBindString();
+        }
         let ops = this.children.flatMap(q => q.getOpcodes(calli)).concat();
         ops.push({ opcode: calli.getNamedOp(namedClientScriptOps.pushconst).id, imm: 2, imm_obj: typestring });
         return ops;

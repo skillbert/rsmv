@@ -2,7 +2,21 @@ import { boundMethod } from "autobind-decorator";
 import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
-import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, knownClientScriptOpNames, namedClientScriptOps, subtypeToTs } from "./definitions";
+import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, knownClientScriptOpNames, namedClientScriptOps, subtypeToTs, subtypes } from "./definitions";
+
+/**
+ * known compiler differences
+ * - in some situations bunny hop jumps in nested ifs are merged while the jagex compiler doesn't
+ * - default return values for int can be -1 for some specialisations while this compiler doesn't know about those
+ * - this ast tree automatically strips dead code so round trips won't be identical if there dead code
+ * - when a script has no return values but the original code had an explicit return then this compiler won't output that
+ */
+
+/**
+ * decompiler TODO
+ * - fix default return of -1 for int specialisations
+ * - fix function bind arrays
+ */
 
 export function debugAst(node: AstNode) {
     let writer = new TsWriterContext(globalThis.deob, new ClientScriptSubtypeSolver())
@@ -161,16 +175,15 @@ addWriter(IfStatementNode, (node, ctx) => {
 });
 addWriter(RawOpcodeNode, (node, ctx) => {
     if (node.op.opcode == namedClientScriptOps.pushconst) {
-        let gettypecomment = (subt: PrimitiveType) => {
-            if (node.knownStackDiff?.exactout) {
-                let key = node.knownStackDiff.exactout[subt][0];
-                let type = ctx.typectx.knowntypes.get(key);
-                if (typeof type != "number") { return ""; }
-                return `/*${subtypeToTs(type)}*/`;
-            }
+        let gettypecast = (subt: PrimitiveType) => {
+            if (!node.knownStackDiff?.exactout) { return ""; }
+            let key = node.knownStackDiff.exactout[subt][0];
+            let type = ctx.typectx.knowntypes.get(key);
+            if (typeof type != "number" || type == subtypes.int || type == subtypes.string || type == subtypes.long) { return ""; }
+            return ` as ${subtypeToTs(type)}`;
         }
         if (typeof node.op.imm_obj == "string") {
-            return `${gettypecomment("string")}"${node.op.imm_obj.replace(/(["\\])/g, "\\$1")}"`;
+            return `"${node.op.imm_obj.replace(/(["\\])/g, "\\$1")}"${gettypecast("string")}`;
         } else if (Array.isArray(node.op.imm_obj)) {
             //build our bigint as unsigned
             let int = (BigInt(node.op.imm_obj[0] as number) << 32n) | BigInt(node.op.imm_obj[1] as number);
@@ -178,9 +191,9 @@ addWriter(RawOpcodeNode, (node, ctx) => {
                 //subtract complement when most significant bit is set
                 int = int - 0x1_0000_0000_0000_0000n;
             }
-            return `${gettypecomment("long")}${int}n`;
+            return `${int}n${gettypecast("long")}`;
         } else {
-            return `${gettypecomment("int")}${node.op.imm_obj}`;
+            return `${node.op.imm_obj}${gettypecast("int")}`;
         }
     }
     if (node.op.opcode == namedClientScriptOps.pushlocalint || node.op.opcode == namedClientScriptOps.poplocallong || node.op.opcode == namedClientScriptOps.pushlocalstring || node.op.opcode == namedClientScriptOps.pushvar) {
@@ -204,7 +217,7 @@ addWriter(ClientScriptFunction, (node, ctx) => {
     let meta = ctx.calli.scriptargs.get(node.scriptid);
     let res = "";
     res += `//${meta?.scriptname ?? "unknown name"}\n`;
-    res += `${ctx.codeIndent()}function script${node.scriptid} (${node.argtype.toTypeScriptVarlist(meta?.stack.exactin)}):${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
+    res += `${ctx.codeIndent()}function script${node.scriptid} (${node.argtype.toTypeScriptVarlist(true, meta?.stack.exactin)}):${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
     res += ctx.getCode(node.children[0]);
     return res;
 });

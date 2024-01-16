@@ -107,7 +107,7 @@ export class ClientScriptSubtypeSolver {
         let activekeys = new Set(this.knowntypes.keys());
         let itercount = 0;
         while (activekeys.size != 0) {
-            console.log(`iteration ${itercount++}, known: ${this.knowntypes.size}, active:${activekeys.size}`);
+            // console.log(`iteration ${itercount++}, known: ${this.knowntypes.size}, active:${activekeys.size}`);
             let nextactivekeys = new Set<number>();
             for (let key of activekeys) {
                 let links = this.map.get(key);
