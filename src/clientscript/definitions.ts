@@ -288,8 +288,8 @@ export function debugKey(key: number) {
     let [sourcetype, stackstring, group, index] = decomposeKey(key);
 
     if (sourcetype == "known") { return `known type ${index} ${Object.entries(subtypes).find(q => q[1] == index)?.[0]}`; }
-    if (sourcetype == "opin") { return `opin ${group} ${knownClientScriptOpNames[group] ?? "unk"} ${index} ${stackstring}`; }
-    if (sourcetype == "opout") { return `opout ${group} ${knownClientScriptOpNames[group] ?? "unk"} ${index} ${stackstring}`; }
+    if (sourcetype == "opin") { return `opin ${group} ${getOpName(group)} ${index} ${stackstring}`; }
+    if (sourcetype == "opout") { return `opout ${group} ${getOpName(group)} ${index} ${stackstring}`; }
     if (sourcetype == "scriptargvar") { return `script ${group} arg/local ${index} ${stackstring}`; }
     if (sourcetype == "scriptret") { return `script ${group} return ${index} ${stackstring}`; }
     if (sourcetype == "uuid") { return `uuid ${index} ${stackstring}`; }
@@ -300,6 +300,10 @@ export const typeuuids = {
     int: dependencyGroup("uuid", 0) | dependencyIndex("int", 0),
     long: dependencyGroup("uuid", 0) | dependencyIndex("long", 0),
     string: dependencyGroup("uuid", 0) | dependencyIndex("string", 0),
+}
+
+export function getOpName(id: number) {
+    return knownClientScriptOpNames[id] ?? `unk${id}`;
 }
 
 export function subtypeToTs(subt: number) {
@@ -636,18 +640,16 @@ export class StackList {
             let part = this.values[i];
             if (part == "int" && i + 1 < this.values.length && this.values[i + 1] == "vararg") {
                 //combine int+vararg arguments into a single boundfunction argument
-                res += "vararg:BoundFunction,";
+                res += "vararg: BoundFunction,";
                 i++;
             } else if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, withnames, exacttype); }
-            else if (part == "int") { res += `${withnames ? `int${counts.int}:` : ""}${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"},`; counts.int++; }
-            else if (part == "long") { res += `${withnames ? `long${counts.long}:` : ""}${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"},`; counts.long++; }
-            else if (part == "string") { res += `${withnames ? `string${counts.string}:` : ""}${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"},`; counts.string++; }
-            else if (part == "vararg") { res += `${withnames ? "vararg:" : ""}any,`; }
+            else if (part == "int") { res += `${withnames ? `int${counts.int}: ` : ""}${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"}, `; counts.int++; }
+            else if (part == "long") { res += `${withnames ? `long${counts.long}: ` : ""}${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"}, `; counts.long++; }
+            else if (part == "string") { res += `${withnames ? `string${counts.string}: ` : ""}${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"}, `; counts.string++; }
+            else if (part == "vararg") { res += `${withnames ? "vararg: " : ""}any, `; }
             else throw new Error("unsupported stack type");
         }
-        if (res.endsWith(",")) {
-            res = res.slice(0, -1);
-        }
+        res = res.replace(/,\s?$/, "");
         return res;
     }
     toTypeScriptReturnType(exacttype?: ExactStack | null) {
@@ -903,18 +905,18 @@ export class StackDiff {
     toTypeScriptVarlist(nameoffset: StackDiff, withnames: boolean, exacttype?: ExactStack | null) {
         let res = "";
         for (let i = 0; i < this.int; i++) {
-            res += `${withnames ? `int${nameoffset.int}:` : ""}${exacttype ? subtypeToTs(exacttype.int[nameoffset.int]) : "number"},`;
+            res += `${withnames ? `int${nameoffset.int}: ` : ""}${exacttype ? subtypeToTs(exacttype.int[nameoffset.int]) : "number"}, `;
             nameoffset.int++;
         }
         for (let i = 0; i < this.long; i++) {
-            res += `${withnames ? `long${nameoffset.long}:` : ""}${exacttype ? subtypeToTs(exacttype.long[nameoffset.long]) : "BigInt"},`;
+            res += `${withnames ? `long${nameoffset.long}: ` : ""}${exacttype ? subtypeToTs(exacttype.long[nameoffset.long]) : "BigInt"}, `;
             nameoffset.long++;
         }
         for (let i = 0; i < this.string; i++) {
-            res += `${withnames ? `string${nameoffset.string}:` : ""}${exacttype ? subtypeToTs(exacttype.string[nameoffset.string]) : "string"},`;
+            res += `${withnames ? `string${nameoffset.string}: ` : ""}${exacttype ? subtypeToTs(exacttype.string[nameoffset.string]) : "string"}, `;
             nameoffset.string++;
         }
-        for (let i = 0; i < this.vararg; i++) { res += `vararg${nameoffset.string++}:any,`; }
+        for (let i = 0; i < this.vararg; i++) { res += `vararg${nameoffset.string++}:any, `; }
         return res;
     }
 }

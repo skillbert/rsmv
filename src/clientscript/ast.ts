@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibrator";
 import { debugAst } from "./codewriter";
-import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids } from "./definitions";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, getOpName } from "./definitions";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 /**
@@ -85,6 +85,81 @@ export class ComposedOp extends AstNode {
     getOpcodes(calli: ClientscriptObfuscation) {
         if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
         return this.internalOps.flatMap(q => q.getOpcodes(calli));
+    }
+}
+
+export class IntrinsicNode extends AstNode {
+    type: "$callopid" | "$getopid";
+    constructor(type: IntrinsicNode["type"]) {
+        super(-1);
+        this.type = type;
+    }
+    static fromString(name: string, args: AstNode[]) {
+        if (name != "$callopid" && name != "$getopid") {
+            throw new Error(`unknown intrinsic ${name}`);
+        }
+        let res = new IntrinsicNode(name);
+        res.pushList(args);
+        return res;
+    }
+
+    getOpcodes(calli: ClientscriptObfuscation) {
+        let body: ClientScriptOp[] = [];
+        if (this.type == "$callopid") {
+            let switchop: ClientScriptOp = { opcode: namedClientScriptOps.switch, imm: -1, imm_obj: [] };
+            let defaultjmp: ClientScriptOp = { opcode: namedClientScriptOps.jump, imm: -1, imm_obj: null };
+            body.push(switchop);//TODO switch map id
+            let jumpstart = body.length;
+            body.push(defaultjmp);
+
+            let endops: ClientScriptOp[] = [];
+            let jumptable: { value: number, label: number }[] = [];
+            for (let id of calli.decodedMappings.keys()) {
+                let opid = +id;
+                if (branchInstructionsOrJump.includes(opid)) { continue; }
+                if (opid == namedClientScriptOps.switch) { continue; }
+                if (opid == namedClientScriptOps.return) { continue; }
+                if (opid == namedClientScriptOps.pushconst) { continue; }
+                jumptable.push({ value: opid, label: body.length - jumpstart });
+                body.push({ opcode: opid, imm: 0, imm_obj: null });
+                let jmp: ClientScriptOp = { opcode: namedClientScriptOps.jump, imm: -1, imm_obj: null };
+                body.push(jmp);
+                endops.push(jmp);
+            }
+
+            defaultjmp.imm = body.length - body.indexOf(defaultjmp) - 1;
+            let jmp: ClientScriptOp = { opcode: namedClientScriptOps.jump, imm: -1, imm_obj: null };
+            body.push(jmp);
+            endops.push(jmp);
+
+            //make all jump point to the end now we know the length
+            for (let op of endops) {
+                let index = body.indexOf(op);
+                op.imm = body.length - index - 1;
+            }
+
+            switchop.imm_obj = jumptable;
+        } else if (this.type == "$getopid") {
+            //pop arg0 to string0
+            body.push({ opcode: namedClientScriptOps.poplocalstring, imm: 0, imm_obj: null });
+            for (let [id, opinfo] of calli.decodedMappings) {
+                let name = getOpName(id);
+                //strcomp(opname,string0)==0
+                body.push({ opcode: namedClientScriptOps.pushconst, imm: 2, imm_obj: name });
+                body.push({ opcode: namedClientScriptOps.pushlocalstring, imm: 0, imm_obj: null });
+                body.push({ opcode: namedClientScriptOps.strcmp, imm: 0, imm_obj: null });
+                body.push({ opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: 0 });
+                body.push({ opcode: namedClientScriptOps.branch_eq, imm: 1, imm_obj: 0 });
+                //jump over
+                body.push({ opcode: namedClientScriptOps.jump, imm: 2, imm_obj: 0 });
+                //return id
+                body.push({ opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: +id });
+                body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
+            }
+            body.push({ opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: -1 });
+            body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
+        }
+        return body;
     }
 }
 
@@ -439,7 +514,7 @@ export class FunctionBindNode extends AstNode {
             typestring = func.stack.in.toFunctionBindString();
         }
         let ops = this.children.flatMap(q => q.getOpcodes(calli)).concat();
-        ops.push({ opcode: calli.getNamedOp(namedClientScriptOps.pushconst).id, imm: 2, imm_obj: typestring });
+        ops.push({ opcode: namedClientScriptOps.pushconst, imm: 2, imm_obj: typestring });
         return ops;
     }
 }
@@ -729,7 +804,6 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                 combined.push(trueif.statement);
                 node.setBranches(combined, trueif.truebranch, trueif.falsebranch, node.ifEndIndex);
             }
-            
         }
         if (node instanceof RawOpcodeNode && branchInstructions.includes(node.opinfo.id)) {
             let parent = node.parent;
@@ -774,7 +848,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             let grandparent = parent?.parent;
             if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.ifEndIndex == parent.branchEndNode.originalindex) {
                 let isor = grandparent.truebranch == trueblock && grandparent.falsebranch == parent;
-                let isand = parent.children.length ==1 && grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
+                let isand = parent.children.length == 1 && grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
                 if (isor || isand) {
                     parent.remove(node);
                     //TODO make some sort of in-line codeblock node for this
@@ -868,13 +942,11 @@ export class ClientScriptFunction extends AstNode {
 
         //don't add the obsolete return call if there is already a return call and the type is empty
         if (!this.returntype.isEmpty() || body.at(-1)?.opcode != namedClientScriptOps.return) {
-            let returnop = calli.getNamedOp(namedClientScriptOps.return);
-            let constop = calli.getNamedOp(namedClientScriptOps.pushconst);
             let ret = this.returntype.clone();
             let pushconst = (type: StackType) => {
                 if (type == "vararg") { throw new Error("unexpected"); }
                 body.push({
-                    opcode: constop.id,
+                    opcode: namedClientScriptOps.pushconst,
                     imm: { int: 0, long: 1, string: 2 }[type],
                     imm_obj: { int: 0, long: [0, 0] as [number, number], string: "" }[type],
                 });
@@ -890,7 +962,7 @@ export class ClientScriptFunction extends AstNode {
                     pushconst(type);
                 }
             }
-            body.push({ opcode: returnop.id, imm: 0, imm_obj: null });
+            body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
         }
         return body;
     }

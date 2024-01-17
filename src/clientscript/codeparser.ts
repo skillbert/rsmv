@@ -1,8 +1,8 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
@@ -97,6 +97,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
             args.push({ name, type });
             yield whitespace;
             if (!(yield has(","))) { break; }
+            yield whitespace;
         }
         return args;
     }
@@ -187,7 +188,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* varname() {
-        const [name]: [string] = yield (/^[a-zA-Z]\w*/);
+        const [name]: [string] = yield (/^[a-zA-Z$]\w*/);
         if (reserverd.includes(name)) { yield unmatchable; }
         return name;
     }
@@ -232,6 +233,9 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
                 res.pushList(args);
             }
             return res;
+        }
+        if (funcname.startsWith("$")) {
+            return IntrinsicNode.fromString(funcname, args);
         }
 
         let fnid = -1;
@@ -591,28 +595,35 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
 //TODO remove
 globalThis.testy = async () => {
     const fs = require("fs") as typeof import("fs");
-    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-2999");
+    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-999");
     let codefiles = [...codefs.extract.filesMap.entries()]
         .filter(q => q[0].startsWith("clientscript"))
         .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
-    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-2999");
+    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-999");
     jsonfs.extract.filesMap.delete(".schema-clientscript.json");
     let jsonfiles = [...jsonfs.extract.filesMap.values()];
+    let testknown = () => {
+        let tsfile = fs.readFileSync("C:/Users/wilbe/tmp/clinetscript/input.ts", "utf8");
+        let jsonfile = JSON.stringify({ opcodedata: [] });
+        return testinner(tsfile, jsonfile);
+    }
     let subtest = (index: number) => {
+        return testinner(codefiles[index], jsonfiles[index].data, index);
+    }
+    let testinner = (originalts: string, originaljson: string, fileid = -1) => {
         const deob = globalThis.deob as ClientscriptObfuscation;
-        const originalts = codefiles[index];
         let parseresult = clientscriptParser(deob).runparse(originalts);
         if (!parseresult.success) { return parseresult; }
         let roundtripped = astToImJson(deob, parseresult.result);
-        let jsondata = JSON.parse(jsonfiles[index].data);
+        let jsondata = JSON.parse(originaljson);
         delete jsondata.$schema;
-        // jsondata.opcodedata.forEach(q => { delete q.opname });
-        roundtripped.opcodedata.forEach(q => (q as any).opname = knownClientScriptOpNames[q.opcode] ?? `unk_${q.opcode}`);
+        roundtripped.opcodedata.forEach(q => (q as any).opname = getOpName(q.opcode));
         let original = prettyJson(jsondata.opcodedata);
 
         let rawinput = prettyJson(jsondata);
         let rawroundtrip = prettyJson(roundtripped);
-        let roundtripts = new TsWriterContext(deob, new ClientScriptSubtypeSolver()).getCode(parseresult.result);
+        let { func: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
+        let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
 
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw1.json", rawinput);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw2.json", rawroundtrip);
@@ -622,7 +633,7 @@ globalThis.testy = async () => {
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.ts", roundtripts);
         return { exact: rawinput == rawroundtrip, exactts: originalts == roundtripts, roundtripped, original };
     }
-    return { subtest, codefiles, codefs, jsonfs, jsonfiles };
+    return { subtest, testinner, testknown, codefiles, codefs, jsonfs, jsonfiles };
 }
 
 export function writeOpcodeFile(calli: ClientscriptObfuscation) {
@@ -639,7 +650,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     }
     res += "\n";
     for (let op of calli.mappings.values()) {
-        let opname = knownClientScriptOpNames[op.id] ?? `unk${op.id}`;
+        let opname = getOpName(op.id);
         if (reserverd.includes(opname)) { continue; }
         if (op.id == namedClientScriptOps.enum_getvalue) {
             res += `declare function ${opname}(int0:number,int1:number,int2:number,int3:number):any;\n`;

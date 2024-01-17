@@ -1,8 +1,8 @@
 import { boundMethod } from "autobind-decorator";
-import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild } from "./ast";
+import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, IntrinsicNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
-import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, knownClientScriptOpNames, namedClientScriptOps, subtypeToTs, subtypes } from "./definitions";
+import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, namedClientScriptOps, subtypeToTs, subtypes } from "./definitions";
 
 /**
  * known compiler differences
@@ -63,7 +63,7 @@ function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
             return `varunk_${op.imm}`;
         }
     }
-    return knownClientScriptOpNames[op.opcode] ?? `unk${op.opcode}`;
+    return getOpName(op.opcode);
 }
 
 function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: AstNode[], originalindex: number) {
@@ -78,10 +78,10 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
     if (op.opcode == namedClientScriptOps.return) {
         if (children.length == 0) { return `return`; }
         if (children.length == 1) { return `return ${ctx.getCode(children[0])}`; }
-        return `return [${children.map(ctx.getCode).join(",")}]`;
+        return `return [${children.map(ctx.getCode).join(", ")}]`;
     }
     if (op.opcode == namedClientScriptOps.gosub) {
-        return `script${op.imm}(${children.map(ctx.getCode).join(",")})`;
+        return `script${op.imm}(${children.map(ctx.getCode).join(", ")})`;
     }
     let metastr = "";
     if (branchInstructionsOrJump.includes(op.opcode)) {
@@ -91,7 +91,7 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
     } else if (op.imm != 0) {
         metastr = `[${op.imm}]`;
     }
-    return `${getOpcodeName(ctx.calli, op)}${metastr}(${children.map(ctx.getCode).join(",")})`;
+    return `${getOpcodeName(ctx.calli, op)}${metastr}(${children.map(ctx.getCode).join(", ")})`;
 }
 
 const writermap = new Map<AstNode["constructor"], (node: AstNode, ctx: TsWriterContext) => string>();
@@ -110,8 +110,8 @@ addWriter(ComposedOp, (node, ctx) => {
     else throw new Error("unexpected op type " + node.type);
 });
 addWriter(VarAssignNode, (node, ctx) => {
-    let name = `${node.varops.map(q => q instanceof RawOpcodeNode ? getOpcodeName(ctx.calli, q.op) : "??")}`;
-    return `var ${node.varops.length == 1 ? "" : "["}${name}${node.varops.length == 1 ? "" : "]"} = ${node.children.map(ctx.getCode).join(",")}`
+    let name = `${node.varops.map(q => q instanceof RawOpcodeNode ? getOpcodeName(ctx.calli, q.op) : "??").join(", ")}`;
+    return `var ${node.varops.length == 1 ? "" : "["}${name}${node.varops.length == 1 ? "" : "]"} = ${node.children.map(ctx.getCode).join(", ")}`
 });
 addWriter(CodeBlockNode, (node, ctx) => {
     let code = "";
@@ -121,7 +121,7 @@ addWriter(CodeBlockNode, (node, ctx) => {
     }
     // code += `${codeIndent(indent, node.originalindex)}//[${node.scriptid},${node.originalindex}]\n`;
     for (let child of node.children) {
-        code += `${ctx.codeIndent(child.originalindex)}${ctx.getCode(child)}\n`;
+        code += `${ctx.codeIndent(child.originalindex)}${ctx.getCode(child)};\n`;
     }
     if (node.parent) {
         ctx.indent--;
@@ -133,25 +133,25 @@ addWriter(BranchingStatement, (node, ctx) => {
     return getOpcodeCallCode(ctx, node.op, node.children, node.originalindex);
 });
 addWriter(WhileLoopStatementNode, (node, ctx) => {
-    let res = `while(${ctx.getCode(node.statement)})`;
+    let res = `while (${ctx.getCode(node.statement)}) `;
     res += ctx.getCode(node.body);
     return res;
 });
 addWriter(SwitchStatementNode, (node, ctx) => {
     let res = "";
-    res += `switch(${node.valueop ? ctx.getCode(node.valueop) : ""}){\n`;
+    res += `switch (${node.valueop ? ctx.getCode(node.valueop) : ""}) {\n`;
     ctx.indent++;
     for (let [i, branch] of node.branches.entries()) {
         res += `${ctx.codeIndent(branch.block.originalindex)}case ${branch.value}:`;
         if (i + 1 < node.branches.length && node.branches[i + 1].block == branch.block) {
             res += `\n`;
         } else {
-            res += ctx.getCode(branch.block);
+            res += " " + ctx.getCode(branch.block);
             res += `\n`;
         }
     }
     if (node.defaultbranch) {
-        res += `${ctx.codeIndent()}default:`;
+        res += `${ctx.codeIndent()}default: `;
         res += ctx.getCode(node.defaultbranch);
         res += `\n`;
     }
@@ -160,14 +160,14 @@ addWriter(SwitchStatementNode, (node, ctx) => {
     return res;
 });
 addWriter(IfStatementNode, (node, ctx) => {
-    let res = `if(${ctx.getCode(node.statement)})`;
+    let res = `if (${ctx.getCode(node.statement)}) `;
     res += ctx.getCode(node.truebranch);
     if (node.falsebranch) {
-        res += `else`;
+        res += ` else `;
         //skip brackets for else if construct
         let subif = getSingleChild(node.falsebranch, IfStatementNode);
         if (subif) {
-            res += " " + ctx.getCode(subif);
+            res += ctx.getCode(subif);
         } else {
             res += ctx.getCode(node.falsebranch);
         }
@@ -218,12 +218,15 @@ addWriter(ClientScriptFunction, (node, ctx) => {
     let meta = ctx.calli.scriptargs.get(node.scriptid);
     let res = "";
     res += `//${meta?.scriptname ?? "unknown name"}\n`;
-    res += `${ctx.codeIndent()}function script${node.scriptid} (${node.argtype.toTypeScriptVarlist(true, meta?.stack.exactin)}):${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
+    res += `${ctx.codeIndent()}function script${node.scriptid}(${node.argtype.toTypeScriptVarlist(true, meta?.stack.exactin)}): ${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
     res += ctx.getCode(node.children[0]);
     return res;
 });
 addWriter(FunctionBindNode, (node, ctx) => {
     let scriptid = node.children[0]?.knownStackDiff?.constout ?? -1;
     if (scriptid == -1 && node.children.length == 1) { return `callback()`; }
-    return `callback(script${scriptid}${node.children.length > 1 ? "," : ""}${node.children.slice(1).map(ctx.getCode).join(",")})`;
+    return `callback(script${scriptid}${node.children.length > 1 ? ", " : ""}${node.children.slice(1).map(ctx.getCode).join(", ")})`;
+});
+addWriter(IntrinsicNode, (node, ctx) => {
+    return `${node.type}(${node.children.map(ctx.getCode).join(", ")})`;
 });

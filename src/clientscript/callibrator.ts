@@ -10,7 +10,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { crc32 } from "../libs/crc32util";
 import { params } from "../../generated/params";
-import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, StackType, knownClientScriptOpNames, namedClientScriptOps, variableSources, typeToPrimitive } from "./definitions";
+import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, namedClientScriptOps, variableSources, typeToPrimitive, getOpName, knownClientScriptOpNames } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
@@ -593,7 +593,7 @@ export class ClientscriptObfuscation {
         if (!imm) { throw new Error("failed to read immidiate"); }
         state.scan = imm.offset;
 
-        let opname = knownClientScriptOpNames[res.id] ?? "unknown";
+        let opname = getOpName(res.id);
 
         return { opcode: res.id, imm: imm.imm, imm_obj: imm.imm_obj, opname } satisfies ClientScriptOp;
     }
