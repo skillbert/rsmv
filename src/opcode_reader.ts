@@ -1326,7 +1326,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return `{\n`
 					+ `${newindent}opcode:number,\n`
 					+ `${newindent}imm:number,\n`
-					+ `${newindent}imm_obj:number|string|[number,number]|{value:number,label:number}[]|null,\n`
+					+ `${newindent}imm_obj:number|string|[number,number]|null,\n`
 					+ `${indent}}`;
 			}
 		}

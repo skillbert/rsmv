@@ -20,7 +20,7 @@ const looseOps = [
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
     dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
-    knownDependency(subtypes.uknown_int),
+    knownDependency(subtypes.unknown_int),
     knownDependency(subtypes.unknown_long),
     knownDependency(subtypes.unknown_string),
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
@@ -245,14 +245,14 @@ export function assignKnowTypes(calli: ClientscriptObfuscation, knowntypes: Map<
         }
         let exactin = new ExactStack();
         let diffin = op.stackinfo.in.getStackdiff();
-        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
         for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
         for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         op.stackinfo.exactin = exactin;
 
         let exactout = new ExactStack();
         let diffout = op.stackinfo.out.getStackdiff();
-        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
         for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
         for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         op.stackinfo.exactout = exactout;
@@ -260,14 +260,14 @@ export function assignKnowTypes(calli: ClientscriptObfuscation, knowntypes: Map<
     for (let [id, func] of calli.scriptargs) {
         let exactin = new ExactStack();
         let diffin = func.stack.in.getStackdiff();
-        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
         for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
         for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         func.stack.exactin = exactin;
 
         let exactout = new ExactStack();
         let diffout = func.stack.out.getStackdiff();
-        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("int", i)) ?? subtypes.uknown_int); }
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
         for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
         for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
         func.stack.exactout = exactout;

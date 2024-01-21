@@ -224,6 +224,7 @@ export const subtypes = {
     type_130: 130,
     achievement: 131,
     stylesheet: 133,
+    type_138: 138,
     type_200: 200,
     type_201: 201,
     type_202: 202,
@@ -236,9 +237,11 @@ export const subtypes = {
     var_reference: 209,
 
     //TODO try to remove this, no longer required but still used for unknown subtypes
-    uknown_int: 501,
+    unknown_int: 501,
     unknown_long: 502,
-    unknown_string: 503
+    unknown_string: 503,
+    scriptref: 504,
+    scriptsubref: 505
     //max 511 (9bit) or overflow elsewhere in code
 }
 
@@ -430,12 +433,16 @@ export const dynamicOps = [
     10735,//dbrow_findnext
 ];
 
+export function makeop(opcode: number, imm = 0, imm_obj: ClientScriptOp["imm_obj"] = null) {
+    return { opcode, imm, imm_obj } satisfies ClientScriptOp;
+}
+
 export type ImmediateType = "byte" | "int" | "tribyte" | "switch" | "long" | "string";
 
 export type ClientScriptOp = {
     opcode: number,
     imm: number,
-    imm_obj: string | number | [number, number] | { value: number, label: number }[] | null,
+    imm_obj: string | number | [number, number] | { type: "switchvalues", value: { value: number, label: number }[] } | { type: "jumplabel", value: ClientScriptOp } | null,
     opname?: string
 }
 
@@ -640,13 +647,13 @@ export class StackList {
             let part = this.values[i];
             if (part == "int" && i + 1 < this.values.length && this.values[i + 1] == "vararg") {
                 //combine int+vararg arguments into a single boundfunction argument
-                res += "vararg: BoundFunction,";
+                res += "vararg: BoundFunction, ";
                 i++;
             } else if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, withnames, exacttype); }
             else if (part == "int") { res += `${withnames ? `int${counts.int}: ` : ""}${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"}, `; counts.int++; }
             else if (part == "long") { res += `${withnames ? `long${counts.long}: ` : ""}${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"}, `; counts.long++; }
             else if (part == "string") { res += `${withnames ? `string${counts.string}: ` : ""}${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"}, `; counts.string++; }
-            else if (part == "vararg") { res += `${withnames ? "vararg: " : ""}any, `; }
+            else if (part == "vararg") { res += `${withnames ? "vararg: " : ""}BoundFunction, `; }
             else throw new Error("unsupported stack type");
         }
         res = res.replace(/,\s?$/, "");
@@ -816,18 +823,17 @@ export class StackDiff {
         this.vararg += other.vararg;
         return this;
     }
-    minzero() {
-        this.int = Math.max(0, this.int);
-        this.long = Math.max(0, this.long);
-        this.string = Math.max(0, this.string);
-        this.vararg = Math.max(0, this.vararg);
-        return this;
-    }
     min(other: StackDiff) {
         this.int = Math.min(other.int, this.int);
         this.long = Math.min(other.long, this.long);
         this.string = Math.min(other.string, this.string);
         this.vararg = Math.min(other.vararg, this.vararg);
+    }
+    max(other: StackDiff) {
+        this.int = Math.max(other.int, this.int);
+        this.long = Math.max(other.long, this.long);
+        this.string = Math.max(other.string, this.string);
+        this.vararg = Math.max(other.vararg, this.vararg);
     }
     mult(n: number) {
         this.int *= n;

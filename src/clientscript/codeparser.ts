@@ -1,10 +1,9 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
-import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 function* whitespace() {
     while (true) {
@@ -21,8 +20,93 @@ const binaryopsoremtpy = binaryops.concat("");
 
 globalThis.prettyjson = prettyJson;
 
-export function clientscriptParser(deob: ClientscriptObfuscation) {
+type Varslot = { stacktype: PrimitiveType, type: number, slot: number, name: string };
+class ParseContext {
+    deob: ClientscriptObfuscation;
+    vars: Record<string, Varslot> = Object.create(null);
+    parent: ParseContext | null;
+    scopefunctions = new Map<string, ClientScriptFunction>();
+    varcounts = new StackDiff();
+    constructor(deob: ClientscriptObfuscation, parent: ParseContext | null) {
+        this.deob = deob;
+        this.parent = parent;
+    }
+    getVarType(varname: string): Varslot | null {
+        if (Object.hasOwn(this.vars, varname)) {
+            return this.vars[varname];
+        } else if (this.parent) {
+            return this.parent.getVarType(varname)
+        }
+        return null;
+    }
+    declareVar(varname: string, type: number) {
+        if (Object.hasOwn(this.vars, varname)) {
+            let res = this.vars[varname];
+            if (res.type != type) { throw new Error(`tried to redeclare var ${varname} with different type (was: ${subtypeToTs(res.type)}, new: ${subtypeToTs(type)})`); }
+            return res;
+        }
+        let stacktype = typeToPrimitive(type);
+        let slot = this.varcounts.getSingle(stacktype);
+        this.varcounts.setSingle(stacktype, slot + 1);
+        let res = this.vars[varname] = { name: varname, slot, stacktype, type };
+        return res;
+    }
+    declareFunction(name: string, func: ClientScriptFunction) {
+        this.scopefunctions.set(name, func);
+    }
+    getFunction(name: string) {
+        if (this.scopefunctions.has(name)) { return true; }
+        else if (this.parent) { return this.parent.getFunction(name); }
+        return false;
+    }
+}
 
+
+function scriptContext(ctx: ParseContext) {
+    let deob = ctx.deob;
+
+    function getVarMeta(name: string, labeledtype = -1) {
+        let m = name.match(/^(int|long|string|script|var(\w+)_)(\d+)$/);
+        let varid = (m ? +m[3] : -1);
+        let readopid = -1;
+        let writeopid = -1;
+        let vartype = -1;
+        let existingvar = ctx.getVarType(name);
+        if (existingvar) {
+            vartype = existingvar.type;
+            varid = existingvar.slot;
+        } else if (m) {
+            if (m[1] == "script") {
+                vartype = subtypes.scriptref;
+                return { readopid, writeopid, vartype, varid };
+            } else if (m[2]) {
+                let source = variableSources[m[2]];
+                if (!source) { throw new Error("unknown var source"); }
+                varid = (source.key << 24) | (varid << 8);
+                let meta = deob.getClientVarMeta(varid);
+                if (!meta) { throw new Error("unknown clientvar " + varid); }
+                readopid = namedClientScriptOps.pushvar;
+                writeopid = namedClientScriptOps.popvar;
+                vartype = meta.fulltype;
+            } else if (m[1] == "int") {
+                vartype = subtypes.unknown_int;
+            } else if (m[1] == "long") {
+                vartype = subtypes.unknown_long;
+            } else if (m[1] == "string") {
+                vartype = subtypes.unknown_string;
+            }
+            ctx.declareVar(name, vartype);
+        }
+        if (vartype == -1) { throw new Error("unkown var type") }
+        let stacktype = typeToPrimitive(vartype);
+        if (readopid == -1 && stacktype == "int") { readopid = namedClientScriptOps.pushlocalint; }
+        if (readopid == -1 && stacktype == "long") { readopid = namedClientScriptOps.pushlocallong; }
+        if (readopid == -1 && stacktype == "string") { readopid = namedClientScriptOps.pushlocalstring; }
+        if (writeopid == -1 && stacktype == "int") { writeopid = namedClientScriptOps.poplocalint; }
+        if (writeopid == -1 && stacktype == "long") { writeopid = namedClientScriptOps.poplocallong; }
+        if (writeopid == -1 && stacktype == "string") { writeopid = namedClientScriptOps.poplocalstring; }
+        return { readopid, writeopid, vartype, varid };
+    }
     function makeStringConst(str: string, subtypestr: string) {
         let constop = getopinfo(namedClientScriptOps.pushconst);
         let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 2, imm_obj: str }, constop);
@@ -63,25 +147,6 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     function getopinfo(id: number) {
         return deob.getNamedOp(id);
     }
-
-    // function* stackdiff() {
-    //     let [match, int, long, string, vararg] = yield (/^\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
-    //     return new StackDiff(+int, +long, +string, +vararg);
-    // }
-
-    // function* stacklist() {
-    //     let items: StackTypeExt[] = [];
-    //     while (items.length == 0 || (yield has(","))) {
-    //         yield whitespace;
-    //         let match = yield [stackdiff, "int", "long", "string", "vararg", ""];
-    //         if (match == "") {
-    //             if (items.length == 0) { break; }
-    //             yield unmatchable;
-    //         }
-    //         items.push(match);
-    //     }
-    //     return new StackList(items);
-    // }
 
     function* argumentDeclaration() {
         let args: { name: string, type: string }[] = [];
@@ -247,6 +312,10 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
                 metaid = +unkmatch[2];
                 fnid = namedClientScriptOps.gosub;
             }
+        } else if (ctx.getFunction(funcname)) {
+            let node = new SubcallNode(-1, funcname);
+            node.pushList(args);
+            return node;
         } else {
             for (let id in knownClientScriptOpNames) {
                 if (funcname == knownClientScriptOpNames[id]) {
@@ -311,28 +380,10 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         }
         let node = new VarAssignNode(-1);
 
-        node.varops = varnames.map(q => {
-            let m = q.match(/^(int|long|string|var(\w+)_)(\d+)$/);
-            if (!m) { throw new Error("unknown var name"); }
-            let varid = +m[3];
-            if (m[2]) {
-                let popvar = getopinfo(namedClientScriptOps.popvar);
-                let source = variableSources[m[2]];
-                if (!source) { throw new Error("unknown var source"); }
-                let varkey = (source.key << 24) | (varid << 8);
-                return new RawOpcodeNode(-1, { opcode: popvar.id, imm: varkey, imm_obj: null }, popvar);
-            } else if (m[1] == "int") {
-                let popintop = getopinfo(namedClientScriptOps.poplocalint);
-                return new RawOpcodeNode(-1, { opcode: popintop.id, imm: varid, imm_obj: null }, popintop);
-            } else if (m[1] == "long") {
-                let poplongop = getopinfo(namedClientScriptOps.poplocallong);
-                return new RawOpcodeNode(-1, { opcode: poplongop.id, imm: varid, imm_obj: null }, poplongop);
-            } else if (m[1] == "string") {
-                let popstringop = getopinfo(namedClientScriptOps.poplocalstring);
-                return new RawOpcodeNode(-1, { opcode: popstringop.id, imm: varid, imm_obj: null }, popstringop);
-            } else {
-                throw new Error("unexpected");
-            }
+        node.varops = varnames.map(varname => {
+            let { writeopid, varid } = getVarMeta(varname);
+            let writeop = getopinfo(writeopid);
+            return new RawOpcodeNode(-1, { opcode: writeopid, imm: varid, imm_obj: null }, writeop);
         });
 
         node.pushList(values);
@@ -414,43 +465,23 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     function* readVariable() {
         let preop = yield ["++", "--", ""];
         if (preop) { yield whitespace; }
-        let name = yield [varname];
-        let m = name.match(/^(int|long|string|script|var(\w+)_)(\d+)$/);
-        if (!m) { throw new Error("unknown var name"); }
+        let name = yield varname;
+        yield whitespace;
+        let { readopid, writeopid, vartype, varid } = getVarMeta(name);
         let postop = "";
         if (!preop) {
-            yield whitespace;
             postop = yield ["++", "--", ""];
         }
-        let varid = +m[3];
-        let readopid: number;
-        let writeopid: number;
-        if (m[1] == "script") {
-            //function pointer used in callback
-            return makeIntConst(varid, "int");
-        } else if (m[2]) {
-            let source = variableSources[m[2]];
-            if (!source) { throw new Error("unknown var source"); }
-            varid = (source.key << 24) | (varid << 8);
-            readopid = namedClientScriptOps.pushvar;
-            writeopid = namedClientScriptOps.popvar;
-        } else if (m[1] == "int") {
-            readopid = namedClientScriptOps.pushlocalint;
-            writeopid = namedClientScriptOps.poplocalint;
-        } else if (m[1] == "long") {
-            readopid = namedClientScriptOps.pushlocallong;
-            writeopid = namedClientScriptOps.poplocallong;
-        } else if (m[1] == "string") {
-            readopid = namedClientScriptOps.pushlocalstring;
-            writeopid = namedClientScriptOps.poplocalstring;
-        } else {
-            throw new Error("unexpected");
+        if (vartype == subtypes.scriptref) {
+            //used in callback
+            return makeIntConst(varid, "");
         }
         let readop = getopinfo(readopid);
         if (postop || preop) {
             let writeop = getopinfo(writeopid);
             let operationop = getopinfo(postop == "++" || preop == "++" ? namedClientScriptOps.plus : namedClientScriptOps.minus);
-            let combined = new ComposedOp(-1, (preop == "--" ? "--x" : preop == "++" ? "++x" : postop == "--" ? "x--" : "x++"), varid);
+            let tscode = (preop == "--" ? `--${name}` : preop == "++" ? `++${name}` : postop == "--" ? `${name}--` : `${name}++`);
+            let combined = new ComposedOp(-1, (preop == "--" ? "--x" : preop == "++" ? "++x" : postop == "--" ? "x--" : "x++"), tscode);
             if (postop) { combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop)); }
             combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop));
             combined.internalOps.push(makeIntConst(1, "int"));
@@ -499,7 +530,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         if (binaryconditionals.includes(op)) {
             node = new BranchingStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
         } else {
-            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, deob.getNamedOp(opid));
+            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, ctx.deob.getNamedOp(opid));
         }
         node.children.push(left, right);
         return node;
@@ -521,7 +552,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         if (binaryconditionals.includes(op)) {
             node = new BranchingStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
         } else {
-            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, deob.getNamedOp(opid));
+            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, ctx.deob.getNamedOp(opid));
         }
         node.pushList(statements);
         return node;
@@ -532,7 +563,7 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
     }
 
     function* statement() {
-        return yield [ifStatement, whileStatement, switchStatement, returnStatement, assignStatement, valueStatement];
+        return yield [functionStatement, ifStatement, whileStatement, switchStatement, returnStatement, assignStatement, valueStatement];
     }
 
     function* statementlist() {
@@ -557,11 +588,11 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         return new CodeBlockNode(-1, -1, statements);
     }
 
-    function* functionFile() {
+    function* functionStatement() {
         yield whitespace;
         yield "function";
         yield whitespace;
-        let [name]: [string] = yield (/^\w+/);
+        let name = yield varname;
         yield whitespace;
         yield "(";
         yield whitespace;
@@ -573,29 +604,46 @@ export function clientscriptParser(deob: ClientscriptObfuscation) {
         yield whitespace;
         let returntypes: string[] = yield typeDeclaration;
         yield whitespace;
-        let codeblock: CodeBlockNode = yield codeBlock;
-        let namematch = name.match(/^script(\d+)$/);
+
+        //declare the function in current scope and make a new scope for child ops
+        let subctx = new ParseContext(ctx.deob, ctx);
+        argtypes.forEach(q => subctx.declareVar(q.name, tsToSubtype(q.type)));
+        let scope = scriptContext(subctx);
+
         let res = new ClientScriptFunction(
-            (namematch ? +namematch[1] : -1),
+            name,
             new StackList(returntypes.map(q => typeToPrimitive(tsToSubtype(q)))),
-            new StackList(argtypes.map(q => typeToPrimitive(tsToSubtype(q.type))))
+            new StackList(argtypes.map(q => typeToPrimitive(tsToSubtype(q.type)))),
+            new StackDiff()
         );
+        ctx.declareFunction(name, res);
+
+        //parse the function body
+        let codeblock: CodeBlockNode = yield scope.codeBlock;
+
+        res.localCounts = subctx.varcounts.clone();
+        for (let sub of subctx.scopefunctions.values()) {
+            res.localCounts.max(sub.localCounts);
+        }
+
         res.push(codeblock);
         return res;
     }
 
-    function runparse(code: string) {
-        let res = parse<ClientScriptFunction>(code, functionFile() as any);
-        return res;
-    }
+    return { functionStatement, codeBlock };
+}
 
-    return { runparse, deob };
+export function parseClientscriptTs(deob: ClientscriptObfuscation, code: string) {
+    let ctx = new ParseContext(deob, null);
+    let scope = scriptContext(ctx);
+    let res = parse<ClientScriptFunction>(code, scope.functionStatement() as any);
+    return res;
 }
 
 //TODO remove
 globalThis.testy = async () => {
     const fs = require("fs") as typeof import("fs");
-    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-999");
+    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-19");
     let codefiles = [...codefs.extract.filesMap.entries()]
         .filter(q => q[0].startsWith("clientscript"))
         .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
@@ -612,7 +660,7 @@ globalThis.testy = async () => {
     }
     let testinner = (originalts: string, originaljson: string, fileid = -1) => {
         const deob = globalThis.deob as ClientscriptObfuscation;
-        let parseresult = clientscriptParser(deob).runparse(originalts);
+        let parseresult = parseClientscriptTs(deob, originalts);
         if (!parseresult.success) { return parseresult; }
         let roundtripped = astToImJson(deob, parseresult.result);
         let jsondata = JSON.parse(originaljson);
@@ -638,9 +686,9 @@ globalThis.testy = async () => {
 
 export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     let res = "";
-    res += "declare class BoundFunction{}\n";
-    res += "declare function callback():BoundFunction;\n";
-    res += "declare function callback<T extends (...args:any[])=>any>(fn:T,...args:Parameters<T>):BoundFunction;\n";
+    res += "declare class BoundFunction { }\n";
+    res += "declare function callback(): BoundFunction;\n";
+    res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: Parameters<T>): BoundFunction;\n";
     res += "\n";
     for (let type of Object.values(subtypes)) {
         let prim = typeToPrimitive(type);
@@ -653,15 +701,15 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
         let opname = getOpName(op.id);
         if (reserverd.includes(opname)) { continue; }
         if (op.id == namedClientScriptOps.enum_getvalue) {
-            res += `declare function ${opname}(int0:number,int1:number,int2:number,int3:number):any;\n`;
+            res += `declare function ${opname}(int0: number, int1: number, int2: number, int3: number): any;\n`;
         } else if (op.id == namedClientScriptOps.dbrow_getfield) {
-            res += `declare function ${opname}(int0:number,int1:number,int2:number):any;\n`;
+            res += `declare function ${opname}(int0: number, int1: number, int2: number): any;\n`;
         } else if (!dynamicOps.includes(op.id) && op.stackinfo.initializedthrough) {
             let args = op.stackinfo.in.toTypeScriptVarlist(true, op.stackinfo.exactin);
             let returns = op.stackinfo.out.toTypeScriptReturnType(op.stackinfo.exactout);
-            res += `declare function ${opname}(${args}):${returns};\n`;
+            res += `declare function ${opname}(${args}): ${returns};\n`;
         } else {
-            res += `declare function ${opname}(...args:any[]):any;\n`;
+            res += `declare function ${opname}(...args: any[]): any;\n`;
         }
     }
     return res;

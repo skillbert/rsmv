@@ -1,5 +1,5 @@
 import { boundMethod } from "autobind-decorator";
-import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, IntrinsicNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild } from "./ast";
+import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, IntrinsicNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, namedClientScriptOps, subtypeToTs, subtypes } from "./definitions";
@@ -102,16 +102,15 @@ function addWriter<T extends new (...args: any[]) => AstNode>(type: T, writer: (
 
 addWriter(ComposedOp, (node, ctx) => {
     if (node.children.length != 0) { throw new Error("no children expected on composednode"); }
-    let n = `int${node.varid}`;
-    if (node.type == "++x") { return `++${n}`; }
-    else if (node.type == "--x") { return `--${n}`; }
-    else if (node.type == "x++") { return `${n}++`; }
-    else if (node.type == "x--") { return `${n}--`; }
-    else throw new Error("unexpected op type " + node.type);
+    return node.tscode;
 });
 addWriter(VarAssignNode, (node, ctx) => {
     let name = `${node.varops.map(q => q instanceof RawOpcodeNode ? getOpcodeName(ctx.calli, q.op) : "??").join(", ")}`;
-    return `var ${node.varops.length == 1 ? "" : "["}${name}${node.varops.length == 1 ? "" : "]"} = ${node.children.map(ctx.getCode).join(", ")}`
+    let varlist = "";
+    if (node.varops.length != 1) { varlist += "["; }
+    varlist += name;
+    if (node.varops.length != 1) { varlist += "]"; }
+    return `var ${varlist} = ${node.children.map(ctx.getCode).join(", ")}`
 });
 addWriter(CodeBlockNode, (node, ctx) => {
     let code = "";
@@ -215,10 +214,11 @@ addWriter(RawOpcodeNode, (node, ctx) => {
     return getOpcodeCallCode(ctx, node.op, node.children, node.originalindex);
 });
 addWriter(ClientScriptFunction, (node, ctx) => {
-    let meta = ctx.calli.scriptargs.get(node.scriptid);
+    let scriptidmatch = node.scriptname.match(/^script(\d+)$/);
+    let meta = (scriptidmatch ? ctx.calli.scriptargs.get(+scriptidmatch[1]) : null);
     let res = "";
     res += `//${meta?.scriptname ?? "unknown name"}\n`;
-    res += `${ctx.codeIndent()}function script${node.scriptid}(${node.argtype.toTypeScriptVarlist(true, meta?.stack.exactin)}): ${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
+    res += `${ctx.codeIndent()}function ${node.scriptname}(${node.argtype.toTypeScriptVarlist(true, meta?.stack.exactin)}): ${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
     res += ctx.getCode(node.children[0]);
     return res;
 });

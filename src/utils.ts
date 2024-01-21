@@ -80,6 +80,17 @@ export function stringToFileRange(str: string) {
 	return ranges;
 }
 
+//need generics to be of the map<K,V> instead of K,V since otherwise typescript will use the (potentially smaller) type of the fallback return value
+// export function getOrInsert<M extends Map<any, any>>(map: M, key: M extends Map<infer K, any> ? K : never, fallback: () => (M extends Map<any, infer T> ? T : never)) {
+export function getOrInsert<K, V>(map: Map<K, V>, key: K, fallback: () => V) {
+	let val = map.get(key);
+	if (val === undefined) {
+		val = fallback();
+		map.set(key, val);
+	}
+	return val;
+}
+
 export function delay(ms: number) {
 	return new Promise(d => setTimeout(d, ms))
 }

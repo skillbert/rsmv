@@ -15,10 +15,8 @@ import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import { ClientScriptSubtypeSolver, detectSubtypes } from "./subtypedetector";
-import { clientscriptParser } from "./codeparser";
 import { TsWriterContext, debugAst } from "./codewriter";
 
-globalThis.parser = clientscriptParser;
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
 const lastNonObfuscatedBuild = 668;

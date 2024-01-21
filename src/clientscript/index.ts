@@ -2,7 +2,7 @@ import { TsWriterContext } from "./codewriter";
 import { astToImJson, parseClientScriptIm } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { CacheFileSource } from "../cache";
-import { clientscriptParser } from "../clientscript/codeparser";
+import { parseClientscriptTs } from "../clientscript/codeparser";
 import { parse } from "../opdecoder";
 
 export { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser";
@@ -10,7 +10,7 @@ export { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser"
 export async function compileClientScript(source: CacheFileSource, code: string) {
     let calli = await prepareClientScript(source);
 
-    let parseresult = clientscriptParser(calli).runparse(code);
+    let parseresult = parseClientscriptTs(calli, code);
     if (!parseresult.success) { throw new Error("failed to parse clientscript", { cause: parseresult.failedOn }); }
     if (parseresult.remaining != "") { throw new Error("failed to parse clientscript, left over: " + parseresult.remaining.slice(0, 100)); }
     return astToImJson(calli, parseresult.result);
