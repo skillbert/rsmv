@@ -7,7 +7,7 @@ import { ParsedTexture } from "../3d/textures";
 import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { FileRange } from "../utils";
-import { renderRsInterface } from "./renderrsinterface";
+import { UiRenderContext, renderRsInterface } from "./renderrsinterface";
 
 
 type FileAction = {
@@ -270,11 +270,11 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 			} else if (change.action.outputType == "html") {
 				//TODO make standardised way to deal with different decoder types
 				if (before) {
-					let iface = await renderRsInterface({ source: sourcea, sceneCache: null, renderer: null }, change.minor, "html");
+					let iface = await renderRsInterface(new UiRenderContext(sourcea), change.minor, "html");
 					await addfile("html", false, iface);
 				}
 				if (after) {
-					let iface = await renderRsInterface({ source: sourceb, sceneCache: null, renderer: null }, change.minor, "html");
+					let iface = await renderRsInterface(new UiRenderContext(sourceb), change.minor, "html");
 					await addfile("html", true, iface);
 				}
 			}

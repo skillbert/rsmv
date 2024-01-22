@@ -242,8 +242,8 @@ function parseImm(buf: Buffer, offset: number, type: ImmediateType) {
 let referenceOpcodeDump: Promise<ReferenceCallibration> | null = null;
 async function getReferenceOpcodeDump() {
     referenceOpcodeDump ??= (async () => {
-        let rootsource = await Openrs2CacheSource.fromId(1383);
-        let refsource = await Openrs2CacheSource.fromId(1572);
+        let rootsource = await Openrs2CacheSource.fromId(1383);//20 dec 2011
+        let refsource = await Openrs2CacheSource.fromId(1572);//16 oct 2023
         let rootcalli = await ClientscriptObfuscation.create(rootsource);
         let refcalli = await ClientscriptObfuscation.create(refsource);
         rootcalli.setNonObbedMappings();

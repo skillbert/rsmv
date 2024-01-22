@@ -313,7 +313,7 @@ export function subtypeToTs(subt: number) {
     let resentry = Object.entries(subtypes).find(q => q[1] == subt);
     if (!resentry) { return `type_${subt}`; }
     let res = resentry[0];
-    if (res == "boolean") { res = "cs2bool"; }
+    // if (res == "boolean") { res = "cs2bool"; }
     if (res == "enum") { res = "cs2enum"; }
     return res;
 }
@@ -403,9 +403,6 @@ export const binaryOpSymbols = new Map([
     [namedClientScriptOps.minus, "-"],
     [namedClientScriptOps.intdiv, "/"],
     [namedClientScriptOps.intmul, "*"],
-
-    //string
-    [namedClientScriptOps.strconcat, "strcat"],
 ]);
 
 export const binaryOpIds = new Map([...binaryOpSymbols].map(q => [q[1], q[0]]));

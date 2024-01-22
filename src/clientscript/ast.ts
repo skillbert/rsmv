@@ -3,7 +3,7 @@ import { clientscriptdata } from "../../generated/clientscriptdata";
 import { getOrInsert } from "../utils";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibrator";
 import { debugAst } from "./codewriter";
-import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, getOpName, makeop, poplocal, pushlocal } from "./definitions";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, getOpName, makeop } from "./definitions";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 /**
@@ -20,7 +20,7 @@ export function getSingleChild<T extends AstNode>(op: AstNode | null | undefined
     return op.children[0] as T;
 }
 
-function isNamedOp(op: AstNode, id: number): op is RawOpcodeNode {
+export function isNamedOp(op: AstNode, id: number): op is RawOpcodeNode {
     return op instanceof RawOpcodeNode && op.op.opcode == id;
 }
 

@@ -15,7 +15,7 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
-import { renderRsInterface } from "./renderrsinterface";
+import { UiRenderContext, renderRsInterface } from "./renderrsinterface";
 import { compileClientScript, prepareClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
 
 
@@ -417,7 +417,7 @@ const decodeInterface: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			let res = await renderRsInterface({ source: source, sceneCache: null, renderer: null }, fileid[0], "html");
+			let res = await renderRsInterface(new UiRenderContext(source), fileid[0], "html");
 			return res;
 		}
 	}
@@ -449,7 +449,7 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 		...throwOnNonSimple,
 		async prepareDump(out, source) {
 			let calli = await prepareClientScript(source);
-			out.writeFile("tsconfig.json", JSON.stringify({ "compilerOptions": { "target": "ESNext" } },undefined,"\t"));//tsconfig to make the folder a project
+			out.writeFile("tsconfig.json", JSON.stringify({ "compilerOptions": { "target": "ESNext" } }, undefined, "\t"));//tsconfig to make the folder a project
 			out.writeFile("opcodes.d.ts", writeOpcodeFile(calli));
 			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
 		},

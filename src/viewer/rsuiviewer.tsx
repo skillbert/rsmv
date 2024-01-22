@@ -1,5 +1,5 @@
 import * as React from "react";
-import { RsInterfaceComponent, RsInterfaceElement, renderRsInterface } from "../scripts/renderrsinterface";
+import { RsInterfaceComponent, RsInterfaceElement, UiRenderContext, renderRsInterface } from "../scripts/renderrsinterface";
 import { DomWrap } from "./scriptsui";
 import type { ThreejsSceneCache } from "../3d/modeltothree";
 import { ThreeJsRenderer } from "./threejsrender";
@@ -10,14 +10,19 @@ import { cacheMajors } from "../constants";
 
 export function RsUIViewer(p: { data: string }) {
 	let [ui, setui] = React.useState<RsInterfaceElement | null>(null);
-
 	let scene: ThreejsSceneCache = globalThis.sceneCache;//TODO pass this properly using args
 	let render: ThreeJsRenderer = globalThis.render;//TODO
+	let ctx = React.useMemo(() => {
+		let res = new UiRenderContext(scene.engine);
+		res.sceneCache = scene;
+		res.renderer = render;
+		return res;
+	}, [p.data, scene, render]);
 	React.useEffect(() => {
 		let needed = true;
 		let uiinfo = JSON.parse(p.data);
 		let cleanup: null | (() => void) = null;
-		renderRsInterface({ source: scene.engine, sceneCache: scene, renderer: render }, uiinfo.id, "dom").then(ui => {
+		renderRsInterface(ctx, uiinfo.id, "dom").then(ui => {
 			let clean = () => ui.dispose.forEach(q => q());
 			if (needed) {
 				setui(ui);
@@ -30,30 +35,33 @@ export function RsUIViewer(p: { data: string }) {
 			needed = false;
 			cleanup?.();
 		}
-	}, [p.data, scene, render]);
+	}, [ctx]);
 
 	return (
 		<div style={{ position: "absolute", inset: "0px", display: "grid", gridTemplate: '"a" 1fr "b" 1fr / 1fr' }}>
 			<DomWrap style={{ position: "relative" }} el={ui?.el} />
 			<div style={{ overflowY: "auto" }}>
-				{ui?.rootcomps.map((q, i) => <RsInterfaceDebugger key={i} source={scene.engine} comp={q} />)}
+				{ui?.rootcomps.map((q, i) => <RsInterfaceDebugger ctx={ctx} key={i} source={scene.engine} comp={q} />)}
 			</div>
 		</div>
 	)
 }
 
-function RsInterfaceDebugger(p: { comp: RsInterfaceComponent, source: CacheFileSource }) {
+function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent, source: CacheFileSource }) {
 	let data = p.comp.data;
+	let mouseevent = React.useCallback((e: React.MouseEvent) => {
+		p.ctx.toggleHighLightComp(p.comp.subid, e.type == "mouseenter");
+	}, [p.ctx, p.comp]);
 	return (
-		<div className="rs-componentmeta">
-			{data.type} {data.textdata?.text ?? "no text"}
+		<div className="rs-componentmeta" onMouseEnter={mouseevent} onMouseLeave={mouseevent} onClick={e => e.target == e.currentTarget && console.log(p.comp)}>
+			id={p.comp.subid} t={data.type} {data.textdata?.text ?? "no text"}
 			<br />
 			{data.spritedata && "spriite: " + data.spritedata.spriteid}
 			{data.modeldata && "model: " + data.modeldata.modelid}
 			<CallbackDebugger data={data} source={p.source} />
 			<hr />
 			<div className="rs-componentmeta-children">
-				{p.comp.children.map((q, i) => <RsInterfaceDebugger key={i} comp={q} source={p.source} />)}
+				{p.comp.children.map((q, i) => <RsInterfaceDebugger ctx={p.ctx} key={i} comp={q} source={p.source} />)}
 			</div>
 		</div>
 	)

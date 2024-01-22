@@ -175,12 +175,21 @@ addWriter(IfStatementNode, (node, ctx) => {
 });
 addWriter(RawOpcodeNode, (node, ctx) => {
     if (node.op.opcode == namedClientScriptOps.pushconst) {
-        let gettypecast = (subt: PrimitiveType) => {
-            if (!node.knownStackDiff?.exactout) { return ""; }
-            let key = node.knownStackDiff.exactout[subt][0];
+        let exacttype = -1;
+        if (node.knownStackDiff?.exactout) {
+            let key = -1;
+            if (node.knownStackDiff.exactout.int.length != 0) { key = node.knownStackDiff.exactout.int[0]; }
+            if (node.knownStackDiff.exactout.long.length != 0) { key = node.knownStackDiff.exactout.long[0]; }
+            if (node.knownStackDiff.exactout.string.length != 0) { key = node.knownStackDiff.exactout.string[0]; }
             let type = ctx.typectx.knowntypes.get(key);
-            if (typeof type != "number" || type == subtypes.int || type == subtypes.string || type == subtypes.long) { return ""; }
-            return ` as ${subtypeToTs(type)}`;
+            if (typeof type == "number") {
+                exacttype = type;
+            }
+        }
+        let gettypecast = (subt: PrimitiveType) => {
+            if (exacttype == -1) { return ""; }
+            if (exacttype == subtypes.int || exacttype == subtypes.string || exacttype == subtypes.long) { return ""; }
+            return ` as ${subtypeToTs(exacttype)}`;
         }
         if (typeof node.op.imm_obj == "string") {
             return `"${node.op.imm_obj.replace(/(["\\])/g, "\\$1")}"${gettypecast("string")}`;
@@ -192,8 +201,16 @@ addWriter(RawOpcodeNode, (node, ctx) => {
                 int = int - 0x1_0000_0000_0000_0000n;
             }
             return `${int}n${gettypecast("long")}`;
-        } else {
+        } else if (typeof node.op.imm_obj == "number") {
+            if (exacttype == subtypes.component) {
+                return `comp(${node.op.imm_obj >> 16}, ${node.op.imm_obj & 0xffff})`;
+            }
+            if (exacttype == subtypes.boolean) {
+                return (node.op.imm_obj == 1 ? "true" : "false");
+            }
             return `${node.op.imm_obj}${gettypecast("int")}`;
+        } else {
+            throw new Error("unexpected");
         }
     }
     if (node.op.opcode == namedClientScriptOps.pushlocalint || node.op.opcode == namedClientScriptOps.poplocallong || node.op.opcode == namedClientScriptOps.pushlocalstring || node.op.opcode == namedClientScriptOps.pushvar) {

@@ -13,10 +13,35 @@ import { ThreeJsRenderer } from "../viewer/threejsrender";
 type HTMLResult = string;
 export type RsInterfaceElement = { el: HTMLElement, dispose: (() => void)[], rootcomps: RsInterfaceComponent[] };
 
-type UiRenderContext = {
-    source: CacheFileSource,
-    sceneCache: ThreejsSceneCache | null,
-    renderer: ThreeJsRenderer | null
+export class UiRenderContext {
+    source: CacheFileSource;
+    sceneCache: ThreejsSceneCache | null = null;
+    renderer: ThreeJsRenderer | null = null;
+    comps = new Map<number, HTMLElement>();
+    highlightstack: HTMLElement[] = [];
+    constructor(source: CacheFileSource) {
+        this.source = source;
+    }
+    toggleHighLightComp(subid: number, highlight: boolean) {
+        let comp = this.comps.get(subid);
+        if (comp) {
+            if (highlight) {
+                if (this.highlightstack.length != 0) {
+                    this.highlightstack.at(-1)!.classList.remove("rs-component--highlight");
+                }
+                comp.classList.add("rs-component--highlight");
+                this.highlightstack.push(comp);
+            } else {
+                comp.classList.remove("rs-component--highlight");
+                if (this.highlightstack.pop() != comp) {
+                    console.log("wrong unlightlight order");
+                }
+                if (this.highlightstack.length != 0) {
+                    this.highlightstack.at(-1)!.classList.add("rs-component--highlight");
+                }
+            }
+        }
+    }
 }
 
 export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRenderContext, id: number, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
@@ -55,6 +80,7 @@ export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRend
     let css = "";
     css += `html{color:white;font-size:12px;}\n`;
     css += ".rs-component{position:absolute;pointer-events:none;}\n";
+    css += ".rs-component--highlight{outline:1px solid red;}\n";
     css += ".rs-image{width:100%;height:100%;}\n";
     css += ".rs-image--cover{background-size:100% 100%; background-repeat:no-repeat;}";
     css += ".rs-interface-container{position:absolute;top:0px;left:0px;right:0px;bottom:0px;display:flex;align-items:center;justify-content:center;}";
@@ -105,6 +131,7 @@ export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRend
         root.appendChild(container);
         let disposelist: (() => void)[] = [];
 
+        ctx.comps.clear();
         let rootcomps: RsInterfaceComponent[] = [];
         for (let comp of comps.values()) {
             if (comp.data.parentid == 0xffff || !comps.has(comp.data.parentid)) {
@@ -137,7 +164,7 @@ function cssPosition(data: interfaces) {
     } else if (data.aspectxtype == 2) {
         css += `right:${data.baseposx}px;`;
     } else if (data.aspectxtype == 3) {
-        css += `left:${data.baseposx * 100 / (1 << 14)};`;
+        css += `left:${data.baseposx * 100 / (1 << 14)}%;`;
     } else if (data.aspectxtype == 4) {
         css += `left:${50 + data.baseposx * 100 / (1 << 14)}%;`;
         translatex = "-50%";
@@ -339,11 +366,13 @@ export class RsInterfaceComponent {
             html += "</div>\n";
             return html as HTMLResult as any;
         } else {
+            if (!el) { throw new Error("unexpected"); }
             (el as any).ui = this.data;
-            el!.style.cssText = style;
-            el!.insertAdjacentHTML("beforeend", childhtml);
-            el!.classList.add("rs-component");
-            if (title) { el!.title = title; }
+            el.style.cssText = style;
+            el.insertAdjacentHTML("beforeend", childhtml);
+            el.classList.add("rs-component");
+            if (title) { el.title = title; }
+            ctx.comps.set(this.subid, el);
             return {
                 el,
                 dispose: disposelist,

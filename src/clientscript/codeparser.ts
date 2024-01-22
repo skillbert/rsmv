@@ -1,5 +1,5 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode, isNamedOp } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType } from "./definitions";
@@ -13,7 +13,7 @@ function* whitespace() {
 }
 const newline = /^\s*?\n/;
 const unmatchable = /$./;
-const reserverd = "if,while,break,continue,else,switch,strcat,script,return".split(",");
+const reserverd = "if,while,break,continue,else,switch,script,return".split(",");
 const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
 const binaryops = [...binaryOpSymbols.values()];
 const binaryopsoremtpy = binaryops.concat("");
@@ -299,6 +299,12 @@ function scriptContext(ctx: ParseContext) {
             }
             return res;
         }
+        if (funcname == "comp") {
+            if (args.length != 2 || !isNamedOp(args[0], namedClientScriptOps.pushconst) || !isNamedOp(args[1], namedClientScriptOps.pushconst)) { throw new Error("raw opcode expected"); }
+            if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
+            return makeIntConst((args[0].op.imm_obj << 16) | args[1].op.imm_obj, "component");
+        }
+
         if (funcname.startsWith("$")) {
             return IntrinsicNode.fromString(funcname, args);
         }
@@ -466,6 +472,8 @@ function scriptContext(ctx: ParseContext) {
         let preop = yield ["++", "--", ""];
         if (preop) { yield whitespace; }
         let name = yield varname;
+        if (name == "true") { return makeIntConst(1, "boolean"); }
+        if (name == "false") { return makeIntConst(0, "boolean"); }
         yield whitespace;
         let { readopid, writeopid, vartype, varid } = getVarMeta(name);
         let postop = "";
@@ -643,11 +651,11 @@ export function parseClientscriptTs(deob: ClientscriptObfuscation, code: string)
 //TODO remove
 globalThis.testy = async () => {
     const fs = require("fs") as typeof import("fs");
-    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-19");
+    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-1999");
     let codefiles = [...codefs.extract.filesMap.entries()]
         .filter(q => q[0].startsWith("clientscript"))
         .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
-    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-999");
+    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-1999");
     jsonfs.extract.filesMap.delete(".schema-clientscript.json");
     let jsonfiles = [...jsonfs.extract.filesMap.values()];
     let testknown = () => {
@@ -688,6 +696,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     let res = "";
     res += "declare class BoundFunction { }\n";
     res += "declare function callback(): BoundFunction;\n";
+    res += "declare function comp(interf: number, element: number): component;\n";
     res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: Parameters<T>): BoundFunction;\n";
     res += "\n";
     for (let type of Object.values(subtypes)) {
