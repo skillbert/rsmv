@@ -35,6 +35,11 @@ let varInfoParser = new FileParser<{ type: number }>({
     "0x6e": { "name": "0x6e", "read": "ushort" },
 });
 
+var varbitInfoParser = new FileParser<{ varid: number, bits: number }>({
+    "0x01": { "name": "varid", "read": "utribyte" },//[8bit domain][16bit id] read as tribyte since thats also how we read pushvar/popvar imm
+    "0x02": { "name": "bits", "read": ["tuple", "ubyte", "ubyte"] }
+});
+
 export class OpcodeInfo {
     scrambledid: number;
     id: number;
@@ -261,6 +266,7 @@ export class ClientscriptObfuscation {
     source: CacheFileSource;
     dbtables = new Map<number, dbtables>();
     varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
+    varbitmeta: Map<number, typeof varbitInfoParser extends FileParser<infer T> ? T : never> = new Map();
     parammeta = new Map<number, params>();
     scriptargs = new Map<number, {
         scriptname: string,
@@ -365,6 +371,9 @@ export class ClientscriptObfuscation {
                     vars: await loadVars(q[1].index)
                 }
             ] as const)));
+
+            let varbitarchieve = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.varbits);
+            this.varbitmeta = new Map(varbitarchieve.map(q => [q.fileid, varbitInfoParser.read(q.buffer, this.source)]));
 
             this.parammeta.clear();
             let paramindex = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.params);
@@ -884,7 +893,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
                 frontstack.push(node.knownStackDiff.out);
 
                 frontstackconsts.popList(node.knownStackDiff.in);
-                if (node.knownStackDiff.constout) {
+                if (node.knownStackDiff.constout != null) {
                     frontstackconsts.pushOne(node.knownStackDiff.constout);
                 } else {
                     frontstackconsts.pushList(node.knownStackDiff.out);

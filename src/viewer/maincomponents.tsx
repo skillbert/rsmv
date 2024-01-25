@@ -40,7 +40,8 @@ export type SavedCacheSource = {
 	cachename: string
 } | {
 	type: "autofs",
-	location: string
+	location: string,
+	writable?: boolean
 } | {
 	type: "live"
 });
@@ -210,7 +211,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 		if (!hasElectrion) { return; }
 		let dir = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.ProgramData!, "jagex/runescape"));
 		if (!dir.canceled) {
-			this.props.onOpen({ type: "autofs", location: dir.filePaths[0] });
+			this.props.onOpen({ type: "autofs", location: dir.filePaths[0], writable: !!globalThis.writecache });//TODO propper ui for this
 		}
 	}
 
@@ -414,7 +415,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	}
 	if (hasElectrion && source.type == "autofs") {
 		let fs = new CLIScriptFS(source.location);
-		cache = await selectFsCache(fs, { writable: !!globalThis.writecache ?? false });//TODO propper ui for this
+		cache = await selectFsCache(fs, { writable: source.writable });
 	}
 	if (source.type == "live") {
 		cache = new CacheDownloader();

@@ -1,9 +1,12 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode, isNamedOp } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, addKnownStackDiffsub } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
+import { parse as opdecoder } from "../opdecoder";
+import { CacheFileSource } from "../cache";
+import { prepareClientScript } from ".";
 
 function* whitespace() {
     while (true) {
@@ -13,7 +16,7 @@ function* whitespace() {
 }
 const newline = /^\s*?\n/;
 const unmatchable = /$./;
-const reserverd = "if,while,break,continue,else,switch,script,return".split(",");
+const reserverd = "if,while,break,continue,else,switch,script,return,var".split(",");
 const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
 const binaryops = [...binaryOpSymbols.values()];
 const binaryopsoremtpy = binaryops.concat("");
@@ -22,6 +25,7 @@ globalThis.prettyjson = prettyJson;
 
 type Varslot = { stacktype: PrimitiveType, type: number, slot: number, name: string };
 class ParseContext {
+    rootfuncname = "";
     deob: ClientscriptObfuscation;
     vars: Record<string, Varslot> = Object.create(null);
     parent: ParseContext | null;
@@ -42,7 +46,16 @@ class ParseContext {
     declareVar(varname: string, type: number) {
         if (Object.hasOwn(this.vars, varname)) {
             let res = this.vars[varname];
-            if (res.type != type) { throw new Error(`tried to redeclare var ${varname} with different type (was: ${subtypeToTs(res.type)}, new: ${subtypeToTs(type)})`); }
+            if (res.stacktype != typeToPrimitive(type)) { throw new Error(`tried to redeclare var ${varname} with incompatible stack type (was: ${res.stacktype} new: ${typeToPrimitive(type)})`); }
+            if (res.type != type) {
+                if (res.type == subtypes.unknown_int) { res.type = type; }
+                else if (type == subtypes.unknown_int) { /*nop*/ }
+                else if (res.type == subtypes.unknown_int) { res.type = type; }
+                else if (type == subtypes.unknown_int) {/*nop*/ }
+                else if (res.type == subtypes.unknown_int) { res.type = type; }
+                else if (type == subtypes.unknown_int) { /*nop*/ }
+                else { throw new Error(`Tried to redeclare var ${varname} with incompatible subtype (was: ${subtypeToTs(res.type)}, new: ${subtypeToTs(type)})`) }
+            }
             return res;
         }
         let stacktype = typeToPrimitive(type);
@@ -52,12 +65,18 @@ class ParseContext {
         return res;
     }
     declareFunction(name: string, func: ClientScriptFunction) {
-        this.scopefunctions.set(name, func);
+        if (!this.parent && !this.rootfuncname) {
+            //root function is called with normal VM call instead of virtual subcall
+            this.rootfuncname = func.scriptname;
+        } else {
+            this.scopefunctions.set(name, func);
+        }
     }
-    getFunction(name: string) {
-        if (this.scopefunctions.has(name)) { return true; }
+    getFunction(name: string): ClientScriptFunction | null {
+        let func = this.scopefunctions.get(name);
+        if (func) { return func; }
         else if (this.parent) { return this.parent.getFunction(name); }
-        return false;
+        return null;
     }
 }
 
@@ -66,46 +85,63 @@ function scriptContext(ctx: ParseContext) {
     let deob = ctx.deob;
 
     function getVarMeta(name: string, labeledtype = -1) {
-        let m = name.match(/^(int|long|string|script|var(\w+)_)(\d+)$/);
-        let varid = (m ? +m[3] : -1);
+        let varid = -1;
+        let islocal = false;
         let readopid = -1;
         let writeopid = -1;
         let vartype = -1;
-        let existingvar = ctx.getVarType(name);
-        if (existingvar) {
-            vartype = existingvar.type;
-            varid = existingvar.slot;
-        } else if (m) {
-            if (m[1] == "script") {
+        let match = name.match(/^(int|long|string|script|var(bit)?(\w+?)_)(\d+)$/);
+        if (!match) {
+            islocal = true;
+        } else if (match) {
+            if (match[1] == "script") {
                 vartype = subtypes.scriptref;
-                return { readopid, writeopid, vartype, varid };
-            } else if (m[2]) {
-                let source = variableSources[m[2]];
-                if (!source) { throw new Error("unknown var source"); }
-                varid = (source.key << 24) | (varid << 8);
-                let meta = deob.getClientVarMeta(varid);
-                if (!meta) { throw new Error("unknown clientvar " + varid); }
-                readopid = namedClientScriptOps.pushvar;
-                writeopid = namedClientScriptOps.popvar;
-                vartype = meta.fulltype;
-            } else if (m[1] == "int") {
-                vartype = subtypes.unknown_int;
-            } else if (m[1] == "long") {
-                vartype = subtypes.unknown_long;
-            } else if (m[1] == "string") {
-                vartype = subtypes.unknown_string;
+                varid = +match[4];
+            } else if (match[3]) {
+                if (match[2] == "bit") {
+                    let subindex = 0;//TODO this is same as opcode that have a [1] after them, it targets a different var set from the default (current player) one
+                    varid = (+match[4] << 8) | subindex;
+                    // let meta = deob.varbitmeta.get(varid);
+                    readopid = namedClientScriptOps.pushvarbit;
+                    writeopid = namedClientScriptOps.popvarbit;
+                    vartype = subtypes.unknown_int;
+                } else {
+                    let source = variableSources[match[3]];
+                    if (!source) { throw new Error("unknown var source"); }
+                    varid = (source.key << 24) | (+match[4] << 8);
+                    let meta = deob.getClientVarMeta(varid);
+                    if (!meta) { throw new Error("unknown clientvar " + varid); }
+                    readopid = namedClientScriptOps.pushvar;
+                    writeopid = namedClientScriptOps.popvar;
+                    vartype = meta.fulltype;
+                }
+            } else if (match[1] == "int" || match[1] == "long" || match[1] == "string") {
+                //magic types derived from var name
+                islocal = true;
+                labeledtype = primitiveToUknownExact(match[1]);
+            } else {
+                throw new Error("unexpected");
             }
-            ctx.declareVar(name, vartype);
         }
-        if (vartype == -1) { throw new Error("unkown var type") }
-        let stacktype = typeToPrimitive(vartype);
-        if (readopid == -1 && stacktype == "int") { readopid = namedClientScriptOps.pushlocalint; }
-        if (readopid == -1 && stacktype == "long") { readopid = namedClientScriptOps.pushlocallong; }
-        if (readopid == -1 && stacktype == "string") { readopid = namedClientScriptOps.pushlocalstring; }
-        if (writeopid == -1 && stacktype == "int") { writeopid = namedClientScriptOps.poplocalint; }
-        if (writeopid == -1 && stacktype == "long") { writeopid = namedClientScriptOps.poplocallong; }
-        if (writeopid == -1 && stacktype == "string") { writeopid = namedClientScriptOps.poplocalstring; }
-        return { readopid, writeopid, vartype, varid };
+        if (islocal) {
+            let existingvar = ctx.getVarType(name);
+            if (!existingvar) {
+                //no match for var name, must be a new local var
+                if (labeledtype == -1) { throw new Error(`no known type while declaring var ${name}`); }
+                existingvar = ctx.declareVar(name, labeledtype);
+            }
+            varid = existingvar.slot;
+            vartype = existingvar.type;
+            let stacktype = existingvar.stacktype;
+            if (readopid == -1 && stacktype == "int") { readopid = namedClientScriptOps.pushlocalint; }
+            if (readopid == -1 && stacktype == "long") { readopid = namedClientScriptOps.pushlocallong; }
+            if (readopid == -1 && stacktype == "string") { readopid = namedClientScriptOps.pushlocalstring; }
+            if (writeopid == -1 && stacktype == "int") { writeopid = namedClientScriptOps.poplocalint; }
+            if (writeopid == -1 && stacktype == "long") { writeopid = namedClientScriptOps.poplocallong; }
+            if (writeopid == -1 && stacktype == "string") { writeopid = namedClientScriptOps.poplocalstring; }
+        }
+        if (vartype == -1) { throw new Error(`unkown var type for ${name}`); }
+        return { readopid, writeopid, vartype, varid, islocal };
     }
     function makeStringConst(str: string, subtypestr: string) {
         let constop = getopinfo(namedClientScriptOps.pushconst);
@@ -170,7 +206,7 @@ function scriptContext(ctx: ParseContext) {
     function* typeDeclaration() {
         let first = yield [/^\w+/, "["];
         if (first == "void") { return []; }
-        if (first != "[") { return [first] }
+        if (first != "[") { return [first[0]] }
         let typelist: string[] = [];
         while (true) {
             if ((yield has("]"))) { break; }
@@ -190,7 +226,12 @@ function scriptContext(ctx: ParseContext) {
         while (true) {
             let next = yield ["${", "`", /^[\s\S]/];
             if (next == "\\") {
-                str += yield (/^[\s\S]/);
+                let char = (yield (/^[\s\S]/))[0];
+                if (char == "n") { str += "\n"; }
+                else if (char == "t") { str += "\t"; }
+                else if (char == "r") { str += "\r"; }
+                else if (char == "x") { str += String.fromCharCode(parseInt((yield (/^[\da-fA-F]{2}/))[0], 16)) }
+                else { str += char; }
             } else if (next == "${") {
                 if (str != "") { parts.push(makeStringConst(str, "")); }
                 str = "";
@@ -221,18 +262,23 @@ function scriptContext(ctx: ParseContext) {
 
     function* stringliteral() {
         yield '"';
-        let value = "";
+        let str = "";
         while (!(yield has('"'))) {
-            let next = yield ["\\", /^[^"]/];
-            if (next == "\\") {
-                value += yield (/^./)
+            let char = yield ["\\", /^[^"]/];
+            if (char == "\\") {
+                let char = yield (/^[\s\S]/);
+                if (char == "n") { str += "\n"; }
+                else if (char == "t") { str += "\t"; }
+                else if (char == "r") { str += "\r"; }
+                else if (char == "x") { str += String.fromCharCode(parseInt((yield (/^[\da-fA-F]{2}/))[0], 16)) }
+                else { str += char; }
             } else {
-                value += next;
+                str += char;
             }
         }
         yield whitespace;
         let subt = yield literalcast;
-        return makeStringConst(value, subt || "string");
+        return makeStringConst(str, subt || "string");
     }
 
     function* intliteral() {
@@ -304,24 +350,26 @@ function scriptContext(ctx: ParseContext) {
             if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
             return makeIntConst((args[0].op.imm_obj << 16) | args[1].op.imm_obj, "component");
         }
-
         if (funcname.startsWith("$")) {
             return IntrinsicNode.fromString(funcname, args);
         }
 
+
         let fnid = -1;
-        let unkmatch = funcname.match(/^(unk|script)(\d+)$/);
-        if (unkmatch) {
-            if (unkmatch[1] == "unk") {
-                fnid = +unkmatch[2];
+        let funcmatch = funcname.match(/^(unk|script)(\d+)$/);
+        let subfunc = ctx.getFunction(funcname);
+        if (subfunc) {
+            let node = new SubcallNode(-1, subfunc);
+            node.pushList(args);
+            node.knownStackDiff = new StackInOut(subfunc.argtype, subfunc.returntype);
+            return node;
+        } else if (funcmatch) {
+            if (funcmatch[1] == "unk") {
+                fnid = +funcmatch[2];
             } else {
-                metaid = +unkmatch[2];
+                metaid = +funcmatch[2];
                 fnid = namedClientScriptOps.gosub;
             }
-        } else if (ctx.getFunction(funcname)) {
-            let node = new SubcallNode(-1, funcname);
-            node.pushList(args);
-            return node;
         } else {
             for (let id in knownClientScriptOpNames) {
                 if (funcname == knownClientScriptOpNames[id]) {
@@ -329,8 +377,20 @@ function scriptContext(ctx: ParseContext) {
                 }
             }
         }
+
+        let consts = new StackConstants();
+        for (let arg of args) {
+            if (arg.knownStackDiff?.constout != null) {
+                consts.pushOne(arg.knownStackDiff.constout);
+            } else {
+                let out = getNodeStackOut(arg);
+                consts.pushList(out);
+            }
+        }
+
         let fn = getopinfo(fnid);
         let node = new RawOpcodeNode(-1, { opcode: fnid, imm: metaid, imm_obj: null }, fn);
+        addKnownStackDiffsub(consts, deob, node, -1);
         node.pushList(args);
         return node;
     }
@@ -338,26 +398,15 @@ function scriptContext(ctx: ParseContext) {
     function* returnStatement() {
         yield "return";
         yield whitespace;
-        let values: AstNode[];
-        let first = yield [valueStatement, "[", ""];
-        if (first instanceof AstNode) {
-            values = [first];
-        } else if (first == "[") {
-            yield whitespace;
-            values = yield valueList
-            yield whitespace;
-            yield "]";
-        } else {
-            values = [];
-        }
+
         let returnop = getopinfo(namedClientScriptOps.return);
         let res = new RawOpcodeNode(-1, { opcode: returnop.id, imm: 0, imm_obj: null }, returnop);
-        res.pushList(values);
+        res.pushList(yield valueTuple);
         return res;
     }
 
     function* assignStatement() {
-        let hasvarkeyword = yield has("var");
+        let hasvarkeyword = yield [/^var\b/, ""]
         yield whitespace;
         let varnames: string[] = [];
         let first = yield [varname, "["];
@@ -368,32 +417,77 @@ function scriptContext(ctx: ParseContext) {
                     yield ",";
                     yield whitespace;
                 }
-                varnames.push(yield varname);
+                varnames.push(yield [varname, ""]);
                 yield whitespace;
             }
         } else {
             varnames.push(first);
         }
         yield whitespace;
-        yield (/^=(?!=)/);
-        let values: AstNode[];
-        //deal with incomplete code where the assigned variables are unknown but somewhere on stack
-        if (yield has(newline)) {
-            values = [];
-        } else {
-            yield whitespace;
-            values = yield [valueList, "\n"];
+        let typenames: string[] | null = null;
+        if (hasvarkeyword) {
+            let hastypes = yield [":", ""];
+            if (hastypes == ":") {
+                yield whitespace;
+                typenames = yield typeDeclaration;
+                if (typenames!.length != varnames.length) { throw new Error("var assign types of different length as var names"); }
+                yield whitespace;
+            }
         }
+        yield whitespace;
+        yield (/^=(?!=)/);
+        yield whitespace;
+        let values: AstNode[] = yield valueTuple;
         let node = new VarAssignNode(-1);
 
-        node.varops = varnames.map(varname => {
-            let { writeopid, varid } = getVarMeta(varname);
-            let writeop = getopinfo(writeopid);
-            return new RawOpcodeNode(-1, { opcode: writeopid, imm: varid, imm_obj: null }, writeop);
-        });
+        let stackout = new StackList();
+        for (let val of values) {
+            stackout.push(getNodeStackOut(val));
+        }
 
+        if (stackout.total() != varnames.length) { throw new Error(`var assign output count does not match variable count, out=${stackout}, vars=${varnames.join(",")}`); }
+
+        //bit complicated to find out which type we're dealing with since there are several scenarios
+        for (let i = varnames.length - 1; i >= 0; i--) {
+            let varname = varnames[i];
+            let stacktype: PrimitiveType;
+            let varslot = (varname == "" ? null : ctx.getVarType(varname));
+            if (varslot) {
+                //var exists already
+                stacktype = varslot.stacktype;
+            } else if (typenames) {
+                //explicit type name->tells us which stack
+                stacktype = typeToPrimitive(tsToSubtype(typenames[i]));
+            } else {
+                //try get stack type from the value type, this only works if we have an ordered value type
+                let val = stackout.values.at(-1);
+                if (val instanceof StackDiff) {
+                    let monotype = val.isMonoType();
+                    if (monotype == "multi") { throw new Error(`ambiguous stack type order while assigning ${varname}`); }
+                    stacktype = monotype;
+                } else if (typeof val == "undefined") {
+                    throw new Error(`input output count mismatch at while assigning ${varname}`);
+                } else if (val == "vararg") {
+                    throw new Error("unexpected vararg");
+                } else {
+                    stacktype = val;
+                }
+            }
+            if (!stackout.tryPopSingle(stacktype)) {
+                throw new Error(`function output does not match variable type of ${varname}, expected stack type ${stacktype}`);
+            }
+            if (varname == "") {
+                let opid = (stacktype == "int" ? namedClientScriptOps.popdiscardint : stacktype == "long" ? namedClientScriptOps.popdiscardlong : namedClientScriptOps.popdiscardstring);
+                return new RawOpcodeNode(-1, makeop(opid), getopinfo(opid));
+            } else {
+                let { writeopid, varid, vartype } = getVarMeta(varname, primitiveToUknownExact(stacktype));
+                if (typeToPrimitive(vartype) != stacktype) { throw new Error(`type of value and target variable did not match for var ${varname}:${subtypeToTs(vartype)}, ${subtypeToTs(primitiveToUknownExact(stacktype))}`); }
+                let writeop = getopinfo(writeopid);
+                node.varops.push(new RawOpcodeNode(-1, makeop(writeopid, varid), writeop));
+            }
+        }
+        node.varops.reverse();
         node.pushList(values);
-
         return node;
     }
 
@@ -474,6 +568,7 @@ function scriptContext(ctx: ParseContext) {
         let name = yield varname;
         if (name == "true") { return makeIntConst(1, "boolean"); }
         if (name == "false") { return makeIntConst(0, "boolean"); }
+        if (reserverd.includes(name)) { yield unmatchable; }
         yield whitespace;
         let { readopid, writeopid, vartype, varid } = getVarMeta(name);
         let postop = "";
@@ -488,8 +583,7 @@ function scriptContext(ctx: ParseContext) {
         if (postop || preop) {
             let writeop = getopinfo(writeopid);
             let operationop = getopinfo(postop == "++" || preop == "++" ? namedClientScriptOps.plus : namedClientScriptOps.minus);
-            let tscode = (preop == "--" ? `--${name}` : preop == "++" ? `++${name}` : postop == "--" ? `${name}--` : `${name}++`);
-            let combined = new ComposedOp(-1, (preop == "--" ? "--x" : preop == "++" ? "++x" : postop == "--" ? "x--" : "x++"), tscode);
+            let combined = new ComposedOp(-1, (preop == "--" ? "--x" : preop == "++" ? "++x" : postop == "--" ? "x--" : "x++"));
             if (postop) { combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop)); }
             combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop));
             combined.internalOps.push(makeIntConst(1, "int"));
@@ -544,6 +638,21 @@ function scriptContext(ctx: ParseContext) {
         return node;
     }
 
+    function* valueTuple() {
+        let first = yield [valueStatement, "[", ""];
+        if (first instanceof AstNode) {
+            return [first];
+        } else if (first == "[") {
+            yield whitespace;
+            let values = yield valueList
+            yield whitespace;
+            yield "]";
+            return values;
+        } else {
+            return [];//TODO error?
+        }
+    }
+
     function* incorrectBinaryOp() {
         yield "(";
         yield whitespace;
@@ -581,7 +690,18 @@ function scriptContext(ctx: ParseContext) {
             let next = yield [";", statement, ""];
             if (next == "") { break; }
             if (next != ";") {
-                statements.push(next);
+                let out = getNodeStackOut(next);
+                if (out.total() != 0) {
+                    let assign = new VarAssignNode(-1);
+                    assign.push(next);
+                    let diff = out.toStackDiff();
+                    for (let i = 0; i < diff.int; i++) { assign.varops.push(new RawOpcodeNode(-1, makeop(namedClientScriptOps.popdiscardint), getopinfo(namedClientScriptOps.popdiscardint))); }
+                    for (let i = 0; i < diff.long; i++) { assign.varops.push(new RawOpcodeNode(-1, makeop(namedClientScriptOps.popdiscardlong), getopinfo(namedClientScriptOps.popdiscardlong))); }
+                    for (let i = 0; i < diff.string; i++) { assign.varops.push(new RawOpcodeNode(-1, makeop(namedClientScriptOps.popdiscardstring), getopinfo(namedClientScriptOps.popdiscardstring))); }
+                    statements.push(assign);
+                } else {
+                    statements.push(next);
+                }
             }
             yield whitespace;
         }
@@ -666,7 +786,7 @@ globalThis.testy = async () => {
     let subtest = (index: number) => {
         return testinner(codefiles[index], jsonfiles[index].data, index);
     }
-    let testinner = (originalts: string, originaljson: string, fileid = -1) => {
+    let testinner = async (originalts: string, originaljson: string, fileid = -1) => {
         const deob = globalThis.deob as ClientscriptObfuscation;
         let parseresult = parseClientscriptTs(deob, originalts);
         if (!parseresult.success) { return parseresult; }
@@ -674,6 +794,9 @@ globalThis.testy = async () => {
         let jsondata = JSON.parse(originaljson);
         delete jsondata.$schema;
         roundtripped.opcodedata.forEach(q => (q as any).opname = getOpName(q.opcode));
+        let source = (globalThis.engine as CacheFileSource);
+        await prepareClientScript(source);
+        let binaryrountripped = opdecoder.clientscript.write(roundtripped, source.getDecodeArgs());
         let original = prettyJson(jsondata.opcodedata);
 
         let rawinput = prettyJson(jsondata);
@@ -681,6 +804,7 @@ globalThis.testy = async () => {
         let { func: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
         let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
 
+        fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/binary.dat", binaryrountripped);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw1.json", rawinput);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw2.json", rawroundtrip);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", prettyJson(jsondata.opcodedata));

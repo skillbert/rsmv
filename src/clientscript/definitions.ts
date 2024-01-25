@@ -1,16 +1,17 @@
+import { cacheConfigPages } from "../constants";
 import { rs3opnames } from "./opnames";
 
 export const variableSources = {
-    player: { key: 0, index: 60 },
-    npc: { key: 1, index: 61 },
-    client: { key: 2, index: 62 },
-    world: { key: 3, index: 63 },
-    region: { key: 4, index: 64 },
-    object: { key: 5, index: 65 },
-    clan: { key: 6, index: 66 },
-    clansettings: { key: 7, index: 67 },
-    // campaign: { key: 8, index: 68 },//seems incorrect after 30oct2023
-    playergroup: { key: 9, index: 75 }//not sure about 75
+    player: { key: 0, index: cacheConfigPages.varplayer },
+    npc: { key: 1, index: cacheConfigPages.varnpc },
+    client: { key: 2, index: cacheConfigPages.varclient },
+    world: { key: 3, index: cacheConfigPages.varworld },
+    region: { key: 4, index: cacheConfigPages.varregion },
+    object: { key: 5, index: cacheConfigPages.varobject },
+    clan: { key: 6, index: cacheConfigPages.varclan },
+    clansettings: { key: 7, index: cacheConfigPages.varclansettings },
+    // campaign: { key: 8, index: cacheConfigPages.varcampaign },//seems incorrect after 30oct2023
+    playergroup: { key: 9, index: cacheConfigPages.varplayergroup }//not sure about 75
 };
 export const namedClientScriptOps = {
     //old caches only
@@ -26,6 +27,11 @@ export const namedClientScriptOps = {
     pushlocallong: 11603,
     poplocallong: 11607,
 
+    //pop discard
+    popdiscardint: 10627,
+    popdiscardlong: 9103,//op not seen yet
+    popdiscardstring: 10983,
+
     //variable number of args
     joinstring: 37,
     gosub: 40,
@@ -33,6 +39,8 @@ export const namedClientScriptOps = {
     //complicated types
     pushvar: 42,
     popvar: 43,
+    pushvarbit: 11601,
+    popvarbit: 11602,
 
     //control flow
     jump: 6,
@@ -65,7 +73,6 @@ export const namedClientScriptOps = {
     minus: 10006,
     intdiv: 10001,
     intmul: 10028,
-    strtolower: 10003,//not sure
     strcmp: 10004,//0 for equal, might be string - operator
     strconcat: 10060,
     inttostring: 10687,
@@ -350,6 +357,12 @@ export function typeToPrimitive(typeint: number): PrimitiveType {
     else if (longtypes.includes(typeint)) { return "long"; }
     else { return "int"; }
 }
+export function primitiveToUknownExact(stacktype: PrimitiveType) {
+    if (stacktype == "int") { return subtypes.unknown_int; }
+    if (stacktype == "long") { return subtypes.unknown_long; }
+    if (stacktype == "string") { return subtypes.unknown_string; }
+    throw new Error(`uknown stack type ${stacktype}`);
+}
 
 export const knownClientScriptOpNames: Record<number, string> = {
     ...rs3opnames,
@@ -358,6 +371,16 @@ export const knownClientScriptOpNames: Record<number, string> = {
 
 globalThis.knownClientScriptOpNames = knownClientScriptOpNames;
 
+export const popDiscardOps = [
+    namedClientScriptOps.popdiscardint,
+    namedClientScriptOps.popdiscardlong,
+    namedClientScriptOps.popdiscardstring
+]
+export const popLocalOps = [
+    namedClientScriptOps.poplocalint,
+    namedClientScriptOps.poplocallong,
+    namedClientScriptOps.poplocalstring
+]
 export const branchInstructionsInt = [
     namedClientScriptOps.branch_not,
     namedClientScriptOps.branch_eq,
@@ -711,6 +734,9 @@ export class ExactStack {
     int: number[] = [];
     long: number[] = [];
     string: number[] = [];
+    all() {
+        return this.int.concat(this.long, this.string);
+    }
     static fromList(types: number[]) {
         let res = new ExactStack();
         for (let type of types) {
@@ -869,6 +895,13 @@ export class StackDiff {
     }
     clone() {
         return new StackDiff().add(this);
+    }
+    isMonoType(): PrimitiveType | "multi" {
+        if (this.vararg != 0) { return "multi"; }
+        if (this.int != 0 && this.long == 0 && this.string == 0) { return "int"; }
+        if (this.int == 0 && this.long != 0 && this.string == 0) { return "long"; }
+        if (this.int == 0 && this.long == 0 && this.string != 0) { return "string"; }
+        return "multi";
     }
     getSingle(stack: StackType) {
         if (stack == "int") { return this.int; }

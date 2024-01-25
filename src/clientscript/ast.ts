@@ -48,12 +48,12 @@ class OpcodeWriterContext {
             return label;
         });
     }
-    makeSubCallOps(name: string, args: AstNode[]) {
+    makeSubCallOps(func: ClientScriptFunction, args: AstNode[]) {
         let returnid = this.returnsiteidcounter++;
-        let target = this.subfunctions.get(name);
+        let target = this.subfunctions.get(func.scriptname);
         if (!target) { throw new Error("subcall func does not exist"); }
         let body: ClientScriptOp[] = [];
-        let labelobj = this.getNamedLabel(name);
+        let labelobj = this.getNamedLabel(func.scriptname);
         body.push(...args.flatMap(q => q.getOpcodes(this)))
         body.push(makeop(namedClientScriptOps.pushconst, 0, returnid));
         body.push(makeop(namedClientScriptOps.jump, 0, { type: "jumplabel", value: labelobj }));
@@ -122,25 +122,23 @@ export abstract class AstNode {
 }
 
 export class SubcallNode extends AstNode {
-    name: string;
-    constructor(originalindex: number, name: string) {
+    func: ClientScriptFunction;
+    constructor(originalindex: number, func: ClientScriptFunction) {
         super(originalindex);
-        this.name = name;
+        this.func = func;
     }
     getOpcodes(ctx: OpcodeWriterContext) {
-        return ctx.makeSubCallOps(this.name, this.children);
+        return ctx.makeSubCallOps(this.func, this.children);
     }
 }
 
-type ComposedopType = "++x" | "--x" | "x++" | "x--";
+export type ComposedopType = "++x" | "--x" | "x++" | "x--";
 export class ComposedOp extends AstNode {
     type: ComposedopType;
-    tscode: string;
     internalOps: AstNode[] = [];
-    constructor(originalindex: number, type: ComposedopType, tscode: string) {
+    constructor(originalindex: number, type: ComposedopType) {
         super(originalindex);
         this.type = type;
-        this.tscode = tscode;
     }
     getOpcodes(ctx: OpcodeWriterContext) {
         if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
@@ -758,8 +756,7 @@ export function translateAst(ast: CodeBlockNode) {
             let ispre = isNamedOp(prepushx, namedClientScriptOps.pushlocalint) && prepushx.op.imm == popx.op.imm;
             let ispost = !ispre && isNamedOp(postpushx, namedClientScriptOps.pushlocalint) && postpushx.op.imm == popx.op.imm;
             if (ispre || ispost) {
-                let tscode = (isminus ? (ispre ? `${popx.op.imm}--` : `--${popx.op.imm}`) : (ispre ? `${popx.op.imm}++` : `++${popx.op.imm}`));
-                let op = new ComposedOp(popx.originalindex, (isminus ? (ispre ? "x--" : "--x") : (ispre ? "x++" : "++x")), tscode);
+                let op = new ComposedOp(popx.originalindex, (isminus ? (ispre ? "x--" : "--x") : (ispre ? "x++" : "++x")));
                 ast.remove(pushx);
                 ast.remove(push1);
                 ast.remove(plusminus);
@@ -784,7 +781,16 @@ export function translateAst(ast: CodeBlockNode) {
     //merge variable assign nodes
     let currentassignnode: VarAssignNode | null = null;
     for (let node = cursor.goToStart(); node; node = cursor.next()) {
-        if (node instanceof RawOpcodeNode && (node.op.opcode == namedClientScriptOps.poplocalint || node.op.opcode == namedClientScriptOps.poplocallong || node.op.opcode == namedClientScriptOps.poplocalstring || node.op.opcode == namedClientScriptOps.popvar)) {
+        if (node instanceof RawOpcodeNode && (
+            node.op.opcode == namedClientScriptOps.poplocalint ||
+            node.op.opcode == namedClientScriptOps.poplocallong ||
+            node.op.opcode == namedClientScriptOps.poplocalstring ||
+            node.op.opcode == namedClientScriptOps.popvar ||
+            node.op.opcode == namedClientScriptOps.popvarbit ||
+            node.op.opcode == namedClientScriptOps.popdiscardint ||
+            node.op.opcode == namedClientScriptOps.popdiscardlong ||
+            node.op.opcode == namedClientScriptOps.popdiscardstring
+        )) {
             if (currentassignnode && currentassignnode.parent != node.parent) {
                 throw new Error("ast is expected to be flat at this stage");
             }
@@ -1009,36 +1015,31 @@ export class ClientScriptFunction extends AstNode {
 
     getOpcodes(ctx: OpcodeWriterContext) {
         let body = this.children[0].getOpcodes(ctx);
-        return body;
-    }
-
-    getFooterOpcodes() {
-        let footer: ClientScriptOp[] = [];
         //don't add the obsolete return call if there is already a return call and the type is empty
-        // if (!this.returntype.isEmpty() || body.at(-1)?.opcode != namedClientScriptOps.return) {
-        let ret = this.returntype.clone();
-        let pushconst = (type: StackType) => {
-            if (type == "vararg") { throw new Error("unexpected"); }
-            footer.push({
-                opcode: namedClientScriptOps.pushconst,
-                imm: { int: 0, long: 1, string: 2 }[type],
-                imm_obj: { int: 0, long: [0, 0] as [number, number], string: "" }[type],
-            });
-        }
-        while (!ret.isEmpty()) {
-            let type = ret.values.pop()!;
-            if (type instanceof StackDiff) {
-                for (let i = 0; i < type.int; i++) { pushconst("int"); }
-                for (let i = 0; i < type.long; i++) { pushconst("long"); }
-                for (let i = 0; i < type.string; i++) { pushconst("string"); }
-                for (let i = 0; i < type.vararg; i++) { pushconst("vararg"); }
-            } else {
-                pushconst(type);
+        if (!this.returntype.isEmpty() || body.at(-1)?.opcode != namedClientScriptOps.return) {
+            let ret = this.returntype.clone();
+            let pushconst = (type: StackType) => {
+                if (type == "vararg") { throw new Error("unexpected"); }
+                body.push({
+                    opcode: namedClientScriptOps.pushconst,
+                    imm: { int: 0, long: 1, string: 2 }[type],
+                    imm_obj: { int: 0, long: [0, 0] as [number, number], string: "" }[type],
+                });
             }
+            while (!ret.isEmpty()) {
+                let type = ret.values.pop()!;
+                if (type instanceof StackDiff) {
+                    for (let i = 0; i < type.int; i++) { pushconst("int"); }
+                    for (let i = 0; i < type.long; i++) { pushconst("long"); }
+                    for (let i = 0; i < type.string; i++) { pushconst("string"); }
+                    for (let i = 0; i < type.vararg; i++) { pushconst("vararg"); }
+                } else {
+                    pushconst(type);
+                }
+            }
+            body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
         }
-        footer.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
-        // }
-        return footer;
+        return body;
     }
 }
 
@@ -1063,132 +1064,138 @@ export function varArgtype(stringconst: string | unknown, lastintconst: number |
     return indiff;
 }
 
-function addKnownStackDiff(section: CodeBlockNode, calli: ClientscriptObfuscation) {
-    let consts = new StackConstants();
-    let constsknown = true;
-
-    for (let node of section.children) {
-        if (!(node instanceof RawOpcodeNode)) {
-            continue;
-        }
-
-        if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
-            //args are rowid,tablefield,subrow
-            let tablefield = consts.values.at(-2);
-            if (typeof tablefield == "number") {
-                let dbtable = (tablefield >> 12) & 0xffff;
-                let columnid = (tablefield >> 4) & 0xff;
-                let subfield = tablefield & 0xf;
-                let column = calli.dbtables.get(dbtable)?.unk01?.columndata.find(q => q.id == columnid);
-                if (column) {
-                    node.knownStackDiff = StackInOut.fromExact(
-                        [subtypes.dbrow, subtypes.int, subtypes.int],
-                        (subfield != 0 ? [column.columns[subfield - 1].type] : column.columns.map(q => q.type))
-                    )
-                }
-            }
-        } else if (getParamOps.includes(node.opinfo.id)) {
-            //args are structid/itemid,paramid
-            let paramid = consts.values.at(-1);
-            if (constsknown && typeof paramid == "number") {
-                let param = calli.parammeta.get(paramid);
-                if (!param) {
-                    console.log("unknown param " + paramid);
-                } else {
-                    let outtype = [param.type ? param.type.vartype : 0]
-                    let inputs = new StackList();
-                    //all getparams except for cc_getparam require a target
-                    if (node.opinfo.id != namedClientScriptOps.cc_getparam) { inputs.pushone("int"); }
-                    inputs.pushone("int");
-                    node.knownStackDiff = new StackInOut(inputs, new StackList(outtype.map(typeToPrimitive)));
-                    //don't set in type because it's probably different eg pointer to npc etc
-                    node.knownStackDiff.exactout = ExactStack.fromList(outtype);
-                }
-            }
-        } else if (node.opinfo.id == namedClientScriptOps.enum_getvalue) {
-            //args are intypeid,outtypeid,enum,lookup
-            let outtypeid = consts.values.at(-3);
-            let intypeid = consts.values.at(-4);
-            if (constsknown && typeof outtypeid == "number" && typeof intypeid == "number") {
+export function addKnownStackDiffsub(consts: StackConstants | null, calli: ClientscriptObfuscation, node: RawOpcodeNode, scriptid: number) {
+    if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
+        //args are rowid,tablefield,subrow
+        let tablefield = consts?.values.at(-2);
+        if (typeof tablefield == "number") {
+            let dbtable = (tablefield >> 12) & 0xffff;
+            let columnid = (tablefield >> 4) & 0xff;
+            let subfield = tablefield & 0xf;
+            let column = calli.dbtables.get(dbtable)?.unk01?.columndata.find(q => q.id == columnid);
+            if (column) {
                 node.knownStackDiff = StackInOut.fromExact(
-                    [subtypes.int, subtypes.int, subtypes.enum, intypeid],
-                    [outtypeid],
+                    [subtypes.dbrow, subtypes.int, subtypes.int],
+                    (subfield != 0 ? [column.columns[subfield - 1].type] : column.columns.map(q => q.type))
                 )
             }
-        } else if (node.opinfo.id == namedClientScriptOps.return) {
-            let script = calli.scriptargs.get(section.scriptid);
-            if (script) {
-                node.knownStackDiff = new StackInOut(script.stack.out, new StackList());
-                node.knownStackDiff.exactin = script.stack.exactout;
-            }
-        } else if (node.opinfo.id == namedClientScriptOps.gosub) {
-            let script = calli.scriptargs.get(node.op.imm);
-            if (script) {
-                node.knownStackDiff = script.stack;
-            }
-        } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
-            node.knownStackDiff = new StackInOut(
-                new StackList(Array(node.op.imm).fill("string")),
-                new StackList(["string"])
-            )
-        } else if (node.opinfo.id == namedClientScriptOps.pushvar || node.opinfo.id == namedClientScriptOps.popvar) {
-            let varmeta = calli.getClientVarMeta(node.op.imm);
-            if (varmeta) {
-                let ispop = node.opinfo.id == namedClientScriptOps.popvar;
-
-                let value = [varmeta.fulltype];
-                node.knownStackDiff = StackInOut.fromExact(
-                    (ispop ? value : []),
-                    (ispop ? [] : value)
-                );
-            }
-        } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
-            if (node.op.imm == 0) {
-                if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
-                node.knownStackDiff = StackInOut.fromExact([], [typeuuids.int++]);
-                node.knownStackDiff.constout = node.op.imm_obj;
-            } else if (node.op.imm == 1) {
-                node.knownStackDiff = StackInOut.fromExact([], [typeuuids.long++]);
-                node.knownStackDiff.constout = node.op.imm_obj;
-            } else if (node.op.imm == 2) {
-                let stringconst = node.op.imm_obj as string;
-                node.knownStackDiff = StackInOut.fromExact([], [typeuuids.string++]);
-                node.knownStackDiff.constout = node.op.imm_obj;
-
-                //a string like this indicates a vararg set where this string indicates the types
-                //treat the entire thing as one vararg
-                //only make use of this construct if it is at least 3 chars long
-                //otherwise ignore the equation
-                let varargmatch = stringconst.match(/^([ils]*)Y?$/);
-                if (varargmatch && stringconst.length >= 3) {
-                    let argtype = varArgtype(stringconst, consts.values.at(-1));
-                    if (!argtype) { throw new Error("unexpected"); }
-                    node.knownStackDiff = new StackInOut(argtype, new StackList(["vararg"]));
-                    node.knownStackDiff.constout = node.op.imm_obj;
-                    node.knownStackDiff.exactin = ExactStack.fromList(argtype.toLooseSubtypes());
-                } else if (varargmatch) {
-                    node.unknownstack = true;
-                    continue;
-                }
+        }
+    } else if (getParamOps.includes(node.opinfo.id)) {
+        //args are structid/itemid,paramid
+        let paramid = consts?.values.at(-1);
+        if (typeof paramid == "number") {
+            let param = calli.parammeta.get(paramid);
+            if (!param) {
+                console.log("unknown param " + paramid);
             } else {
-                throw new Error("unexpected");
+                let outtype = [param.type ? param.type.vartype : 0]
+                let inputs = new StackList();
+                //all getparams except for cc_getparam require a target
+                if (node.opinfo.id != namedClientScriptOps.cc_getparam) { inputs.pushone("int"); }
+                inputs.pushone("int");
+                node.knownStackDiff = new StackInOut(inputs, new StackList(outtype.map(typeToPrimitive)));
+                //don't set in type because it's probably different eg pointer to npc etc
+                node.knownStackDiff.exactout = ExactStack.fromList(outtype);
             }
         }
-
-        if (node.opinfo.id == namedClientScriptOps.pushconst) {
-            consts.pushOne(node.op.imm_obj);
-        } else if (node.knownStackDiff?.initializedthrough) {
-            consts.applyInOut(node.knownStackDiff);
-        } else if (node.opinfo.stackinfo.initializedthrough) {
-            consts.applyInOut(node.opinfo.stackinfo);
-        } else {
-            constsknown = false;
+    } else if (node.opinfo.id == namedClientScriptOps.enum_getvalue) {
+        //args are intypeid,outtypeid,enum,lookup
+        let outtypeid = consts?.values.at(-3);
+        let intypeid = consts?.values.at(-4);
+        if (typeof outtypeid == "number" && typeof intypeid == "number") {
+            node.knownStackDiff = StackInOut.fromExact(
+                [subtypes.int, subtypes.int, subtypes.enum, intypeid],
+                [outtypeid],
+            )
         }
+    } else if (node.opinfo.id == namedClientScriptOps.return) {
+        let script = calli.scriptargs.get(scriptid);
+        if (script) {
+            node.knownStackDiff = new StackInOut(script.stack.out, new StackList());
+            node.knownStackDiff.exactin = script.stack.exactout;
+        }
+    } else if (node.opinfo.id == namedClientScriptOps.gosub) {
+        let script = calli.scriptargs.get(node.op.imm);
+        if (script) {
+            node.knownStackDiff = script.stack;
+        }
+    } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
+        node.knownStackDiff = new StackInOut(
+            new StackList(Array(node.op.imm).fill("string")),
+            new StackList(["string"])
+        )
+    } else if (node.opinfo.id == namedClientScriptOps.pushvar || node.opinfo.id == namedClientScriptOps.popvar) {
+        let varmeta = calli.getClientVarMeta(node.op.imm);
+        if (varmeta) {
+            let ispop = node.opinfo.id == namedClientScriptOps.popvar;
 
-        if (!node.knownStackDiff && dynamicOps.includes(node.op.opcode)) {
-            node.unknownstack = true;
+            let value = [varmeta.fulltype];
+            node.knownStackDiff = StackInOut.fromExact(
+                (ispop ? value : []),
+                (ispop ? [] : value)
+            );
+        }
+    } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
+        if (node.op.imm == 0) {
+            if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
+            node.knownStackDiff = StackInOut.fromExact([], [typeuuids.int++]);
+            node.knownStackDiff.constout = node.op.imm_obj;
+        } else if (node.op.imm == 1) {
+            node.knownStackDiff = StackInOut.fromExact([], [typeuuids.long++]);
+            node.knownStackDiff.constout = node.op.imm_obj;
+        } else if (node.op.imm == 2) {
+            let stringconst = node.op.imm_obj as string;
+            node.knownStackDiff = StackInOut.fromExact([], [typeuuids.string++]);
+            node.knownStackDiff.constout = node.op.imm_obj;
+
+            //a string like this indicates a vararg set where this string indicates the types
+            //treat the entire thing as one vararg
+            //only make use of this construct if it is at least 3 chars long
+            //otherwise ignore the equation
+            let varargmatch = stringconst.match(/^([ils]*)Y?$/);
+            if (consts && varargmatch && stringconst.length >= 3) {
+                let argtype = varArgtype(stringconst, consts.values.at(-1));
+                if (!argtype) { throw new Error("unexpected"); }
+                node.knownStackDiff = new StackInOut(argtype, new StackList(["vararg"]));
+                node.knownStackDiff.constout = node.op.imm_obj;
+                node.knownStackDiff.exactin = ExactStack.fromList(argtype.toLooseSubtypes());
+            } else if (varargmatch) {
+                node.unknownstack = true;
+            }
+        } else {
+            throw new Error("unexpected");
         }
     }
+
+    if (!node.knownStackDiff && dynamicOps.includes(node.op.opcode)) {
+        node.unknownstack = true;
+    }
+}
+
+function addKnownStackDiff(children: AstNode[], calli: ClientscriptObfuscation, scriptid: number) {
+    let consts: StackConstants | null = new StackConstants();
+    let hasunknown = false;
+
+    for (let node of children) {
+        if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
+
+        addKnownStackDiffsub(consts, calli, node, scriptid);
+
+        if (consts) {
+            if (node.knownStackDiff?.constout != null) {
+                consts.pushOne(node.knownStackDiff.constout);
+            } else if (node.knownStackDiff?.initializedthrough) {
+                consts.applyInOut(node.knownStackDiff);
+            } else if (node.opinfo.stackinfo.initializedthrough) {
+                consts.applyInOut(node.opinfo.stackinfo);
+            } else {
+                consts = null;
+            }
+        }
+
+        hasunknown ||= node.unknownstack;
+    }
+    return hasunknown;
 }
 
 export function generateAst(calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
@@ -1262,7 +1269,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         }
     }
     sections.sort((a, b) => a.originalindex - b.originalindex);
-    sections.forEach(q => addKnownStackDiff(q, calli))
+    sections.forEach(q => addKnownStackDiff(q.children, calli, q.scriptid));
     return sections;
 }
 
@@ -1301,7 +1308,8 @@ globalThis.parseClientScriptIm = parseClientScriptIm;
 
 export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFunction) {
     let ctx = new OpcodeWriterContext(calli);
-    let opdata = func.getOpcodes(ctx);
+    let opdata: ClientScriptOp[] = [];
+    let funcbody = func.getOpcodes(ctx);//this needs to run before the subfunc section because it defines the subfuncs
 
     let switches: clientscript["switches"] = [];
     let tempstacks = new StackDiff();
@@ -1310,6 +1318,14 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
     if (ctx.subfunctions.size != 0 || ctx.returnsites.size != 0) {
         let footerendlabel = ctx.getNamedLabel("footerend");
         opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: footerendlabel }));
+
+        //jump table
+        opdata.push(...tracerNops(`dynamicjump start`));
+        opdata.push(ctx.getNamedLabel("dynamicjump"));
+        opdata.push(makeop(namedClientScriptOps.switch, switches.push(returnsitejumps) - 1));
+        opdata.push(...tracerNops(`dynamicjump end`));
+        //TODO add error for default case?
+
         for (let subfunc of ctx.subfunctions.values()) {
             let intype = subfunc.func.argtype.getStackdiff();
             let outtype = subfunc.func.returntype.getStackdiff();
@@ -1341,7 +1357,7 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             for (let i = 0; i < intype.long; i++) { opdata.push(makeop(namedClientScriptOps.pushlocallong, func.localCounts.long + i), makeop(namedClientScriptOps.poplocallong, i)); }
             for (let i = 0; i < intype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, func.localCounts.string + i), makeop(namedClientScriptOps.poplocalstring, i)); }
             //function body (same as with a root function)
-            let funcbody = [...subfunc.func.getOpcodes(ctx), ...subfunc.func.getFooterOpcodes()];
+            let funcbody = subfunc.func.getOpcodes(ctx);
             //replace all return ops into ops that jump to the end label (op itself is a nop)
             let endlabel = makeop(namedClientScriptOps.jump, 0);
             ctx.declareLabel(endlabel);
@@ -1365,9 +1381,9 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             for (let i = localtype.long - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocallong, i)); }
             for (let i = localtype.string - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalstring, i)); }
             //move the return values from tmp locals to stack
-            for (let i = 0; i < outtype.int; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalint, i)); }
-            for (let i = 0; i < outtype.long; i++) { opdata.push(makeop(namedClientScriptOps.pushlocallong, i)); }
-            for (let i = 0; i < outtype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, i)); }
+            for (let i = 0; i < outtype.int; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalint, func.localCounts.int + i)); }
+            for (let i = 0; i < outtype.long; i++) { opdata.push(makeop(namedClientScriptOps.pushlocallong, func.localCounts.long + i)); }
+            for (let i = 0; i < outtype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, func.localCounts.string + i)); }
             //now jump to the jumptable that acts a dynamic jump (pops the return "address" from top of int stack)
             opdata.push(makeop(namedClientScriptOps.pushlocalint, returnaddrtemp));
             opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: ctx.getNamedLabel("dynamicjump") }));
@@ -1375,16 +1391,10 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} end`));
         }
 
-        opdata.push(...tracerNops(`dynamicjump start`));
-        opdata.push(ctx.getNamedLabel("dynamicjump"));
-        opdata.push(makeop(namedClientScriptOps.switch, switches.push(returnsitejumps) - 1));
-        opdata.push(...tracerNops(`dynamicjump end`));
-        //TODO add error for default case?
-
         opdata.push(footerendlabel);
     }
 
-    opdata.push(...func.getFooterOpcodes());
+    opdata.push(...funcbody);
 
     let allargs = func.argtype.getStackdiff();
     let localcounts = func.localCounts.clone().add(tempstacks);

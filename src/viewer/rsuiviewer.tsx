@@ -56,7 +56,7 @@ function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceCompone
 		<div className="rs-componentmeta" onMouseEnter={mouseevent} onMouseLeave={mouseevent} onClick={e => e.target == e.currentTarget && console.log(p.comp)}>
 			id={p.comp.subid} t={data.type} {data.textdata?.text ?? "no text"}
 			<br />
-			{data.spritedata && "spriite: " + data.spritedata.spriteid}
+			{data.spritedata && "sprite: " + data.spritedata.spriteid}
 			{data.modeldata && "model: " + data.modeldata.modelid}
 			<CallbackDebugger data={data} source={p.source} />
 			<hr />

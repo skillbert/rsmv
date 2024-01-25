@@ -69,6 +69,18 @@ export const cacheConfigPages = {
 	maplabels: 36,
 	dbtables: 40,
 
+	varplayer: 60,
+	varnpc: 61,
+	varclient: 62,
+	varworld: 63,
+	varregion: 64,
+	varobject: 65,
+	varclan: 66,
+	varclansettings: 67,
+	varcampaign: 68,
+	varplayergroup: 75,
+	varbits: 69,
+
 	//used before 488 (feb 2008)
 	locs_old: 6,
 	npcs_old: 9,
