@@ -1,4 +1,4 @@
-import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
+import { ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps, subtypes } from "./definitions";
 
@@ -74,9 +74,17 @@ export class ClientScriptSubtypeSolver {
         for (let section of sections) {
             let stack = new CombinedExactStack(this);
             for (let op of section.children) {
-                if (!(op instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
-                if (!stack.pushopcode(op, section.scriptid)) {
+                //TODO this currently doesn't separate subfunc locals from func locals and mixes up the types
+                if (op instanceof RawOpcodeNode) {
+                    if (!stack.pushopcode(op, section.scriptid)) {
+                        break;
+                    }
+                } else if (op instanceof ClientScriptFunction) {
                     break;
+                } else if (op instanceof SubcallNode) {
+                    break;
+                } else {
+                    throw new Error("unexpected");
                 }
             }
         }

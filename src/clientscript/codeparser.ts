@@ -1,5 +1,5 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, addKnownStackDiffsub } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants } from "./definitions";
@@ -248,6 +248,7 @@ function scriptContext(ctx: ParseContext) {
         }
         let strjoin = getopinfo(namedClientScriptOps.joinstring);
         let node = new RawOpcodeNode(-1, { opcode: strjoin.id, imm: parts.length, imm_obj: null }, strjoin);
+        node.knownStackDiff = new StackInOut(new StackList(new Array(parts.length).fill("string")), new StackList(["string"]));
         node.pushList(parts);
         return node;
     }
@@ -361,7 +362,7 @@ function scriptContext(ctx: ParseContext) {
         if (subfunc) {
             let node = new SubcallNode(-1, subfunc);
             node.pushList(args);
-            node.knownStackDiff = new StackInOut(subfunc.argtype, subfunc.returntype);
+            node.push(makeIntConst(-1, "int"));//dummy value for return address, gets fixed later
             return node;
         } else if (funcmatch) {
             if (funcmatch[1] == "unk") {
@@ -390,7 +391,7 @@ function scriptContext(ctx: ParseContext) {
 
         let fn = getopinfo(fnid);
         let node = new RawOpcodeNode(-1, { opcode: fnid, imm: metaid, imm_obj: null }, fn);
-        addKnownStackDiffsub(consts, deob, node, -1);
+        setRawOpcodeStackDiff(consts, deob, node);
         node.pushList(args);
         return node;
     }
@@ -740,8 +741,8 @@ function scriptContext(ctx: ParseContext) {
 
         let res = new ClientScriptFunction(
             name,
-            new StackList(returntypes.map(q => typeToPrimitive(tsToSubtype(q)))),
             new StackList(argtypes.map(q => typeToPrimitive(tsToSubtype(q.type)))),
+            new StackList(returntypes.map(q => typeToPrimitive(tsToSubtype(q)))),
             new StackDiff()
         );
         ctx.declareFunction(name, res);
@@ -803,6 +804,7 @@ globalThis.testy = async () => {
         let rawroundtrip = prettyJson(roundtripped);
         let { func: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
         let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
+        globalThis.cstest = roundtrippedAst;
 
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/binary.dat", binaryrountripped);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw1.json", rawinput);
@@ -855,6 +857,11 @@ export function writeClientVarFile(calli: ClientscriptObfuscation) {
         for (let [id, meta] of domain.vars) {
             res += `declare var var${domain.name}_${id}: ${subtypeToTs(meta.type)};\n`;
         }
+    }
+    res += `// ===== varbits =====\n`;
+    for (let [id, meta] of calli.varbitmeta) {
+        let groupmeta = calli.varmeta.get(meta.varid >> 16);
+        res += `declare var varbit${groupmeta?.name ?? "unk"}_${id}: number;\n`;
     }
     return res;
 }

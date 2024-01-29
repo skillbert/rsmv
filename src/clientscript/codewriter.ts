@@ -107,6 +107,22 @@ function valueList(ctx: TsWriterContext, nodes: AstNode[]) {
     return `[${nodes.map(ctx.getCode).join(", ")}]`;
 }
 
+function escapeStringLiteral(source: string) {
+    return source.replace(/["'\\\n\r\t\b\f\x00-\x1F]/g, m => {
+        switch (m) {
+            case '"': return '\\"';
+            case "'": return "\\'";
+            case '\\': return '\\\\';
+            case '\n': return '\\n';
+            case '\r': return '\\r';
+            case '\t': return '\\t';
+            case '\b': return '\\b';
+            case '\f': return '\\f';
+            default: return `\\x${m.charCodeAt(0).toString(16).padStart(2, "0")}`;
+        }
+    });
+}
+
 function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: AstNode[], originalindex: number) {
     let binarysymbol = binaryOpSymbols.get(op.opcode);
     if (binarysymbol) {
@@ -280,7 +296,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             return ` as ${subtypeToTs(exacttype)}`;
         }
         if (typeof node.op.imm_obj == "string") {
-            return `"${node.op.imm_obj.replace(/(["\\])/g, "\\$1")}"${gettypecast("string")}`;
+            return `"${escapeStringLiteral(node.op.imm_obj)}"${gettypecast("string")}`;
         } else if (Array.isArray(node.op.imm_obj)) {
             //build our bigint as unsigned
             let int = (BigInt(node.op.imm_obj[0] as number) << 32n) | BigInt(node.op.imm_obj[1] as number);
@@ -312,7 +328,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         let res = "`";
         for (let child of node.children) {
             if (child instanceof RawOpcodeNode && child.opinfo.id == namedClientScriptOps.pushconst && typeof child.op.imm_obj == "string") {
-                res += child.op.imm_obj;
+                res += escapeStringLiteral(child.op.imm_obj).replaceAll("${", "\\${");
             } else {
                 res += `\${${ctx.getCode(child)}}`;
             }
@@ -338,4 +354,7 @@ addWriter(FunctionBindNode, (node, ctx) => {
 });
 addWriter(IntrinsicNode, (node, ctx) => {
     return `${node.type}(${node.children.map(ctx.getCode).join(", ")})`;
+});
+addWriter(SubcallNode, (node, ctx) => {
+    return `${node.func.scriptname}(${node.children.slice(0, -1).map(ctx.getCode).join(", ")})`;
 });

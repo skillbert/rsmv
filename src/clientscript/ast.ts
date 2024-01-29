@@ -126,9 +126,12 @@ export class SubcallNode extends AstNode {
     constructor(originalindex: number, func: ClientScriptFunction) {
         super(originalindex);
         this.func = func;
+        let args = func.argtype.clone();
+        args.pushone("int");//return address
+        this.knownStackDiff = new StackInOut(args, func.returntype);
     }
     getOpcodes(ctx: OpcodeWriterContext) {
-        return ctx.makeSubCallOps(this.func, this.children);
+        return ctx.makeSubCallOps(this.func, this.children.slice(0, -1));
     }
 }
 
@@ -737,6 +740,14 @@ export function getNodeStackIn(node: AstNode) {
 export function translateAst(ast: CodeBlockNode) {
     let cursor = new RewriteCursor(ast);
 
+    //remove 0 offset jumps, is a noop
+    for (let i = 0; i < ast.children.length; i++) {
+        let op = ast.children[i];
+        if (isNamedOp(op, namedClientScriptOps.jump) && op.op.imm == 0) {
+            ast.children.splice(i, 1);
+            i--;
+        }
+    }
     //detect x++ and variants
     for (let i = 0; i < ast.children.length - 3; i++) {
         let prepushx = ast.children[i - 1];
@@ -807,7 +818,7 @@ export function translateAst(ast: CodeBlockNode) {
     }
 
     let expandNode = (node: AstNode) => {
-        if (!(node instanceof ComposedOp) && !(node instanceof CodeBlockNode) && !(node instanceof SubcallNode)) {
+        if (!(node instanceof ComposedOp) && !(node instanceof CodeBlockNode)) {
             let argtype = getNodeStackIn(node).clone();
             for (let i = node.children.length - 1; i >= 0; i--) {
                 argtype.pop(getNodeStackOut(node.children[i]));
@@ -957,10 +968,10 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
         if (node instanceof RawOpcodeNode && node.opinfo.id == namedClientScriptOps.jump) {
             let target = node.originalindex + 1 + node.op.imm;
             let parent = node.parent;
-            if (parent instanceof CodeBlockNode && parent.maxEndIndex == target) {
-                //strip obsolete closing bracket jumps
-                cursor.remove();
-                continue;
+            if (node.op.imm == 0) {
+                //ignore 0 jump (used as noop by custom compiler)
+            } else if (parent instanceof CodeBlockNode && parent.maxEndIndex == target) {
+                //closing bracket jump, already handled
             } else {
                 for (let ifnode = node.parent; ifnode; ifnode = ifnode.parent) {
                     if (ifnode instanceof IfStatementNode) {
@@ -970,7 +981,6 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                         if (codeblock.children.at(-1) != ifnode) { throw new Error("unexpected"); }
 
                         //TODO this is silly, there might be more instructions in the enclosing block, make sure these aren't lost
-                        //mostly seems to affect expansions of var++ and ++var constructs which are currently not supported
                         for (let i = codeblock.children.length - 2; i >= 0; i--) {
                             ifnode.statement.unshift(codeblock.children[i]);
                         }
@@ -985,6 +995,8 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                     }
                 }
             }
+            cursor.remove();
+            continue;
         }
         if (node instanceof CodeBlockNode && node.branchEndNode) {
             if (node.maxEndIndex == -1 || node.branchEndNode.originalindex < node.maxEndIndex) {
@@ -1005,12 +1017,13 @@ export class ClientScriptFunction extends AstNode {
     argtype: StackList;
     scriptname: string;
     localCounts: StackDiff;
-    constructor(scriptname: string, returntype: StackList, argtype: StackList, localCounts: StackDiff) {
+    constructor(scriptname: string, argtype: StackList, returntype: StackList, localCounts: StackDiff) {
         super(0);
         this.scriptname = scriptname;
         this.returntype = returntype;
         this.argtype = argtype;
         this.localCounts = localCounts;
+        this.knownStackDiff = new StackInOut(new StackList(), new StackList());
     }
 
     getOpcodes(ctx: OpcodeWriterContext) {
@@ -1064,7 +1077,7 @@ export function varArgtype(stringconst: string | unknown, lastintconst: number |
     return indiff;
 }
 
-export function addKnownStackDiffsub(consts: StackConstants | null, calli: ClientscriptObfuscation, node: RawOpcodeNode, scriptid: number) {
+export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: ClientscriptObfuscation, node: RawOpcodeNode) {
     if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
         //args are rowid,tablefield,subrow
         let tablefield = consts?.values.at(-2);
@@ -1109,10 +1122,8 @@ export function addKnownStackDiffsub(consts: StackConstants | null, calli: Clien
             )
         }
     } else if (node.opinfo.id == namedClientScriptOps.return) {
-        let script = calli.scriptargs.get(scriptid);
-        if (script) {
-            node.knownStackDiff = new StackInOut(script.stack.out, new StackList());
-            node.knownStackDiff.exactin = script.stack.exactout;
+        if (!node.knownStackDiff) {
+            throw new Error("stackdiff or 'return' op should have been set at parser already");
         }
     } else if (node.opinfo.id == namedClientScriptOps.gosub) {
         let script = calli.scriptargs.get(node.op.imm);
@@ -1172,34 +1183,38 @@ export function addKnownStackDiffsub(consts: StackConstants | null, calli: Clien
     }
 }
 
-function addKnownStackDiff(children: AstNode[], calli: ClientscriptObfuscation, scriptid: number) {
+function addKnownStackDiff(children: AstNode[], calli: ClientscriptObfuscation) {
     let consts: StackConstants | null = new StackConstants();
     let hasunknown = false;
 
     for (let node of children) {
-        if (!(node instanceof RawOpcodeNode)) { throw new Error("unexpected"); }
-
-        addKnownStackDiffsub(consts, calli, node, scriptid);
+        let stackinout = node.knownStackDiff;
+        if (node instanceof RawOpcodeNode) {
+            setRawOpcodeStackDiff(consts, calli, node);
+            stackinout ??= node.opinfo.stackinfo;
+            hasunknown ||= node.unknownstack;
+        } else if (node instanceof ClientScriptFunction) {
+            //nop
+        } else if (node instanceof SubcallNode) {
+            //nop
+        } else {
+            throw new Error("unexpected");
+        }
 
         if (consts) {
             if (node.knownStackDiff?.constout != null) {
                 consts.pushOne(node.knownStackDiff.constout);
-            } else if (node.knownStackDiff?.initializedthrough) {
-                consts.applyInOut(node.knownStackDiff);
-            } else if (node.opinfo.stackinfo.initializedthrough) {
-                consts.applyInOut(node.opinfo.stackinfo);
+            } else if (stackinout?.initializedthrough) {
+                consts.applyInOut(stackinout);
             } else {
                 consts = null;
             }
         }
-
-        hasunknown ||= node.unknownstack;
     }
     return hasunknown;
 }
 
 export function generateAst(calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
-    let sections: CodeBlockNode[] = [];
     let getorMakeSection = (index: number) => {
         if (index >= ops.length) { throw new Error("tried to jump outside script"); }
         let section = sections.find(q => q.originalindex == index);
@@ -1207,69 +1222,158 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             section = new CodeBlockNode(scriptid, index);
             sections.push(section);
         }
-        return section
+        return section;
     }
 
-    let currentsection = getorMakeSection(0);
+    let parseSlice = (start: number, end: number, func: ClientScriptFunction | null) => {
+        let currentsection = getorMakeSection(start);
 
-    //find all jump targets and make the sections
-    for (let [index, op] of ops.entries()) {
-        let nextindex = index + 1;
-        let info = calli.getNamedOp(op.opcode);
+        //find all jump targets and make the sections
+        for (let index = start; index < end; index++) {
+            let op = ops[index];
+            let info = calli.getNamedOp(op.opcode);
 
-        if (branchInstructionsOrJump.includes(info.id)) {
-            let jumpindex = nextindex + op.imm;
-            getorMakeSection(nextindex);
-            getorMakeSection(jumpindex);
-        }
-    }
-
-    //write the opcodes
-    for (let [index, op] of ops.entries()) {
-        let nextindex = index + 1;
-        let info = calli.getNamedOp(op.opcode)!;
-        let opnode = new RawOpcodeNode(index, op, info);
-
-        //check if other flows merge into this one
-        let addrsection = sections.find(q => q.originalindex == index);
-        if (addrsection && addrsection != currentsection) {
-            currentsection.addSuccessor(addrsection);
-            currentsection = addrsection;
-        }
-
-        currentsection.push(opnode);
-
-        if (branchInstructionsOrJump.includes(info.id)) {
-            let jumpindex = nextindex + op.imm;
-            let nextblock = getorMakeSection(nextindex);
-            let jumpblock = getorMakeSection(jumpindex);
-            if (info.id != namedClientScriptOps.jump) {
-                currentsection.addSuccessor(nextblock);
-            }
-            currentsection.addSuccessor(jumpblock);
-            currentsection = nextblock;
-        } else if (opnode.opinfo.id == namedClientScriptOps.return) {
-            if (index != ops.length - 1) {
-                //dead code will be handled elsewhere
-                currentsection = getorMakeSection(nextindex);
-            }
-        } else if (opnode.opinfo.id == namedClientScriptOps.switch) {
-            let cases = script.switches[opnode.op.imm];
-            if (!cases) { throw new Error("no matching cases in script"); }
-
-            for (let cond of cases) {
-                let jumpblock = getorMakeSection(nextindex + cond.label);
-                if (!currentsection.possibleSuccessors.includes(jumpblock)) {
-                    currentsection.addSuccessor(jumpblock);
+            if (branchInstructionsOrJump.includes(info.id)) {
+                let nextindex = index + 1;
+                let jumpindex = nextindex + op.imm;
+                if (op.imm != 0 && jumpindex >= start && jumpindex < end) {
+                    getorMakeSection(nextindex);
+                    getorMakeSection(jumpindex);
                 }
             }
-            let nextblock = getorMakeSection(nextindex);
-            currentsection.addSuccessor(nextblock);
-            currentsection = nextblock;
+        }
+
+        //write the opcodes
+        for (let index = start; index < end; index++) {
+            let op = ops[index];
+            let nextindex = index + 1;
+            if (op.opcode == namedClientScriptOps.jump) {
+                let target = index + 1 + op.imm;
+                if (func && target == end) {
+                    //jump to end of slice means subreturn
+                    let opnode = new RawOpcodeNode(index, makeop(namedClientScriptOps.return), calli.getNamedOp(namedClientScriptOps.return));
+                    opnode.knownStackDiff = new StackInOut(func.returntype, new StackList());
+                    currentsection.push(opnode);
+                    if (index != ops.length - 1) {
+                        currentsection = getorMakeSection(nextindex);
+                    }
+                    continue;
+                } else if (target < start || target > end) {
+                    //see if we're jumping to a subfunction
+                    let targetfn = subfuncs.find(q => q.originalindex == target)
+                    if (targetfn) {
+                        currentsection.push(new SubcallNode(index, targetfn))
+                    } else {
+                        throw new Error("couldn't find subcall function target");
+                    }
+                    continue;
+                }
+            }
+            let info = calli.getNamedOp(op.opcode)!;
+            let opnode = new RawOpcodeNode(index, op, info);
+
+            //check if other flows merge into this one
+            let addrsection = sections.find(q => q.originalindex == index);
+            if (addrsection && addrsection != currentsection) {
+                currentsection.addSuccessor(addrsection);
+                currentsection = addrsection;
+            }
+
+            //add known stackdiff to 'return' op since it's context dependent
+            if (opnode.op.opcode == namedClientScriptOps.return) {
+                opnode.knownStackDiff = new StackInOut(getReturnType(calli, ops), new StackList());
+            }
+
+            currentsection.push(opnode);
+
+            if (branchInstructionsOrJump.includes(info.id)) {
+                let jumpindex = nextindex + op.imm;
+                if (op.opcode == namedClientScriptOps.jump && jumpindex == index + 1) {
+                    //ignore a 0 jump instruction (used as noop in custom compiler)
+                } else {
+                    let nextblock = getorMakeSection(nextindex);
+                    let jumpblock = getorMakeSection(jumpindex);
+                    if (info.id != namedClientScriptOps.jump) {
+                        currentsection.addSuccessor(nextblock);
+                    }
+                    currentsection.addSuccessor(jumpblock);
+                    currentsection = nextblock;
+                }
+            } else if (opnode.opinfo.id == namedClientScriptOps.return) {
+                if (index != ops.length - 1) {
+                    //dead code will be handled elsewhere
+                    currentsection = getorMakeSection(nextindex);
+                }
+            } else if (opnode.opinfo.id == namedClientScriptOps.switch) {
+                let cases = script.switches[opnode.op.imm];
+                if (!cases) { throw new Error("no matching cases in script"); }
+
+                for (let cond of cases) {
+                    let jumpblock = getorMakeSection(nextindex + cond.label);
+                    if (!currentsection.possibleSuccessors.includes(jumpblock)) {
+                        currentsection.addSuccessor(jumpblock);
+                    }
+                }
+                let nextblock = getorMakeSection(nextindex);
+                currentsection.addSuccessor(nextblock);
+                currentsection = nextblock;
+            }
         }
     }
+
+    let sections: CodeBlockNode[] = [];
+    let subfuncs: ClientScriptFunction[] = [];
+    //jump at index 0 means there is a header section
+    if (ops[0].opcode == namedClientScriptOps.jump) {
+        let headerend = 0 + ops[0].imm + 1;
+        let namecounter = 0;
+        for (let i = 1; i < headerend;) {
+            let op = ops[i];
+            if (op.opcode == namedClientScriptOps.pushconst && op.imm == 2 && typeof op.imm_obj == "string") {
+                let values: Record<string, string> = {};
+                for (let [, left, right] of op.imm_obj.matchAll(/(\S+)=(\S+)/g)) { values[left] = right; }
+
+                if (values.type == "returnjumps") {
+                    let end = parseInt(values.end);
+                    if (isNaN(end)) { throw new Error("invalid subfunc header"); }
+                    i += end;
+                    continue;
+                } else if (values.type == "subfunc") {
+                    let end = parseInt(values.end);
+                    let body = parseInt(values.body);
+                    let foot = parseInt(values.foot);
+                    let entry = parseInt(values.entry);
+                    if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
+                    if (!values.in?.match(/^\d+,\d+,\d+$/) || !values.out?.match(/^\d+,\d+,\d+$/)) { throw new Error("invalid subfunc args or returns"); }
+                    let args = new StackDiff(...values.in!.split(",").map(q => parseInt(q)));
+                    let returns = new StackDiff(...values.out!.split(",").map(q => parseInt(q)));
+                    let localcount = new StackDiff();//TODO
+                    let subfunc = new ClientScriptFunction(`subfunc${namecounter++}`, new StackList([args]), new StackList([returns]), localcount);
+                    subfunc.originalindex = i + entry;
+                    subfunc.push(getorMakeSection(i + body));
+                    subfuncs.push(subfunc);
+                    //TODO currently the call order here means the subcall definition need to be before its first reference
+                    //run parse after subfuncs.push so recursion is possible
+                    //might have to keep a seperate list of slices to do the parsing after the header parse is complete
+                    parseSlice(i + body, i + foot, subfunc);
+                    i += end;
+                    continue;
+                }
+            }
+            throw new Error("unknown header section");
+        }
+
+        parseSlice(headerend, ops.length, null);
+        let headersection = getorMakeSection(0);
+        headersection.addSuccessor(getorMakeSection(headerend));
+        headersection.pushList(subfuncs);
+        headersection.push(new RawOpcodeNode(0, ops[0], calli.getNamedOp(ops[0].opcode)!));
+    } else {
+        parseSlice(0, ops.length, null);
+    }
+
     sections.sort((a, b) => a.originalindex - b.originalindex);
-    sections.forEach(q => addKnownStackDiff(q.children, calli, q.scriptid));
+    sections.forEach(q => addKnownStackDiff(q.children, calli));
     return sections;
 }
 
@@ -1300,7 +1404,7 @@ export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clie
     let returntype = getReturnType(calli, script.opcodedata);
     let argtype = getArgType(script);
     let scriptname = `script${fileid == -1 ? "_unk" : fileid}`;
-    let func = new ClientScriptFunction(scriptname, returntype, new StackList([argtype]), localcounts);
+    let func = new ClientScriptFunction(scriptname, new StackList([argtype]), returntype, localcounts);
     func.push(program);
     return { func, sections, typectx };
 }
@@ -1314,16 +1418,17 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
     let switches: clientscript["switches"] = [];
     let tempstacks = new StackDiff();
     let returnsitejumps: clientscript["switches"][number] = [];
+    let returnjumps: ClientScriptOp | null = null;
 
     if (ctx.subfunctions.size != 0 || ctx.returnsites.size != 0) {
         let footerendlabel = ctx.getNamedLabel("footerend");
         opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: footerendlabel }));
 
         //jump table
-        opdata.push(...tracerNops(`dynamicjump start`));
-        opdata.push(ctx.getNamedLabel("dynamicjump"));
-        opdata.push(makeop(namedClientScriptOps.switch, switches.push(returnsitejumps) - 1));
-        opdata.push(...tracerNops(`dynamicjump end`));
+        returnjumps = makeop(namedClientScriptOps.switch, switches.push(returnsitejumps) - 1);
+        ctx.declareLabel(returnjumps);
+        opdata.push(makeop(namedClientScriptOps.pushconst, 2, `type=returnjumps end=2`));
+        opdata.push(returnjumps);
         //TODO add error for default case?
 
         for (let subfunc of ctx.subfunctions.values()) {
@@ -1337,7 +1442,10 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             //have to do some stack wizardry here since the VM only lets you access the very top of the stack
             //sadly this requires extra local variables and i don't know how many we're allowed to have
             //the jump target for calls to this subfunction
-            opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} start`));
+            let headerindex = opdata.length;
+            let headerop = makeop(namedClientScriptOps.pushconst, 2, "");
+            opdata.push(headerop);
+            let jumptarget = opdata.length;
             opdata.push(subfunc.label);
             //move return address from top of int stack to last tmp+1
             let returnaddrtemp = func.localCounts.int + Math.max(intype.int, outtype.int);
@@ -1367,9 +1475,11 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
                 }
             });
             opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} body`));
+            let bodyindex = opdata.length;
             opdata.push(...funcbody);
-            opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} footer`));
+            let footindex = opdata.length;
             opdata.push(endlabel);
+            opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} footer`));
             //move all return values from stack to tmp locals
             for (let i = 0; i < outtype.int; i++) { opdata.push(makeop(namedClientScriptOps.poplocalint, func.localCounts.int + i)); }
             for (let i = 0; i < outtype.long; i++) { opdata.push(makeop(namedClientScriptOps.poplocallong, func.localCounts.long + i)); }
@@ -1386,9 +1496,11 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             for (let i = 0; i < outtype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, func.localCounts.string + i)); }
             //now jump to the jumptable that acts a dynamic jump (pops the return "address" from top of int stack)
             opdata.push(makeop(namedClientScriptOps.pushlocalint, returnaddrtemp));
-            opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: ctx.getNamedLabel("dynamicjump") }));
+            opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: returnjumps }));
             //thats it, simple
             opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} end`));
+
+            headerop.imm_obj = `type=subfunc in=${intype.int},${intype.long},${intype.string} out=${outtype.int},${outtype.long},${outtype.string} entry=${jumptarget - headerindex} body=${bodyindex - headerindex} foot=${footindex - headerindex} end=${opdata.length - headerindex}`;
         }
 
         opdata.push(footerendlabel);
@@ -1430,7 +1542,7 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
         }
     }
     if (ctx.returnsites.size != 0) {
-        let switchbaseaddress = labelmap.get(ctx.getNamedLabel("dynamicjump"));
+        let switchbaseaddress = returnjumps && labelmap.get(returnjumps);
         if (typeof switchbaseaddress != "number") { throw new Error("dynamicjump section not found"); }
         switchbaseaddress += 2;//+label+switchop
         for (let [label, targetop] of ctx.returnsites) {
