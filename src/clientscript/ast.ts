@@ -1365,7 +1365,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                     //run parse after subfuncs.push so recursion is possible
                     //might have to keep a seperate list of slices to do the parsing after the header parse is complete
 
-                    let returntype = getReturnType(calli, ops, end);
+                    let returntype = getReturnType(calli, ops, i + foot);
                     let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
                     subfunc.originalindex = i + entry;
                     parseSlice(i + body, i + foot, subfunc);
@@ -1386,7 +1386,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     headersection.addSuccessor(getorMakeSection(headerend));
     rootfunc.push(headersection);
     subfuncs.push(rootfunc);
-    parseSlice(0, ops.length, rootfunc);
+    parseSlice(headerend, ops.length, rootfunc);
 
     sections.sort((a, b) => a.originalindex - b.originalindex);
     sections.forEach(q => addKnownStackDiff(q.children, calli));
