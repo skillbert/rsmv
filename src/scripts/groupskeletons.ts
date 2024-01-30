@@ -20,7 +20,17 @@ export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, 
     }
     output.log(`completed frames`);
 
-    let seqtoframes = new Map<number, number>();
+    let skeletaltoframemap = new Map<number, number>();
+    let skeletalindex = await source.getCacheIndex(cacheMajors.skeletalAnims);
+    for (let skeletalid of skeletalindex) {
+        if (!skeletalid) { continue; }
+        let animfile = await source.getFileById(cacheMajors.skeletalAnims, skeletalid.minor);
+        let anim = parse.skeletalAnim.read(animfile, source);
+        skeletaltoframemap.set(skeletalid.minor, anim.framebase);
+    }
+    output.log(`completed skeletals`);
+
+    let seqperframemap = new Map<number, number[]>();
     let sequenceindex = await source.getCacheIndex(cacheMajors.sequences);
     for (let seqid of sequenceindex) {
         if (!seqid) { continue; }
@@ -28,21 +38,20 @@ export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, 
         for (let sub of arch) {
             let seqsubid = archiveToFileId(seqid.major, seqid.minor, sub.fileid);
             let seq = parse.sequences.read(sub.buffer, source);
+            let mapid: number | null | undefined = null;
             if (seq.frames && seq.frames.length != 0) {
-                seqtoframes.set(seqsubid, seq.frames[0].frameidhi);
+                mapid = frametoframemap.get(seq.frames[0].frameidhi);
+            }
+            if (seq.skeletal_animation != null) {
+                mapid = skeletaltoframemap.get(seq.skeletal_animation);
+            }
+            if (mapid != null) {
+                let list = getOrInsert(seqperframemap, mapid, () => []);
+                list.push(seqsubid);
             }
         }
     }
     output.log(`completed sequences`);
-
-    let seqperframemap = new Map<number, number[]>();
-    for (let [seq, frame] of seqtoframes) {
-        let framemap = frametoframemap.get(frame);
-        if (framemap != undefined) {
-            let seqs = getOrInsert(seqperframemap, framemap, () => []);
-            seqs.push(seq);
-        }
-    }
 
     let outjson = Object.fromEntries(seqperframemap);
     outdir.writeFile("sequences.json", prettyJson(outjson));
