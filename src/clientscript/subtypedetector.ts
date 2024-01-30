@@ -54,7 +54,8 @@ export class ClientScriptSubtypeSolver {
             debugger;
         }
         if (key < 512 && other < 512) {
-            debugger;
+            // debugger;
+            console.log(`unexpected exact type equation ${key} ${other}`);
         }
         let eqset = this.map.get(key);
         if (!eqset) {
@@ -239,7 +240,7 @@ export function detectSubtypes(calli: ClientscriptObfuscation) {
     let ctx = new ClientScriptSubtypeSolver();
     for (let cand of calli.candidates.values()) {
         if (!cand.scriptcontents) { continue; }
-        let sections = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
+        let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         ctx.parseSections(sections);
     }
     ctx.solve();

@@ -802,7 +802,7 @@ globalThis.testy = async () => {
 
         let rawinput = prettyJson(jsondata);
         let rawroundtrip = prettyJson(roundtripped);
-        let { func: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
+        let { rootfunc: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
         let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
         globalThis.cstest = roundtrippedAst;
 

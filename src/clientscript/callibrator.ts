@@ -868,7 +868,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
     let allsections: CodeBlockNode[] = [];
     for (let cand of calli.candidates.values()) {
         if (!cand.scriptcontents) { continue }
-        let sections = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
+        let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         allsections.push(...sections);
     }
     allsections.sort((a, b) => a.children.length - b.children.length);
@@ -1043,10 +1043,11 @@ export function getArgType(script: clientscriptdata | clientscript) {
     return res;
 }
 
-export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptOp[]) {
+export function getReturnType(calli: ClientscriptObfuscation, ops: ClientScriptOp[], endindex = ops.length) {
     let res = new StackList();
     //the jagex compiler appends a default return with null constants to the script, even if this would be dead code
-    for (let i = ops.length - 2; i >= 0; i--) {
+    //endindex-1=return, pushconsts begins at -2
+    for (let i = endindex - 2; i >= 0; i--) {
         let op = ops[i];
         let opinfo = calli.getNamedOp(op.opcode);
         if (opinfo.id == namedClientScriptOps.pushconst) {

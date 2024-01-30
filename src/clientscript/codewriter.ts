@@ -107,17 +107,19 @@ function valueList(ctx: TsWriterContext, nodes: AstNode[]) {
     return `[${nodes.map(ctx.getCode).join(", ")}]`;
 }
 
-function escapeStringLiteral(source: string) {
-    return source.replace(/["'\\\n\r\t\b\f\x00-\x1F]/g, m => {
+function escapeStringLiteral(source: string, quotetype: "template" | "double" | "single") {
+    return source.replace(/[`"'\\\n\r\t\b\f\x00-\x1F]|\$\{/g, m => {
         switch (m) {
-            case '"': return '\\"';
-            case "'": return "\\'";
-            case '\\': return '\\\\';
-            case '\n': return '\\n';
-            case '\r': return '\\r';
-            case '\t': return '\\t';
-            case '\b': return '\\b';
-            case '\f': return '\\f';
+            case '"': return (quotetype == "double" ? '\\"' : "\"");
+            case "'": return (quotetype == "single" ? "\\'" : "'");
+            case "\\": return "\\\\";
+            case "\n": return "\\n";
+            case "\r": return "\\r";
+            case "\t": return "\\t";
+            case "\b": return "\\b";
+            case "\f": return "\\f";
+            case "${": return (quotetype == "template" ? "\\${" : "${");
+            case "`": return (quotetype == "template" ? "\\`" : "`");
             default: return `\\x${m.charCodeAt(0).toString(16).padStart(2, "0")}`;
         }
     });
@@ -296,7 +298,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             return ` as ${subtypeToTs(exacttype)}`;
         }
         if (typeof node.op.imm_obj == "string") {
-            return `"${escapeStringLiteral(node.op.imm_obj)}"${gettypecast("string")}`;
+            return `"${escapeStringLiteral(node.op.imm_obj, "double")}"${gettypecast("string")}`;
         } else if (Array.isArray(node.op.imm_obj)) {
             //build our bigint as unsigned
             let int = (BigInt(node.op.imm_obj[0] as number) << 32n) | BigInt(node.op.imm_obj[1] as number);
@@ -328,7 +330,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         let res = "`";
         for (let child of node.children) {
             if (child instanceof RawOpcodeNode && child.opinfo.id == namedClientScriptOps.pushconst && typeof child.op.imm_obj == "string") {
-                res += escapeStringLiteral(child.op.imm_obj).replaceAll("${", "\\${");
+                res += escapeStringLiteral(child.op.imm_obj, "template");
             } else {
                 res += `\${${ctx.getCode(child)}}`;
             }

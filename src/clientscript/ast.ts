@@ -872,7 +872,7 @@ export function translateAst(ast: CodeBlockNode) {
 function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
     let cursor = new RewriteCursor(ast);
     //find if statements
-    for (let node = cursor.goToStart(); node; node = cursor.next()) {
+    oploop: for (let node = cursor.goToStart(); node; node = cursor.next()) {
         if (node instanceof IfStatementNode) {
             //detect an or statement that wasn't caught before (a bit late, there should be a better way to do this)
             let falseif = getSingleChild(node.falsebranch, IfStatementNode);
@@ -898,6 +898,7 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
 
             let trueblock = parent.possibleSuccessors[1];
             let falseblock: CodeBlockNode | null = parent.possibleSuccessors[0];
+            let originalFalseblock = falseblock;
             let falseblockjump = getSingleChild(falseblock, RawOpcodeNode);
             if (falseblockjump && falseblockjump.opinfo.id == namedClientScriptOps.jump) {
                 if (falseblock.possibleSuccessors.length != 1) { throw new Error("jump successor branch expected"); }
@@ -932,8 +933,10 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
 
             let grandparent = parent?.parent;
             if (parent instanceof CodeBlockNode && grandparent instanceof IfStatementNode && grandparent.ifEndIndex == parent.branchEndNode.originalindex) {
-                let isor = grandparent.truebranch == trueblock && grandparent.falsebranch == parent;
-                let isand = parent.children.length == 1 && grandparent.falsebranch == falseblock && grandparent.truebranch == parent;
+                let equaltrue = grandparent.truebranch == trueblock;
+                let equalfalse = grandparent.falsebranch == falseblock || grandparent.falsebranch == originalFalseblock;
+                let isor = equaltrue && grandparent.falsebranch == parent;
+                let isand = equalfalse && grandparent.truebranch == parent && parent.children.length == 1;
                 if (isor || isand) {
                     parent.remove(node);
                     //TODO make some sort of in-line codeblock node for this
@@ -946,9 +949,9 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                     combinedcond.push(grandparent.statement);
                     combinedcond.push(condnode);
                     if (isor) {
-                        grandparent.setBranches(combinedcond, grandparent.truebranch, falseblock, parent.branchEndNode.originalindex);
+                        grandparent.setBranches(combinedcond, trueblock, falseblock, parent.branchEndNode.originalindex);
                     } else {
-                        grandparent.setBranches(combinedcond, trueblock, grandparent.falsebranch, parent.branchEndNode.originalindex);
+                        grandparent.setBranches(combinedcond, trueblock, falseblock, parent.branchEndNode.originalindex);
                     }
                     continue;
                 }
@@ -987,11 +990,9 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
                         let originalparent = codeblock.parent;
                         let loopstatement = WhileLoopStatementNode.fromIfStatement(codeblock.originalindex, ifnode);
                         originalparent.replaceChild(codeblock, loopstatement);
-                        loopstatement.push(ifnode);
-                        loopstatement.push(ifnode.truebranch);
                         cursor.rebuildStack();
                         cursor.remove();
-                        break;
+                        continue oploop;
                     }
                 }
             }
@@ -1225,8 +1226,11 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         return section;
     }
 
-    let parseSlice = (start: number, end: number, func: ClientScriptFunction | null) => {
+    let parseSlice = (start: number, end: number, func: ClientScriptFunction) => {
         let currentsection = getorMakeSection(start);
+
+        let localcounts = func.localCounts;
+        subfuncs.push(func);
 
         //find all jump targets and make the sections
         for (let index = start; index < end; index++) {
@@ -1247,6 +1251,12 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         for (let index = start; index < end; index++) {
             let op = ops[index];
             let nextindex = index + 1;
+
+            //update local var counts
+            if (op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.pushlocalint) { localcounts.int = Math.max(localcounts.int, op.imm + 1); }
+            if (op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.pushlocallong) { localcounts.long = Math.max(localcounts.long, op.imm + 1); }
+            if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) { localcounts.string = Math.max(localcounts.string, op.imm + 1); }
+
             if (op.opcode == namedClientScriptOps.jump) {
                 let target = index + 1 + op.imm;
                 if (func && target == end) {
@@ -1321,11 +1331,16 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         }
     }
 
+    let rootfunc = new ClientScriptFunction(`script${scriptid == -1 ? "_unk" : scriptid}`, new StackList([getArgType(script)]), getReturnType(calli, ops), new StackDiff());
+    let headersection = new CodeBlockNode(scriptid, 0);
+
     let sections: CodeBlockNode[] = [];
     let subfuncs: ClientScriptFunction[] = [];
+    let headerend = 0;
+
     //jump at index 0 means there is a header section
     if (ops[0].opcode == namedClientScriptOps.jump) {
-        let headerend = 0 + ops[0].imm + 1;
+        headerend = 0 + ops[0].imm + 1;
         let namecounter = 0;
         for (let i = 1; i < headerend;) {
             let op = ops[i];
@@ -1346,16 +1361,18 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                     if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
                     if (!values.in?.match(/^\d+,\d+,\d+$/) || !values.out?.match(/^\d+,\d+,\d+$/)) { throw new Error("invalid subfunc args or returns"); }
                     let args = new StackDiff(...values.in!.split(",").map(q => parseInt(q)));
-                    let returns = new StackDiff(...values.out!.split(",").map(q => parseInt(q)));
-                    let localcount = new StackDiff();//TODO
-                    let subfunc = new ClientScriptFunction(`subfunc${namecounter++}`, new StackList([args]), new StackList([returns]), localcount);
-                    subfunc.originalindex = i + entry;
-                    subfunc.push(getorMakeSection(i + body));
-                    subfuncs.push(subfunc);
                     //TODO currently the call order here means the subcall definition need to be before its first reference
                     //run parse after subfuncs.push so recursion is possible
                     //might have to keep a seperate list of slices to do the parsing after the header parse is complete
+
+                    let returntype = getReturnType(calli, ops, end);
+                    let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
+                    subfunc.originalindex = i + entry;
                     parseSlice(i + body, i + foot, subfunc);
+                    //set the function body as empty code block with the actual body as successor, needed for control flow later on
+                    let entrynode = new CodeBlockNode(scriptid, i + entry);
+                    entrynode.addSuccessor(getorMakeSection(i + body));
+                    subfunc.push(entrynode);
                     i += end;
                     continue;
                 }
@@ -1363,50 +1380,38 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             throw new Error("unknown header section");
         }
 
-        parseSlice(headerend, ops.length, null);
-        let headersection = getorMakeSection(0);
-        headersection.addSuccessor(getorMakeSection(headerend));
         headersection.pushList(subfuncs);
         headersection.push(new RawOpcodeNode(0, ops[0], calli.getNamedOp(ops[0].opcode)!));
-    } else {
-        parseSlice(0, ops.length, null);
     }
+    headersection.addSuccessor(getorMakeSection(headerend));
+    rootfunc.push(headersection);
+    subfuncs.push(rootfunc);
+    parseSlice(0, ops.length, rootfunc);
 
     sections.sort((a, b) => a.originalindex - b.originalindex);
     sections.forEach(q => addKnownStackDiff(q.children, calli));
-    return sections;
+
+    subfuncs.forEach(q => {
+        for (let node: CodeBlockNode | null = q.children[0] as CodeBlockNode | null; node; node = node.findNext());
+    });
+
+    return { sections, rootfunc, subfuncs };
 }
 
 export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1, full = true) {
-    let sections = generateAst(calli, script, script.opcodedata, fileid);
+    let { sections, rootfunc } = generateAst(calli, script, script.opcodedata, fileid);
     let typectx = new ClientScriptSubtypeSolver();
     typectx.parseSections(sections);
     typectx.addKnownFromCalli(calli);
     typectx.solve();
-    let program = new CodeBlockNode(fileid, 0);
     if (full) {
-        program.addSuccessor(sections[0]);
-        for (let node: CodeBlockNode | null = program; node; node = node.findNext());
         sections.forEach(translateAst);
-        fixControlFlow(program, script);
+        fixControlFlow(rootfunc.children[0], script);
     } else {
-        program.pushList(sections);
-        for (let node: CodeBlockNode | null = program; node; node = node.findNext());
+        // program.pushList(sections);
     }
 
-    let localcounts = new StackDiff();
-    for (let op of script.opcodedata) {
-        if (op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.pushlocalint) { localcounts.int = Math.max(localcounts.int, op.imm + 1); }
-        if (op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.pushlocallong) { localcounts.long = Math.max(localcounts.long, op.imm + 1); }
-        if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) { localcounts.string = Math.max(localcounts.string, op.imm + 1); }
-    }
-
-    let returntype = getReturnType(calli, script.opcodedata);
-    let argtype = getArgType(script);
-    let scriptname = `script${fileid == -1 ? "_unk" : fileid}`;
-    let func = new ClientScriptFunction(scriptname, new StackList([argtype]), returntype, localcounts);
-    func.push(program);
-    return { func, sections, typectx };
+    return { rootfunc, sections, typectx };
 }
 globalThis.parseClientScriptIm = parseClientScriptIm;
 

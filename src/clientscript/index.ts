@@ -20,14 +20,14 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     let calli = await prepareClientScript(source);
     let script = parse.clientscript.read(buf, source);
     let full = true;//TODO remove
-    let { func, sections, typectx } = parseClientScriptIm(calli, script, fileid, full);
-    globalThis[`cs${fileid}`] = func;//TODO remove
+    let { rootfunc, sections, typectx } = parseClientScriptIm(calli, script, fileid, full);
+    globalThis[`cs${fileid}`] = rootfunc;//TODO remove
 
     let writer = new TsWriterContext(calli, typectx);
 
     let res = "";
     if (full) {
-        res += writer.getCode(func);
+        res += writer.getCode(rootfunc);
     } else {
         sections.forEach(q => res += writer.getCode(q));
     }
