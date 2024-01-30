@@ -12,6 +12,7 @@ import { scrapePlayerAvatars } from "./scripts/scrapeavatars";
 import { fileHistory } from "./scripts/filehistory";
 import { openrs2Ids } from "./scripts/openrs2ids";
 import { extractCluecoords } from "./scripts/cluecoords";
+import { getSequenceGroups } from "./scripts/groupskeletons";
 import { CacheFileSource } from "./cache";
 
 
@@ -228,11 +229,24 @@ export function cliApi(ctx: CliApiContext) {
 			let output = ctx.getConsole();
 			await output.run(openrs2Ids, args.date, args.near, args.full);
 		}
-	})
+	});
+
+	const sequencegroups = command({
+		name: "sequencegroups",
+		args: {
+			...filesource,
+			...saveArg("extract")
+		},
+		async handler(args) {
+			let output = ctx.getConsole();
+			let source = await args.source();
+			await output.run(getSequenceGroups, args.save, source);
+		}
+	});
 
 	let subcommands = cmdts.subcommands({
 		name: "",
-		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords }
+		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups }
 	});
 
 	return {
