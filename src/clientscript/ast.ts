@@ -682,19 +682,23 @@ class RewriteCursor {
             this.cursorStack.push(newnode);
             return newnode;
         }
-        this.cursorStack.pop();
-        if (!parentnode) {
-            this.stalled = true;
-            return null;
-        }
+        while (true) {
+            this.cursorStack.pop();
+            currentnode = parentnode;
+            parentnode = this.cursorStack.at(-2);
+            if (!parentnode || !currentnode) {
+                this.cursorStack.length = 0;
+                this.stalled = true;
+                return null;
+            }
 
-        let index = parentnode.children.indexOf(currentnode);
-        if (index == 0) {
-            return this.prev();
+            let index = parentnode.children.indexOf(currentnode);
+            if (index >= 1) {
+                let newnode = parentnode.children[index - 1];
+                this.cursorStack.push(newnode);
+                return newnode;
+            }
         }
-        let newnode = parentnode.children[index - 1];
-        this.cursorStack.push(newnode);
-        return newnode;
     }
     setNextNode(node: AstNode) {
         this.stalled = true;
@@ -1192,7 +1196,7 @@ function addKnownStackDiff(children: AstNode[], calli: ClientscriptObfuscation) 
         let stackinout = node.knownStackDiff;
         if (node instanceof RawOpcodeNode) {
             setRawOpcodeStackDiff(consts, calli, node);
-            stackinout ??= node.opinfo.stackinfo;
+            stackinout ??= node.knownStackDiff ?? node.opinfo.stackinfo;
             hasunknown ||= node.unknownstack;
         } else if (node instanceof ClientScriptFunction) {
             //nop
