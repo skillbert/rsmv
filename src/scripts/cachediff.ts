@@ -54,6 +54,8 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.oldmodels]: { name: "oldmodel", comparesubfiles: false, parser: parse.oldmodels, outputType: "json", getFileName: standardName },
 	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, outputType: "bin", getFileName: worldmapFilename },
 	[cacheMajors.enums]: { name: "enum", comparesubfiles: true, parser: parse.enums, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.sequences]: { name: "sequence", comparesubfiles: true, parser: parse.sequences, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.spotanims]: { name: "spotanim", comparesubfiles: true, parser: parse.spotAnims, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.achievements]: { name: "achievements", comparesubfiles: true, parser: parse.achievement, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.materials]: { name: "material", comparesubfiles: true, parser: parse.materials, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.texturesBmp]: { name: "texturesBmp", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
