@@ -1,9 +1,10 @@
 import { TsWriterContext } from "./codewriter";
-import { astToImJson, parseClientScriptIm } from "./ast";
+import { parseClientScriptIm } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { CacheFileSource } from "../cache";
 import { parseClientscriptTs } from "../clientscript/codeparser";
 import { parse } from "../opdecoder";
+import { astToImJson } from "./jsonwriter";
 
 export { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser";
 

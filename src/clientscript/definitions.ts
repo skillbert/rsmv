@@ -93,9 +93,7 @@ export const namedClientScriptOps = {
     push_array: 45,
 
     //interface stuff
-    if_setop: 10072
-    //11601=get clientvar int? push clientvar int with id imm>>11??
-    //11602=set
+    printmessage: 10119
 }
 
 // from runestar cs2-rs3
@@ -252,6 +250,14 @@ export const subtypes = {
     //max 511 (9bit) or overflow elsewhere in code
 }
 
+export interface SubCallable {
+    scriptname: string;
+    originalindex: number;
+    returntype: StackList;
+    argtype: StackList;
+    localCounts: StackDiff;
+}
+
 export type PrimitiveType = "int" | "long" | "string";
 type DependentType = "known" | "opin" | "opout" | "scriptargvar" | "scriptret" | "uuid";
 
@@ -381,6 +387,14 @@ export const popLocalOps = [
     namedClientScriptOps.poplocallong,
     namedClientScriptOps.poplocalstring
 ]
+export const pushOrPopLocalOps = [
+    namedClientScriptOps.pushlocalint,
+    namedClientScriptOps.pushlocallong,
+    namedClientScriptOps.pushlocalstring,
+    namedClientScriptOps.poplocalint,
+    namedClientScriptOps.poplocallong,
+    namedClientScriptOps.poplocalstring,
+]
 export const branchInstructionsInt = [
     namedClientScriptOps.branch_not,
     namedClientScriptOps.branch_eq,
@@ -456,13 +470,18 @@ export const dynamicOps = [
 export function makeop(opcode: number, imm = 0, imm_obj: ClientScriptOp["imm_obj"] = null) {
     return { opcode, imm, imm_obj } satisfies ClientScriptOp;
 }
+export function makejump(label: ClientScriptOp) {
+    return { opcode: namedClientScriptOps.jump, imm: 0, imm_obj: { type: "jumplabel", value: label } } satisfies ClientScriptOp;
+}
 
 export type ImmediateType = "byte" | "int" | "tribyte" | "switch" | "long" | "string";
+
+export type SwitchJumpTable = { value: number, jump: number }[];
 
 export type ClientScriptOp = {
     opcode: number,
     imm: number,
-    imm_obj: string | number | [number, number] | { type: "switchvalues", value: { value: number, label: number }[] } | { type: "jumplabel", value: ClientScriptOp } | null,
+    imm_obj: string | number | [number, number] | { type: "switchvalues", value: SwitchJumpTable } | { type: "jumplabel", value: ClientScriptOp } | null,
     opname?: string
 }
 

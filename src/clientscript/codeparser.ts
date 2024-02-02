@@ -1,5 +1,5 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, astToImJson, ComposedOp, IntrinsicNode, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants } from "./definitions";
@@ -7,6 +7,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { parse as opdecoder } from "../opdecoder";
 import { CacheFileSource } from "../cache";
 import { prepareClientScript } from ".";
+import { astToImJson, intrinsics } from "./jsonwriter";
 
 function* whitespace() {
     while (true) {
@@ -75,7 +76,7 @@ class ParseContext {
     getFunction(name: string): ClientScriptFunction | null {
         let func = this.scopefunctions.get(name);
         if (func) { return func; }
-        else if (this.parent) { return this.parent.getFunction(name); }
+        if (this.parent) { return this.parent.getFunction(name); }
         return null;
     }
 }
@@ -283,10 +284,10 @@ function scriptContext(ctx: ParseContext) {
     }
 
     function* intliteral() {
-        let [digits] = yield (/^-?\d+\b/);
+        let [digits] = yield (/^(-|0x)?\d+\b/);
         yield whitespace;
         let subt = yield literalcast;
-        return makeIntConst(parseInt(digits, 10), subt || "int");
+        return makeIntConst(parseInt(digits), subt || "int");
     }
 
     function* longliteral() {
@@ -351,16 +352,24 @@ function scriptContext(ctx: ParseContext) {
             if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
             return makeIntConst((args[0].op.imm_obj << 16) | args[1].op.imm_obj, "component");
         }
-        if (funcname.startsWith("$")) {
-            return IntrinsicNode.fromString(funcname, args);
+        if (funcname == "stack") {
+            let op = new ComposedOp(-1, "stack");
+            op.pushList(args);
+            return op;
         }
-
+        let intrinsicmatch = intrinsics.get(funcname);
+        if (intrinsicmatch) {
+            let node = new SubcallNode(-1, funcname, intrinsicmatch.in, intrinsicmatch.out);
+            node.pushList(args);
+            node.push(makeIntConst(-1, "int"));
+            return node;
+        }
 
         let fnid = -1;
         let funcmatch = funcname.match(/^(unk|script)(\d+)$/);
         let subfunc = ctx.getFunction(funcname);
         if (subfunc) {
-            let node = new SubcallNode(-1, subfunc);
+            let node = new SubcallNode(-1, subfunc.scriptname, subfunc.argtype, subfunc.returntype);
             node.pushList(args);
             node.push(makeIntConst(-1, "int"));//dummy value for return address, gets fixed later
             return node;
@@ -441,12 +450,19 @@ function scriptContext(ctx: ParseContext) {
         let values: AstNode[] = yield valueTuple;
         let node = new VarAssignNode(-1);
 
+        let hasstackgrab = false;
         let stackout = new StackList();
         for (let val of values) {
-            stackout.push(getNodeStackOut(val));
+            if (val instanceof ComposedOp && val.type == "stack") {
+                hasstackgrab = true;
+            } else {
+                stackout.push(getNodeStackOut(val));
+            }
         }
 
-        if (stackout.total() != varnames.length) { throw new Error(`var assign output count does not match variable count, out=${stackout}, vars=${varnames.join(",")}`); }
+        if (!hasstackgrab && stackout.total() != varnames.length) {
+            throw new Error(`var assign output count does not match variable count, out=${stackout}, vars=${varnames.join(",")}`);
+        }
 
         //bit complicated to find out which type we're dealing with since there are several scenarios
         for (let i = varnames.length - 1; i >= 0; i--) {
@@ -460,6 +476,7 @@ function scriptContext(ctx: ParseContext) {
                 //explicit type name->tells us which stack
                 stacktype = typeToPrimitive(tsToSubtype(typenames[i]));
             } else {
+                if (hasstackgrab) { throw new Error("can't infer var type when assigning from stack"); }
                 //try get stack type from the value type, this only works if we have an ordered value type
                 let val = stackout.values.at(-1);
                 if (val instanceof StackDiff) {
@@ -474,7 +491,7 @@ function scriptContext(ctx: ParseContext) {
                     stacktype = val;
                 }
             }
-            if (!stackout.tryPopSingle(stacktype)) {
+            if (!hasstackgrab && !stackout.tryPopSingle(stacktype)) {
                 throw new Error(`function output does not match variable type of ${varname}, expected stack type ${stacktype}`);
             }
             if (varname == "") {
@@ -585,6 +602,7 @@ function scriptContext(ctx: ParseContext) {
             let writeop = getopinfo(writeopid);
             let operationop = getopinfo(postop == "++" || preop == "++" ? namedClientScriptOps.plus : namedClientScriptOps.minus);
             let combined = new ComposedOp(-1, (preop == "--" ? "--x" : preop == "++" ? "++x" : postop == "--" ? "x--" : "x++"));
+            combined.knownStackDiff = StackInOut.fromExact([], [subtypes.int]);
             if (postop) { combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop)); }
             combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop));
             combined.internalOps.push(makeIntConst(1, "int"));
@@ -820,18 +838,38 @@ globalThis.testy = async () => {
 
 export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     let res = "";
+    res += `// Need to be defined for the typescript compiler\n`;
+    res += "interface Boolean { }\n";
+    res += "interface Function { }\n";
+    res += "interface Number { }\n";
+    res += "interface Object { }\n";
+    res += "interface RegExp { }\n";
+    res += "interface String { }\n";
+    res += "interface IArguments { }\n";
+    res += "interface BigInt { }\n";
+    res += "\n";
+    res += `// Language constructs\n`;
     res += "declare class BoundFunction { }\n";
     res += "declare function callback(): BoundFunction;\n";
+    res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
     res += "declare function comp(interf: number, element: number): component;\n";
-    res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: Parameters<T>): BoundFunction;\n";
+    res += "declare function stack(...args: any[]): any;\n";
     res += "\n";
+    res += `// Compiler intrinsics\n`;
+    for (let [name, intr] of intrinsics) {
+        res += `declare function ${name}(${intr.in.toTypeScriptVarlist(true)}): ${intr.out.toTypeScriptReturnType()};\n`;
+    }
+    res += "\n";
+    res += `// Clientscript types\n`;
     for (let type of Object.values(subtypes)) {
         let prim = typeToPrimitive(type);
         let name = subtypeToTs(type);
         if (name == "string") { continue; }
+        if (name == "boolean") { continue; }
         res += `type ${name} = ${prim == "int" ? "number" : prim == "long" ? "BigInt" : "string"}\n`;
     }
     res += "\n";
+    res += `// VM opcodes\n`;
     for (let op of calli.mappings.values()) {
         let opname = getOpName(op.id);
         if (reserverd.includes(opname)) { continue; }

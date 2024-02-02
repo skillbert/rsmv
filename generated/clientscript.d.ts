@@ -7,7 +7,7 @@ export type clientscript = {
 	switchsize: number,
 	switches: {
 		value: number,
-		label: number,
+		jump: number,
 	}[][],
 	longargcount: number,
 	stringargcount: number,

@@ -1,9 +1,9 @@
 import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
-import { getOrInsert } from "../utils";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibrator";
 import { debugAst } from "./codewriter";
 import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, getOpName, makeop } from "./definitions";
+import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 
 /**
@@ -22,55 +22,6 @@ export function getSingleChild<T extends AstNode>(op: AstNode | null | undefined
 
 export function isNamedOp(op: AstNode, id: number): op is RawOpcodeNode {
     return op instanceof RawOpcodeNode && op.op.opcode == id;
-}
-
-function tracerNops(text: string) {
-    return [
-        makeop(namedClientScriptOps.pushconst, 2, text),
-        makeop(10983)// POP_STRING_DISCARD
-    ]
-}
-
-class OpcodeWriterContext {
-    calli: ClientscriptObfuscation;
-    labels = new Map<ClientScriptOp, number>();
-    namedLabels = new Map<string, ClientScriptOp>();
-    subfunctions = new Map<string, { label: ClientScriptOp, func: ClientScriptFunction }>();
-    returnsites = new Map<number, ClientScriptOp>();
-    returnsiteidcounter = 1;
-    constructor(calli: ClientscriptObfuscation) {
-        this.calli = calli;
-    }
-    getNamedLabel(name: string) {
-        return getOrInsert(this.namedLabels, name, () => {
-            let label: ClientScriptOp = makeop(namedClientScriptOps.jump, 0);
-            this.declareLabel(label);
-            return label;
-        });
-    }
-    makeSubCallOps(func: ClientScriptFunction, args: AstNode[]) {
-        let returnid = this.returnsiteidcounter++;
-        let target = this.subfunctions.get(func.scriptname);
-        if (!target) { throw new Error("subcall func does not exist"); }
-        let body: ClientScriptOp[] = [];
-        let labelobj = this.getNamedLabel(func.scriptname);
-        body.push(...args.flatMap(q => q.getOpcodes(this)))
-        body.push(makeop(namedClientScriptOps.pushconst, 0, returnid));
-        body.push(makeop(namedClientScriptOps.jump, 0, { type: "jumplabel", value: labelobj }));
-        let returnsite = makeop(namedClientScriptOps.jump, 0);
-        body.push(returnsite);
-        this.returnsites.set(returnid, returnsite);
-        this.declareLabel(returnsite);
-        return body;
-    }
-    declareLabel(op: ClientScriptOp) {
-        this.labels.set(op, -1);
-    }
-    addSubfunction(func: ClientScriptFunction) {
-        if (this.subfunctions.has(func.scriptname)) { throw new Error(`subfunction ${func.scriptname} already exists`); }
-        let label = this.getNamedLabel(func.scriptname);
-        this.subfunctions.set(func.scriptname, { label, func });
-    }
 }
 
 export abstract class AstNode {
@@ -122,20 +73,23 @@ export abstract class AstNode {
 }
 
 export class SubcallNode extends AstNode {
-    func: ClientScriptFunction;
-    constructor(originalindex: number, func: ClientScriptFunction) {
+    funcname: string;
+    constructor(originalindex: number, funcname: string, argtype: StackList, returntype: StackList) {
         super(originalindex);
-        this.func = func;
-        let args = func.argtype.clone();
+        this.funcname = funcname;
+        let args = argtype.clone();
         args.pushone("int");//return address
-        this.knownStackDiff = new StackInOut(args, func.returntype);
+        this.knownStackDiff = new StackInOut(args, returntype);
     }
     getOpcodes(ctx: OpcodeWriterContext) {
-        return ctx.makeSubCallOps(this.func, this.children.slice(0, -1));
+        let body = this.children.slice(0, -1).flatMap(q => q.getOpcodes(ctx));
+        body.push(...ctx.makeSubCallOps(this.funcname));
+        return body;
     }
 }
 
-export type ComposedopType = "++x" | "--x" | "x++" | "x--";
+//TODO probly split this up into different ops
+export type ComposedopType = "++x" | "--x" | "x++" | "x--" | "stack";
 export class ComposedOp extends AstNode {
     type: ComposedopType;
     internalOps: AstNode[] = [];
@@ -144,83 +98,9 @@ export class ComposedOp extends AstNode {
         this.type = type;
     }
     getOpcodes(ctx: OpcodeWriterContext) {
-        if (this.children.length != 0) { throw new Error("no children expected on composednode"); }
-        return this.internalOps.flatMap(q => q.getOpcodes(ctx));
-    }
-}
-
-export class IntrinsicNode extends AstNode {
-    type: "$callopid" | "$getopid";
-    constructor(type: IntrinsicNode["type"]) {
-        super(-1);
-        this.type = type;
-    }
-    static fromString(name: string, args: AstNode[]) {
-        if (name != "$callopid" && name != "$getopid") {
-            throw new Error(`unknown intrinsic ${name}`);
-        }
-        let res = new IntrinsicNode(name);
-        res.pushList(args);
-        return res;
-    }
-
-    getOpcodes(ctx: OpcodeWriterContext) {
-        let body: ClientScriptOp[] = [];
-        if (this.type == "$callopid") {
-            let switchop: ClientScriptOp = { opcode: namedClientScriptOps.switch, imm: -1, imm_obj: null };
-            let defaultjmp: ClientScriptOp = { opcode: namedClientScriptOps.jump, imm: -1, imm_obj: null };
-            body.push(switchop);//TODO switch map id
-            let jumpstart = body.length;
-            body.push(defaultjmp);
-
-            let endops: ClientScriptOp[] = [];
-            let jumptable: ClientScriptOp["imm_obj"] = { type: "switchvalues", value: [] };
-            for (let id of ctx.calli.decodedMappings.keys()) {
-                let opid = +id;
-                if (branchInstructionsOrJump.includes(opid)) { continue; }
-                if (opid == namedClientScriptOps.switch) { continue; }
-                if (opid == namedClientScriptOps.return) { continue; }
-                if (opid == namedClientScriptOps.pushconst) { continue; }
-                jumptable.value.push({ value: opid, label: body.length - jumpstart });
-                body.push({ opcode: opid, imm: 0, imm_obj: null });
-                let jmp: ClientScriptOp = { opcode: namedClientScriptOps.jump, imm: -1, imm_obj: null };
-                body.push(jmp);
-                endops.push(jmp);
-            }
-
-            defaultjmp.imm = body.length - body.indexOf(defaultjmp) - 1;
-            let jmp: ClientScriptOp = { opcode: namedClientScriptOps.jump, imm: -1, imm_obj: null };
-            body.push(jmp);
-            endops.push(jmp);
-
-            //make all jump point to the end now we know the length
-            for (let op of endops) {
-                let index = body.indexOf(op);
-                op.imm = body.length - index - 1;
-            }
-
-            switchop.imm_obj = jumptable;
-        } else if (this.type == "$getopid") {
-            //pop arg0 to string0
-            body.push({ opcode: namedClientScriptOps.poplocalstring, imm: 0, imm_obj: null });
-            for (let [id, opinfo] of ctx.calli.decodedMappings) {
-                let name = getOpName(id);
-                //strcomp(opname,string0)==0
-                body.push({ opcode: namedClientScriptOps.pushconst, imm: 2, imm_obj: name });
-                body.push({ opcode: namedClientScriptOps.pushlocalstring, imm: 0, imm_obj: null });
-                body.push({ opcode: namedClientScriptOps.strcmp, imm: 0, imm_obj: null });
-                body.push({ opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: 0 });
-                body.push({ opcode: namedClientScriptOps.branch_eq, imm: 1, imm_obj: 0 });
-                //jump over
-                body.push({ opcode: namedClientScriptOps.jump, imm: 2, imm_obj: 0 });
-                //return id
-                body.push({ opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: +id });
-                body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
-            }
-            body.push({ opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: -1 });
-            body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
-        }
-        return body;
+        if (this.type != "stack" && this.children.length != 0) { throw new Error("no children expected on composednode"); }
+        return this.children.flatMap(q => q.getOpcodes(ctx))
+            .concat(this.internalOps.flatMap(q => q.getOpcodes(ctx)));
     }
 }
 
@@ -430,11 +310,11 @@ export class SwitchStatementNode extends AstNode {
         if (!cases) { throw new Error("no matching cases in script"); }
         for (let casev of cases) {
             //TODO multiple values can point to the same case
-            let node = nodes.find(q => q.originalindex == switchop.originalindex + 1 + casev.label);
+            let node = nodes.find(q => q.originalindex == switchop.originalindex + 1 + casev.jump);
             if (!node) { throw new Error("switch case branch not found"); }
             branches.push({ value: casev.value, block: node });
             node.maxEndIndex = endindex;
-            if (node.originalindex != switchop.originalindex + 1 + casev.label) {
+            if (node.originalindex != switchop.originalindex + 1 + casev.jump) {
                 throw new Error("switch branches don't match");
             }
         }
@@ -474,7 +354,7 @@ export class SwitchStatementNode extends AstNode {
             let branch = this.branches[i];
             //add a jump so the previous branch skips to end (and last branch doesn't)
             if (branch.block == lastblock) {
-                jumptable.value.push({ value: branch.value, label: lastblockindex });
+                jumptable.value.push({ value: branch.value, jump: lastblockindex });
                 continue;
             }
             if (lastblock) {
@@ -484,7 +364,7 @@ export class SwitchStatementNode extends AstNode {
             }
             lastblock = branch.block;
             lastblockindex = body.length - jumpstart;
-            jumptable.value.push({ value: branch.value, label: lastblockindex });
+            jumptable.value.push({ value: branch.value, jump: lastblockindex });
             body.push(...branch.block.getOpcodes(ctx));
         }
 
@@ -788,7 +668,7 @@ export function translateAst(ast: CodeBlockNode) {
                     ast.remove(postpushx);
                     op.internalOps.push(postpushx);
                 }
-                op.knownStackDiff = new StackInOut(new StackList(), new StackList(["int"]));
+                op.knownStackDiff = StackInOut.fromExact([], [subtypes.int]);
             }
         }
     }
@@ -854,11 +734,22 @@ export function translateAst(ast: CodeBlockNode) {
                 node.unshift(stackel);
                 usablestackdata.pop();
             }
+            if (!argtype.isEmpty()) {
+                node.unshift(new ComposedOp(node.originalindex, "stack"));
+            }
         }
 
         //update usable stack data
         let outtype = getNodeStackOut(node);
         if (outtype.isEmpty()) {
+            //if usablestack is not empty is means that there are unused values on stack, indicate that these ops have unused values
+            usablestackdata.forEach(({ stackel }) => {
+                //indicate that the previous op pushes something to stack
+                let capnode = new ComposedOp(stackel.originalindex, "stack");
+                if (!stackel.parent) { throw new Error("uncapped node without parent"); }
+                stackel.parent.replaceChild(stackel, capnode);
+                capnode.push(stackel);
+            });
             usablestackdata.length = 0;
         } else {
             usablestackdata.push({ stackel: node, stackconst: node.knownStackDiff?.constout ?? null });
@@ -1274,9 +1165,9 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                     continue;
                 } else if (target < start || target > end) {
                     //see if we're jumping to a subfunction
-                    let targetfn = subfuncs.find(q => q.originalindex == target)
+                    let targetfn = subcalltargets.find(q => q.index == target);
                     if (targetfn) {
-                        currentsection.push(new SubcallNode(index, targetfn))
+                        currentsection.push(new SubcallNode(index, targetfn.name, targetfn.in, targetfn.out));
                     } else {
                         throw new Error("couldn't find subcall function target");
                     }
@@ -1323,7 +1214,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                 if (!cases) { throw new Error("no matching cases in script"); }
 
                 for (let cond of cases) {
-                    let jumpblock = getorMakeSection(nextindex + cond.label);
+                    let jumpblock = getorMakeSection(nextindex + cond.jump);
                     if (!currentsection.possibleSuccessors.includes(jumpblock)) {
                         currentsection.addSuccessor(jumpblock);
                     }
@@ -1340,6 +1231,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
 
     let sections: CodeBlockNode[] = [];
     let subfuncs: ClientScriptFunction[] = [];
+    let subcalltargets: { index: number, name: string, in: StackList, out: StackList }[] = [];
     let headerend = 0;
 
     //jump at index 0 means there is a header section
@@ -1348,40 +1240,47 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         let namecounter = 0;
         for (let i = 1; i < headerend;) {
             let op = ops[i];
-            if (op.opcode == namedClientScriptOps.pushconst && op.imm == 2 && typeof op.imm_obj == "string") {
-                let values: Record<string, string> = {};
-                for (let [, left, right] of op.imm_obj.matchAll(/(\S+)=(\S+)/g)) { values[left] = right; }
-
-                if (values.type == "returnjumps") {
-                    let end = parseInt(values.end);
-                    if (isNaN(end)) { throw new Error("invalid subfunc header"); }
-                    i += end;
-                    continue;
-                } else if (values.type == "subfunc") {
-                    let end = parseInt(values.end);
-                    let body = parseInt(values.body);
-                    let foot = parseInt(values.foot);
-                    let entry = parseInt(values.entry);
-                    if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
-                    if (!values.in?.match(/^\d+,\d+,\d+$/) || !values.out?.match(/^\d+,\d+,\d+$/)) { throw new Error("invalid subfunc args or returns"); }
-                    let args = new StackDiff(...values.in!.split(",").map(q => parseInt(q)));
-                    //TODO currently the call order here means the subcall definition need to be before its first reference
-                    //run parse after subfuncs.push so recursion is possible
-                    //might have to keep a seperate list of slices to do the parsing after the header parse is complete
-
-                    let returntype = getReturnType(calli, ops, i + foot);
-                    let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
-                    subfunc.originalindex = i + entry;
-                    parseSlice(i + body, i + foot, subfunc);
-                    //set the function body as empty code block with the actual body as successor, needed for control flow later on
-                    let entrynode = new CodeBlockNode(scriptid, i + entry);
-                    entrynode.addSuccessor(getorMakeSection(i + body));
-                    subfunc.push(entrynode);
-                    i += end;
-                    continue;
-                }
+            if (op.opcode != namedClientScriptOps.pushconst || op.imm != 2 || typeof op.imm_obj != "string") {
+                throw new Error("no header label text literal");
             }
-            throw new Error("unknown header section");
+
+            let values: Record<string, string> = {};
+            for (let [, left, right] of op.imm_obj.matchAll(/(\S+)=(\S+)/g)) { values[left] = right; }
+
+            let end = parseInt(values.end);
+            let body = parseInt(values.body);
+            let foot = parseInt(values.foot);
+            let entry = parseInt(values.entry);
+            let args = (values.in?.match(/^\d+,\d+,\d+$/) ? new StackDiff(...values.in.split(",").map(q => parseInt(q))) : new StackDiff());
+            let returns = (values.out?.match(/^\d+,\d+,\d+$/) ? new StackDiff(...values.out.split(",").map(q => parseInt(q))) : new StackDiff());
+            if (values.type == "returnjumps") {
+                let end = parseInt(values.end);
+                if (isNaN(end)) { throw new Error("invalid subfunc header"); }
+            } else if (values.type == "subfunc") {
+                if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
+                let returntype = getReturnType(calli, ops, i + foot);
+                if (!returns.equals(returntype.getStackdiff())) { throw new Error("detected subfunc return type not the same as declared return type"); }
+                let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
+                subfunc.originalindex = i + entry;
+                subcalltargets.push({ name: subfunc.scriptname, index: subfunc.originalindex, in: subfunc.argtype, out: subfunc.returntype });
+                //TODO currently the call order here means the subcall definition need to be before its first reference
+                //run parse after subfuncs.push so recursion is possible
+                //might have to keep a seperate list of slices to do the parsing after the header parse is complete
+                parseSlice(i + body, i + foot, subfunc);
+                //set the function body as empty code block with the actual body as successor, needed for control flow later on
+                let entrynode = new CodeBlockNode(scriptid, i + entry);
+                entrynode.addSuccessor(getorMakeSection(i + body));
+                subfunc.push(entrynode);
+            } else if (values.type == "intrinsic") {
+                let name = values.name;
+                if (typeof name != "string") { throw new Error("intrinsic name not set"); }
+                let intrinsic = intrinsics.get(name);
+                if (!intrinsic) { throw new Error(`intrinsic ${name} was references in bytecode, but does not exists in the version of rsmv`); }
+                subcalltargets.push({ name, index: i + entry, in: intrinsic.in, out: intrinsic.out });
+            } else {
+                console.log(`unknown header type "${values.type}"`);
+            }
+            i += end;
         }
 
         headersection.pushList(subfuncs);
@@ -1412,155 +1311,10 @@ export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clie
         sections.forEach(translateAst);
         fixControlFlow(rootfunc.children[0], script);
     } else {
+        //TODO fix or remove
         // program.pushList(sections);
     }
 
     return { rootfunc, sections, typectx };
 }
 globalThis.parseClientScriptIm = parseClientScriptIm;
-
-export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFunction) {
-    let ctx = new OpcodeWriterContext(calli);
-    let opdata: ClientScriptOp[] = [];
-    let funcbody = func.getOpcodes(ctx);//this needs to run before the subfunc section because it defines the subfuncs
-
-    let switches: clientscript["switches"] = [];
-    let tempstacks = new StackDiff();
-    let returnsitejumps: clientscript["switches"][number] = [];
-    let returnjumps: ClientScriptOp | null = null;
-
-    if (ctx.subfunctions.size != 0 || ctx.returnsites.size != 0) {
-        let footerendlabel = ctx.getNamedLabel("footerend");
-        opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: footerendlabel }));
-
-        //jump table
-        returnjumps = makeop(namedClientScriptOps.switch, switches.push(returnsitejumps) - 1);
-        ctx.declareLabel(returnjumps);
-        opdata.push(makeop(namedClientScriptOps.pushconst, 2, `type=returnjumps end=2`));
-        opdata.push(returnjumps);
-        //TODO add error for default case?
-
-        for (let subfunc of ctx.subfunctions.values()) {
-            let intype = subfunc.func.argtype.getStackdiff();
-            let outtype = subfunc.func.returntype.getStackdiff();
-            let localtype = subfunc.func.localCounts.clone();
-            tempstacks.int = Math.max(tempstacks.int, intype.int + 1, outtype.int + 1);//1 extra for the return addr
-            tempstacks.long = Math.max(tempstacks.long, intype.long, outtype.long);
-            tempstacks.string = Math.max(tempstacks.string, intype.string, outtype.string);
-
-            //have to do some stack wizardry here since the VM only lets you access the very top of the stack
-            //sadly this requires extra local variables and i don't know how many we're allowed to have
-            //the jump target for calls to this subfunction
-            let headerindex = opdata.length;
-            let headerop = makeop(namedClientScriptOps.pushconst, 2, "");
-            opdata.push(headerop);
-            let jumptarget = opdata.length;
-            opdata.push(subfunc.label);
-            //move return address from top of int stack to last tmp+1
-            let returnaddrtemp = func.localCounts.int + Math.max(intype.int, outtype.int);
-            opdata.push(makeop(namedClientScriptOps.poplocalint, returnaddrtemp));
-            //move all args from stack to tmp locals
-            for (let i = intype.int - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalint, func.localCounts.int + i)); }
-            for (let i = intype.long - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocallong, func.localCounts.long + i)); }
-            for (let i = intype.string - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalstring, func.localCounts.string + i)); }
-            //save all locals that callee want to reuse to stack
-            for (let i = 0; i < localtype.int; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalint, i)); }
-            for (let i = 0; i < localtype.long; i++) { opdata.push(makeop(namedClientScriptOps.pushlocallong, i)); }
-            for (let i = 0; i < localtype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, i)); }
-            //push the return address back to stack
-            opdata.push(makeop(namedClientScriptOps.pushlocalint, returnaddrtemp));
-            //move the args from temp to start of locals
-            for (let i = 0; i < intype.int; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalint, func.localCounts.int + i), makeop(namedClientScriptOps.poplocalint, i)); }
-            for (let i = 0; i < intype.long; i++) { opdata.push(makeop(namedClientScriptOps.pushlocallong, func.localCounts.long + i), makeop(namedClientScriptOps.poplocallong, i)); }
-            for (let i = 0; i < intype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, func.localCounts.string + i), makeop(namedClientScriptOps.poplocalstring, i)); }
-            //function body (same as with a root function)
-            let funcbody = subfunc.func.getOpcodes(ctx);
-            //replace all return ops into ops that jump to the end label (op itself is a nop)
-            let endlabel = makeop(namedClientScriptOps.jump, 0);
-            ctx.declareLabel(endlabel);
-            funcbody.forEach((op, i) => {
-                if (op.opcode == namedClientScriptOps.return) {
-                    funcbody[i] = makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: endlabel });
-                }
-            });
-            opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} body`));
-            let bodyindex = opdata.length;
-            opdata.push(...funcbody);
-            let footindex = opdata.length;
-            opdata.push(endlabel);
-            opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} footer`));
-            //move all return values from stack to tmp locals
-            for (let i = 0; i < outtype.int; i++) { opdata.push(makeop(namedClientScriptOps.poplocalint, func.localCounts.int + i)); }
-            for (let i = 0; i < outtype.long; i++) { opdata.push(makeop(namedClientScriptOps.poplocallong, func.localCounts.long + i)); }
-            for (let i = 0; i < outtype.string; i++) { opdata.push(makeop(namedClientScriptOps.poplocalstring, func.localCounts.string + i)); }
-            //move the return address from stack to tmp
-            opdata.push(makeop(namedClientScriptOps.poplocalint, returnaddrtemp));
-            //restore all caller locals that we used (in reverse order)
-            for (let i = localtype.int - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalint, i)); }
-            for (let i = localtype.long - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocallong, i)); }
-            for (let i = localtype.string - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalstring, i)); }
-            //move the return values from tmp locals to stack
-            for (let i = 0; i < outtype.int; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalint, func.localCounts.int + i)); }
-            for (let i = 0; i < outtype.long; i++) { opdata.push(makeop(namedClientScriptOps.pushlocallong, func.localCounts.long + i)); }
-            for (let i = 0; i < outtype.string; i++) { opdata.push(makeop(namedClientScriptOps.pushlocalstring, func.localCounts.string + i)); }
-            //now jump to the jumptable that acts a dynamic jump (pops the return "address" from top of int stack)
-            opdata.push(makeop(namedClientScriptOps.pushlocalint, returnaddrtemp));
-            opdata.push(makeop(namedClientScriptOps.jump, -1, { type: "jumplabel", value: returnjumps }));
-            //thats it, simple
-            opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} end`));
-
-            headerop.imm_obj = `type=subfunc in=${intype.int},${intype.long},${intype.string} out=${outtype.int},${outtype.long},${outtype.string} entry=${jumptarget - headerindex} body=${bodyindex - headerindex} foot=${footindex - headerindex} end=${opdata.length - headerindex}`;
-        }
-
-        opdata.push(footerendlabel);
-    }
-
-    opdata.push(...funcbody);
-
-    let allargs = func.argtype.getStackdiff();
-    let localcounts = func.localCounts.clone().add(tempstacks);
-    let script: clientscript = {
-        byte0: 0,
-        switchsize: -1,
-        switches: switches,
-        longargcount: allargs.long,
-        stringargcount: allargs.string,
-        intargcount: allargs.int,
-        locallongcount: localcounts.long + tempstacks.long,
-        localstringcount: localcounts.string + tempstacks.string,
-        localintcount: localcounts.int + tempstacks.int,
-        instructioncount: opdata.length,
-        opcodedata: opdata as clientscript["opcodedata"],
-    }
-    let labelmap = ctx.labels;
-    for (let index = 0; index < opdata.length; index++) {
-        let op = opdata[index];
-        if (labelmap.get(op) !== undefined) { labelmap.set(op, index); }
-    }
-    for (let index = 0; index < opdata.length; index++) {
-        let op = opdata[index];
-        if (typeof op.imm_obj == "object" && op.imm_obj && !Array.isArray(op.imm_obj)) {
-            if (op.imm_obj.type == "switchvalues") {
-                op.imm = script.switches.push(op.imm_obj.value) - 1;
-            } else if (op.imm_obj.type == "jumplabel") {
-                let target = labelmap.get(op.imm_obj.value);
-                if (typeof target != "number" || target == -1) { throw new Error("label not found"); }
-                op.imm = target - (index + 1);
-            }
-            op.imm_obj = null;
-        }
-    }
-    if (ctx.returnsites.size != 0) {
-        let switchbaseaddress = returnjumps && labelmap.get(returnjumps);
-        if (typeof switchbaseaddress != "number") { throw new Error("dynamicjump section not found"); }
-        switchbaseaddress += 2;//+label+switchop
-        for (let [label, targetop] of ctx.returnsites) {
-            let target = labelmap.get(targetop);
-            if (target == undefined) { throw new Error("dynamicjump return address not found"); }
-            returnsitejumps.push({ label: target - switchbaseaddress, value: label });//TODO the engine might not support negative switch jumps
-        }
-    }
-    //1+foreach(2+sublen*(4+4))
-    script.switchsize = 1 + script.switches.reduce((a, v) => a + 2 + v.length * (4 + 4), 0);
-    return script;
-}

@@ -7,7 +7,7 @@
 		// ["array",["match","buildnr",{">=495":"ubyte","other":0}],["array","ushort",["struct",
 		["array","ubyte",["array","ushort",["struct",
 			["value","int"],
-			["label","uint"]
+			["jump","uint"]
 		]]]
 	]],
 	// ["longargcount",["match","buildnr",{">641":["footer",2,"ushort"],"other":0}]],

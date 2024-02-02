@@ -1,5 +1,5 @@
 import { boundMethod } from "autobind-decorator";
-import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, IntrinsicNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType } from "./ast";
+import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
@@ -125,6 +125,9 @@ function escapeStringLiteral(source: string, quotetype: "template" | "double" | 
     });
 }
 
+function writeCall(ctx: TsWriterContext, funcstring: string, children: AstNode[]) {
+    return `${funcstring}(${children.map(ctx.getCode).join(", ")})`;
+}
 function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: AstNode[], originalindex: number) {
     let binarysymbol = binaryOpSymbols.get(op.opcode);
     if (binarysymbol) {
@@ -139,7 +142,7 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
         return `return ${valueList(ctx, children)}`;
     }
     if (op.opcode == namedClientScriptOps.gosub) {
-        return `script${op.imm}(${children.map(ctx.getCode).join(", ")})`;
+        return writeCall(ctx, `script${op.imm}`, children);
     }
     let metastr = "";
     if (branchInstructionsOrJump.includes(op.opcode)) {
@@ -149,7 +152,7 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
     } else if (op.imm != 0) {
         metastr = `[${op.imm}]`;
     }
-    return `${getOpcodeName(ctx.calli, op)}${metastr}(${children.map(ctx.getCode).join(", ")})`;
+    return writeCall(ctx, `${getOpcodeName(ctx.calli, op)}${metastr}`, children);
 }
 
 const writermap = new Map<AstNode["constructor"], (node: AstNode, ctx: TsWriterContext) => string>();
@@ -159,13 +162,16 @@ function addWriter<T extends new (...args: any[]) => AstNode>(type: T, writer: (
 }
 
 addWriter(ComposedOp, (node, ctx) => {
-    if (node.children.length != 0) { throw new Error("no children expected on composednode"); }
     if ((["++x", "--x", "x++", "x--"] as ComposedopType[]).includes(node.type)) {
+        if (node.children.length != 0) { throw new Error("no children expected on composednode"); }
         let varname = getOpcodeName(ctx.calli, (node.internalOps[0] as RawOpcodeNode).op);
         if (node.type == "++x") { return `++${varname}`; }
         if (node.type == "--x") { return `--${varname}`; }
         if (node.type == "x++") { return `${varname}++`; }
         if (node.type == "x--") { return `${varname}--`; }
+    }
+    if (node.type == "stack") {
+        return writeCall(ctx, "stack", node.children);
     }
     throw new Error("unknown composed op type");
 });
@@ -354,9 +360,6 @@ addWriter(FunctionBindNode, (node, ctx) => {
     if (scriptid == -1 && node.children.length == 1) { return `callback()`; }
     return `callback(script${scriptid}${node.children.length > 1 ? ", " : ""}${node.children.slice(1).map(ctx.getCode).join(", ")})`;
 });
-addWriter(IntrinsicNode, (node, ctx) => {
-    return `${node.type}(${node.children.map(ctx.getCode).join(", ")})`;
-});
 addWriter(SubcallNode, (node, ctx) => {
-    return `${node.func.scriptname}(${node.children.slice(0, -1).map(ctx.getCode).join(", ")})`;
+    return writeCall(ctx, node.funcname, node.children.slice(0, -1));
 });
