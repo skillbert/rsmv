@@ -22,6 +22,7 @@ import { selectFsCache } from "../cache/autocache";
 import { CLIScriptFS } from "../scriptrunner";
 import { drawTexture } from "../imgutils";
 import { RsUIViewer } from "./rsuiviewer";
+import { ClientScriptViewer } from "./cs2viewer";
 
 //work around typescript being weird when compiling for browser
 const electron = require("electron/renderer");
@@ -637,6 +638,8 @@ export function FileDisplay(p: { file: UIScriptFile }) {
 			el = <FileDecodeErrorViewer file={filedata} />;
 		} else if (ext == "ui.json") {
 			el = <RsUIViewer data={filedata} />
+		} else if (ext == "cs2.json") {
+			el = <ClientScriptViewer data={filedata} />
 		} else if (ext == "html") {
 			el = <iframe srcDoc={filedata} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
 		} else {

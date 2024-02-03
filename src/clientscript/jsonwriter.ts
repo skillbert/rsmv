@@ -250,7 +250,7 @@ function jumptableToBTree(table: SwitchJumpTable, tmpintlocal: number) {
             body.push(makeop(namedClientScriptOps.jump, 0));
         } else {
             let split = start + Math.ceil(len / 2);
-            let branchop = makeop(namedClientScriptOps.branch_lt, 0);
+            let branchop = makeop(namedClientScriptOps.branch_gteq, 0);
             body.push(makeop(namedClientScriptOps.pushlocalint, tmpintlocal));
             body.push(makeop(namedClientScriptOps.pushconst, 0, table[split].value));
             body.push(branchop);

@@ -464,6 +464,19 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 		}
 	}
 }
+const decodeClientScriptViewer: DecodeModeFactory = () => {
+	return {
+		ext: "cs2.json",
+		...noArchiveIndex(cacheMajors.clientscript),
+		...throwOnNonSimple,
+		async prepareDump(fs, source) {
+			await prepareClientScript(source);
+		},
+		read(buf, fileid, source) {
+			return JSON.stringify(parse.clientscript.read(buf, source));
+		}
+	}
+}
 
 const decodeOldProcTexture: DecodeModeFactory = () => {
 	return {
@@ -666,6 +679,7 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	interfacehtml: decodeInterface,
 	interfaceviewer: decodeInterface2,
 	clientscripttext: decodeClientScriptText,
+	clientscriptviewer: decodeClientScriptViewer,
 	npcmodels: npcmodels,
 
 

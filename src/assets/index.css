@@ -310,7 +310,15 @@
 	top: 180px;
 }
 
-
 .mv-hex--select {
 	background-color: #fff3;
+}
+
+.cs-valuegroup {
+	display: flex;
+	flex-direction: row;
+}
+
+.cs2-value {
+	margin-right: 0.5em;
 }
