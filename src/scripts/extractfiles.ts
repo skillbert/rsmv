@@ -1,6 +1,6 @@
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
-import { FileRange } from "../utils";
+import { FileRange, getOrInsert } from "../utils";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { cacheFileDecodeModes, DecodeMode, DecodeModeFactory } from "./filetypes";
 
@@ -104,7 +104,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 				// let arch = new Archive(lastarchive.subfiles.map(q => q.buffer));
 				// arch.forgecrc(lastarchive.index.uncompressed_crc, lastarchive.index.subindices.indexOf(3), 10);
 				// return source.writeFile(lastarchive.index.major, lastarchive.index.minor, arch.packSqlite());
-				return source.writeFileArchive(lastarchive.index, lastarchive.subfiles.map(q => q.buffer));
+				return source.writeFileArchive(lastarchive.index.major, lastarchive.index.minor, lastarchive.subfiles.map(q => q.buffer));
 			}
 		}
 
@@ -141,16 +141,8 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	}
 
 	let getarch = (major: number, minor: number, mode: DecodeMode) => {
-		let majormap = incompletearchs.get(major);
-		if (!majormap) {
-			majormap = new Map();
-			incompletearchs.set(major, majormap);
-		}
-		let group = majormap.get(minor);
-		if (!group) {
-			group = { fetchsiblings: mode.multiIndexArchives, files: [] };
-			majormap.set(minor, group);
-		}
+		let majormap = getOrInsert(incompletearchs, major, () => new Map());
+		let group = getOrInsert(majormap, minor, () => ({ fetchsiblings: mode.multiIndexArchives, files: [] }));
 		return group;
 	}
 
@@ -185,15 +177,15 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	for (let [major, majormap] of incompletearchs) {
 		let indexfile = await source.getCacheIndex(major);
 		for (let [minor, group] of majormap) {
-			let index = indexfile[minor];
+			let index = indexfile[minor] as CacheIndex | undefined;
 			let prevarch: SubFile[] = [];
-			if (group.fetchsiblings) {
+			if (index && group.fetchsiblings) {
 				prevarch = await source.getFileArchive(index);
 			}
 
-			group.files.sort((a, b) => a.subid - b.subid);
-			let p = 0, a = 0;
 			let newfiles = group.files;
+			newfiles.sort((a, b) => a.subid - b.subid);
+			let p = 0, a = 0;
 			let fileids: number[] = [];
 			let files: Buffer[] = [];
 			while (true) {
@@ -216,7 +208,9 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 			}
 
 			let matches = true;
-			if (files.length != index.subindices.length) {
+			if (!index) {
+				output.log(`group ${major}.${minor} does not have an index entry, writing anyway`);
+			} else if (files.length != index.subindices.length) {
 				matches = false;
 			} else {
 				for (let a = 0; a < files.length; a++) {
@@ -229,8 +223,8 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 				throw new Error("tried to replace archive with different subfile ids, need to rewrite index file to make this work");
 			}
 
-			console.log("writing", index.major, index.minor, fileids);
-			await source.writeFileArchive(index, files);
+			console.log("writing", major, minor, fileids);
+			await source.writeFileArchive(major, minor, files);
 		}
 	}
 }

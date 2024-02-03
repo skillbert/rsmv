@@ -8,6 +8,7 @@ import { parse as opdecoder } from "../opdecoder";
 import { CacheFileSource } from "../cache";
 import { prepareClientScript } from ".";
 import { astToImJson, intrinsics } from "./jsonwriter";
+import { ClientScriptInterpreter } from "./interpreter";
 
 function* whitespace() {
     while (true) {
@@ -291,7 +292,7 @@ function scriptContext(ctx: ParseContext) {
     }
 
     function* longliteral() {
-        let [match, int] = yield (/^(-\d+)n\b/);
+        let [match, int] = yield (/^(-?\d+)n\b/);
         let bigint = BigInt(int) & 0xffff_ffff_ffff_ffffn;
         let upper = Number((bigint >> 32n) & 0xffff_ffffn);
         let lower = Number(bigint & 0xffff_ffffn);
@@ -810,6 +811,7 @@ globalThis.testy = async () => {
         let parseresult = parseClientscriptTs(deob, originalts);
         if (!parseresult.success) { return parseresult; }
         let roundtripped = astToImJson(deob, parseresult.result);
+        globalThis.inter = new ClientScriptInterpreter(deob, roundtripped);
         let jsondata = JSON.parse(originaljson);
         delete jsondata.$schema;
         roundtripped.opcodedata.forEach(q => (q as any).opname = getOpName(q.opcode));
@@ -847,6 +849,9 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "interface String { }\n";
     res += "interface IArguments { }\n";
     res += "interface BigInt { }\n";
+    res += "interface Symbol { }\n";
+    res += "interface Array<T> { [Symbol.iterator](): any; }\n";
+    res += "declare var Symbol: { readonly iterator: unique symbol };\n";
     res += "\n";
     res += `// Language constructs\n`;
     res += "declare class BoundFunction { }\n";

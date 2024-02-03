@@ -555,7 +555,6 @@ class RewriteCursor {
             return this.current();
         }
         let currentnode = this.cursorStack.at(-1);
-        let parentnode = this.cursorStack.at(-2);
         if (!currentnode) { return null; }
         if (currentnode.children.length != 0) {
             let newnode = currentnode.children.at(-1)!;
@@ -564,8 +563,7 @@ class RewriteCursor {
         }
         while (true) {
             this.cursorStack.pop();
-            currentnode = parentnode;
-            parentnode = this.cursorStack.at(-2);
+            let parentnode = this.cursorStack.at(-1);
             if (!parentnode || !currentnode) {
                 this.cursorStack.length = 0;
                 this.stalled = true;
@@ -578,6 +576,7 @@ class RewriteCursor {
                 this.cursorStack.push(newnode);
                 return newnode;
             }
+            currentnode = parentnode;
         }
     }
     setNextNode(node: AstNode) {
@@ -1238,6 +1237,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     if (ops[0].opcode == namedClientScriptOps.jump) {
         headerend = 0 + ops[0].imm + 1;
         let namecounter = 0;
+        let parseQueue: Parameters<typeof parseSlice>[] = [];
         for (let i = 1; i < headerend;) {
             let op = ops[i];
             if (op.opcode != namedClientScriptOps.pushconst || op.imm != 2 || typeof op.imm_obj != "string") {
@@ -1254,8 +1254,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             let args = (values.in?.match(/^\d+,\d+,\d+$/) ? new StackDiff(...values.in.split(",").map(q => parseInt(q))) : new StackDiff());
             let returns = (values.out?.match(/^\d+,\d+,\d+$/) ? new StackDiff(...values.out.split(",").map(q => parseInt(q))) : new StackDiff());
             if (values.type == "returnjumps") {
-                let end = parseInt(values.end);
-                if (isNaN(end)) { throw new Error("invalid subfunc header"); }
+                //noop, existance is implied
             } else if (values.type == "subfunc") {
                 if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
                 let returntype = getReturnType(calli, ops, i + foot);
@@ -1263,10 +1262,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                 let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
                 subfunc.originalindex = i + entry;
                 subcalltargets.push({ name: subfunc.scriptname, index: subfunc.originalindex, in: subfunc.argtype, out: subfunc.returntype });
-                //TODO currently the call order here means the subcall definition need to be before its first reference
-                //run parse after subfuncs.push so recursion is possible
-                //might have to keep a seperate list of slices to do the parsing after the header parse is complete
-                parseSlice(i + body, i + foot, subfunc);
+                parseQueue.push([i + body, i + foot, subfunc]);
                 //set the function body as empty code block with the actual body as successor, needed for control flow later on
                 let entrynode = new CodeBlockNode(scriptid, i + entry);
                 entrynode.addSuccessor(getorMakeSection(i + body));
@@ -1280,8 +1276,11 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             } else {
                 console.log(`unknown header type "${values.type}"`);
             }
+            if (isNaN(end)) { throw new Error("invalid subfunc header"); }
             i += end;
         }
+
+        parseQueue.forEach(q => parseSlice(...q));
 
         headersection.pushList(subfuncs);
         headersection.push(new RawOpcodeNode(0, ops[0], calli.getNamedOp(ops[0].opcode)!));

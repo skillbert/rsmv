@@ -308,7 +308,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         } else if (Array.isArray(node.op.imm_obj)) {
             //build our bigint as unsigned
             let int = (BigInt(node.op.imm_obj[0] as number) << 32n) | BigInt(node.op.imm_obj[1] as number);
-            if (node.op.imm_obj[0] as number & 0x8000_0000) {
+            if ((node.op.imm_obj[0] as number) & 0x8000_0000) {
                 //subtract complement when most significant bit is set
                 int = int - 0x1_0000_0000_0000_0000n;
             }
@@ -326,7 +326,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         }
     }
     if (node.op.opcode == namedClientScriptOps.pushlocalint
-        || node.op.opcode == namedClientScriptOps.poplocallong
+        || node.op.opcode == namedClientScriptOps.pushlocallong
         || node.op.opcode == namedClientScriptOps.pushlocalstring
         || node.op.opcode == namedClientScriptOps.pushvar
         || node.op.opcode == namedClientScriptOps.pushvarbit) {

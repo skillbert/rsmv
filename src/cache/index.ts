@@ -280,7 +280,7 @@ export abstract class CacheFileSource {
 		throw new Error("not implemented");
 	}
 
-	writeFileArchive(index: CacheIndex, files: Buffer[]): Promise<void> {
+	writeFileArchive(major: number, minor: number, files: Buffer[]): Promise<void> {
 		throw new Error("not implemented");
 	}
 

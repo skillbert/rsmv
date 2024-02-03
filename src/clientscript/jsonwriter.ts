@@ -107,12 +107,12 @@ intrinsics.set("call", {
     write(ctx: OpcodeWriterContext) {
         let body: ClientScriptOp[] = [];
         let jumptable: SwitchJumpTable = [];
-        let jumpstart = body.length;
 
         //btree,returnaddr
         ctx.tempcounts.int = Math.max(ctx.tempcounts.int, 2);
         body.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + 1));
 
+        let jumpstart = body.length;
         let endlabel = makeop(namedClientScriptOps.jump, 0);
         ctx.declareLabel(endlabel);
 
@@ -126,9 +126,11 @@ intrinsics.set("call", {
         for (let id of ctx.calli.scriptargs.keys()) { maxscriptid = Math.max(maxscriptid, id); }
         maxscriptid = maxscriptid - (maxscriptid % 1000) + 2000;
         for (let id = 0; id < maxscriptid; id++) {
-            let opid = +id;
-            jumptable.push({ value: opid, jump: body.length - jumpstart });
+            // for (let id of [19500, 19501, 19502, 19503]) {
+            jumptable.push({ value: id, jump: body.length - jumpstart });
             body.push(makeop(namedClientScriptOps.gosub, id));
+            // body.push(makeop(namedClientScriptOps.pushconst, 2, `calling ${id}`));
+            // body.push(makeop(namedClientScriptOps.printmessage));
             body.push(makejump(endlabel));
         }
 
@@ -263,7 +265,7 @@ function jumptableToBTree(table: SwitchJumpTable, tmpintlocal: number) {
     for (let i = 0; i < body.length; i++) {
         let op = body[i];
         if (op.opcode == namedClientScriptOps.branch_eq || op.opcode == namedClientScriptOps.jump) {
-            op.imm += body.length - i;
+            op.imm += body.length - i - 1;
         }
     }
     return body;

@@ -29,7 +29,7 @@ export const namedClientScriptOps = {
 
     //pop discard
     popdiscardint: 10627,
-    popdiscardlong: 9103,//op not seen yet
+    popdiscardlong: 9104,//op not seen yet
     popdiscardstring: 10983,
 
     //variable number of args
@@ -50,12 +50,12 @@ export const namedClientScriptOps = {
     branch_gt: 10,
     branch_lteq: 31,
     branch_gteq: 32,
-    branch_unk11619: 11619,
-    branch_unk11611: 11611,
-    branch_unk11613: 11613,
-    branch_unk11606: 11606,
-    branch_unk11624: 11624,
-    branch_unk11625: 11625,
+    branch_eq_long: 11606,
+    branch_not_long: 11624,
+    branch_lt_long: 11619,
+    branch_gt_long: 11611,
+    branch_lteq_long: 11625,
+    branch_gteq_long: 11613,
     switch: 51,
     return: 21,
 
@@ -404,12 +404,12 @@ export const branchInstructionsInt = [
     namedClientScriptOps.branch_gteq,
 ]
 export const branchInstructionsLong = [
-    namedClientScriptOps.branch_unk11619,
-    namedClientScriptOps.branch_unk11611,
-    namedClientScriptOps.branch_unk11613,
-    namedClientScriptOps.branch_unk11606,
-    namedClientScriptOps.branch_unk11624,
-    namedClientScriptOps.branch_unk11625
+    namedClientScriptOps.branch_not_long,
+    namedClientScriptOps.branch_eq_long,
+    namedClientScriptOps.branch_lt_long,
+    namedClientScriptOps.branch_gt_long,
+    namedClientScriptOps.branch_lteq_long,
+    namedClientScriptOps.branch_gteq_long
 ]
 
 export const branchInstructions = [
@@ -421,19 +421,21 @@ export const binaryOpSymbols = new Map([
     [namedClientScriptOps.shorting_or, "||"],
     [namedClientScriptOps.shorting_and, "&&"],
 
+    //compare longs
+    // [namedClientScriptOps.branch_not_long, ":!="],
+    // [namedClientScriptOps.branch_eq_long, ":=="],
+    // [namedClientScriptOps.branch_lteq_long, ":<="],
+    // [namedClientScriptOps.branch_gteq_long, ":>="],
+    // [namedClientScriptOps.branch_lt_long, ":<"],
+    // [namedClientScriptOps.branch_gt_long, ":>"],
+
+    //ints
     [namedClientScriptOps.branch_not, "!="],
     [namedClientScriptOps.branch_eq, "=="],
     [namedClientScriptOps.branch_lteq, "<="],
     [namedClientScriptOps.branch_gteq, ">="],
     [namedClientScriptOps.branch_lt, "<"],//make sure shorter ops are after longer ones
     [namedClientScriptOps.branch_gt, ">"],
-    // probably comparing longs
-    [namedClientScriptOps.branch_unk11619, ":op1:"],
-    [namedClientScriptOps.branch_unk11611, ":op2:"],
-    [namedClientScriptOps.branch_unk11613, ":op3:"],
-    [namedClientScriptOps.branch_unk11606, ":op4:"],
-    [namedClientScriptOps.branch_unk11624, ":op5:"],
-    [namedClientScriptOps.branch_unk11625, ":op6:"],
 
     //math
     [namedClientScriptOps.plus, "+"],
@@ -535,7 +537,7 @@ export class StackList {
     int() { this.values.push("int"); }
     long() { this.values.push("long"); }
     string() { this.values.push("string"); }
-    isEmpty() { return this.values.length == 0; }
+    isEmpty() { return this.values.every(q => q instanceof StackDiff && q.isEmpty()); }
     total(endoffset = 0) {
         let r = 0;
         for (let i = this.values.length - 1; i >= endoffset; i--) {

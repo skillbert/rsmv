@@ -138,9 +138,9 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		return table.updateFile(minor, compressed);
 	}
 
-	writeFileArchive(index: cache.CacheIndex, files: Buffer[]) {
+	writeFileArchive(major: number, minor: number, files: Buffer[]) {
 		let arch = cache.packSqliteBufferArchive(files);
-		return this.writeFile(index.major, index.minor, arch);
+		return this.writeFile(major, minor, arch);
 	}
 
 	async getCacheIndex(major: number) {
