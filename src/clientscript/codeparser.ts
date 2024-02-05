@@ -2,7 +2,7 @@ import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparse
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext, debugAst } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
 import { parse as opdecoder } from "../opdecoder";
 import { CacheFileSource } from "../cache";
@@ -157,9 +157,9 @@ function scriptContext(ctx: ParseContext) {
         return node;
     }
 
-    function makeLongConst(int1: number, int2: number, subtypestr: string) {
+    function makeLongConst(long: bigint, subtypestr: string) {
         let constop = getopinfo(namedClientScriptOps.pushconst);
-        let val: [number, number] = [int1, int2];
+        let val = longBigIntToJson(long);
         let node = new RawOpcodeNode(-1, { opcode: constop.id, imm: 1, imm_obj: val }, constop);
         node.knownStackDiff = new StackInOut(new StackList([]), new StackList(["long"]));
         node.knownStackDiff.constout = val;
@@ -294,11 +294,9 @@ function scriptContext(ctx: ParseContext) {
     function* longliteral() {
         let [match, int] = yield (/^(-?\d+)n\b/);
         let bigint = BigInt(int) & 0xffff_ffff_ffff_ffffn;
-        let upper = Number((bigint >> 32n) & 0xffff_ffffn);
-        let lower = Number(bigint & 0xffff_ffffn);
         yield whitespace;
         let subt = yield literalcast;
-        return makeLongConst(upper, lower, subt || "long");
+        return makeLongConst(bigint, subt || "long");
     }
 
     function* varname() {

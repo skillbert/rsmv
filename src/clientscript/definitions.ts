@@ -322,6 +322,22 @@ export function getOpName(id: number) {
     return knownClientScriptOpNames[id] ?? `unk${id}`;
 }
 
+export function longJsonToBigInt(tuple: [number, number]) {
+    let res = (BigInt(tuple[0] >>> 0) << 32n) | BigInt(tuple[1] >>> 0);
+    if (tuple[0] & 0x8000_0000) {
+        //subtract complement when most significant bit is set
+        res = res - 0x1_0000_0000_0000_0000n;
+    }
+    return res;
+}
+
+export function longBigIntToJson(long: bigint): [number, number] {
+    let bigint = long & 0xffff_ffff_ffff_ffffn;
+    let upper = Number((bigint >> 32n) & 0xffff_ffffn);
+    let lower = Number(bigint & 0xffff_ffffn);
+    return [upper, lower];
+}
+
 export function subtypeToTs(subt: number) {
     let resentry = Object.entries(subtypes).find(q => q[1] == subt);
     if (!resentry) { return `type_${subt}`; }

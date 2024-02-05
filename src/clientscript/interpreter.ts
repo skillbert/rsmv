@@ -1,6 +1,6 @@
 import { clientscript } from "../../generated/clientscript"
 import { ClientscriptObfuscation } from "./callibrator";
-import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, branchInstructionsInt, getOpName, getParamOps, knownClientScriptOpNames, namedClientScriptOps, typeToPrimitive } from "./definitions"
+import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, branchInstructionsInt, getOpName, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
 
 export class ClientScriptInterpreter {
@@ -8,10 +8,10 @@ export class ClientScriptInterpreter {
     switches: SwitchJumpTable[];
     index = 0;
     localints: number[];
-    locallongs: [number, number][];
+    locallongs: bigint[];
     localstrings: string[];
     intstack: number[] = [];
-    longstack: [number, number][] = [];
+    longstack: bigint[] = [];
     stringstack: string[] = [];
     calli: ClientscriptObfuscation;
     constructor(calli: ClientscriptObfuscation, script: clientscript) {
@@ -19,13 +19,13 @@ export class ClientScriptInterpreter {
         this.ops = script.opcodedata;
         this.switches = script.switches;
         this.localints = new Array(script.localintcount).fill(0);
-        this.locallongs = new Array(script.locallongcount).fill([0, 0]);
+        this.locallongs = new Array(script.locallongcount).fill(0n);
         this.localstrings = new Array(script.localstringcount).fill("");
     }
     pushStackdiff(diff: StackDiff) {
         if (diff.vararg != 0) { throw new Error("vararg not supported"); }
         for (let i = 0; i < diff.int; i++) { this.pushint(0); }
-        for (let i = 0; i < diff.long; i++) { this.pushlong([0, 0]); }
+        for (let i = 0; i < diff.long; i++) { this.pushlong(0n); }
         for (let i = 0; i < diff.string; i++) { this.pushstring(""); }
     }
     popStackdiff(diff: StackDiff) {
@@ -38,6 +38,11 @@ export class ClientScriptInterpreter {
     popdeep(depth: number) {
         if (this.intstack.length < depth) { throw new Error(`tried to pop int while none are on stack at index ${this.index - 1}`); }
         return this.intstack.splice(this.intstack.length - 1 - depth, 1)[0];
+    }
+    //shorthand for unordered stack access in implementation
+    popdeeplong(depth: number) {
+        if (this.longstack.length < depth) { throw new Error(`tried to pop long while none are on stack at index ${this.index - 1}`); }
+        return this.longstack.splice(this.longstack.length - 1 - depth, 1)[0];
     }
     //shorthand for unordered stack access in implementation
     popdeepstr(depth: number) {
@@ -57,7 +62,7 @@ export class ClientScriptInterpreter {
         return this.stringstack.pop()!;
     }
     pushint(v: number) { this.intstack.push(v); }
-    pushlong(v: [number, number]) { this.longstack.push(v); }
+    pushlong(v: bigint) { this.longstack.push(v); }
     pushstring(v: string) { this.stringstack.push(v); }
     next() {
         if (this.index < 0 || this.index >= this.ops.length) {
@@ -94,11 +99,11 @@ export class ClientScriptInterpreter {
         let res = "";
         res += "locals:\n";
         res += `${this.localints.join(",")}\n`;
-        res += `${this.locallongs.map(q => BigInt(q[1] >> 0) * 0x1_00000000_00000000n + BigInt(q[0])).join(",")}\n`;
+        res += `${this.locallongs.join(",")}\n`;
         res += `${this.localstrings.map(q => `"${q}"`).join(",")}\n`;
         res += "stack:\n";
         res += `${this.intstack.join(",")}\n`;
-        res += `${this.longstack.map(q => BigInt(q[1] >> 0) * 0x1_00000000_00000000n + BigInt(q[0])).join(",")}\n`;
+        res += `${this.longstack.join(",")}\n`;
         res += `${this.stringstack.map(q => `"${q}"`).join(",")}\n`;
         for (let i = 0; i < 10; i++) {
             let index = this.index + i;
@@ -148,7 +153,7 @@ function getParamOp(inter: ClientScriptInterpreter, op: ClientScriptOp) {
         let target = (op.opcode == namedClientScriptOps.cc_getparam ? 0 : inter.popint());
         let outprim = typeToPrimitive(outtype);
         if (outprim == "int") { inter.pushint(0); }
-        if (outprim == "long") { inter.pushlong([0, 0]); }
+        if (outprim == "long") { inter.pushlong(0n); }
         if (outprim == "string") { inter.pushstring(""); }
     }
 }
@@ -165,7 +170,7 @@ implementedops.set(namedClientScriptOps.enum_getvalue, inter => {
 
     let outprim = typeToPrimitive(outtype);
     if (outprim == "int") { inter.pushint(0); }
-    if (outprim == "long") { inter.pushlong([0, 0]); }
+    if (outprim == "long") { inter.pushlong(0n); }
     if (outprim == "string") { inter.pushstring(""); }
 });
 
@@ -190,6 +195,7 @@ implementedops.set(namedClientScriptOps.joinstring, (inter, op) => {
 implementedops.set(namedClientScriptOps.gosub, (inter, op) => {
     let func = inter.calli.scriptargs.get(op.imm);
     if (!func) { throw new Error(`calling unknown clientscript ${op.imm}`); }
+    console.log(`CS2 - calling sub ${op.imm}`);
     inter.popStackdiff(func.stack.in.toStackDiff());
     inter.pushStackdiff(func.stack.out.toStackDiff());
 });
@@ -200,7 +206,7 @@ implementedops.set(namedClientScriptOps.pushconst, (inter, op) => {
         inter.pushint(op.imm_obj)
     } else if (op.imm == 1) {
         if (!Array.isArray(op.imm_obj) || op.imm_obj.length != 2 || typeof op.imm_obj[0] != "number" || typeof op.imm_obj[1] != "number") { throw new Error("expected imm_obj to be [number,number] in pushconst long"); }
-        inter.pushlong(op.imm_obj);
+        inter.pushlong(longJsonToBigInt(op.imm_obj));
     } else if (op.imm == 2) {
         if (typeof op.imm_obj != "string") { throw new Error("expected imm_obj to be string in pushconst string"); }
         inter.pushstring(op.imm_obj);
@@ -278,5 +284,9 @@ namedimplementations.set("MULTIPLY", inter => inter.pushint(Math.imul(inter.popd
 namedimplementations.set("AND", inter => inter.pushint(inter.popint() & inter.popint()));
 namedimplementations.set("OR", inter => inter.pushint(inter.popint() | inter.popint()));
 namedimplementations.set("LOWERCASE", inter => inter.pushstring(inter.popstring().toLowerCase()));
-namedimplementations.set("LONG_UNPACK", inter => { let long = inter.poplong(); inter.pushint(long[0] >> 0); inter.pushint(long[1] >> 0); });
+namedimplementations.set("LONG_UNPACK", inter => { let long = longBigIntToJson(inter.poplong()); inter.pushint(long[0] >> 0); inter.pushint(long[1] >> 0); });
 namedimplementations.set("MES_TYPED", inter => console.log(`CS2: ${inter.popint()} ${inter.popint()} ${inter.popstring()}`));
+namedimplementations.set("LONG_ADD", inter => inter.pushlong(inter.popdeeplong(1) + inter.popdeeplong(0)));
+namedimplementations.set("LONG_SUB", inter => inter.pushlong(inter.popdeeplong(1) - inter.popdeeplong(0)));
+namedimplementations.set("TOSTRING_LONG", inter => inter.pushstring(inter.poplong().toString()));
+namedimplementations.set("INT_TO_LONG", inter => inter.pushlong(BigInt(inter.popint())));

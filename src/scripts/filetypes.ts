@@ -80,6 +80,7 @@ async function filerange(source: CacheFileSource, startindex: FileId, endindex: 
 
 const throwOnNonSimple = {
 	prepareDump() { },
+	prepareWrite() { },
 	write(b) { throw new Error("write not supported"); },
 	combineSubs(b: Buffer[]) { throw new Error("not supported"); }
 }
@@ -269,7 +270,7 @@ function rootindexfileIndex(): DecodeLookup {
 	}
 }
 
-function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump?: ((source: CacheFileSource) => Promise<void> | void) | null): DecodeModeFactory {
+function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump?: ((source: CacheFileSource) => Promise<void> | void) | null, prepareParser?: ((source: CacheFileSource) => Promise<void> | void) | null): DecodeModeFactory {
 	let constr: DecodeModeFactory = (args: Record<string, string>) => {
 		let singleschemaurl = "";
 		let batchschemaurl = "";
@@ -278,6 +279,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 			ext: "json",
 			parser: parser,
 			async prepareDump(output, source) {
+				await prepareParser?.(source);
 				await prepareDump?.(source);
 				let name = Object.entries(cacheFileDecodeModes).find(q => q[1] == constr);
 				if (!name) { throw new Error(); }
@@ -299,6 +301,9 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 					singleschemaurl = relurl;
 				}
 			},
+			prepareWrite(output, source) {
+				return prepareParser?.(source);
+			},
 			read(b, id, source) {
 				let obj = parser.read(b, source, { keepbuffers: args.keepbuffers });
 
@@ -309,8 +314,8 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 				}
 				return prettyJson(obj);
 			},
-			write(b) {
-				return parser.write(JSON.parse(b.toString("utf8")));
+			write(b, id, source) {
+				return parser.write(JSON.parse(b.toString("utf8")), source.getDecodeArgs());
 			},
 			combineSubs(b) {
 				return `{"$schema":"${batchschemaurl}","files":[\n\n${b.join("\n,\n\n")}]}`;
@@ -339,6 +344,7 @@ export type DecodeMode<T = Buffer | string> = {
 	parser?: FileParser<any>,
 	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource): T | Promise<T>,
 	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
+	prepareWrite(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
 	write(file: Buffer, fileid: LogicalIndex, source: CacheFileSource): Buffer | Promise<Buffer>,
 	combineSubs(files: T[]): T
 } & DecodeLookup;
@@ -348,6 +354,7 @@ const decodeBinary: DecodeModeFactory = () => {
 		...anyFileIndex(),
 		ext: "bin",
 		prepareDump() { },
+		prepareWrite() { },
 		read(b) { return b; },
 		write(b) { return b; },
 		combineSubs(b: Buffer[]) { return Buffer.concat(b); }
@@ -523,6 +530,7 @@ const decodeTexture = (major: number): DecodeModeFactory => () => {
 		ext: "png",
 		...noArchiveIndex(major),
 		prepareDump() { },
+		prepareWrite() { },
 		read(b, id) {
 			let p = new ParsedTexture(b, false, true);
 			return p.toImageData().then(q => pixelsToImageFile(q, "png", 1));
@@ -572,6 +580,7 @@ const decodeMeshHash: DecodeModeFactory = () => {
 export type JsonBasedFile = {
 	parser: FileParser<any>,
 	lookup: DecodeLookup,
+	prepareParser?: (source: CacheFileSource) => Promise<void> | void,
 	prepareDump?: (source: CacheFileSource) => Promise<void> | void
 }
 
@@ -627,7 +636,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	test: { parser: FileParser.fromJson(`["struct",\n  \n]`), lookup: anyFileIndex() },
 
-	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareDump: source => { prepareClientScript(source); } },
+	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareParser: source => { prepareClientScript(source); } },
 });
 
 const npcmodels: DecodeModeFactory = function () {
@@ -635,6 +644,7 @@ const npcmodels: DecodeModeFactory = function () {
 		...chunkedIndex(cacheMajors.npcs),
 		ext: "json",
 		prepareDump(output) { },
+		prepareWrite() { },
 		read(b, id, source) {
 			let obj = parse.npc.read(b, source);
 			return prettyJson({
@@ -684,5 +694,5 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 
 
 	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
-		.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+		.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump, v.prepareParser)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 } as const);

@@ -321,4 +321,8 @@
 
 .cs2-value {
 	margin-right: 0.5em;
+	max-width: 14em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

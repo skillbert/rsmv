@@ -2,7 +2,7 @@ import { boundMethod } from "autobind-decorator";
 import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
-import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
+import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
 
 /**
  * known compiler differences
@@ -306,13 +306,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         if (typeof node.op.imm_obj == "string") {
             return `"${escapeStringLiteral(node.op.imm_obj, "double")}"${gettypecast("string")}`;
         } else if (Array.isArray(node.op.imm_obj)) {
-            //build our bigint as unsigned
-            let int = (BigInt(node.op.imm_obj[0] as number) << 32n) | BigInt(node.op.imm_obj[1] as number);
-            if ((node.op.imm_obj[0] as number) & 0x8000_0000) {
-                //subtract complement when most significant bit is set
-                int = int - 0x1_0000_0000_0000_0000n;
-            }
-            return `${int}n${gettypecast("long")}`;
+            return `${longJsonToBigInt(node.op.imm_obj)}n${gettypecast("long")}`;
         } else if (typeof node.op.imm_obj == "number") {
             if (exacttype == subtypes.component) {
                 return `comp(${node.op.imm_obj >> 16}, ${node.op.imm_obj & 0xffff})`;

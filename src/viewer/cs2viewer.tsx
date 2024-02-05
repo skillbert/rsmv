@@ -74,7 +74,7 @@ function LongValue(p: ValueSlot) {
     let val = (p.type == "stack" ? p.inter.longstack[p.index] : p.inter.locallongs[p.index]);
     return (
         <div className="cs2-value">
-            long{p.index} = {val.join(":")}
+            long{p.index} = {val.toString()}
         </div>
     )
 }

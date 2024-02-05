@@ -131,11 +131,12 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	let cachedmodes: Record<string, DecodeMode> = {};
 	let incompletearchs: Map<number, Map<number, { fetchsiblings: boolean, files: { subid: number, file: Buffer }[] }>> = new Map();
 
-	let getmode = (str: string) => {
+	let getmode = async (str: string) => {
 		let mode = cachedmodes[str]
 		if (!mode) {
 			mode = cacheFileDecodeModes[str as keyof typeof cacheFileDecodeModes]({});
 			cachedmodes[str] = mode;
+			await mode.prepareWrite(diffdir, source);
 		}
 		return mode;
 	}
@@ -150,7 +151,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		let singlematch = file.match(/^(\w+)-([\d_]+)\.(\w+)$/);
 		if (singlematch) {
 			let logicalid = singlematch[2].split(/_/g).map(q => +q);
-			let mode = getmode(singlematch[1]);
+			let mode = await getmode(singlematch[1]);
 
 			let archid = mode.logicalToFile(source, logicalid);
 			let arch = getarch(archid.major, archid.minor, mode);

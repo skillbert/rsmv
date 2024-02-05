@@ -78,7 +78,7 @@ intrinsics.set("opnametoid", {
         ctx.declareLabel(endlabel);
 
         for (let [id, opinfo] of ctx.calli.decodedMappings) {
-            let name = getOpName(id);
+            let name = getOpName(id).toLowerCase();
             //strcomp(opname,string0)==0
             body.push(makeop(namedClientScriptOps.pushconst, 2, name));
             body.push(makeop(namedClientScriptOps.pushlocalstring, tmplocaloffset + 0));
@@ -92,10 +92,14 @@ intrinsics.set("opnametoid", {
             body.push(makejump(endlabel));
         }
         //push default -1 if nothing matched
+        body.push(makeop(namedClientScriptOps.pushconst, 2, "no opcode id found for : "));
+        body.push(makeop(namedClientScriptOps.pushlocalstring, tmplocaloffset + 0));
+        body.push(makeop(namedClientScriptOps.joinstring, 2));
+        body.push(makeop(namedClientScriptOps.printmessage));
         body.push(makeop(namedClientScriptOps.pushconst, 0, -1));
         body.push(endlabel);
         //subreturn
-        body.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + 0));
+        body.push(makeop(namedClientScriptOps.pushlocalint, tmplocaloffset + 0));
         body.push(ctx.makeReturnOp());
         return body;
     }
@@ -126,7 +130,7 @@ intrinsics.set("call", {
         for (let id of ctx.calli.scriptargs.keys()) { maxscriptid = Math.max(maxscriptid, id); }
         maxscriptid = maxscriptid - (maxscriptid % 1000) + 2000;
         for (let id = 0; id < maxscriptid; id++) {
-            // for (let id of [19500, 19501, 19502, 19503]) {
+        // for (let id of [19500, 19501, 19502, 19503, 19504, 19505, 19506, 19507, 39]) {
             jumptable.push({ value: id, jump: body.length - jumpstart });
             body.push(makeop(namedClientScriptOps.gosub, id));
             // body.push(makeop(namedClientScriptOps.pushconst, 2, `calling ${id}`));
