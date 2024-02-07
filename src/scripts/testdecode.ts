@@ -253,11 +253,11 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 	let success = false;
 	let res: any = null;
 	let state: DecodeState = {
+		isWrite: false,
 		buffer: buffer,
 		stack: [],
 		hiddenstack: [],
 		scan: 0,
-		startoffset: 0,
 		endoffset: buffer.byteLength,
 		args: {
 			...source.getDecodeArgs(),

@@ -32,22 +32,18 @@ export function getDebug(trigger: boolean) {
 	return ret;
 }
 
-export type DecodeState = {
+type SharedEncoderState = {
+	isWrite: boolean,
 	stack: object[],
 	hiddenstack: object[],
 	scan: number,
 	endoffset: number,
-	startoffset: number,
 	buffer: Buffer,
 	args: Record<string, unknown>
 }
 
-export type EncodeState = {
-	scan: number,
-	endoffset: number,
-	buffer: Buffer,
-	args: Record<string, unknown>
-}
+export type DecodeState = SharedEncoderState & { isWrite: false };
+export type EncodeState = SharedEncoderState & { isWrite: true };
 
 export type ResolvedReference = {
 	stackdepth: number,
@@ -58,7 +54,8 @@ export type ChunkParser = {
 	read(state: DecodeState): any,
 	write(state: EncodeState, v: unknown): void,
 	getTypescriptType(indent: string): string,
-	getJsonSchema(): jsonschema.JSONSchema6Definition
+	getJsonSchema(): jsonschema.JSONSchema6Definition,
+	readConst?(state: SharedEncoderState): any
 }
 
 type ChunkParentCallback = (prop: string, childresolve: ResolvedReference) => ResolvedReference;
@@ -139,7 +136,9 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			return r;
 		},
 		write(state, value) {
-			if (typeof value != "object") { throw new Error("oject expected") }
+			if (typeof value != "object" || !value) { throw new Error("oject expected") }
+			state.stack.push(value);
+			state.hiddenstack.push({});
 			for (let key in value) {
 				if (key.startsWith("$")) { continue; }
 				let opt = opts[key];
@@ -150,6 +149,8 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			if (!hasexplicitnull) {
 				opcodetype.write(state, 0);
 			}
+			state.stack.pop();
+			state.hiddenstack.pop();
 		},
 		getTypescriptType(indent) {
 			let r = "{\n";
@@ -273,11 +274,12 @@ function refgetter(refparent: ChunkParentCallback | null, propname: string, reso
 	let depth = final.stackdepth;
 	let hidden = propname.startsWith("$");
 	return {
-		read(state: DecodeState) {
+		read(state: SharedEncoderState) {
 			let stack = (hidden ? state.hiddenstack : state.stack);
 			return stack[stack.length - depth][propname];
 		},
-		write(state: DecodeState, newvalue: number) {
+		write(state: SharedEncoderState, newvalue: number) {
+			if (state.isWrite && !hidden) { throw new Error(`can update ref values in write mode when they are hidden (prefixed with $) in ${propname}`); }
 			let stack = (hidden ? state.hiddenstack : state.stack);
 			stack[stack.length - depth][propname] = newvalue;
 		}
@@ -310,20 +312,30 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 		},
 		write(state, value) {
 			if (typeof value != "object" || !value) { throw new Error("object expected"); }
+			let hiddenvalue = {};
+			state.stack.push(value);
+			state.hiddenstack.push(hiddenvalue);
 			for (let key of keys) {
 				let propvalue = value[key as string];
-				if (propvalue == null) {
-					let refarray = refs[key];
-					propvalue ??= 0;
-					if (refarray) {
+				let prop = props[key];
+
+				if (key.startsWith("$")) {
+					if (prop.readConst != undefined) {
+						propvalue = prop.readConst(state);
+					} else {
+						let refarray = refs[key];
+						if (!refarray) { throw new Error("cannot write hidden values if they are not constant or not referenced"); }
+						propvalue ??= 0;
 						for (let ref of refarray) {
 							propvalue = ref.resolve(value, propvalue);
 						}
 					}
+					hiddenvalue[key] = propvalue;
 				}
-				let prop = props[key];
 				prop.write(state, propvalue);
 			}
+			state.stack.pop();
+			state.hiddenstack.pop();
 		},
 		getTypescriptType(indent) {
 			let r = "{\n";
@@ -379,7 +391,7 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 function optParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
-			let matchindex = condchecker.read(state);
+			let matchindex = condchecker.match(state);
 			if (matchindex == -1) { return null; }
 			return type.read(state);
 		},
@@ -496,8 +508,41 @@ function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typede
 			}
 			return r;
 		},
-		write(buf, v) {
-			throw new Error("not implemented");
+		write(state, v) {
+			if (!Array.isArray(v)) { throw new Error("array expected"); }
+			lengthtype.write(state, v.length);
+
+			let hiddenprops: object[] = [];
+			for (let chunkindex = 0; chunkindex < chunktypes.length; chunkindex++) {
+				let proptype = chunktypes[chunkindex];
+				for (let i = 0; i < v.length; i++) {
+					let entry = v[i];
+					let hiddenvalue = (chunkindex == 0 ? (hiddenprops[i] = {}) : hiddenprops[i]);
+					state.stack.push(entry);
+					state.hiddenstack.push(hiddenvalue);
+					if (typeof entry != "object" || !entry) { throw new Error("object expected"); }
+					for (let key in proptype) {
+						let prop = proptype[key];
+						let propvalue = entry[key];
+						if (key.startsWith("$")) {
+							if (prop.readConst != undefined) {
+								propvalue = prop.readConst(state);
+							} else {
+								let refarray = refs[key];
+								if (!refarray) { throw new Error("cannot write hidden values if they are not constant or not referenced"); }
+								propvalue ??= 0;
+								for (let ref of refarray) {
+									propvalue = ref.resolve(entry, propvalue);
+								}
+							}
+							hiddenvalue[key] = propvalue;
+						}
+						prop.write(state, propvalue);
+					}
+					state.stack.pop();
+					state.hiddenstack.pop();
+				}
+			}
 		},
 		getTypescriptType(indent) {
 			let r = "{\n";
@@ -725,11 +770,15 @@ function arrayNullTerminatedParser(args: unknown[], parent: ChunkParentCallback,
 		write(state, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			//TODO probably very wrong
+			state.stack.push(value);
+			state.hiddenstack.push({});
 			for (let prop of value) {
 				lengthtype.write(state, 1);
 				subtype.write(state, prop);
 			}
 			lengthtype.write(state, 0);
+			state.stack.pop();
+			state.hiddenstack.pop();
 		},
 		getTypescriptType(indent) {
 			return `${subtype.getTypescriptType(indent)}[]`;
@@ -771,8 +820,11 @@ function literalValueParser(constvalue: unknown) {
 	if (typeof constvalue != "number" && typeof constvalue != "string" && typeof constvalue != "boolean" && constvalue != null) {
 		throw new Error("only bool, number, string or null literals allowed");
 	}
-	return {
+	let r: ChunkParser = {
 		read(state) {
+			return constvalue;
+		},
+		readConst() {
 			return constvalue;
 		},
 		write(state, value) {
@@ -786,16 +838,19 @@ function literalValueParser(constvalue: unknown) {
 			return { const: constvalue }
 		}
 	}
+	return r;
 }
 function referenceValueParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
+	let read = (state: SharedEncoderState) => {
+		let value = ref.read(state);
+		if (minbit != -1) {
+			value = (value >> minbit) & ~((~0) << bitlength);
+		}
+		return value + offset;
+	}
 	let r: ChunkParser = {
-		read(state) {
-			let value = ref.read(state);
-			if (minbit != -1) {
-				value = (value >> minbit) & ~((~0) << bitlength);
-			}
-			return value + offset;
-		},
+		read,
+		readConst: read,
 		write(state, value) {
 			//noop, the referenced value does the writing and will get its value from this prop through refgetter
 		},
@@ -855,7 +910,7 @@ function bytesRemainingParser(): ChunkParser {
 	}
 }
 
-function intAccumlatorParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
+function intAccumolatorParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
 			//TODO fix the context situation
@@ -872,9 +927,23 @@ function intAccumlatorParser(args: unknown[], parent: ChunkParentCallback, typed
 			ref.write(state, newvalue);
 			return (mode == "postadd" ? refvalue : newvalue);
 		},
-		write(state, value) {
-			//need to make the struct writer grab its value from here for invisible props
-			throw new Error("write for accumolator not implemented");
+		write(state, v) {
+			if (typeof v != "number") { throw new Error("number expected"); }
+
+			let refvalue = ref.read(state) ?? 0;
+
+			let increment: number;
+			if (mode == "add" || mode == "add-1") {
+				increment = v - refvalue + (mode == "add-1" ? 1 : 0);
+			} else if (mode == "hold") {
+				throw new Error("writing accum intaccum hold not implemented");
+			} else if (mode == "postadd") {
+				throw new Error("writing accum intaccum postadd not implemented");
+			} else {
+				throw new Error("unknown accumolator mode");
+			}
+			value.write(state, increment);
+			ref.write(state, v);
 		},
 		getTypescriptType() {
 			return "number";
@@ -884,19 +953,14 @@ function intAccumlatorParser(args: unknown[], parent: ChunkParentCallback, typed
 		}
 	}
 
-	const resolveReference: ChunkParentCallback = function (name, child) {
-		//TODO can't just use parent here?
-		return buildReference(name, parent, { stackdepth: child.stackdepth, resolve: child.resolve });
-	}
-
 	if (args.length < 2) throw new Error(`2 arguments exptected for proprety with type accum`);
 	let refname = args[0];
-	let value = buildParser(resolveReference, args[1], typedef);
+	let value = buildParser(parent, args[1], typedef);
 	let mode = args[2] ?? "add";
 	if (typeof refname != "string") { throw new Error("ref name should be a string"); }
 
 	let ref = refgetter(parent, refname, (v, old) => {
-		throw new Error("write for accumolator not implemented");
+		return old;
 	});
 
 	return r;
@@ -1011,7 +1075,7 @@ function conditionParser(parent: ChunkParentCallback, optionstrings: string[], w
 		options.push(conds);
 	}
 
-	let read = (state: DecodeState) => {
+	let match = (state: SharedEncoderState) => {
 		let vars = varmap.map(q => q.parser.read(state));
 
 		for (let optindex = 0; optindex < options.length; optindex++) {
@@ -1043,7 +1107,7 @@ function conditionParser(parent: ChunkParentCallback, optionstrings: string[], w
 	}
 
 
-	return { read };
+	return { match };
 }
 
 
@@ -1116,25 +1180,39 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				state.hiddenstack.push(opcodeprop);
 				let value = (opvalueparser ? opvalueparser.read(state) : 0);
 				opcodeprop.$opcode = value;
-				let opindex = conditionparser.read(state);
+				let opindex = conditionparser.match(state);
 				if (opindex == -1) {
 					throw new Error("no opcode matched");
 				}
 				let res = optionvalues[opindex].read(state);
 
 				state.stack.pop();
-				state.hiddenstack.pop(); return res;
+				state.hiddenstack.pop();
+				return res;
 			},
 			write(state, v) {
-				//no way to retrieve the opcode, so this only works for refs/constants
-				opvalueparser?.write(state, null);
+				let opcodeprop = { $opcode: 0 };
+				state.stack.push({});
+				state.hiddenstack.push(opcodeprop);
+
+				if (opvalueparser) {
+					//supporting this would require finding out the type from v
+					if (!opvalueparser.readConst) { throw new Error("non-const or non-reference match value not implemented in write mode"); }
+					opcodeprop.$opcode = opvalueparser.readConst(state);
+				}
+				let opindex = conditionparser.match(state);
+				if (opindex == -1) { throw new Error("no opcode matched"); }
+				optionvalues[opindex].write(state, v);
+
+				state.stack.pop();
+				state.hiddenstack.pop();
 			},
 			getTypescriptType(indent) {
 				return "(" + optionvalues.map(opt => opt.getTypescriptType(indent + "\t")).join("|") + ")";
 			},
 			getJsonSchema() {
 				return { oneOf: optionvalues.map(opt => opt.getJsonSchema()) };
-			},
+			}
 		}
 
 		const resolveReference: ChunkParentCallback = function (name, child) {
@@ -1546,7 +1624,7 @@ const parserPrimitives: Record<string, ChunkParser> = {
 
 const parserFunctions = {
 	ref: referenceValueParser,
-	accum: intAccumlatorParser,
+	accum: intAccumolatorParser,
 	opt: optParser,
 	chunkedarray: chunkedArrayParser,
 	bytesleft: bytesRemainingParser,

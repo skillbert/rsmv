@@ -12,8 +12,9 @@ type CacheTable = {
 	db: sqlite3.Database | null,
 	indices: Promise<cache.CacheIndexFile>,
 	readFile: (minor: number) => Promise<{ DATA: Buffer, CRC: number }>,
+	readIndexFile: () => Promise<{ DATA: Buffer, CRC: number }>,
 	updateFile: (minor: number, data: Buffer) => Promise<void>,
-	readIndexFile: () => Promise<{ DATA: Buffer, CRC: number }>
+	updateIndexFile: (data: Buffer) => Promise<void>
 }
 
 export class GameCacheLoader extends cache.CacheFileSource {
@@ -66,15 +67,20 @@ export class GameCacheLoader extends cache.CacheFileSource {
 		if (!this.opentables.get(major)) {
 			let db: CacheTable["db"] = null;
 			let indices: CacheTable["indices"];
-			let getFile: CacheTable["readFile"];
-			let writeFile: CacheTable["updateFile"];
-			let getIndexFile: CacheTable["readIndexFile"];
+			let readFile: CacheTable["readFile"];
+			let updateFile: CacheTable["updateFile"];
+			let readIndexFile: CacheTable["readIndexFile"];
+			let updateIndexFile: CacheTable["updateIndexFile"];
 
 			if (major == cacheMajors.index) {
 				indices = this.generateRootIndex();
-				getFile = (minor) => this.openTable(minor).readIndexFile();
-				getIndexFile = () => { throw new Error("root index file not accesible for sqlite cache"); }
-				writeFile = (minor, data) => { throw new Error("writing index files not supported"); }
+				readFile = (minor) => this.openTable(minor).readIndexFile();
+				readIndexFile = () => { throw new Error("root index file not accesible for sqlite cache"); }
+				updateFile = (minor, data) => {
+					let table = this.openTable(minor);
+					return table.updateIndexFile(data);
+				}
+				updateIndexFile = (data) => { throw new Error("cannot write root index"); }
 			} else {
 				let dbfile = path.resolve(this.cachedir, `js5-${major}.jcache`);
 				//need separate throw here since sqlite just crashes instead of throwing
@@ -99,15 +105,16 @@ export class GameCacheLoader extends cache.CacheFileSource {
 						})
 					})
 				}
-				writeFile = (minor, data) => dbrun(`UPDATE cache SET DATA=? WHERE KEY=?`, [data, minor]);
-				getFile = (minor) => dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
-				getIndexFile = () => dbget(`SELECT DATA FROM cache_index`, []);
-				indices = getIndexFile().then(async row => {
+				readFile = (minor) => dbget(`SELECT DATA,CRC FROM cache WHERE KEY=?`, [minor]);
+				readIndexFile = () => dbget(`SELECT DATA FROM cache_index`, []);
+				updateFile = (minor, data) => dbrun(`UPDATE cache SET DATA=? WHERE KEY=?`, [data, minor]);
+				updateIndexFile = (data) => dbrun(`UPDATE cache_index SET DATA=?`, [data]);
+				indices = readIndexFile().then(async row => {
 					let file = decompress(Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength));
 					return cache.indexBufferToObject(major, file, this);
 				});
 			}
-			this.opentables.set(major, { db, readFile: getFile, updateFile: writeFile, readIndexFile: getIndexFile, indices });
+			this.opentables.set(major, { db, readFile, updateFile, readIndexFile, updateIndexFile, indices });
 		}
 		return this.opentables.get(major)!;
 	}

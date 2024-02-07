@@ -48,11 +48,11 @@ export class FileParser<T> {
 
 	read(buffer: Buffer, source: CacheFileSource, args?: Record<string, any>) {
 		let state: opcode_reader.DecodeState = {
+			isWrite: false,
 			buffer,
 			stack: [],
 			hiddenstack: [],
 			scan: 0,
-			startoffset: 0,
 			endoffset: buffer.byteLength,
 			args: {
 				...source.getDecodeArgs(),
@@ -64,6 +64,9 @@ export class FileParser<T> {
 
 	write(obj: T, args?: Record<string, any>) {
 		let state: opcode_reader.EncodeState = {
+			isWrite: true,
+			stack: [],
+			hiddenstack: [],
 			buffer: scratchbuf,
 			scan: 0,
 			endoffset: scratchbuf.byteLength,
