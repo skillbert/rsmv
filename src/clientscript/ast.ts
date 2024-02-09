@@ -912,6 +912,7 @@ export class ClientScriptFunction extends AstNode {
     argtype: StackList;
     scriptname: string;
     localCounts: StackDiff;
+    isRawStack = false;
     constructor(scriptname: string, argtype: StackList, returntype: StackList, localCounts: StackDiff) {
         super(0);
         this.scriptname = scriptname;
@@ -1233,13 +1234,21 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     let subcalltargets: { index: number, name: string, in: StackList, out: StackList }[] = [];
     let headerend = 0;
 
+    let currentindex = 0;
+    // if (ops.length >= currentindex + 2 && ops[currentindex].opcode == namedClientScriptOps.pushconst && ops[currentindex + 1].opcode == namedClientScriptOps.popdiscardstring) {
+    //     let metadata = ops[currentindex].imm_obj;
+    //     if (typeof metadata != "string") { throw new Error("unexpected"); }
+    //     currentindex += 2;
+    //     let match = metadata.match(/asd/);
+    // }
     //jump at index 0 means there is a header section
-    if (ops[0].opcode == namedClientScriptOps.jump) {
-        headerend = 0 + ops[0].imm + 1;
+    if (ops[currentindex].opcode == namedClientScriptOps.jump) {
+        headerend = currentindex + ops[currentindex].imm + 1;
+        currentindex++;
         let namecounter = 0;
         let parseQueue: Parameters<typeof parseSlice>[] = [];
-        for (let i = 1; i < headerend;) {
-            let op = ops[i];
+        while (currentindex < headerend) {
+            let op = ops[currentindex];
             if (op.opcode != namedClientScriptOps.pushconst || op.imm != 2 || typeof op.imm_obj != "string") {
                 throw new Error("no header label text literal");
             }
@@ -1251,33 +1260,35 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             let body = parseInt(values.body);
             let foot = parseInt(values.foot);
             let entry = parseInt(values.entry);
+            let israwstack = values.rawstack == "true";
             let args = (values.in?.match(/^\d+,\d+,\d+$/) ? new StackDiff(...values.in.split(",").map(q => parseInt(q))) : new StackDiff());
             let returns = (values.out?.match(/^\d+,\d+,\d+$/) ? new StackDiff(...values.out.split(",").map(q => parseInt(q))) : new StackDiff());
             if (values.type == "returnjumps") {
                 //noop, existance is implied
             } else if (values.type == "subfunc") {
                 if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
-                let returntype = getReturnType(calli, ops, i + foot);
+                let returntype = getReturnType(calli, ops, currentindex + foot);
                 if (!returns.equals(returntype.getStackdiff())) { throw new Error("detected subfunc return type not the same as declared return type"); }
                 let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
-                subfunc.originalindex = i + entry;
+                subfunc.isRawStack = israwstack;
+                subfunc.originalindex = currentindex + entry;
                 subcalltargets.push({ name: subfunc.scriptname, index: subfunc.originalindex, in: subfunc.argtype, out: subfunc.returntype });
-                parseQueue.push([i + body, i + foot, subfunc]);
+                parseQueue.push([currentindex + body, currentindex + foot, subfunc]);
                 //set the function body as empty code block with the actual body as successor, needed for control flow later on
-                let entrynode = new CodeBlockNode(scriptid, i + entry);
-                entrynode.addSuccessor(getorMakeSection(i + body));
+                let entrynode = new CodeBlockNode(scriptid, currentindex + entry);
+                entrynode.addSuccessor(getorMakeSection(currentindex + body));
                 subfunc.push(entrynode);
             } else if (values.type == "intrinsic") {
                 let name = values.name;
                 if (typeof name != "string") { throw new Error("intrinsic name not set"); }
                 let intrinsic = intrinsics.get(name);
                 if (!intrinsic) { throw new Error(`intrinsic ${name} was references in bytecode, but does not exists in the version of rsmv`); }
-                subcalltargets.push({ name, index: i + entry, in: intrinsic.in, out: intrinsic.out });
+                subcalltargets.push({ name, index: currentindex + entry, in: intrinsic.in, out: intrinsic.out });
             } else {
                 console.log(`unknown header type "${values.type}"`);
             }
             if (isNaN(end)) { throw new Error("invalid subfunc header"); }
-            i += end;
+            currentindex += end;
         }
 
         parseQueue.forEach(q => parseSlice(...q));

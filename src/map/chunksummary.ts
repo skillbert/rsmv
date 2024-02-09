@@ -3,10 +3,11 @@ import { objects } from "../../generated/objects";
 import { ChunkData, MapRect, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
 import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBuilder } from "../3d/modelutils";
-import { crc32addInt, DependencyGraph } from "../scripts/dependencies";
+import { DependencyGraph } from "../scripts/dependencies";
 import { KnownMapFile, MapRender } from "./backends";
 import { CacheFileSource } from "../cache";
 import { RenderedMapMeta } from ".";
+import { crc32addInt } from "../libs/crc32util";
 
 export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
 	let sum = new Vector3();
@@ -193,7 +194,7 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 					v1.max(v2);
 				}
 			}
-			
+
 			//8 vertices, one for each bounding box corner
 			boxAttribute.setXYZ(0, v0.x, v0.y, v0.z);
 			boxAttribute.setXYZ(1, v0.x, v0.y, v1.z);
@@ -203,7 +204,7 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 			boxAttribute.setXYZ(5, v1.x, v0.y, v1.z);
 			boxAttribute.setXYZ(6, v1.x, v1.y, v0.z);
 			boxAttribute.setXYZ(7, v1.x, v1.y, v1.z);
-			
+
 			let first = loc[0];
 			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, rect.x * tiledimensions * rs2ChunkSize, rect.z * tiledimensions * rs2ChunkSize);
 			// trans.newpos.applyMatrix4(trans.matrix);

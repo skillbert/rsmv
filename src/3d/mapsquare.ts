@@ -17,11 +17,11 @@ import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUt
 import { legacyMajors } from "../cache/legacycache";
 import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
 import { MeshBuilder, topdown2dWallModels } from "./modelutils";
-import { crc32addInt } from "../scripts/dependencies";
 import { CacheFileSource } from "../cache";
 import { CanvasImage } from "../imgutils";
 import { minimapFloorMaterial, minimapWaterMaterial } from "../rs3shaders";
 import { mapsquare_tiles_nxt } from "../../generated/mapsquare_tiles_nxt";
+import { crc32addInt } from "../libs/crc32util";
 
 
 export const tiledimensions = 512;

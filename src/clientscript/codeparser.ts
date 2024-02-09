@@ -285,10 +285,10 @@ function scriptContext(ctx: ParseContext) {
     }
 
     function* intliteral() {
-        let [digits] = yield (/^(-|0x)?\d+\b/);
+        let [digits] = yield (/^(-?\d+|0x[\da-fA-F]+)\b/);
         yield whitespace;
         let subt = yield literalcast;
-        return makeIntConst(parseInt(digits), subt || "int");
+        return makeIntConst(parseInt(digits) | 0, subt || "int");
     }
 
     function* longliteral() {
@@ -300,7 +300,7 @@ function scriptContext(ctx: ParseContext) {
     }
 
     function* varname() {
-        const [name]: [string] = yield (/^[a-zA-Z$]\w*/);
+        const [name]: [string] = yield (/^[a-zA-Z$][\w$]*/);
         if (reserverd.includes(name)) { yield unmatchable; }
         return name;
     }
@@ -738,7 +738,7 @@ function scriptContext(ctx: ParseContext) {
         yield whitespace;
         yield "function";
         yield whitespace;
-        let name = yield varname;
+        let name: string = yield varname;
         yield whitespace;
         yield "(";
         yield whitespace;
@@ -762,6 +762,7 @@ function scriptContext(ctx: ParseContext) {
             new StackList(returntypes.map(q => typeToPrimitive(tsToSubtype(q)))),
             new StackDiff()
         );
+        res.isRawStack = name.startsWith("$$");
         ctx.declareFunction(name, res);
 
         //parse the function body

@@ -265,7 +265,7 @@ export class ClientscriptObfuscation {
     opidcounter = 10000;
     source: CacheFileSource;
     dbtables = new Map<number, dbtables>();
-    varmeta: Map<number, { name: string, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
+    varmeta: Map<number, { name: string, maxid: number, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
     varbitmeta: Map<number, typeof varbitInfoParser extends FileParser<infer T> ? T : never> = new Map();
     parammeta = new Map<number, params>();
     scriptargs = new Map<number, {
@@ -356,7 +356,8 @@ export class ClientscriptObfuscation {
     async preloadData(skipcandidates: boolean) {
         let loadVars = async (subid: number) => {
             let archieve = await this.source.getArchiveById(cacheMajors.config, subid);
-            return new Map(archieve.map(q => [q.fileid, varInfoParser.read(q.buffer, this.source)]));
+            let last = archieve.at(-1)?.fileid ?? 0;
+            return { last, vars: new Map(archieve.map(q => [q.fileid, varInfoParser.read(q.buffer, this.source)])) };
         }
 
         let dbtables = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.dbtables);
@@ -364,13 +365,10 @@ export class ClientscriptObfuscation {
 
         //only tested on current 932 caches
         if (this.source.getBuildNr() > 900) {
-            this.varmeta = new Map(await Promise.all(Object.entries(variableSources).map(async q => [
-                q[1].key,
-                {
-                    name: q[0],
-                    vars: await loadVars(q[1].index)
-                }
-            ] as const)));
+            this.varmeta = new Map(await Promise.all(Object.entries(variableSources).map(async q => {
+                let vardata = await loadVars(q[1].index);
+                return [q[1].key, { name: q[0], vars: vardata.vars, maxid: vardata.last }] as const;
+            })));
 
             let varbitarchieve = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.varbits);
             this.varbitmeta = new Map(varbitarchieve.map(q => [q.fileid, varbitInfoParser.read(q.buffer, this.source)]));

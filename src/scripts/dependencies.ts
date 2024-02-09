@@ -5,7 +5,7 @@ import { parse } from "../opdecoder";
 import { archiveToFileId } from "../cache";
 import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/jmat";
-import { crc32 } from "../libs/crc32util";
+import { crc32, crc32addInt } from "../libs/crc32util";
 import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
 import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
@@ -432,9 +432,3 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 
 //TODO remove
 globalThis.getdeps = getDependencies;
-
-const staticintbuf = Buffer.alloc(4);
-export function crc32addInt(int: number, crc = 0) {
-	staticintbuf.writeUInt32BE(int >>> 0);
-	return crc32(staticintbuf, crc);
-}

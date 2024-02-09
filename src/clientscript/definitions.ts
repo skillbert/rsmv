@@ -403,13 +403,15 @@ export const popLocalOps = [
     namedClientScriptOps.poplocallong,
     namedClientScriptOps.poplocalstring
 ]
-export const pushOrPopLocalOps = [
+export const pushLocalOps = [
     namedClientScriptOps.pushlocalint,
     namedClientScriptOps.pushlocallong,
-    namedClientScriptOps.pushlocalstring,
-    namedClientScriptOps.poplocalint,
-    namedClientScriptOps.poplocallong,
-    namedClientScriptOps.poplocalstring,
+    namedClientScriptOps.pushlocalstring
+]
+export const pushOrPopLocalOps = [
+    ...popDiscardOps,
+    ...popLocalOps,
+    ...pushLocalOps
 ]
 export const branchInstructionsInt = [
     namedClientScriptOps.branch_not,

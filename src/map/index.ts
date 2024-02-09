@@ -7,7 +7,7 @@ import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { canvasToImageFile, flipImage, pixelsToImageFile } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { crc32addInt, DependencyGraph } from "../scripts/dependencies";
+import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
 import { CallbackPromise, delay, stringToFileRange, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
@@ -19,6 +19,7 @@ import { Camera, Matrix4, OrthographicCamera, Vector3 } from "three";
 import { KnownMapFile, MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";
+import { crc32addInt } from "../libs/crc32util";
 
 type RenderedMapVersionMeta = {
 	buildnr: number,

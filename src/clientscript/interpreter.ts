@@ -14,6 +14,7 @@ export class ClientScriptInterpreter {
     longstack: bigint[] = [];
     stringstack: string[] = [];
     calli: ClientscriptObfuscation;
+    mockscripts = new Map<number, (number | bigint | string)[]>();
     constructor(calli: ClientscriptObfuscation, script: clientscript) {
         this.calli = calli;
         this.ops = script.opcodedata;
@@ -194,10 +195,19 @@ implementedops.set(namedClientScriptOps.joinstring, (inter, op) => {
 
 implementedops.set(namedClientScriptOps.gosub, (inter, op) => {
     let func = inter.calli.scriptargs.get(op.imm);
+    let mockreturn = inter.mockscripts.get(op.imm);
     if (!func) { throw new Error(`calling unknown clientscript ${op.imm}`); }
-    console.log(`CS2 - calling sub ${op.imm}`);
     inter.popStackdiff(func.stack.in.toStackDiff());
-    inter.pushStackdiff(func.stack.out.toStackDiff());
+    console.log(`CS2 - calling sub ${op.imm}${mockreturn ? ` with mocked return value: ${mockreturn}` : ""}`);
+    if (mockreturn) {
+        for (let val of mockreturn) {
+            if (typeof val == "number") { inter.pushint(val); }
+            if (typeof val == "bigint") { inter.pushlong(val); }
+            if (typeof val == "string") { inter.pushstring(val); }
+        }
+    } else {
+        inter.pushStackdiff(func.stack.out.toStackDiff());
+    }
 });
 
 implementedops.set(namedClientScriptOps.pushconst, (inter, op) => {
@@ -290,3 +300,4 @@ namedimplementations.set("LONG_ADD", inter => inter.pushlong(inter.popdeeplong(1
 namedimplementations.set("LONG_SUB", inter => inter.pushlong(inter.popdeeplong(1) - inter.popdeeplong(0)));
 namedimplementations.set("TOSTRING_LONG", inter => inter.pushstring(inter.poplong().toString()));
 namedimplementations.set("INT_TO_LONG", inter => inter.pushlong(BigInt(inter.popint())));
+namedimplementations.set("OPENURLRAW", inter => console.log("CS2 OPENURLRAW:", inter.popint(), inter.popstring()));

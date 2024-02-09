@@ -1,6 +1,6 @@
 import { LayerConfig } from ".";
 import { canvasToImageFile, fileToImageData, makeImageData } from "../imgutils";
-import { crc32addInt } from "../scripts/dependencies";
+import { crc32addInt } from "../libs/crc32util";
 import { MapRender, SymlinkCommand, UniqueMapFile } from "./backends";
 import { ProgressUI } from "./progressui";
 

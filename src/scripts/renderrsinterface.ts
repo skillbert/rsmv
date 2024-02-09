@@ -142,6 +142,7 @@ export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRend
             }
         }
         globalThis.comp = rootcomps;//TODO remove
+        globalThis.compctx = ctx;
         return { el: root, dispose: disposelist, rootcomps } as RsInterfaceElement as any;
     }
 }

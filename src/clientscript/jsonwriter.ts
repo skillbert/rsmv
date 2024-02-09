@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript";
 import { getOrInsert } from "../utils";
 import { AstNode, ClientScriptFunction } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
-import { branchInstructionsOrJump, namedClientScriptOps, StackDiff, ClientScriptOp, getOpName, makeop, pushOrPopLocalOps, makejump, SwitchJumpTable, StackList } from "./definitions";
+import { branchInstructionsOrJump, namedClientScriptOps, StackDiff, ClientScriptOp, getOpName, makeop, pushOrPopLocalOps, makejump, SwitchJumpTable, StackList, variableSources, popDiscardOps } from "./definitions";
 
 const tmplocaloffset = 0x10000;
 
@@ -105,10 +105,8 @@ intrinsics.set("opnametoid", {
     }
 });
 
-intrinsics.set("call", {
-    in: new StackList(["int"]),
-    out: new StackList(),
-    write(ctx: OpcodeWriterContext) {
+function partialCallIntrinsic(idstart: number, idend: number) {
+    return (ctx: OpcodeWriterContext) => {
         let body: ClientScriptOp[] = [];
         let jumptable: SwitchJumpTable = [];
 
@@ -126,11 +124,11 @@ intrinsics.set("call", {
         body.push(makejump(endlabel));
 
         //find last known script id and round to next 1k, with at least 1k padding
-        let maxscriptid = 0;
-        for (let id of ctx.calli.scriptargs.keys()) { maxscriptid = Math.max(maxscriptid, id); }
-        maxscriptid = maxscriptid - (maxscriptid % 1000) + 2000;
-        for (let id = 0; id < maxscriptid; id++) {
-        // for (let id of [19500, 19501, 19502, 19503, 19504, 19505, 19506, 19507, 39]) {
+        // let maxscriptid = 0;
+        // for (let id of ctx.calli.scriptargs.keys()) { maxscriptid = Math.max(maxscriptid, id); }
+        // maxscriptid = maxscriptid - (maxscriptid % 1000) + 2000;
+        for (let id = idstart; id < idend; id++) {
+            // for (let id of [19500, 19501, 19502, 19503, 19504, 19505, 19506, 19507, 39]) {
             jumptable.push({ value: id, jump: body.length - jumpstart });
             body.push(makeop(namedClientScriptOps.gosub, id));
             // body.push(makeop(namedClientScriptOps.pushconst, 2, `calling ${id}`));
@@ -150,7 +148,81 @@ intrinsics.set("call", {
 
         return body;
     }
-});
+}
+
+function partialVarIntrinsic(iswrite: boolean, dottarget: number, sectionindex: number) {
+    return (ctx: OpcodeWriterContext) => {
+        let body: ClientScriptOp[] = [];
+        let jumptable: SwitchJumpTable = [];
+
+        let keys: number[] = [];
+        function addgroup(key: number) {
+            let maxid = ctx.calli.varmeta.get(key)?.maxid ?? 0;
+            maxid = Math.ceil((maxid + 200) / 100) * 100;//add 200 and round up to next 100
+            for (let i = 0; i < maxid; i++) {
+                keys.push((key << 24) | (i << 8) | dottarget);
+            }
+        }
+        if (sectionindex == 0) {
+            addgroup(variableSources.player.key);
+        } else if (sectionindex == 1) {
+            addgroup(variableSources.client.key);
+        } else if (sectionindex == 2) {
+            for (let group of Object.values(variableSources)) {
+                if (group == variableSources.player) { continue; }
+                if (group == variableSources.client) { continue; }
+                addgroup(group.key);
+            }
+        } else {
+            throw new Error("unexpected");
+        }
+
+        //btree,returnaddr
+        ctx.tempcounts.int = Math.max(ctx.tempcounts.int, 2);
+        body.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + 1));
+
+        let jumpstart = body.length;
+        let endlabel = makeop(namedClientScriptOps.jump, 0);
+        ctx.declareLabel(endlabel);
+
+        //default case
+        body.push(makeop(namedClientScriptOps.pushconst, 2, "no var matched"));
+        body.push(makeop(namedClientScriptOps.printmessage));
+        body.push(makejump(endlabel));
+
+        for (let key of keys) {
+            jumptable.push({ value: key, jump: body.length - jumpstart });
+            body.push(makeop(iswrite ? namedClientScriptOps.popvar : namedClientScriptOps.pushvar, key));
+            body.push(makejump(endlabel));
+        }
+
+        body.push(endlabel);
+
+        //replace the switch with a btree made of ifs because the total number of switch cases in a script has to be <~8k
+        ctx.tempcounts.int = Math.max(ctx.tempcounts.int, 1);
+        body.splice(jumpstart, 0, ...jumptableToBTree(jumptable, tmplocaloffset + 0));
+
+        //subreturn
+        body.push(makeop(namedClientScriptOps.pushlocalint, tmplocaloffset + 1));
+        body.push(ctx.makeReturnOp());
+
+        return body;
+    }
+}
+
+//need to split up the call intrinsic since it takes about 100k ops in total while the max is 65k per script
+intrinsics.set("call0", { in: new StackList(["int"]), out: new StackList(), write: partialCallIntrinsic(0, 10e3) });
+intrinsics.set("call1", { in: new StackList(["int"]), out: new StackList(), write: partialCallIntrinsic(10e3, 20e3) });
+
+intrinsics.set("getvar0", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(false, 0, 0) });
+intrinsics.set("getvar1", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(false, 0, 1) });
+intrinsics.set("getvar2", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(false, 0, 2) });
+intrinsics.set("getvarother0", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(false, 1, 0) });
+intrinsics.set("getvarother1", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(false, 1, 1) });
+intrinsics.set("getvarother2", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(false, 1, 2) });
+intrinsics.set("setvar0", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(true, 0, 0) });
+intrinsics.set("setvar1", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(true, 0, 1) });
+intrinsics.set("setvar2", { in: new StackList(["int"]), out: new StackList(), write: partialVarIntrinsic(true, 0, 2) });
 
 intrinsics.set("op", {
     in: new StackList(["int"]),
@@ -194,55 +266,17 @@ intrinsics.set("op", {
     }
 });
 
-intrinsics.set("getvar", {
-    in: new StackList(["int"]),
-    out: new StackList(["int"]),
-    write(ctx: OpcodeWriterContext) {
-        const tagetid = 0;
-        let body: ClientScriptOp[] = [];
-
-        //store return addr to tmp0
-        ctx.tempcounts.int = Math.max(ctx.tempcounts.int, 1);
-        body.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + 0));
-
-        let jumptable: SwitchJumpTable = [];
-        let switchop = makeop(namedClientScriptOps.switch, 0, { type: "switchvalues", value: jumptable });
-        body.push(switchop);
-        let jumpstart = body.length;
-
-        let endlabel = makeop(namedClientScriptOps.jump, 0);
-        ctx.declareLabel(endlabel);
-
-        //default case
-        body.push(makeop(namedClientScriptOps.pushconst, 2, "no opcodes matched"));
-        body.push(makeop(namedClientScriptOps.printmessage));
-        body.push(makejump(endlabel));
-
-        for (let [groupid, group] of ctx.calli.varmeta) {
-            for (let [varid, varmeta] of group.vars) {
-                let value = (varid << 8) || (groupid << 24) | tagetid;
-                jumptable.push({ value: value, jump: body.length - jumpstart });
-                body.push({ opcode: namedClientScriptOps.popvar, imm: value, imm_obj: null });
-                body.push(makejump(endlabel));
-            }
-        }
-
-        body.push(endlabel);
-        //subreturn
-        body.push(makeop(namedClientScriptOps.pushlocalint, tmplocaloffset + 0));
-        body.push(ctx.makeReturnOp());
-        return body;
-    }
-});
-
 function jumptableToBTree(table: SwitchJumpTable, tmpintlocal: number) {
+    //number of equality comparisons per btree bucket
+    //needs to be relatively high in order to fit 20k branches in 65535 ops for the "call" intrinsic
+    const bucketsize = 16;
     table.sort((a, b) => a.value - b.value);
 
     let body: ClientScriptOp[] = [];
     body.push(makeop(namedClientScriptOps.poplocalint, tmpintlocal));
     let branch = (start: number, end: number) => {
         let len = end - start;
-        if (len < 8) {
+        if (len < bucketsize) {
             for (let i = 0; i < len; i++) {
                 let entry = table[start + i];
                 //val==case[i] --> jump to label[i]
@@ -275,6 +309,64 @@ function jumptableToBTree(table: SwitchJumpTable, tmpintlocal: number) {
     return body;
 }
 
+/**
+ * This type of subfunction allows raw access to the stack, however calls to other functions or intrinsics aren't allowed
+ */
+export function writeRawStackSubFunction(ctx: OpcodeWriterContext, subfunc: { label: ClientScriptOp, func: ClientScriptFunction }) {
+    let opdata: ClientScriptOp[] = [];
+    let intype = subfunc.func.argtype.getStackdiff();
+    let outtype = subfunc.func.returntype.getStackdiff();
+    //allocate all locals as temps
+    ctx.tempcounts.int = Math.max(ctx.tempcounts.int, subfunc.func.localCounts.int + 1, outtype.int + 1);//1 extra for the return addr
+    ctx.tempcounts.long = Math.max(ctx.tempcounts.long, subfunc.func.localCounts.long, outtype.long);
+    ctx.tempcounts.string = Math.max(ctx.tempcounts.string, subfunc.func.localCounts.string, outtype.string);
+
+    let headerindex = opdata.length;
+    let headerop = makeop(namedClientScriptOps.pushconst, 2, "");
+    opdata.push(headerop);
+    let jumptarget = opdata.length;
+    opdata.push(subfunc.label);
+    //move return address from top of int stack to last tmp+1
+    let returnaddrtemp = tmplocaloffset + subfunc.func.localCounts.int;
+    opdata.push(makeop(namedClientScriptOps.poplocalint, returnaddrtemp));
+    //move all args from stack to tmp locals
+    for (let i = intype.int - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + i)); }
+    for (let i = intype.long - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocallong, tmplocaloffset + i)); }
+    for (let i = intype.string - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalstring, tmplocaloffset + i)); }
+
+    let funcbody = subfunc.func.getOpcodes(ctx);
+    let endlabel = makeop(namedClientScriptOps.jump, 0);
+    ctx.declareLabel(endlabel);
+
+    funcbody.forEach((op, i) => {
+        //replace all return ops into ops that jump to the end label (op itself is a nop)
+        if (op.opcode == namedClientScriptOps.jump) {
+            if (typeof op.imm_obj == "object" && op.imm_obj && "type" in op.imm_obj && op.imm_obj.type == "jumplabel") {
+                throw new Error("subcalls not allowed in rawstack subfunction");
+            }
+        }
+        if (op.opcode == namedClientScriptOps.return) {
+            funcbody[i] = makejump(endlabel);
+        }
+        //replace change all local var ops to target a tmp local instead
+        if (pushOrPopLocalOps.includes(op.opcode)) {
+            funcbody[i] = { ...op, imm: tmplocaloffset + op.imm };
+        }
+    });
+    opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} body`));
+    let bodyindex = opdata.length;
+    opdata.push(...funcbody);
+    let footindex = opdata.length;
+    opdata.push(endlabel);
+    opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} footer`));
+    opdata.push(makeop(namedClientScriptOps.pushlocalint, returnaddrtemp));
+    opdata.push(ctx.makeReturnOp());
+    opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} end`));
+
+    headerop.imm_obj = `${subfunclabel("subfunc", jumptarget - headerindex, opdata.length - headerindex, intype, outtype)} body=${bodyindex - headerindex} foot=${footindex - headerindex} rawstack=true`;
+
+    return opdata;
+}
 
 export function writeSubFunction(ctx: OpcodeWriterContext, subfunc: { label: ClientScriptOp, func: ClientScriptFunction }) {
     let opdata: ClientScriptOp[] = [];
@@ -327,9 +419,9 @@ export function writeSubFunction(ctx: OpcodeWriterContext, subfunc: { label: Cli
     opdata.push(endlabel);
     opdata.push(...tracerNops(`subfunc ${subfunc.func.scriptname} footer`));
     //move all return values from stack to tmp locals
-    for (let i = 0; i < outtype.int; i++) { opdata.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + i)); }
-    for (let i = 0; i < outtype.long; i++) { opdata.push(makeop(namedClientScriptOps.poplocallong, tmplocaloffset + i)); }
-    for (let i = 0; i < outtype.string; i++) { opdata.push(makeop(namedClientScriptOps.poplocalstring, tmplocaloffset + i)); }
+    for (let i = outtype.int - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalint, tmplocaloffset + i)); }
+    for (let i = outtype.long - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocallong, tmplocaloffset + i)); }
+    for (let i = outtype.string - 1; i >= 0; i--) { opdata.push(makeop(namedClientScriptOps.poplocalstring, tmplocaloffset + i)); }
     //move the return address from stack to tmp
     opdata.push(makeop(namedClientScriptOps.poplocalint, returnaddrtemp));
     //restore all caller locals that we used (in reverse order)
@@ -353,7 +445,11 @@ export function writeSubFunction(ctx: OpcodeWriterContext, subfunc: { label: Cli
 
 function subfunclabel(type: string, entry: number, end: number, arg: StackDiff, returns: StackDiff) {
     return `type=${type} entry=${entry} end=${end} in=${arg.int},${arg.long},${arg.string} out=${returns.int},${returns.long},${returns.string}`;
+}
 
+function calcSwitchSize(switches: SwitchJumpTable[]) {
+    //1+foreach(2+sublen*(4+4))
+    return 1 + switches.reduce((a, v) => a + 2 + v.length * (4 + 4), 0);
 }
 
 export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFunction) {
@@ -391,7 +487,11 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             } else {
                 let func = ctx.subfunctions.get(funcname);
                 if (!func) { throw new Error(`func ${funcname} is not declared`); }
-                opdata.push(...writeSubFunction(ctx, func));
+                if (func.func.isRawStack) {
+                    opdata.push(...writeRawStackSubFunction(ctx, func));
+                } else {
+                    opdata.push(...writeSubFunction(ctx, func));
+                }
             }
         }
 
@@ -435,9 +535,15 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
         //reallocate tmp locals to the end of normal locals
         if (pushOrPopLocalOps.includes(op.opcode)) {
             if (op.imm & tmplocaloffset) {
-                if (op.opcode == namedClientScriptOps.pushlocalint || op.opcode == namedClientScriptOps.poplocalint) { op.imm = func.localCounts.int + (op.imm & 0xffff); }
-                if (op.opcode == namedClientScriptOps.pushlocallong || op.opcode == namedClientScriptOps.poplocallong) { op.imm = func.localCounts.long + (op.imm & 0xffff); }
-                if (op.opcode == namedClientScriptOps.pushlocalstring || op.opcode == namedClientScriptOps.poplocalstring) { op.imm = func.localCounts.string + (op.imm & 0xffff); }
+                if (op.opcode == namedClientScriptOps.pushlocalint || op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.popdiscardint) {
+                    op.imm = func.localCounts.int + (op.imm & 0xffff);
+                }
+                if (op.opcode == namedClientScriptOps.pushlocallong || op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.popdiscardlong) {
+                    op.imm = func.localCounts.long + (op.imm & 0xffff);
+                }
+                if (op.opcode == namedClientScriptOps.pushlocalstring || op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.popdiscardstring) {
+                    op.imm = func.localCounts.string + (op.imm & 0xffff);
+                }
             }
         }
     }
@@ -451,7 +557,46 @@ export function astToImJson(calli: ClientscriptObfuscation, func: ClientScriptFu
             returnsitejumps.push({ jump: target - switchbaseaddress, value: label });
         }
     }
-    //1+foreach(2+sublen*(4+4))
-    script.switchsize = 1 + script.switches.reduce((a, v) => a + 2 + v.length * (4 + 4), 0);
+    script.switchsize = calcSwitchSize(script.switches);
+    if (script.switchsize > 0xffff) {
+        throw new Error(`compiled script switch table size is larger than 65kb, this isn't supported by the binary format. This corresponds to a max of ~8k branches accross all switch statements, actual number: ${script.switches.reduce((a, v) => a + v.length, 0)}`);
+    }
+    if (script.opcodedata.length > 0xffff) {
+        throw new Error(`compiled script is longer than max length of 0xffff, the Jagex VM will parse it incorrectly, actual length (${script.opcodedata.length})`);
+    }
     return script;
+}
+
+
+export function mergeScriptJsons(script1: clientscript, script2: clientscript, secret: number) {
+    if (script1.intargcount != script2.intargcount) { throw new Error("int arg counts need to be equal"); }
+    if (script1.longargcount != script2.longargcount) { throw new Error("long arg counts need to be equal"); }
+    if (script1.stringargcount != script2.stringargcount) { throw new Error("string arg counts need to be equal"); }
+
+    let switches = [...script1.switches, ...script2.switches];
+
+    let opcodes: clientscript["opcodedata"] = [
+        { opcode: namedClientScriptOps.pushconst, imm: 2, imm_obj: `` },
+        { opcode: namedClientScriptOps.popdiscardstring, imm: 0, imm_obj: null },
+        { opcode: namedClientScriptOps.pushlocalint, imm: 0, imm_obj: null },
+        { opcode: namedClientScriptOps.pushconst, imm: 0, imm_obj: secret },
+        { opcode: namedClientScriptOps.branch_not, imm: script1.opcodedata.length, imm_obj: null },
+        ...script1.opcodedata,
+        ...script2.opcodedata.map(q => q.opcode == namedClientScriptOps.switch ? { ...q, imm: q.imm + script1.switches.length } : q)
+    ];
+
+    let res: clientscript = {
+        byte0: script1.byte0,
+        intargcount: script1.intargcount,
+        longargcount: script1.longargcount,
+        stringargcount: script1.stringargcount,
+        instructioncount: opcodes.length,
+        localintcount: Math.max(script1.localintcount),
+        locallongcount: Math.max(script1.locallongcount),
+        localstringcount: Math.max(script1.localstringcount),
+        opcodedata: opcodes,
+        switches: switches,
+        switchsize: calcSwitchSize(switches)
+    };
+    return res;
 }
