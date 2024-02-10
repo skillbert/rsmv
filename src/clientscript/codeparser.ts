@@ -810,7 +810,10 @@ globalThis.testy = async () => {
         let parseresult = parseClientscriptTs(deob, originalts);
         if (!parseresult.success) { return parseresult; }
         let roundtripped = astToImJson(deob, parseresult.result);
-        globalThis.inter = new ClientScriptInterpreter(deob, roundtripped);
+        let inter = new ClientScriptInterpreter(deob);;
+        inter.callscript(roundtripped);
+        globalThis.inter = inter;
+
         let jsondata = JSON.parse(originaljson);
         delete jsondata.$schema;
         roundtripped.opcodedata.forEach(q => (q as any).opname = getOpName(q.opcode));

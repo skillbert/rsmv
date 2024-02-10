@@ -20,7 +20,9 @@ export function ClientScriptViewer(p: { data: string }) {
     let inter = React.useMemo(() => {
         if (!calli) { return null!; }//force non-null here to make typescript shut up about it being null in non-reachable callbacks
         let script: clientscript = JSON.parse(p.data);
-        return new ClientScriptInterpreter(calli, script);
+        let inter = new ClientScriptInterpreter(calli);
+        inter.callscript(script);
+        return inter;
     }, [calli, resetcounter, p.data]);
 
     if (!calli || !inter) {
@@ -28,8 +30,9 @@ export function ClientScriptViewer(p: { data: string }) {
     }
     globalThis.inter = inter;
 
-    let offset = Math.max(0, inter.index - 10);
-    let relevantops = inter.ops.slice(offset, inter.index + 600);
+    let index = inter.scope?.index ?? 0
+    let offset = Math.max(0, index - 10);
+    let relevantops = inter.scope?.ops.slice(offset, inter.scope.index + 600) ?? [];
 
     return (
         <div style={{ position: "absolute", inset: "0px", display: "grid", gridTemplate: '"a" fit-content "b" 1fr / 1fr' }}>
@@ -44,13 +47,13 @@ export function ClientScriptViewer(p: { data: string }) {
                     <div>{inter.stringstack.map((q, i) => <StringValue key={i} index={i} inter={inter} type="stack" />)}</div>
                 </div>
                 <div className="cs-valuegroup">
-                    <div>{inter.localints.map((q, i) => <IntValue key={i} index={i} inter={inter} type="local" />)}</div>
-                    <div>{inter.locallongs.map((q, i) => <LongValue key={i} index={i} inter={inter} type="local" />)}</div>
-                    <div>{inter.localstrings.map((q, i) => <StringValue key={i} index={i} inter={inter} type="local" />)}</div>
+                    <div>{inter.scope?.localints.map((q, i) => <IntValue key={i} index={i} inter={inter} type="local" />)}</div>
+                    <div>{inter.scope?.locallongs.map((q, i) => <LongValue key={i} index={i} inter={inter} type="local" />)}</div>
+                    <div>{inter.scope?.localstrings.map((q, i) => <StringValue key={i} index={i} inter={inter} type="local" />)}</div>
                 </div>
             </div>
             <div style={{ overflowY: "auto", whiteSpace: "pre" }}>
-                {relevantops.map((q, i) => <div key={i + offset}>{i + offset == inter.index ? ">>" : "  "}{i + offset} {getOpName(q.opcode)} {q.imm} {(q.imm_obj ?? "") + ""}</div>)}
+                {relevantops.map((q, i) => <div key={i + offset}>{i + offset == index ? ">>" : "  "}{i + offset} {getOpName(q.opcode)} {q.imm} {(q.imm_obj ?? "") + ""}</div>)}
             </div>
         </div>
     )
@@ -63,7 +66,7 @@ type ValueSlot = {
 }
 
 function IntValue(p: ValueSlot) {
-    let val = (p.type == "stack" ? p.inter.intstack[p.index] : p.inter.localints[p.index]);
+    let val = (p.type == "stack" ? p.inter.intstack[p.index] : p.inter.scope?.localints[p.index] ?? 0);
     return (
         <div className="cs2-value">
             int{p.index} = {val}
@@ -71,7 +74,7 @@ function IntValue(p: ValueSlot) {
     )
 }
 function LongValue(p: ValueSlot) {
-    let val = (p.type == "stack" ? p.inter.longstack[p.index] : p.inter.locallongs[p.index]);
+    let val = (p.type == "stack" ? p.inter.longstack[p.index] : p.inter.scope?.locallongs[p.index] ?? 0n);
     return (
         <div className="cs2-value">
             long{p.index} = {val.toString()}
@@ -79,7 +82,7 @@ function LongValue(p: ValueSlot) {
     )
 }
 function StringValue(p: ValueSlot) {
-    let val = (p.type == "stack" ? p.inter.stringstack[p.index] : p.inter.localstrings[p.index]);
+    let val = (p.type == "stack" ? p.inter.stringstack[p.index] : p.inter.scope?.localstrings[p.index] ?? "");
     return (
         <div className="cs2-value">
             string{p.index} = &quot;{val}&quot;

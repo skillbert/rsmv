@@ -3,26 +3,40 @@ import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, branchInstructionsInt, getOpName, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
 
-export class ClientScriptInterpreter {
+type ScriptScope = {
+    index: 0;
     ops: ClientScriptOp[];
     switches: SwitchJumpTable[];
-    index = 0;
     localints: number[];
     locallongs: bigint[];
     localstrings: string[];
+}
+
+type InterpreterWithScope = ClientScriptInterpreter & { scope: ScriptScope };
+
+export class ClientScriptInterpreter {
     intstack: number[] = [];
     longstack: bigint[] = [];
     stringstack: string[] = [];
+    scopeStack: ScriptScope[] = [];
     calli: ClientscriptObfuscation;
     mockscripts = new Map<number, (number | bigint | string)[]>();
-    constructor(calli: ClientscriptObfuscation, script: clientscript) {
+    scope: ScriptScope | null = null;
+    constructor(calli: ClientscriptObfuscation) {
         this.calli = calli;
-        this.ops = script.opcodedata;
-        this.switches = script.switches;
-        this.localints = new Array(script.localintcount).fill(0);
-        this.locallongs = new Array(script.locallongcount).fill(0n);
-        this.localstrings = new Array(script.localstringcount).fill("");
     }
+    callscript(script: clientscript) {
+        this.scope = {
+            index: 0,
+            ops: script.opcodedata,
+            switches: script.switches,
+            localints: new Array(script.localintcount).fill(0),
+            locallongs: new Array(script.locallongcount).fill(0n),
+            localstrings: new Array(script.localstringcount).fill("")
+        };
+        this.scopeStack.push(this.scope);
+    }
+
     pushStackdiff(diff: StackDiff) {
         if (diff.vararg != 0) { throw new Error("vararg not supported"); }
         for (let i = 0; i < diff.int; i++) { this.pushint(0); }
@@ -37,39 +51,40 @@ export class ClientScriptInterpreter {
     }
     //shorthand for unordered stack access in implementation
     popdeep(depth: number) {
-        if (this.intstack.length < depth) { throw new Error(`tried to pop int while none are on stack at index ${this.index - 1}`); }
+        if (this.intstack.length < depth) { throw new Error(`tried to pop int while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.intstack.splice(this.intstack.length - 1 - depth, 1)[0];
     }
     //shorthand for unordered stack access in implementation
     popdeeplong(depth: number) {
-        if (this.longstack.length < depth) { throw new Error(`tried to pop long while none are on stack at index ${this.index - 1}`); }
+        if (this.longstack.length < depth) { throw new Error(`tried to pop long while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.longstack.splice(this.longstack.length - 1 - depth, 1)[0];
     }
     //shorthand for unordered stack access in implementation
     popdeepstr(depth: number) {
-        if (this.stringstack.length < depth) { throw new Error(`tried to pop string while none are on stack at index ${this.index - 1}`); }
+        if (this.stringstack.length < depth) { throw new Error(`tried to pop string while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.stringstack.splice(this.stringstack.length - 1 - depth, 1)[0];
     }
     popint() {
-        if (this.intstack.length == 0) { throw new Error(`tried to pop int while none are on stack at index ${this.index - 1}`); }
+        if (this.intstack.length == 0) { throw new Error(`tried to pop int while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.intstack.pop()!;
     }
     poplong() {
-        if (this.longstack.length == 0) { throw new Error(`tried to pop long while none are on stack at index ${this.index - 1}`); }
+        if (this.longstack.length == 0) { throw new Error(`tried to pop long while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.longstack.pop()!;
     }
     popstring() {
-        if (this.stringstack.length == 0) { throw new Error(`tried to pop string while none are on stack at index ${this.index - 1}`); }
+        if (this.stringstack.length == 0) { throw new Error(`tried to pop string while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.stringstack.pop()!;
     }
     pushint(v: number) { this.intstack.push(v); }
     pushlong(v: bigint) { this.longstack.push(v); }
     pushstring(v: string) { this.stringstack.push(v); }
     next() {
-        if (this.index < 0 || this.index >= this.ops.length) {
+        if (!this.scope) { throw new Error("no script"); }
+        if (this.scope.index < 0 || this.scope.index >= this.scope.ops.length) {
             throw new Error("jumped out of bounds");
         }
-        let op = this.ops[this.index++];
+        let op = this.scope.ops[this.scope.index++];
         let implemented = implementedops.get(op.opcode);
         if (!implemented) {
             //TODO create a proper way to deal with "not-quite-named" ops
@@ -82,10 +97,11 @@ export class ClientScriptInterpreter {
             }
         }
         if (op.opcode == namedClientScriptOps.return) {
-            this.index--;
+            this.scope = null;
+            //TODO pop scope stack
             return true;
         } else if (implemented) {
-            implemented(this, op);
+            implemented(this as InterpreterWithScope, op);
         } else {
             let opinfo = this.calli.decodedMappings.get(op.opcode);
             if (!opinfo) { throw new Error(`Uknown op with opcode ${op.opcode}`); }
@@ -99,23 +115,25 @@ export class ClientScriptInterpreter {
     dump() {
         let res = "";
         res += "locals:\n";
-        res += `${this.localints.join(",")}\n`;
-        res += `${this.locallongs.join(",")}\n`;
-        res += `${this.localstrings.map(q => `"${q}"`).join(",")}\n`;
+        res += `${this.scope?.localints.join(",") ?? "no scope"}\n`;
+        res += `${this.scope?.locallongs.join(",") ?? "no scope"}\n`;
+        res += `${this.scope?.localstrings.map(q => `"${q}"`).join(",") ?? "no scope"}\n`;
         res += "stack:\n";
         res += `${this.intstack.join(",")}\n`;
         res += `${this.longstack.join(",")}\n`;
         res += `${this.stringstack.map(q => `"${q}"`).join(",")}\n`;
-        for (let i = 0; i < 10; i++) {
-            let index = this.index + i;
-            res += `${index} ${index == this.index ? ">>" : "  "} `;
-            let op = this.ops[index];
-            if (op) {
-                let opinfo = this.calli.decodedMappings.get(op.opcode);
-                let name = knownClientScriptOpNames[op.opcode];
-                res += `${name.padEnd(12, " ").slice(0, 12)} ${op.imm} ${op.imm_obj ?? ""}\n`;
-            } else {
-                res += `??\n`;
+        if (this.scope) {
+            for (let i = 0; i < 10; i++) {
+                let index = this.scope.index + i;
+                res += `${index} ${index == this.scope.index ? ">>" : "  "} `;
+                let op = this.scope.ops[index];
+                if (op) {
+                    let opinfo = this.calli.decodedMappings.get(op.opcode);
+                    let name = knownClientScriptOpNames[op.opcode];
+                    res += `${name.padEnd(12, " ").slice(0, 12)} ${op.imm} ${op.imm_obj ?? ""}\n`;
+                } else {
+                    res += `??\n`;
+                }
             }
         }
         console.log(res);
@@ -139,7 +157,8 @@ function branchOp(inter: ClientScriptInterpreter, op: ClientScriptOp) {
     // else if (op.opcode == namedClientScriptOps.branch_gt_long) { result = inter.popint() > inter.popint(); }
     // else if (op.opcode == namedClientScriptOps.branch_gteq_long) { result = inter.popint() <= inter.popint(); }
     if (result) {
-        inter.index += op.imm;
+        if (!inter.scope) { throw new Error("unexpected"); }
+        inter.scope.index += op.imm;
     }
 }
 function getParamOp(inter: ClientScriptInterpreter, op: ClientScriptOp) {
@@ -159,7 +178,7 @@ function getParamOp(inter: ClientScriptInterpreter, op: ClientScriptOp) {
     }
 }
 
-const implementedops = new Map<number, (inter: ClientScriptInterpreter, op: ClientScriptOp) => void>();
+const implementedops = new Map<number, (inter: InterpreterWithScope, op: ClientScriptOp) => void>();
 branchInstructions.forEach(id => implementedops.set(id, branchOp));
 getParamOps.forEach(id => implementedops.set(id, getParamOp));
 
@@ -224,42 +243,42 @@ implementedops.set(namedClientScriptOps.pushconst, (inter, op) => {
 });
 
 implementedops.set(namedClientScriptOps.switch, (inter, op) => {
-    let branches = inter.switches[op.imm];
-    if (!branches) { throw new Error(`non-existant branches referenced switch at ${inter.index}`); }
+    let branches = inter.scope.switches[op.imm];
+    if (!branches) { throw new Error(`non-existant branches referenced switch at ${inter.scope.index}`); }
     let val = inter.popint();
     let match = branches.find(q => q.value == val);
     if (match) {
-        inter.index += match.jump;
+        inter.scope.index += match.jump;
     }
 });
 
 implementedops.set(namedClientScriptOps.jump, (inter, op) => {
-    inter.index += op.imm;
+    inter.scope.index += op.imm;
 });
 
 implementedops.set(namedClientScriptOps.pushlocalint, (inter, op) => {
-    if (op.imm >= inter.localints.length) { throw new Error("invalid pushlocalint"); }
-    inter.pushint(inter.localints[op.imm]);
+    if (op.imm >= inter.scope.localints.length) { throw new Error("invalid pushlocalint"); }
+    inter.pushint(inter.scope.localints[op.imm]);
 });
 implementedops.set(namedClientScriptOps.pushlocallong, (inter, op) => {
-    if (op.imm >= inter.locallongs.length) { throw new Error("invalid pushlocallong"); }
-    inter.pushlong(inter.locallongs[op.imm]);
+    if (op.imm >= inter.scope.locallongs.length) { throw new Error("invalid pushlocallong"); }
+    inter.pushlong(inter.scope.locallongs[op.imm]);
 });
 implementedops.set(namedClientScriptOps.pushlocalstring, (inter, op) => {
-    if (op.imm >= inter.localstrings.length) { throw new Error("invalid pushlocalstring"); }
-    inter.pushstring(inter.localstrings[op.imm]);
+    if (op.imm >= inter.scope.localstrings.length) { throw new Error("invalid pushlocalstring"); }
+    inter.pushstring(inter.scope.localstrings[op.imm]);
 });
 implementedops.set(namedClientScriptOps.poplocalint, (inter, op) => {
-    if (op.imm >= inter.localints.length) { throw new Error("invalid poplocalint"); }
-    inter.localints[op.imm] = inter.popint();
+    if (op.imm >= inter.scope.localints.length) { throw new Error("invalid poplocalint"); }
+    inter.scope.localints[op.imm] = inter.popint();
 });
 implementedops.set(namedClientScriptOps.poplocallong, (inter, op) => {
-    if (op.imm >= inter.locallongs.length) { throw new Error("invalid poplocallong"); }
-    inter.locallongs[op.imm] = inter.poplong();
+    if (op.imm >= inter.scope.locallongs.length) { throw new Error("invalid poplocallong"); }
+    inter.scope.locallongs[op.imm] = inter.poplong();
 });
 implementedops.set(namedClientScriptOps.poplocalstring, (inter, op) => {
-    if (op.imm >= inter.localstrings.length) { throw new Error("invalid poplocalstring"); }
-    inter.localstrings[op.imm] = inter.popstring();
+    if (op.imm >= inter.scope.localstrings.length) { throw new Error("invalid poplocalstring"); }
+    inter.scope.localstrings[op.imm] = inter.popstring();
 });
 implementedops.set(namedClientScriptOps.printmessage, inter => console.log(`CS2: ${inter.popstring()}`));
 implementedops.set(namedClientScriptOps.inttostring, inter => inter.pushstring(inter.popdeep(1).toString(inter.popdeep(0))));
@@ -280,15 +299,15 @@ implementedops.set(namedClientScriptOps.popvar, (inter, op) => {
 });
 
 
-const namedimplementations = new Map<string, (inter: ClientScriptInterpreter, op: ClientScriptOp) => void>();
+const namedimplementations = new Map<string, (inter: InterpreterWithScope, op: ClientScriptOp) => void>();
 namedimplementations.set("STRING_LENGTH", inter => inter.pushint(inter.popstring().length));
 namedimplementations.set("SUBSTRING", inter => inter.pushstring(inter.popstring().substring(inter.popdeep(1), inter.popdeep(0))));
 namedimplementations.set("STRING_INDEXOF_STRING", inter => inter.pushint(inter.popdeepstr(1).indexOf(inter.popdeepstr(0), inter.popint())));
 namedimplementations.set("STRING_INDEXOF_CHAR", inter => inter.pushint(inter.popstring().indexOf(String.fromCharCode(inter.popdeep(1)), inter.popdeep(0))));
 namedimplementations.set("MIN", inter => inter.pushint(Math.min(inter.popint(), inter.popint())));
 namedimplementations.set("MAX", inter => inter.pushint(Math.max(inter.popint(), inter.popint())));
-namedimplementations.set("ADD", inter => inter.pushint(inter.popint() + inter.popint()));
-namedimplementations.set("SUB", inter => inter.pushint(inter.popdeep(1) - inter.popint()));
+namedimplementations.set("ADD", inter => inter.pushint(inter.popint() + inter.popint() | 0));
+namedimplementations.set("SUB", inter => inter.pushint(inter.popdeep(1) - inter.popint() | 0));
 namedimplementations.set("DIVIDE", inter => inter.pushint(inter.popdeep(1) / inter.popint() | 0));
 namedimplementations.set("MULTIPLY", inter => inter.pushint(Math.imul(inter.popdeep(1), inter.popint())));
 namedimplementations.set("AND", inter => inter.pushint(inter.popint() & inter.popint()));

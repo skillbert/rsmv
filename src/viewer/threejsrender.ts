@@ -661,7 +661,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.emit("select", null);
 	}
 
-	makeUIRenderer(model: ThreeJsSceneElement, centery: number) {
+	makeUIRenderer() {
 		let scene = new THREE.Scene();
 		scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
@@ -669,15 +669,26 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		dirLight.position.set(75, 300, -75);
 		let modelnode = new THREE.Group();
 		modelnode.scale.set(1 / 512, 1 / 512, -1 / 512);
-		if (model.modelnode) {
-			modelnode.add(model.modelnode);
-		}
 
 		scene.add(dirLight);
 		scene.add(hemilight);
 		scene.add(modelnode);
 		let clock = new THREE.Clock();
 		let rendertarget: THREE.WebGLRenderTarget | null = null;
+
+		let currentnode: ThreeJsSceneElement | null = null;
+		let currentcentery = 0;
+		let setmodel = (model: ThreeJsSceneElement | null, centery: number) => {
+			if (currentnode?.modelnode) {
+				modelnode.remove(currentnode.modelnode);
+				currentnode = null;
+			}
+			if (model?.modelnode) {
+				modelnode.add(model.modelnode);
+				currentnode = model;
+			}
+			currentcentery = centery
+		}
 
 		let takePicture = (width: number, height: number, params: UiCameraParams) => {
 			let gl = this.renderer.getContext();
@@ -692,12 +703,12 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				});
 			}
 			let delta = clock.getDelta();
-			model.updateAnimation?.(delta, clock.elapsedTime);
+			currentnode?.updateAnimation?.(delta, clock.elapsedTime);
 
 			let oldtarget = this.renderer.getRenderTarget();
 			this.renderer.setRenderTarget(rendertarget);
 			let itemcam = new THREE.PerspectiveCamera();
-			updateItemCamera(itemcam, width, height, centery, params);
+			updateItemCamera(itemcam, width, height, currentcentery, params);
 
 			this.renderer.clearColor();
 			this.renderer.clearDepth();
@@ -712,7 +723,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 		let dispose = () => rendertarget?.dispose();
 
-		return { takePicture, dispose };
+		return { takePicture, dispose, setmodel };
 	}
 
 	dispose() {

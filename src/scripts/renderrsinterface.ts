@@ -11,7 +11,7 @@ import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 
 type HTMLResult = string;
-export type RsInterfaceElement = { el: HTMLElement, dispose: (() => void)[], rootcomps: RsInterfaceComponent[] };
+export type RsInterfaceElement = { el: HTMLElement, rootcomps: RsInterfaceComponent[] };
 
 export class UiRenderContext {
     source: CacheFileSource;
@@ -44,7 +44,32 @@ export class UiRenderContext {
     }
 }
 
-export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRenderContext, id: number, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
+function rsInterfaceStyleSheet() {
+    let css = "";
+    css += `html{color:white;font-size:12px;}\n`;
+    css += ".rs-component{position:absolute;pointer-events:none;}\n";
+    css += ".rs-component--highlight{outline:1px solid red;}\n";
+    css += ".rs-image{width:100%;height:100%;}\n";
+    css += ".rs-image--cover{background-size:100% 100%; background-repeat:no-repeat;}";
+    css += ".rs-interface-container{position:absolute;top:0px;left:0px;right:0px;bottom:0px;display:flex;align-items:center;justify-content:center;}";
+    css += ".rs-interface-container-sub{position:relative;outline:1px solid green;}";
+    css += ".rs-model{position:absolute;top:0px;left:0px;width:100%;height:100%;}";
+    css += ".rs-componentmeta{}";
+    css += ".rs-componentmeta-children{padding-left:15px;}";
+    return css;
+}
+
+function embeddedjsmodule(comps: interfaces[]) {
+    let getcomp = (id: number) => comps[id];
+    let click = (event: MouseEvent) => {
+        console.log(getcomp(+(event.target as HTMLElement).dataset.compid!));
+        event.stopPropagation();
+    }
+    return { getcomp, click };
+}
+
+export async function loadRsInterfaceData(ctx: UiRenderContext, id: number) {
+
     let arch = await ctx.source.getArchiveById(cacheMajors.interfaces, id);
 
     let comps = new Map<number, RsInterfaceComponent>();
@@ -68,89 +93,74 @@ export async function renderRsInterface<MODE extends "html" | "dom">(ctx: UiRend
         }
     }
 
-    let jsmodule = (comps: interfaces[]) => {
-        let getcomp = (id: number) => comps[id];
-        let click = (event: MouseEvent) => {
-            console.log(getcomp(+(event.target as HTMLElement).dataset.compid!));
-            event.stopPropagation();
+    let rootcomps: RsInterfaceComponent[] = [];
+    for (let comp of comps.values()) {
+        if (comp.data.parentid == 0xffff || !comps.has(comp.data.parentid)) {
+            rootcomps.push(comp);
         }
-        return { getcomp, click };
     }
-
-    let css = "";
-    css += `html{color:white;font-size:12px;}\n`;
-    css += ".rs-component{position:absolute;pointer-events:none;}\n";
-    css += ".rs-component--highlight{outline:1px solid red;}\n";
-    css += ".rs-image{width:100%;height:100%;}\n";
-    css += ".rs-image--cover{background-size:100% 100%; background-repeat:no-repeat;}";
-    css += ".rs-interface-container{position:absolute;top:0px;left:0px;right:0px;bottom:0px;display:flex;align-items:center;justify-content:center;}";
-    css += ".rs-interface-container-sub{position:relative;outline:1px solid green;}";
-    css += ".rs-model{position:absolute;top:0px;left:0px;width:100%;height:100%;}";
-    css += ".rs-componentmeta{}";
-    css += ".rs-componentmeta-children{padding-left:15px;}";
-
     let basewidth = 520;
     let baseheight = 340;
+    return { comps, rootcomps, basewidth, baseheight };
+}
 
-    if (mode == "html") {
-        let html = "";
-        for (let comp of comps.values()) {
-            if (comp.data.parentid == 0xffff) {
-                html += await comp.toHtml(ctx, "html");
-            }
-        }
-        let doc = `<!DOCTYPE html>\n`;
-        doc += `<html>\n`
-        doc += `<head>\n`
-        doc += `<style>\n`
-        doc += css;
-        doc += `</style>\n`
-        doc += "<script>\n"
-        doc += `var mod=(${jsmodule + ""})(${JSON.stringify(Object.fromEntries([...comps]))});\n`;
-        doc += "</script>\n"
-        doc += `</head>\n`
-        doc += `<body>\n`
-        doc += `<div class="rs-interface-container">\n`;
-        doc += `<div style="width:${basewidth}px; height:${baseheight}px;">\n`
-        doc += html;
-        doc += `</div>\n`
-        doc += `</div>\n`
-        doc += `</body>\n`
-        doc += `</html>\n`
-        return doc as any;
-    } else {
-        let root = document.createElement("div");
-        root.classList.add("rs-interface-container");
-        let style = document.createElement("style");
-        style.innerHTML = css;
-        let container = document.createElement("div");
-        container.classList.add("rs-interface-container-sub");
-        container.style.width = basewidth + "px";
-        container.style.height = baseheight + "px";
-        root.appendChild(style);
-        root.appendChild(container);
-        let disposelist: (() => void)[] = [];
-
-        ctx.comps.clear();
-        let rootcomps: RsInterfaceComponent[] = [];
-        for (let comp of comps.values()) {
-            if (comp.data.parentid == 0xffff || !comps.has(comp.data.parentid)) {
-                let sub = await comp.toHtml(ctx, "dom");
-                disposelist.push(...sub.dispose);
-                container.appendChild(sub.el);
-                rootcomps.push(comp);
-            }
-        }
-        globalThis.comp = rootcomps;//TODO remove
-        globalThis.compctx = ctx;
-        return { el: root, dispose: disposelist, rootcomps } as RsInterfaceElement as any;
+export async function renderRsInterfaceHTML(ctx: UiRenderContext, id: number): Promise<HTMLResult> {
+    let { comps, rootcomps, basewidth, baseheight } = await loadRsInterfaceData(ctx, id);
+    let html = "";
+    for (let comp of rootcomps) {
+        html += await comp.toHtmlllllll(ctx);
     }
+    let doc = `<!DOCTYPE html>\n`;
+    doc += `<html>\n`
+    doc += `<head>\n`
+    doc += `<style>\n`
+    doc += rsInterfaceStyleSheet();
+    doc += `</style>\n`
+    doc += "<script>\n"
+    doc += `var mod=(${embeddedjsmodule + ""})(${JSON.stringify(Object.fromEntries([...comps]))});\n`;
+    doc += "</script>\n"
+    doc += `</head>\n`
+    doc += `<body>\n`
+    doc += `<div class="rs-interface-container">\n`;
+    doc += `<div style="width:${basewidth}px; height:${baseheight}px;">\n`
+    doc += html;
+    doc += `</div>\n`
+    doc += `</div>\n`
+    doc += `</body>\n`
+    doc += `</html>\n`
+    return doc as any;
+}
+
+export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnType<typeof loadRsInterfaceData>>) {
+    let root = document.createElement("div");
+    root.classList.add("rs-interface-container");
+    let style = document.createElement("style");
+    style.innerHTML = rsInterfaceStyleSheet();
+    let container = document.createElement("div");
+    container.classList.add("rs-interface-container-sub");
+    container.style.width = data.basewidth + "px";
+    container.style.height = data.baseheight + "px";
+    root.appendChild(style);
+    root.appendChild(container);
+
+    ctx.comps.clear();//TODO dispose here?
+    for (let comp of data.rootcomps) {
+        let sub = comp.initDom(ctx);
+        container.appendChild(sub);
+    }
+    globalThis.comp = data.rootcomps;//TODO remove
+    globalThis.compctx = ctx;
+    let dispose = () => {
+        data.rootcomps.forEach(q => q.dispose());
+    }
+    return { el: root, rootcomps: data.rootcomps, dispose };
 }
 
 function cssColor(col: number) {
     return `#${(col & 0xffffff).toString(16).padStart(6, "0")}`;
 }
 
+//TODO move this to customm css vars with container filters
 function cssPosition(data: interfaces) {
     let css = "";
     const defaulttranslate = "0px";
@@ -219,24 +229,197 @@ function cssSize(data: interfaces) {
     return css;
 }
 
+function uiModelRenderer(renderer: ThreeJsRenderer, sceneCache: ThreejsSceneCache, camdata: (interfaces["modeldata"] & {})["positiondata"] & {}) {
+    let camconfig: UiCameraParams = {
+        rotx: camdata.rotate_x,
+        roty: camdata.rotate_y,
+        rotz: camdata.rotate_z,
+        translatex: camdata.translate_x / 4,
+        translatey: camdata.translate_y / 4,
+        zoom: camdata.zoom * 8
+    };
+    let canvas = document.createElement("canvas");
+    canvas.classList.add("rs-model");
+    let modelrender = renderer.makeUIRenderer();
+    let model: RSModel | null = null;
+    let setmodel = (modelid: number) => {
+        model = new RSModel(sceneCache, [{ modelid, mods: {} }], `model_${modelid}`);
+        modelrender.setmodel(model.getSceneElements(), 0);
+        model.model.then(render);
+    }
+    let render = () => {
+        let width = canvas.clientWidth;
+        let height = canvas.clientHeight;
+        if (width == 0 || height == 0) { return; }
+        let img = modelrender.takePicture(width, height, camconfig);
+        canvas.width = img.width;
+        canvas.height = img.height;
+        let ctx2d = canvas.getContext("2d")!;
+        ctx2d.putImageData(img, 0, 0);
+        if (animated && !animcb) {
+            requestAnimationFrame(render);
+        }
+    }
+    let animcb = 0;
+    let animated = false;
+    let setanim = (animid: number) => {
+        if (animid == 0x7fff || animid == 0xffff) {
+            animid = -1;//TODO move this check up somewhere into the json reader
+        }
+        model?.setAnimation(animid);
+        animated = animid != -1;
+        render();
+    }
+
+    let observer = new ResizeObserver(render);
+    observer.observe(canvas);
+    let dispose = () => {
+        cancelAnimationFrame(animcb);
+        animcb = 0;
+        observer.disconnect();
+        modelrender.dispose();
+        canvas.remove();
+    };
+    (canvas as any).render = render;
+
+    return { dispose, canvas, setmodel, setanim };
+}
+
+function spriteCss(spritedata: interfaces["spritedata"] & {}) {
+    let imgstyle = "";
+    if (spritedata.hflip || spritedata.vflip) {
+        //TODO this doesn't handle the alpha channel correctly
+        imgstyle += `scale:${spritedata.hflip ? -1 : 1} ${spritedata.vflip ? -1 : 1};`;
+    }
+    if ((spritedata.color & 0xffffff) != 0xffffff) {
+        imgstyle += `background-color:${cssColor(spritedata.color)};background-blend-mode:multiply;`;
+    }
+    return imgstyle;
+}
+
+async function spritePromise(ctx: UiRenderContext, spriteid: number) {
+    let actualid = spriteid & 0xffffff;
+    let flags = spriteid >> 24;
+    let imgcss = "none";
+    if (actualid != -1) {
+        if (flags != 0) { console.log("sprite flags", flags); }
+        let spritebuf = await ctx.source.getFileById(cacheMajors.sprites, actualid);
+        let img = expandSprite(parseSprite(spritebuf)[0]);
+        let pngfile = await pixelsToDataUrl(img);
+        imgcss = `url('${pngfile}')`;
+    }
+    return { imgcss, spriteid };
+}
+
 export class RsInterfaceComponent {
     data: interfaces;
     parent: RsInterfaceComponent | null = null;
     children: RsInterfaceComponent[] = [];
     subid: number;
+    modelrenderer: ReturnType<typeof uiModelRenderer> | null = null;
+    spriteChild: HTMLDivElement | null = null;
+    loadingSprite = -1;
+    element: HTMLElement | null = null;
     constructor(interfacedata: interfaces, subid: number) {
         this.data = interfacedata;
         this.subid = subid;
     }
 
-    async toHtml<MODE extends "dom" | "html">(ctx: UiRenderContext, mode: MODE): Promise<MODE extends "html" ? HTMLResult : RsInterfaceElement> {
+    async toHtmlllllll(ctx: UiRenderContext) {
+        let { style, title } = this.getStyle();
+        let childhtml = "";
+        for (let child of this.children) {
+            childhtml += await child.toHtmlllllll(ctx);
+        }
+        if (this.data.textdata) {
+            childhtml += rsmarkupToSafeHtml(this.data.textdata.text);
+        }
+        if (this.data.modeldata) {
+            let isplaceholder = this.data.modeldata.modelid == 0x7fff || this.data.modeldata.modelid == 0xffff;
+            style += "background:rgba(0,255,0,0.5);outline:blue;";
+            childhtml += (isplaceholder ? "placeholder" : this.data.modeldata.modelid);
+        }
+        if (this.data.spritedata) {
+            let spritecss = spriteCss(this.data.spritedata);
+            let sprite = await spritePromise(ctx, this.data.spritedata.spriteid);
+            spritecss += `background-image:${sprite.imgcss};`;
+            childhtml += `<div class="rs-image${!this.data.spritedata.flag2 ? " rs-image--cover" : ""}" style="${escapeHTML(spritecss)}"></div>`;
+        }
+        let html = "";
+        html += `<div class="rs-component" data-compid=${this.subid} style="${escapeHTML(style)}" onclick="mod.click(event)" title="${escapeHTML(title)}">\n`;
+        html += childhtml;
+        html += "</div>\n";
+        return html as HTMLResult as any;
+    }
+
+    dispose() {
+        this.modelrenderer?.dispose();
+        this.element?.remove();
+        this.children.forEach(q => q.dispose());
+    }
+
+    initDom(ctx: UiRenderContext) {
+        let el = document.createElement("div");
+        this.updateDom(ctx, el);
+        this.children.forEach(child => {
+            el.appendChild(child.initDom(ctx));
+        });
+        (el as any).ui = this.data;
+        el.classList.add("rs-component");
+        ctx.comps.set(this.subid, el);
+        this.element = el;
+        return el;
+    }
+
+    updateDom(ctx: UiRenderContext, el: HTMLDivElement) {
+        let { style, title } = this.getStyle();
+        if (this.data.modeldata) {
+            let isplaceholder = this.data.modeldata.modelid == 0x7fff || this.data.modeldata.modelid == 0xffff;
+            if (!isplaceholder && ctx.renderer && ctx.sceneCache) {
+                this.modelrenderer ??= uiModelRenderer(ctx.renderer, ctx.sceneCache, this.data.modeldata.positiondata!);
+                this.modelrenderer.setmodel(this.data.modeldata.modelid);
+                this.modelrenderer.setanim(this.data.modeldata.animid);
+                el.appendChild(this.modelrenderer.canvas);
+            } else if (this.modelrenderer) {
+                this.modelrenderer.dispose();
+                this.modelrenderer = null;
+                style += "background:rgba(0,255,0,0.5);outline:blue;";
+                el.innerText = (isplaceholder ? "placeholder" : "");
+            }
+        }
+        if (this.data.textdata) {
+            el.insertAdjacentHTML("beforeend", rsmarkupToSafeHtml(this.data.textdata.text));
+        }
+        if (this.data.spritedata) {
+            if (this.loadingSprite != this.data.spritedata.spriteid) {
+                if (!this.spriteChild) {
+                    this.spriteChild = document.createElement("div");
+                    el.appendChild(this.spriteChild);
+                    this.spriteChild.classList.add("rs-image");
+                }
+                this.spriteChild.style.cssText = spriteCss(this.data.spritedata);
+                this.spriteChild.classList.toggle("rs-image--cover", !this.data.spritedata.flag2);
+                spritePromise(ctx, this.data.spritedata.spriteid).then(({ imgcss, spriteid }) => {
+                    if (this.spriteChild && spriteid == this.data.spritedata?.spriteid) {
+                        this.spriteChild.style.backgroundImage = imgcss;
+                    }
+                });
+                this.loadingSprite = this.data.spritedata.spriteid;
+            }
+        } else if (this.spriteChild) {
+            this.spriteChild.remove();
+            this.spriteChild = null;
+        }
+        el.style.cssText = style;
+        el.title = title;
+    }
+
+    getStyle() {
         let style = "";
         let childhtml = "";
-        let el = mode == "dom" ? document.createElement("div") : null;
         style += cssPosition(this.data);
         style += cssSize(this.data);
         let clickable = false;
-        let disposelist: (() => void)[] = [];
 
         if (this.data.figuredata) {
             if (this.data.figuredata.filled) {
@@ -261,95 +444,11 @@ export class RsInterfaceComponent {
             } else if (this.data.textdata.alignver) {
                 style += `align-items:bottom;`;
             }
-            childhtml += rsmarkupToSafeHtml(this.data.textdata.text);
             clickable = true;
         } else if (this.data.containerdata) {
-            for (let child of this.children) {
-                if (mode == "html") {
-                    childhtml += await child.toHtml(ctx, "html");
-                } else {
-                    let sub = await child.toHtml(ctx, "dom");
-                    el!.appendChild(sub.el);
-                    disposelist.push(...sub.dispose);
-                }
-            }
+            //nothing
         } else if (this.data.spritedata) {
-            if (this.data.spritedata.spriteid != -1) {
-                let flags = this.data.spritedata.spriteid >> 24;
-                if (flags != 0) { console.log("sprite flags", flags); }
-                let spriteid = this.data.spritedata.spriteid & 0xffffff;
-                let spritebuf = await ctx.source.getFileById(cacheMajors.sprites, spriteid);
-                let img = expandSprite(parseSprite(spritebuf)[0]);
-                let imgstyle = "";
-                let pngfile = await pixelsToDataUrl(img);
-                imgstyle += `background-image:url('${pngfile}');`;
-                if ((this.data.spritedata.color & 0xffffff) != 0xffffff) {
-                    imgstyle += `background-color:${cssColor(this.data.spritedata.color)};background-blend-mode:multiply;`;
-                }
-                if (this.data.spritedata.hflip || this.data.spritedata.vflip) {
-                    //TODO this doesn't handle the alpha channel correctly
-                    imgstyle += `scale:${this.data.spritedata.hflip ? -1 : 1} ${this.data.spritedata.vflip ? -1 : 1};`;
-                }
-                if (mode == "html") {
-                    childhtml += `<div class="rs-image ${this.data.spritedata.flag2 ? "" : "rs-image--cover"}" style="${imgstyle}"></div>\n`;
-                } else {
-                    let img = document.createElement("div");
-                    img.classList.add("rs-image");
-                    if (!this.data.spritedata.flag2) { img.classList.add("rs-image--cover"); }
-                    img.style.cssText = imgstyle;
-                    el!.appendChild(img);
-                }
-                clickable = true;
-            }
         } else if (this.data.modeldata) {
-            let isplaceholder = this.data.modeldata.modelid == 0x7fff || this.data.modeldata.modelid == 0xffff;
-            if (mode == "html" || isplaceholder || !ctx.sceneCache || !ctx.renderer) {
-                style += "background:rgba(0,255,0,0.5);outline:blue;";
-                childhtml += (isplaceholder ? "placeholder" : this.data.modeldata.modelid);
-            } else {
-                let camdata = this.data.modeldata.positiondata!;
-                let camconfig: UiCameraParams = {
-                    rotx: camdata.rotate_x,
-                    roty: camdata.rotate_y,
-                    rotz: camdata.rotate_z,
-                    translatex: camdata.translate_x / 4,
-                    translatey: camdata.translate_y / 4,
-                    zoom: camdata.zoom * 8
-                };
-                let model = new RSModel(ctx.sceneCache, [{ modelid: this.data.modeldata.modelid, mods: {} }], `model_${this.data.modeldata.modelid}`);
-                let canvas = document.createElement("canvas");
-                canvas.classList.add("rs-model");
-                let modelrender = ctx.renderer.makeUIRenderer(model.getSceneElements(), 0);
-                let render = async () => {
-                    let width = canvas.clientWidth;
-                    let height = canvas.clientHeight;
-                    if (width == 0 || height == 0) { return; }
-                    let img = modelrender.takePicture(width, height, camconfig);
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    let ctx2d = canvas.getContext("2d")!;
-                    ctx2d.putImageData(img, 0, 0);
-                    if (animated && !animcb) {
-                        requestAnimationFrame(render);
-                    }
-                }
-                let animcb = 0;
-                let animated = false;
-                if (this.data.modeldata.animid != 0x7fff && this.data.modeldata.animid != 0xffff) {
-                    model.setAnimation(this.data.modeldata.animid);
-                    animated = true;
-                }
-                let observer = new ResizeObserver(render);
-                observer.observe(canvas);
-                disposelist.push(() => {
-                    cancelAnimationFrame(animcb);
-                    observer.disconnect();
-                    modelrender.dispose();
-                });
-                model.model.then(render);
-                el!.appendChild(canvas);
-                (canvas as any).render = render;
-            }
             clickable = true;
         } else {
             style += "background:rgba(0,128,128,0.5);outline:red;";
@@ -360,25 +459,6 @@ export class RsInterfaceComponent {
         }
         let title = this.data.rightclickopts.filter(q => q).join("\n");
 
-        if (mode == "html") {
-            let html = "";
-            html += `<div class="rs-component" data-compid=${this.subid} style="${style}" onclick="mod.click(event)" title="${escapeHTML(title)}">\n`;
-            html += childhtml;
-            html += "</div>\n";
-            return html as HTMLResult as any;
-        } else {
-            if (!el) { throw new Error("unexpected"); }
-            (el as any).ui = this.data;
-            el.style.cssText = style;
-            el.insertAdjacentHTML("beforeend", childhtml);
-            el.classList.add("rs-component");
-            if (title) { el.title = title; }
-            ctx.comps.set(this.subid, el);
-            return {
-                el,
-                dispose: disposelist,
-                rootcomps: [this]
-            } as RsInterfaceElement as any;
-        }
+        return { title, style };
     }
 }

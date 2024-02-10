@@ -15,7 +15,7 @@ import { parseMusic } from "./musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
-import { UiRenderContext, renderRsInterface } from "./renderrsinterface";
+import { UiRenderContext, renderRsInterfaceHTML } from "./renderrsinterface";
 import { compileClientScript, prepareClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
 
 
@@ -424,7 +424,7 @@ const decodeInterface: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			let res = await renderRsInterface(new UiRenderContext(source), fileid[0], "html");
+			let res = await renderRsInterfaceHTML(new UiRenderContext(source), fileid[0]);
 			return res;
 		}
 	}

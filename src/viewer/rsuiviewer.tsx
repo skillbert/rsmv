@@ -1,5 +1,5 @@
 import * as React from "react";
-import { RsInterfaceComponent, RsInterfaceElement, UiRenderContext, renderRsInterface } from "../scripts/renderrsinterface";
+import { RsInterfaceComponent, RsInterfaceElement, UiRenderContext, loadRsInterfaceData, renderRsInterfaceDOM } from "../scripts/renderrsinterface";
 import { DomWrap } from "./scriptsui";
 import type { ThreejsSceneCache } from "../3d/modeltothree";
 import { ThreeJsRenderer } from "./threejsrender";
@@ -21,19 +21,16 @@ export function RsUIViewer(p: { data: string }) {
 	React.useEffect(() => {
 		let needed = true;
 		let uiinfo = JSON.parse(p.data);
-		let cleanup: null | (() => void) = null;
-		renderRsInterface(ctx, uiinfo.id, "dom").then(ui => {
-			let clean = () => ui.dispose.forEach(q => q());
-			if (needed) {
-				setui(ui);
-				cleanup = clean;
-			} else {
-				clean();
-			}
+		let cleanup = () => { };
+		loadRsInterfaceData(ctx, uiinfo.id).then(ui => {
+			if (!needed) { return; }
+			let res = renderRsInterfaceDOM(ctx, ui);
+			cleanup = res.dispose;
+			setui(res);
 		});
 		return () => {
 			needed = false;
-			cleanup?.();
+			cleanup();
 		}
 	}, [ctx]);
 
