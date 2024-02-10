@@ -10,12 +10,12 @@ export type quickchatlines = {
 		pickEnum: number | null,
 		pickTtem: true | null,
 		skillLevel: number | null,
-		varbitEnum: {
+		varplayerEnum: {
 			enum: number,
 			varbit: number,
 		} | null,
+		varplayer: number | null,
 		varbit: number | null,
-		varbit2: number | null,
 		pickTradeableItem: true | null,
 		skillLevelEnum: {
 			enum: number,
