@@ -143,7 +143,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 
 	let getarch = (major: number, minor: number, mode: DecodeMode) => {
 		let majormap = getOrInsert(incompletearchs, major, () => new Map());
-		let group = getOrInsert(majormap, minor, () => ({ fetchsiblings: mode.multiIndexArchives, files: [] }));
+		let group = getOrInsert(majormap, minor, () => ({ fetchsiblings: mode.usesArchieves, files: [] }));
 		return group;
 	}
 

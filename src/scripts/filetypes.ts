@@ -90,7 +90,7 @@ function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 		major: cacheMajors.mapsquares,
 		minor: undefined,
 		logicalDimensions: 2,
-		multiIndexArchives: false,
+		usesArchieves: false,
 		fileToLogical(source, major, minor, subfile) {
 			return [255, minor];
 		},
@@ -119,7 +119,7 @@ function worldmapIndex(subfile: number): DecodeLookup {
 		major,
 		minor: undefined,
 		logicalDimensions: 2,
-		multiIndexArchives: true,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) {
 			return [minor % worldStride, Math.floor(minor / worldStride)];
 		},
@@ -152,7 +152,7 @@ function singleMinorIndex(major: number, minor: number): DecodeLookup {
 		major,
 		minor,
 		logicalDimensions: 1,
-		multiIndexArchives: false,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) {
 			return [subfile];
 		},
@@ -170,7 +170,7 @@ function chunkedIndex(major: number): DecodeLookup {
 		major,
 		minor: undefined,
 		logicalDimensions: 1,
-		multiIndexArchives: true,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) {
 			return [archiveToFileId(major, minor, subfile)];
 		},
@@ -190,7 +190,7 @@ function anyFileIndex(): DecodeLookup {
 		major: undefined,
 		minor: undefined,
 		logicalDimensions: 3,
-		multiIndexArchives: false,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) { return [major, minor, subfile]; },
 		logicalToFile(source, id) { return { major: id[0], minor: id[1], subid: id[2] }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -206,7 +206,7 @@ function noArchiveIndex(major: number): DecodeLookup {
 		major,
 		minor: undefined,
 		logicalDimensions: 1,
-		multiIndexArchives: false,
+		usesArchieves: false,
 		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("nonzero subfile in noarch index"); } return [minor]; },
 		logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -220,7 +220,7 @@ function standardIndex(major: number): DecodeLookup {
 		major,
 		minor: undefined,
 		logicalDimensions: 2,
-		multiIndexArchives: true,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) { return [minor, subfile]; },
 		logicalToFile(source, id) { return { major, minor: id[0], subid: id[1] }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -242,7 +242,7 @@ function indexfileIndex(): DecodeLookup {
 		major: cacheMajors.index,
 		minor: undefined,
 		logicalDimensions: 1,
-		multiIndexArchives: false,
+		usesArchieves: false,
 		fileToLogical(source, major, minor, subfile) { return [minor]; },
 		logicalToFile(source, id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -259,7 +259,7 @@ function rootindexfileIndex(): DecodeLookup {
 		major: cacheMajors.index,
 		minor: 255,
 		logicalDimensions: 0,
-		multiIndexArchives: false,
+		usesArchieves: false,
 		fileToLogical(source, major, minor, subfile) { return []; },
 		logicalToFile(source, id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -333,7 +333,7 @@ type DecodeLookup = {
 	major: number | undefined,
 	minor: number | undefined,
 	logicalDimensions: number,
-	multiIndexArchives: boolean;
+	usesArchieves: boolean;
 	logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
 	fileToLogical(source: CacheFileSource, major: number, minor: number, subfile: number): LogicalIndex,
 	logicalToFile(source: CacheFileSource, id: LogicalIndex): FileId
@@ -367,7 +367,7 @@ const decodeMusic: DecodeModeFactory = () => {
 		major: cacheMajors.music,
 		minor: undefined,
 		logicalDimensions: 1,
-		multiIndexArchives: false,
+		usesArchieves: false,
 		fileToLogical(source, major, minor, subfile) { return [minor]; },
 		logicalToFile(source, id) { return { major: cacheMajors.music, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -415,7 +415,7 @@ const decodeInterface: DecodeModeFactory = () => {
 		major: cacheMajors.interfaces,
 		minor: undefined,
 		logicalDimensions: 1,
-		multiIndexArchives: false,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
 		logicalToFile(source, id) { return { major: cacheMajors.interfaces, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
@@ -435,7 +435,7 @@ const decodeInterface2: DecodeModeFactory = () => {
 		major: cacheMajors.interfaces,
 		minor: undefined,
 		logicalDimensions: 1,
-		multiIndexArchives: false,
+		usesArchieves: true,
 		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
 		logicalToFile(source, id) { return { major: cacheMajors.interfaces, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
