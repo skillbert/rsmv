@@ -63,6 +63,22 @@ function tracerNops(text: string) {
 }
 
 export const intrinsics = new Map<string, { in: StackList, out: StackList, write: (ctx: OpcodeWriterContext) => ClientScriptOp[] }>();
+intrinsics.set("varbittable", {
+    in: new StackList(),
+    out: new StackList(["string"]),
+    write(ctx: OpcodeWriterContext) {
+        let body: ClientScriptOp[] = [];
+        let lookupstr = ",";
+        for (let [id, meta] of ctx.calli.varbitmeta) {
+            let group = meta.varid >> 16;
+            let varid = meta.varid & 0xffff;
+            lookupstr += `${id}:${group}/${varid}/${meta.bits[0]}/${meta.bits[1]},`;
+        }
+        body.push(makeop(namedClientScriptOps.pushconst, 2, lookupstr));
+        body.push(ctx.makeReturnOp());//return address is still on int stack as argument
+        return body;
+    }
+});
 intrinsics.set("opnametoid", {
     in: new StackList(["string"]),
     out: new StackList(["int"]),

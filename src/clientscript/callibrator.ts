@@ -35,7 +35,7 @@ let varInfoParser = new FileParser<{ type: number }>({
     "0x6e": { "name": "0x6e", "read": "ushort" },
 });
 
-var varbitInfoParser = new FileParser<{ varid: number, bits: number }>({
+var varbitInfoParser = new FileParser<{ varid: number, bits: [number, number] }>({
     "0x01": { "name": "varid", "read": "utribyte" },//[8bit domain][16bit id] read as tribyte since thats also how we read pushvar/popvar imm
     "0x02": { "name": "bits", "read": ["tuple", "ubyte", "ubyte"] }
 });
