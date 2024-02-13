@@ -68,6 +68,7 @@ export const cacheConfigPages = {
 	mapscenes: 34,
 	maplabels: 36,
 	dbtables: 40,
+	dbrows: 41,
 
 	varplayer: 60,
 	varnpc: 61,

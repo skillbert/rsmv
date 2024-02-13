@@ -3,6 +3,8 @@ import { RSModel } from "../3d/modelnodes";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { expandSprite, parseSprite } from "../3d/sprite";
 import { CacheFileSource } from "../cache";
+import { prepareClientScript } from "../clientscript";
+import { ClientScriptInterpreter } from "../clientscript/interpreter";
 import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 import { parse } from "../opdecoder";
@@ -11,19 +13,26 @@ import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 
 type HTMLResult = string;
-export type RsInterfaceElement = { el: HTMLElement, rootcomps: RsInterfaceComponent[] };
+export type RsInterfaceDomTree = {
+    el: HTMLDivElement;
+    rootcomps: RsInterfaceComponent[];
+    interfaceid: number;
+    dispose: () => void;
+}
 
 export class UiRenderContext {
     source: CacheFileSource;
     sceneCache: ThreejsSceneCache | null = null;
     renderer: ThreeJsRenderer | null = null;
-    comps = new Map<number, HTMLElement>();
+    comps = new Map<number, RsInterfaceComponent>();
     highlightstack: HTMLElement[] = [];
+    interpreterprom: Promise<ClientScriptInterpreter> | null = null;
+    touchedComps = new Set<RsInterfaceComponent>();
     constructor(source: CacheFileSource) {
         this.source = source;
     }
     toggleHighLightComp(subid: number, highlight: boolean) {
-        let comp = this.comps.get(subid);
+        let comp = this.comps.get(subid)?.element;
         if (comp) {
             if (highlight) {
                 if (this.highlightstack.length != 0) {
@@ -41,6 +50,17 @@ export class UiRenderContext {
                 }
             }
         }
+    }
+    async runClientScriptCallback(compid: number, cbdata: (number | string)[]) {
+        if (cbdata.length == 0) { return; }
+        let inter = await (this.interpreterprom ??= prepareClientScript(this.source).then(q => new ClientScriptInterpreter(q, this)));
+        if (typeof cbdata[0] != "number") { throw new Error("expected callback script id but got string"); }
+
+        inter.pushlist(cbdata.slice(1));
+        inter.activecompid = compid;
+        await inter.callscriptid(cbdata[0]);
+        await inter.runToEnd();
+        // console.log(await renderClientScript(p.source, await p.source.getFileById(cacheMajors.clientscript, callbackid), callbackid))
     }
 }
 
@@ -76,7 +96,11 @@ export async function loadRsInterfaceData(ctx: UiRenderContext, id: number) {
 
     for (let sub of arch) {
         try {
-            comps.set(sub.fileid, new RsInterfaceComponent(parse.interfaces.read(sub.buffer, ctx.source), sub.fileid))
+            let compid = (id << 16) | sub.fileid;
+            if (ctx.comps.has(compid)) { throw new Error("ui render context already had comp with same id"); }
+            let comp = new RsInterfaceComponent(ctx, parse.interfaces.read(sub.buffer, ctx.source), compid);
+            comps.set(sub.fileid, comp);
+            ctx.comps.set(compid, comp);
         } catch (e) {
             console.log(`failed to parse interface ${id}:${sub.fileid}`);
         }
@@ -101,14 +125,14 @@ export async function loadRsInterfaceData(ctx: UiRenderContext, id: number) {
     }
     let basewidth = 520;
     let baseheight = 340;
-    return { comps, rootcomps, basewidth, baseheight };
+    return { comps, rootcomps, basewidth, baseheight, id };
 }
 
 export async function renderRsInterfaceHTML(ctx: UiRenderContext, id: number): Promise<HTMLResult> {
     let { comps, rootcomps, basewidth, baseheight } = await loadRsInterfaceData(ctx, id);
     let html = "";
     for (let comp of rootcomps) {
-        html += await comp.toHtmlllllll(ctx);
+        html += await comp.toHtml(ctx);
     }
     let doc = `<!DOCTYPE html>\n`;
     doc += `<html>\n`
@@ -131,7 +155,7 @@ export async function renderRsInterfaceHTML(ctx: UiRenderContext, id: number): P
     return doc as any;
 }
 
-export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnType<typeof loadRsInterfaceData>>) {
+export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnType<typeof loadRsInterfaceData>>): RsInterfaceDomTree {
     let root = document.createElement("div");
     root.classList.add("rs-interface-container");
     let style = document.createElement("style");
@@ -143,7 +167,6 @@ export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnT
     root.appendChild(style);
     root.appendChild(container);
 
-    ctx.comps.clear();//TODO dispose here?
     for (let comp of data.rootcomps) {
         let sub = comp.initDom(ctx);
         container.appendChild(sub);
@@ -153,7 +176,7 @@ export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnT
     let dispose = () => {
         data.rootcomps.forEach(q => q.dispose());
     }
-    return { el: root, rootcomps: data.rootcomps, dispose };
+    return { el: root, rootcomps: data.rootcomps, interfaceid: data.id, dispose };
 }
 
 function cssColor(col: number) {
@@ -311,25 +334,48 @@ async function spritePromise(ctx: UiRenderContext, spriteid: number) {
     return { imgcss, spriteid };
 }
 
+export type RsInterFaceTypes = "text" | "sprite" | "container" | "model" | "figure";
+
+export type TypedRsInterFaceComponent<T extends RsInterFaceTypes | "any"> = RsInterfaceComponent & {
+    data: {
+        containerdata: T extends "container" ? {} : unknown,
+        spritedata: T extends "sprite" ? {} : unknown,
+        textdata: T extends "text" ? {} : unknown,
+        modeldata: T extends "model" ? {} : unknown,
+        figuredata: T extends "figure" ? {} : unknown
+    }
+}
+
 export class RsInterfaceComponent {
+    ctx: UiRenderContext;
     data: interfaces;
     parent: RsInterfaceComponent | null = null;
     children: RsInterfaceComponent[] = [];
-    subid: number;
+    compid: number;
     modelrenderer: ReturnType<typeof uiModelRenderer> | null = null;
     spriteChild: HTMLDivElement | null = null;
     loadingSprite = -1;
     element: HTMLElement | null = null;
-    constructor(interfacedata: interfaces, subid: number) {
+    constructor(ctx: UiRenderContext, interfacedata: interfaces, compid: number) {
+        this.ctx = ctx;
         this.data = interfacedata;
-        this.subid = subid;
+        this.compid = compid;
     }
 
-    async toHtmlllllll(ctx: UiRenderContext) {
+    isCompType<T extends RsInterFaceTypes>(type: T): this is TypedRsInterFaceComponent<T> {
+        if (type == "container" && !this.data.containerdata) { return false; }
+        if (type == "model" && !this.data.modeldata) { return false; }
+        if (type == "sprite" && !this.data.spritedata) { return false; }
+        if (type == "text" && !this.data.textdata) { return false; }
+        if (type == "figure" && !this.data.figuredata) { return false; }
+        return true;
+    }
+
+    async toHtml(ctx: UiRenderContext) {
         let { style, title } = this.getStyle();
         let childhtml = "";
         for (let child of this.children) {
-            childhtml += await child.toHtmlllllll(ctx);
+            childhtml += await child.toHtml(ctx);
         }
         if (this.data.textdata) {
             childhtml += rsmarkupToSafeHtml(this.data.textdata.text);
@@ -346,13 +392,14 @@ export class RsInterfaceComponent {
             childhtml += `<div class="rs-image${!this.data.spritedata.flag2 ? " rs-image--cover" : ""}" style="${escapeHTML(spritecss)}"></div>`;
         }
         let html = "";
-        html += `<div class="rs-component" data-compid=${this.subid} style="${escapeHTML(style)}" onclick="mod.click(event)" title="${escapeHTML(title)}">\n`;
+        html += `<div class="rs-component" data-compid=${this.compid} style="${escapeHTML(style)}" onclick="mod.click(event)" title="${escapeHTML(title)}">\n`;
         html += childhtml;
         html += "</div>\n";
         return html as HTMLResult as any;
     }
 
     dispose() {
+        this.ctx.comps.delete(this.compid);
         this.modelrenderer?.dispose();
         this.element?.remove();
         this.children.forEach(q => q.dispose());
@@ -360,46 +407,46 @@ export class RsInterfaceComponent {
 
     initDom(ctx: UiRenderContext) {
         let el = document.createElement("div");
-        this.updateDom(ctx, el);
+        this.element = el;
+        this.updateDom();
         this.children.forEach(child => {
             el.appendChild(child.initDom(ctx));
         });
         (el as any).ui = this.data;
         el.classList.add("rs-component");
-        ctx.comps.set(this.subid, el);
-        this.element = el;
         return el;
     }
 
-    updateDom(ctx: UiRenderContext, el: HTMLDivElement) {
+    updateDom() {
+        if (!this.element) { throw new Error("element not set"); }
         let { style, title } = this.getStyle();
         if (this.data.modeldata) {
             let isplaceholder = this.data.modeldata.modelid == 0x7fff || this.data.modeldata.modelid == 0xffff;
-            if (!isplaceholder && ctx.renderer && ctx.sceneCache) {
-                this.modelrenderer ??= uiModelRenderer(ctx.renderer, ctx.sceneCache, this.data.modeldata.positiondata!);
+            if (!isplaceholder && this.ctx.renderer && this.ctx.sceneCache) {
+                this.modelrenderer ??= uiModelRenderer(this.ctx.renderer, this.ctx.sceneCache, this.data.modeldata.positiondata!);
                 this.modelrenderer.setmodel(this.data.modeldata.modelid);
                 this.modelrenderer.setanim(this.data.modeldata.animid);
-                el.appendChild(this.modelrenderer.canvas);
+                this.element.appendChild(this.modelrenderer.canvas);
             } else if (this.modelrenderer) {
                 this.modelrenderer.dispose();
                 this.modelrenderer = null;
                 style += "background:rgba(0,255,0,0.5);outline:blue;";
-                el.innerText = (isplaceholder ? "placeholder" : "");
+                this.element.innerText = (isplaceholder ? "placeholder" : "");
             }
         }
         if (this.data.textdata) {
-            el.insertAdjacentHTML("beforeend", rsmarkupToSafeHtml(this.data.textdata.text));
+            this.element.insertAdjacentHTML("beforeend", rsmarkupToSafeHtml(this.data.textdata.text));
         }
         if (this.data.spritedata) {
             if (this.loadingSprite != this.data.spritedata.spriteid) {
                 if (!this.spriteChild) {
                     this.spriteChild = document.createElement("div");
-                    el.appendChild(this.spriteChild);
+                    this.element.appendChild(this.spriteChild);
                     this.spriteChild.classList.add("rs-image");
                 }
                 this.spriteChild.style.cssText = spriteCss(this.data.spritedata);
                 this.spriteChild.classList.toggle("rs-image--cover", !this.data.spritedata.flag2);
-                spritePromise(ctx, this.data.spritedata.spriteid).then(({ imgcss, spriteid }) => {
+                spritePromise(this.ctx, this.data.spritedata.spriteid).then(({ imgcss, spriteid }) => {
                     if (this.spriteChild && spriteid == this.data.spritedata?.spriteid) {
                         this.spriteChild.style.backgroundImage = imgcss;
                     }
@@ -410,8 +457,8 @@ export class RsInterfaceComponent {
             this.spriteChild.remove();
             this.spriteChild = null;
         }
-        el.style.cssText = style;
-        el.title = title;
+        this.element.style.cssText = style;
+        this.element.title = title;
     }
 
     getStyle() {

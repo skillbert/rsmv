@@ -811,7 +811,7 @@ globalThis.testy = async () => {
         if (!parseresult.success) { return parseresult; }
         let roundtripped = astToImJson(deob, parseresult.result);
         let inter = new ClientScriptInterpreter(deob);;
-        inter.callscript(roundtripped);
+        inter.callscript(roundtripped, fileid);
         globalThis.inter = inter;
 
         let jsondata = JSON.parse(originaljson);

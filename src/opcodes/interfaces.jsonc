@@ -13,7 +13,7 @@
     ["aspectxtype","byte"],
     ["aspectytype","byte"],
     ["parentid","ushort"],
-    ["flag","ubyte"],
+    ["hidden","ubyte"],
     ["containerdata",["opt","type=0",["struct",
         ["layerwidth","ushort"],
         ["layerheight","ushort"],

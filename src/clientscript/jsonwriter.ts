@@ -67,6 +67,7 @@ intrinsics.set("varbittable", {
     in: new StackList(),
     out: new StackList(["string"]),
     write(ctx: OpcodeWriterContext) {
+        //it think all of this might be obsolete because of VAR_REFERENCE_GET
         let body: ClientScriptOp[] = [];
         let lookupstr = ",";
         for (let [id, meta] of ctx.calli.varbitmeta) {

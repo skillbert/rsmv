@@ -32,4 +32,5 @@ export type enums = {
 		][],
 	} | null
 	unknown_83?: true | null
+	unknown_d1?: true | null
 };

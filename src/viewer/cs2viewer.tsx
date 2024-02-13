@@ -21,7 +21,7 @@ export function ClientScriptViewer(p: { data: string }) {
         if (!calli) { return null!; }//force non-null here to make typescript shut up about it being null in non-reachable callbacks
         let script: clientscript = JSON.parse(p.data);
         let inter = new ClientScriptInterpreter(calli);
-        inter.callscript(script);
+        inter.callscript(script, -1);
         return inter;
     }, [calli, resetcounter, p.data]);
 

@@ -16,7 +16,7 @@ export type interfaces = {
 	aspectxtype: number,
 	aspectytype: number,
 	parentid: number,
-	flag: number,
+	hidden: number,
 	containerdata: {
 		layerwidth: number,
 		layerheight: number,

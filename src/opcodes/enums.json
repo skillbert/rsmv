@@ -9,5 +9,6 @@
 	"0x06": { "name":                      "intArrayValue1", "read": ["array","unsigned short",["tuple","unsigned int","int"]] },
 	"0x07": { "name":                   "stringArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["tuple","unsigned short","string"]]]] },
 	"0x08": { "name":                      "intArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["tuple","unsigned short","int"]]]] },
-	"0x83": { "name":                          "unknown_83", "read": "true" }
+	"0x83": { "name":                          "unknown_83", "read": "true" },
+	"0xd1": { "name":                          "unknown_d1", "read": "true" }
 }

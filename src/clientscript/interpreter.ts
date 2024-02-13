@@ -1,10 +1,18 @@
 import { clientscript } from "../../generated/clientscript"
 import { ClientscriptObfuscation } from "./callibrator";
-import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, branchInstructionsInt, getOpName, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
+import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
+import type { RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
+import { cacheMajors } from "../constants";
+import { parse } from "../opdecoder";
+import { CacheFileSource } from "../cache";
+
+const MAGIC_CONST_CURRENTCOMP = 0x80000003 | 0;
+
 
 type ScriptScope = {
-    index: 0;
+    scriptid: number;
+    index: number;
     ops: ClientScriptOp[];
     switches: SwitchJumpTable[];
     localints: number[];
@@ -13,6 +21,7 @@ type ScriptScope = {
 }
 
 type InterpreterWithScope = ClientScriptInterpreter & { scope: ScriptScope };
+type OpImplementation = (inter: InterpreterWithScope, op: ClientScriptOp) => void | Promise<void>;
 
 export class ClientScriptInterpreter {
     intstack: number[] = [];
@@ -22,11 +31,39 @@ export class ClientScriptInterpreter {
     calli: ClientscriptObfuscation;
     mockscripts = new Map<number, (number | bigint | string)[]>();
     scope: ScriptScope | null = null;
-    constructor(calli: ClientscriptObfuscation) {
+    activecompid = -1;
+    stalled: Promise<boolean> | void = undefined;
+    uictx: UiRenderContext | null = null;
+    constructor(calli: ClientscriptObfuscation, uictx: UiRenderContext | null = null) {
         this.calli = calli;
+        this.uictx = uictx;
     }
-    callscript(script: clientscript) {
+    getComponent<T extends RsInterFaceTypes | "any" = "any">(compid: number, type = "any" as T): TypedRsInterFaceComponent<T> {
+        if ((compid | 0) == MAGIC_CONST_CURRENTCOMP) { compid = this.activecompid; }
+        if (!this.uictx) { throw new Error("tried to run ui op without ui"); }//TODO implement with nops?
+        let comp = this.uictx.comps.get(compid);
+        if (!comp) { throw new Error("component doesn't exist"); }
+        if (type != "any" && !comp.isCompType(type)) { throw new Error(`${type} component expected`); }
+        this.uictx.touchedComps.add(comp);
+        return comp as TypedRsInterFaceComponent<T>;
+    }
+    async callscriptid(id: number) {
+        let data = await this.calli.source.getFileById(cacheMajors.clientscript, id);
+        this.callscript(parse.clientscript.read(data, this.calli.source), id);
+    }
+    async runToEnd() {
+        while (true) {
+            let res = this.next();
+            if (res instanceof Promise) {
+                res = await res;
+            }
+            if (!res) { break; }
+        }
+    }
+    callscript(script: clientscript, scriptid: number) {
+        this.log(`calling script ${scriptid}`);
         this.scope = {
+            scriptid: scriptid,
             index: 0,
             ops: script.opcodedata,
             switches: script.switches,
@@ -34,17 +71,29 @@ export class ClientScriptInterpreter {
             locallongs: new Array(script.locallongcount).fill(0n),
             localstrings: new Array(script.localstringcount).fill("")
         };
+        for (let i = script.intargcount - 1; i >= 0; i--) { this.scope.localints[i] = this.popint(); }
+        for (let i = script.longargcount - 1; i >= 0; i--) { this.scope.locallongs[i] = this.poplong(); }
+        for (let i = script.stringargcount - 1; i >= 0; i--) { this.scope.localstrings[i] = this.popstring(); }
         this.scopeStack.push(this.scope);
     }
 
+    log(text: string) {
+        console.log(`CS2: ${"  ".repeat(this.scopeStack.length)} ${text}`);
+    }
     pushStackdiff(diff: StackDiff) {
-        if (diff.vararg != 0) { throw new Error("vararg not supported"); }
+        if (diff.vararg != 0) { throw new Error("cannot push vararg"); }
         for (let i = 0; i < diff.int; i++) { this.pushint(0); }
         for (let i = 0; i < diff.long; i++) { this.pushlong(0n); }
         for (let i = 0; i < diff.string; i++) { this.pushstring(""); }
     }
     popStackdiff(diff: StackDiff) {
-        if (diff.vararg != 0) { throw new Error("vararg not supported"); }
+        if (diff.vararg != 0) {
+            let str = this.popstring();
+            for (let i = str.match(/Y/g)?.length ?? 0; i > 0; i--) { for (let ii = this.popint(); ii > 0; ii--) { this.popint(); } }
+            for (let i = str.match(/i/g)?.length ?? 0; i > 0; i--) { this.popint(); }
+            for (let i = str.match(/l/g)?.length ?? 0; i > 0; i--) { this.poplong(); }
+            for (let i = str.match(/s/g)?.length ?? 0; i > 0; i--) { this.popstring(); }
+        }
         for (let i = 0; i < diff.int; i++) { this.popint(); }
         for (let i = 0; i < diff.long; i++) { this.poplong(); }
         for (let i = 0; i < diff.string; i++) { this.popstring(); }
@@ -76,10 +125,19 @@ export class ClientScriptInterpreter {
         if (this.stringstack.length == 0) { throw new Error(`tried to pop string while none are on stack at index ${(this.scope?.index ?? 0) - 1}`); }
         return this.stringstack.pop()!;
     }
+    pushlist(list: (number | bigint | string)[]) {
+        for (let v of list) {
+            if (typeof v == "number") { this.pushint(v); }
+            else if (typeof v == "bigint") { this.pushlong(v); }
+            else if (typeof v == "string") { this.pushstring(v); }
+            else { throw new Error("unexpected"); }
+        }
+    }
     pushint(v: number) { this.intstack.push(v); }
     pushlong(v: bigint) { this.longstack.push(v); }
     pushstring(v: string) { this.stringstack.push(v); }
-    next() {
+    next(): boolean | Promise<boolean> {
+        if (this.stalled) { return this.stalled = this.stalled.then(res => res && this.next()); }
         if (!this.scope) { throw new Error("no script"); }
         if (this.scope.index < 0 || this.scope.index >= this.scope.ops.length) {
             throw new Error("jumped out of bounds");
@@ -96,12 +154,13 @@ export class ClientScriptInterpreter {
                 }
             }
         }
+        let res: Promise<void> | void = undefined;
         if (op.opcode == namedClientScriptOps.return) {
-            this.scope = null;
-            //TODO pop scope stack
-            return true;
+            this.scopeStack.pop();
+            this.scope = this.scopeStack.at(-1) ?? null;
+            return !!this.scope;
         } else if (implemented) {
-            implemented(this as InterpreterWithScope, op);
+            res = implemented(this as InterpreterWithScope, op);
         } else {
             let opinfo = this.calli.decodedMappings.get(op.opcode);
             if (!opinfo) { throw new Error(`Uknown op with opcode ${op.opcode}`); }
@@ -110,7 +169,15 @@ export class ClientScriptInterpreter {
             this.pushStackdiff(opinfo.stackinfo.out.toStackDiff());
         }
 
-        return false;
+        if (res instanceof Promise) {
+            this.stalled = res.then(() => {
+                this.stalled = undefined;
+                return true;
+            });
+            return this.stalled;
+        } else {
+            return true;
+        }
     }
     dump() {
         let res = "";
@@ -123,8 +190,9 @@ export class ClientScriptInterpreter {
         res += `${this.longstack.join(",")}\n`;
         res += `${this.stringstack.map(q => `"${q}"`).join(",")}\n`;
         if (this.scope) {
-            for (let i = 0; i < 10; i++) {
+            for (let i = -5; i < 10; i++) {
                 let index = this.scope.index + i;
+                if (index < 0 || index >= this.scope.ops.length) { continue; }
                 res += `${index} ${index == this.scope.index ? ">>" : "  "} `;
                 let op = this.scope.ops[index];
                 if (op) {
@@ -177,21 +245,56 @@ function getParamOp(inter: ClientScriptInterpreter, op: ClientScriptOp) {
         if (outprim == "string") { inter.pushstring(""); }
     }
 }
+async function loadEnum(source: CacheFileSource, id: number) {
+    return parse.enums.read(await source.getFileById(cacheMajors.enums, id), source);
+}
 
-const implementedops = new Map<number, (inter: InterpreterWithScope, op: ClientScriptOp) => void>();
+const implementedops = new Map<number, OpImplementation>();
 branchInstructions.forEach(id => implementedops.set(id, branchOp));
 getParamOps.forEach(id => implementedops.set(id, getParamOp));
 
-implementedops.set(namedClientScriptOps.enum_getvalue, inter => {
+
+implementedops.set(namedClientScriptOps.gosub, (inter, op) => {
+    let mockreturn = inter.mockscripts.get(op.imm);
+    if (mockreturn) {
+        let func = inter.calli.scriptargs.get(op.imm);
+        if (!func) { throw new Error(`calling unknown clientscript ${op.imm}`); }
+        inter.log(`CS2 - calling sub ${op.imm}${mockreturn ? ` with mocked return value: ${mockreturn}` : ""}`);
+        inter.popStackdiff(func.stack.in.toStackDiff());
+        for (let val of mockreturn) {
+            if (typeof val == "number") { inter.pushint(val); }
+            if (typeof val == "bigint") { inter.pushlong(val); }
+            if (typeof val == "string") { inter.pushstring(val); }
+        }
+    } else {
+        // inter.pushStackdiff(func.stack.out.toStackDiff());
+        return inter.callscriptid(op.imm);
+    }
+});
+implementedops.set(namedClientScriptOps.enum_getvalue, async inter => {
     let key = inter.popint();
     let enumid = inter.popint();
     let outtype = inter.popint();
     let keytype = inter.popint();
 
     let outprim = typeToPrimitive(outtype);
-    if (outprim == "int") { inter.pushint(0); }
-    if (outprim == "long") { inter.pushlong(0n); }
-    if (outprim == "string") { inter.pushstring(""); }
+    let enumjson = await loadEnum(inter.calli.source, enumid);
+
+    if (outprim != "int") { throw new Error("enum_getvalue can only look up int values"); }
+    //TODO probably need -1 default if subtype type isn't simple int
+    let res = (enumjson.intArrayValue1 ?? enumjson.intArrayValue2?.values)?.find(q => q[0] == key)?.[1] ?? enumjson.intValue ?? 0;
+    inter.pushint(res);
+});
+implementedops.set(namedClientScriptOps.struct_getparam, async inter => {
+    let param = inter.popint();
+    let structid = inter.popint();
+
+    let file = await inter.calli.source.getFileById(cacheMajors.structs, structid);
+    let json = parse.structs.read(file, inter.calli.source);
+    let match = json.extra?.find(q => q.prop == param);
+    if (!match) { inter.pushint(-1); }//TODO should probly be 0 if subtype is plain int
+    else if (match.intvalue == undefined) { throw new Error("param is not of type int"); }
+    else { inter.pushint(match.intvalue); }
 });
 
 implementedops.set(namedClientScriptOps.dbrow_getfield, inter => {
@@ -210,23 +313,6 @@ implementedops.set(namedClientScriptOps.dbrow_getfield, inter => {
 
 implementedops.set(namedClientScriptOps.joinstring, (inter, op) => {
     inter.pushstring(new Array(op.imm).fill("").map(q => inter.popstring()).reverse().join(""));
-});
-
-implementedops.set(namedClientScriptOps.gosub, (inter, op) => {
-    let func = inter.calli.scriptargs.get(op.imm);
-    let mockreturn = inter.mockscripts.get(op.imm);
-    if (!func) { throw new Error(`calling unknown clientscript ${op.imm}`); }
-    inter.popStackdiff(func.stack.in.toStackDiff());
-    console.log(`CS2 - calling sub ${op.imm}${mockreturn ? ` with mocked return value: ${mockreturn}` : ""}`);
-    if (mockreturn) {
-        for (let val of mockreturn) {
-            if (typeof val == "number") { inter.pushint(val); }
-            if (typeof val == "bigint") { inter.pushlong(val); }
-            if (typeof val == "string") { inter.pushstring(val); }
-        }
-    } else {
-        inter.pushStackdiff(func.stack.out.toStackDiff());
-    }
 });
 
 implementedops.set(namedClientScriptOps.pushconst, (inter, op) => {
@@ -280,7 +366,7 @@ implementedops.set(namedClientScriptOps.poplocalstring, (inter, op) => {
     if (op.imm >= inter.scope.localstrings.length) { throw new Error("invalid poplocalstring"); }
     inter.scope.localstrings[op.imm] = inter.popstring();
 });
-implementedops.set(namedClientScriptOps.printmessage, inter => console.log(`CS2: ${inter.popstring()}`));
+implementedops.set(namedClientScriptOps.printmessage, inter => inter.log(`>> ${inter.popstring()}`));
 implementedops.set(namedClientScriptOps.inttostring, inter => inter.pushstring(inter.popdeep(1).toString(inter.popdeep(0))));
 implementedops.set(namedClientScriptOps.strcmp, inter => {
     let right = inter.popstring();
@@ -299,7 +385,7 @@ implementedops.set(namedClientScriptOps.popvar, (inter, op) => {
 });
 
 
-const namedimplementations = new Map<string, (inter: InterpreterWithScope, op: ClientScriptOp) => void>();
+const namedimplementations = new Map<string, OpImplementation>();
 namedimplementations.set("STRING_LENGTH", inter => inter.pushint(inter.popstring().length));
 namedimplementations.set("SUBSTRING", inter => inter.pushstring(inter.popstring().substring(inter.popdeep(1), inter.popdeep(0))));
 namedimplementations.set("STRING_INDEXOF_STRING", inter => inter.pushint(inter.popdeepstr(1).indexOf(inter.popdeepstr(0), inter.popint())));
@@ -314,9 +400,59 @@ namedimplementations.set("AND", inter => inter.pushint(inter.popint() & inter.po
 namedimplementations.set("OR", inter => inter.pushint(inter.popint() | inter.popint()));
 namedimplementations.set("LOWERCASE", inter => inter.pushstring(inter.popstring().toLowerCase()));
 namedimplementations.set("LONG_UNPACK", inter => { let long = longBigIntToJson(inter.poplong()); inter.pushint(long[0] >> 0); inter.pushint(long[1] >> 0); });
-namedimplementations.set("MES_TYPED", inter => console.log(`CS2: ${inter.popint()} ${inter.popint()} ${inter.popstring()}`));
+namedimplementations.set("MES_TYPED", inter => inter.log(`>> ${inter.popint()} ${inter.popint()} ${inter.popstring()}`));
 namedimplementations.set("LONG_ADD", inter => inter.pushlong(inter.popdeeplong(1) + inter.popdeeplong(0)));
 namedimplementations.set("LONG_SUB", inter => inter.pushlong(inter.popdeeplong(1) - inter.popdeeplong(0)));
 namedimplementations.set("TOSTRING_LONG", inter => inter.pushstring(inter.poplong().toString()));
 namedimplementations.set("INT_TO_LONG", inter => inter.pushlong(BigInt(inter.popint())));
-namedimplementations.set("OPENURLRAW", inter => console.log("CS2 OPENURLRAW:", inter.popint(), inter.popstring()));
+namedimplementations.set("OPENURLRAW", inter => inter.log(`CS2 OPENURLRAW: ${inter.popint()}, ${inter.popstring()}`));
+
+namedimplementations.set("ENUM_GETOUTPUTCOUNT", async inter => {
+    let json = await loadEnum(inter.calli.source, inter.popint());
+    inter.pushint((json.intArrayValue1 ?? json.intArrayValue2?.values ?? json.stringArrayValue1 ?? json.stringArrayValue2?.values)?.length ?? 0);
+});
+
+namedimplementations.set("IF_SETHIDE", inter => { inter.getComponent(inter.popint()).data.hidden = inter.popint(); });
+namedimplementations.set("IF_GETHEIGHT", inter => inter.pushint(inter.getComponent(inter.popint()).data.baseheight));
+namedimplementations.set("IF_GETWIDTH", inter => inter.pushint(inter.getComponent(inter.popint()).data.basewidth));
+namedimplementations.set("IF_GETX", inter => inter.pushint(inter.getComponent(inter.popint()).data.baseposx));
+namedimplementations.set("IF_GETY", inter => inter.pushint(inter.getComponent(inter.popint()).data.baseposy));
+namedimplementations.set("IF_SETOP", inter => { inter.getComponent(inter.popint()).data.rightclickopts[inter.popint()] = inter.popstring(); });
+namedimplementations.set("IF_GETHIDE", inter => inter.pushint(inter.getComponent(inter.popint()).data.hidden));
+
+namedimplementations.set("IF_GETTEXT", inter => inter.pushstring(inter.getComponent(inter.popint(), "text").data.textdata.text));
+namedimplementations.set("IF_GETTEXTSHADOW", inter => inter.pushint(+inter.getComponent(inter.popint(), "text").data.textdata.shadow));
+namedimplementations.set("IF_SETTEXT", inter => { inter.getComponent(inter.popint(), "text").data.textdata.text = inter.popstring(); })
+namedimplementations.set("IF_SETTEXTSHADOW", inter => { inter.getComponent(inter.popint(), "text").data.textdata.shadow = !!inter.popint(); })
+//TODO not sure which 3 props are targeted
+namedimplementations.set("IF_SETTEXTALIGN", inter => { let data = inter.getComponent(inter.popint(), "text").data.textdata; data.alignhor = inter.popint(); data.alignver = inter.popint(); data.multiline = inter.popint(); });
+
+namedimplementations.set("IF_GETGRAPHIC", inter => inter.pushint(inter.getComponent(inter.popint(), "sprite").data.spritedata.spriteid));
+namedimplementations.set("IF_GETHFLIP", inter => inter.pushint(+inter.getComponent(inter.popint(), "sprite").data.spritedata.hflip));
+namedimplementations.set("IF_GETVFLIP", inter => inter.pushint(+inter.getComponent(inter.popint(), "sprite").data.spritedata.vflip));
+namedimplementations.set("IF_SETGRAPHIC", inter => { inter.getComponent(inter.popint(), "sprite").data.spritedata.spriteid = inter.popint(); });
+namedimplementations.set("IF_SETHFLIP", inter => { inter.getComponent(inter.popint(), "sprite").data.spritedata.hflip = !!inter.popint(); });
+namedimplementations.set("IF_SETVFLIP", inter => { inter.getComponent(inter.popint(), "sprite").data.spritedata.vflip = !!inter.popint(); });
+
+namedimplementations.set("IF_SETMODEL", inter => { inter.getComponent(inter.popint(), "model").data.modeldata.modelid = inter.popint(); });
+
+namedimplementations.set("IF_GETTRANS", inter => inter.pushint(inter.getComponent(inter.popint(), "figure").data.figuredata.trans));
+namedimplementations.set("IF_GETCOLOUR", inter => inter.pushint(inter.getComponent(inter.popint(), "figure").data.figuredata.color));
+namedimplementations.set("IF_GETFILLED", inter => inter.pushint(inter.getComponent(inter.popint(), "figure").data.figuredata.filled));
+namedimplementations.set("IF_SETTRANS", inter => { inter.getComponent(inter.popint(), "figure").data.figuredata.trans = inter.popint(); });
+namedimplementations.set("IF_SETCOLOUR", inter => { inter.getComponent(inter.popint(), "figure").data.figuredata.color = inter.popint(); });
+namedimplementations.set("IF_SETFill", inter => { inter.getComponent(inter.popint(), "figure").data.figuredata.filled = inter.popint(); });
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)
+// namedimplementations.set("xxxxx", inter => xxxx)

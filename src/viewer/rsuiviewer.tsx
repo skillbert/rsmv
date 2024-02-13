@@ -1,15 +1,16 @@
 import * as React from "react";
-import { RsInterfaceComponent, RsInterfaceElement, UiRenderContext, loadRsInterfaceData, renderRsInterfaceDOM } from "../scripts/renderrsinterface";
+import { RsInterfaceComponent, RsInterfaceDomTree, UiRenderContext, loadRsInterfaceData, renderRsInterfaceDOM } from "../scripts/renderrsinterface";
 import { DomWrap } from "./scriptsui";
 import type { ThreejsSceneCache } from "../3d/modeltothree";
 import { ThreeJsRenderer } from "./threejsrender";
 import { interfaces } from "../../generated/interfaces";
-import { renderClientScript } from "../clientscript";
+import { prepareClientScript, renderClientScript } from "../clientscript";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
+import { ClientScriptInterpreter } from "../clientscript/interpreter";
 
 export function RsUIViewer(p: { data: string }) {
-	let [ui, setui] = React.useState<RsInterfaceElement | null>(null);
+	let [ui, setui] = React.useState<RsInterfaceDomTree | null>(null);
 	let scene: ThreejsSceneCache = globalThis.sceneCache;//TODO pass this properly using args
 	let render: ThreeJsRenderer = globalThis.render;//TODO
 	let ctx = React.useMemo(() => {
@@ -47,15 +48,16 @@ export function RsUIViewer(p: { data: string }) {
 function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent, source: CacheFileSource }) {
 	let data = p.comp.data;
 	let mouseevent = React.useCallback((e: React.MouseEvent) => {
-		p.ctx.toggleHighLightComp(p.comp.subid, e.type == "mouseenter");
+		p.ctx.toggleHighLightComp(p.comp.compid, e.type == "mouseenter");
 	}, [p.ctx, p.comp]);
+
 	return (
 		<div className="rs-componentmeta" onMouseEnter={mouseevent} onMouseLeave={mouseevent} onClick={e => e.target == e.currentTarget && console.log(p.comp)}>
-			id={p.comp.subid} t={data.type} {data.textdata?.text ?? "no text"}
+			id={p.comp.compid & 0xffff} t={data.type} {data.textdata?.text ?? "no text"}
 			<br />
 			{data.spritedata && "sprite: " + data.spritedata.spriteid}
 			{data.modeldata && "model: " + data.modeldata.modelid}
-			<CallbackDebugger data={data} source={p.source} />
+			<CallbackDebugger ctx={p.ctx} comp={p.comp} source={p.source} />
 			<hr />
 			<div className="rs-componentmeta-children">
 				{p.comp.children.map((q, i) => <RsInterfaceDebugger ctx={p.ctx} key={i} comp={q} source={p.source} />)}
@@ -64,15 +66,15 @@ function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceCompone
 	)
 }
 
-function CallbackDebugger(p: { data: interfaces, source: CacheFileSource }) {
+function CallbackDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent, source: CacheFileSource }) {
 	return (
 		<div>
-			{Object.entries(p.data.scripts).filter(q => q[1] && q[1].length != 0).map(([key, v]) => {
+			{Object.entries(p.comp.data.scripts).filter(q => q[1] && q[1].length != 0).map(([key, v]) => {
 				if (!v) { throw new Error("unexpected"); }
 				if (typeof v[0] != "number") { throw new Error("unexpected") }
 				let callbackid = v[0];
 				return (
-					<div key={key} className="rs-comonentcallback" onClick={async e => console.log(await renderClientScript(p.source, await p.source.getFileById(cacheMajors.clientscript, callbackid), callbackid))}>
+					<div key={key} className="rs-comonentcallback" onClick={e => p.ctx.runClientScriptCallback(p.comp.compid, v)}>
 						{key} {callbackid}({v.slice(1).map(q => typeof q == "string" ? `"${q}"` : q).join(",")})
 					</div>
 				)
