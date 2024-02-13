@@ -56,11 +56,17 @@ export class UiRenderContext {
         let inter = await (this.interpreterprom ??= prepareClientScript(this.source).then(q => new ClientScriptInterpreter(q, this)));
         if (typeof cbdata[0] != "number") { throw new Error("expected callback script id but got string"); }
 
+        inter.reset();//TODO warn if this actually does anything?
         inter.pushlist(cbdata.slice(1));
         inter.activecompid = compid;
         await inter.callscriptid(cbdata[0]);
         await inter.runToEnd();
+        this.updateInvalidatedComps();
         // console.log(await renderClientScript(p.source, await p.source.getFileById(cacheMajors.clientscript, callbackid), callbackid))
+    }
+    updateInvalidatedComps() {
+        this.touchedComps.forEach(q => q.updateDom());
+        this.touchedComps.clear();
     }
 }
 
@@ -168,7 +174,7 @@ export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnT
     root.appendChild(container);
 
     for (let comp of data.rootcomps) {
-        let sub = comp.initDom(ctx);
+        let sub = comp.initDom();
         container.appendChild(sub);
     }
     globalThis.comp = data.rootcomps;//TODO remove
@@ -351,15 +357,19 @@ export class RsInterfaceComponent {
     data: interfaces;
     parent: RsInterfaceComponent | null = null;
     children: RsInterfaceComponent[] = [];
+    clientChildren: RsInterfaceComponent[] = [];
     compid: number;
     modelrenderer: ReturnType<typeof uiModelRenderer> | null = null;
     spriteChild: HTMLDivElement | null = null;
+    textChild: HTMLSpanElement | null = null;
     loadingSprite = -1;
     element: HTMLElement | null = null;
+    api: CS2Api;
     constructor(ctx: UiRenderContext, interfacedata: interfaces, compid: number) {
         this.ctx = ctx;
         this.data = interfacedata;
         this.compid = compid;
+        this.api = new CS2Api(this);
     }
 
     isCompType<T extends RsInterFaceTypes>(type: T): this is TypedRsInterFaceComponent<T> {
@@ -403,18 +413,17 @@ export class RsInterfaceComponent {
         this.modelrenderer?.dispose();
         this.element?.remove();
         this.children.forEach(q => q.dispose());
+        this.clientChildren.forEach(q => q.dispose());
     }
 
-    initDom(ctx: UiRenderContext) {
-        let el = document.createElement("div");
-        this.element = el;
+    initDom() {
+        this.element ??= document.createElement("div");
         this.updateDom();
-        this.children.forEach(child => {
-            el.appendChild(child.initDom(ctx));
-        });
-        (el as any).ui = this.data;
-        el.classList.add("rs-component");
-        return el;
+        this.children.forEach(child => { this.element!.appendChild(child.initDom()); });
+        this.clientChildren.forEach(child => { this.element!.appendChild(child.initDom()); });
+        this.element.classList.add("rs-component");
+        (this.element as any).ui = this.data;
+        return this.element;
     }
 
     updateDom() {
@@ -435,7 +444,14 @@ export class RsInterfaceComponent {
             }
         }
         if (this.data.textdata) {
-            this.element.insertAdjacentHTML("beforeend", rsmarkupToSafeHtml(this.data.textdata.text));
+            if (!this.textChild) {
+                this.textChild = document.createElement("span");
+                this.element.appendChild(this.textChild);
+            }
+            this.textChild.innerHTML = rsmarkupToSafeHtml(this.data.textdata.text);
+        } else if (this.textChild) {
+            this.textChild.remove();
+            this.textChild = null;
         }
         if (this.data.spritedata) {
             if (this.loadingSprite != this.data.spritedata.spriteid) {
@@ -508,4 +524,203 @@ export class RsInterfaceComponent {
 
         return { title, style };
     }
+
+
+}
+
+export class CS2Api {
+    data: interfaces;
+    comp: RsInterfaceComponent;
+    constructor(comp: RsInterfaceComponent) {
+        this.data = comp.data;
+        this.comp = comp;
+    }
+    changed() {
+        this.comp.ctx.touchedComps.add(this.comp);
+    }
+
+    findChild(ccid: number) {
+        return this.comp.clientChildren.find(q => q.compid == ccid);
+    }
+
+    createChild(ccid: number, type: number) {
+        let data: interfaces = {
+            type: type,
+            aspectxtype: 0,
+            aspectytype: 0,
+            aspectwidthtype: 0,
+            aspectheighttype: 0,
+            basewidth: 0,
+            baseheight: 0,
+            baseposx: 0,
+            baseposy: 0,
+            bit4data: 0,
+            containerdata: null,
+            spritedata: null,
+            modeldata: null,
+            figuredata: null,
+            textdata: null,
+            linedata: null,
+            contenttype: -1,
+            cursor: -1,
+            hidden: 0,
+            menucounts: 0,
+            name: null,
+            name2: "",
+            optmask: 0,
+            optmask1data_bit40: null,
+            parentid: this.comp.compid,
+            rightclickcursors: [],
+            rightclickopts: [],
+            scripts: {} as any,
+            unkdata: null,
+            unk10data: null,
+            unk11data: null,
+            unk12data: null,
+            unk15data: null,
+            unk16data: null,
+            unk2: 0,
+            unk3: [],
+            unk4: 0,
+            unk5: 0,
+            unk6: 0,
+            unkdatadata: null,
+            unkffff: null,
+            unkpre3: null,
+            unkprepre3: null,
+            unkstring1: null,
+            unkstuff123: "",
+            version: 7
+        }
+        if (type == 0) {
+            data.containerdata = {
+                layerwidth: 0,
+                layerheight: 0,
+                disablehover: null,
+                layerheightextra: null,
+                v6unk1: null,
+                v6unk2: null
+            }
+        } else if (type == 3) {
+            data.figuredata = {
+                color: 0,
+                filled: 0,
+                trans: 0
+            };
+        } else if (type == 4) {
+            data.textdata = {
+                alignhor: 0,
+                alignver: 0,
+                color: 0,
+                fontid: 0,
+                multiline: null,
+                shadow: false,
+                text: "",
+                trans: 0,
+                unk1: 0,
+                unk2: 0,
+            }
+        } else if (type == 5) {
+            data.spritedata = {
+                spriteid: -1,
+                aspectheightdata: 0,
+                aspectwidthdata: 0,
+                borderthickness: 0,
+                clickmask: null,
+                color: 0xffffff,
+                flag2: 0,
+                hflip: false,
+                vflip: false,
+                transparency: 0,
+                unk1: 0,
+                unk2: 0,
+                v6unk: 0
+            }
+        } else if (type == 6) {
+            data.modeldata = {
+                modelid: -1,
+                animid: -1,
+                aspectheightdata: 0,
+                aspectwidthdata: 0,
+                mode: 0,
+                positiondata: {
+                    rotate_x: 0,
+                    rotate_y: 0,
+                    rotate_z: 0,
+                    translate_x: 0,
+                    translate_y: 0,
+                    unkextra: null,
+                    zoom: 0
+                },
+                unkdata: null
+            }
+        } else {
+            console.log(`creating unknown cc type, type=${type}, id=${ccid}`);
+        }
+        let child = new RsInterfaceComponent(this.comp.ctx, data, ccid);
+        this.comp.clientChildren.push(child);
+        this.changed();
+        child.api.changed();
+        if (this.comp.element) {
+            //TODO defer this!
+            this.comp.initDom();
+        }
+        return child;
+    }
+
+    setSize(w: number, h: number, modew: number, modeh: number) {
+        this.data.basewidth = w;
+        this.data.baseheight = h;
+        this.data.aspectwidthtype = modew;
+        this.data.aspectheighttype = modeh;
+        this.changed();
+    }
+    setPosition(x: number, y: number, modex: number, modey: number) {
+        this.data.baseposx = x;
+        this.data.baseposy = y;
+        this.data.aspectxtype = modex;
+        this.data.aspectytype = modey;
+        this.changed();
+    }
+
+    setHide(hide: number) { this.data.hidden = hide; }
+    setWidth(w: number) { this.data.basewidth = w; }
+    setHeight(h: number) { this.data.basewidth = h; }
+    setX(x: number) { this.data.baseposx = x; }
+    setY(y: number) { this.data.baseposy = y; }
+    getHide() { return this.data.hidden; }
+    getWidth() { return this.data.basewidth; }
+    getHeight() { return this.data.baseheight; }
+    getX() { return this.data.baseposx; }
+    getY() { return this.data.baseposy; }
+    setOp(index: number, text: string) { console.log(`setop ${this.comp.compid} ${index} ${text}`); }//TODO
+    getOp(index: number) { return this.data.rightclickopts[index] ?? ""; }
+
+    //text
+    setText(text: string) { if (this.data.textdata) { this.data.textdata.text = text; } }
+    getText() { return this.data.textdata?.text ?? ""; }
+    setTextAlign(a: number, b: number, c: number) { this.data.textdata && (this.data.textdata.alignhor = c, this.data.textdata.alignver = b, this.data.textdata.multiline = a | 0); }
+    getTextAlign() { return [this.data.textdata?.alignhor ?? 0, this.data.textdata?.alignver ?? 0, this.data.textdata?.multiline ?? 0]; }
+
+    //sprite
+    getGraphic() { return this.data.spritedata?.spriteid ?? -1; }
+    getHFlip() { return this.data.spritedata?.hflip ?? false; }
+    getVFlip() { return this.data.spritedata?.vflip ?? false; }
+    getTiling() { return this.data.spritedata?.flag2 ?? 0; }
+    setGraphic(sprite: number) { this.data.spritedata && (this.data.spritedata.spriteid = sprite); this.changed(); }
+    setHFlip(flip: boolean) { this.data.spritedata && (this.data.spritedata.hflip = flip); this.changed(); }
+    setVFlip(flip: boolean) { this.data.spritedata && (this.data.spritedata.vflip = flip); this.changed(); }
+    setTiling(tiling: number) { this.data.spritedata && (this.data.spritedata.flag2 = tiling); this.changed(); }
+
+    //model
+    setModel(id: number) { this.data.modeldata && (this.data.modeldata.modelid = id); this.changed(); }
+    getModel() { return this.data.modeldata?.modelid ?? -1; }
+
+    //figure
+    getTrans() { return this.data.figuredata?.trans ?? 0; }
+    setTrans(trans: number) { this.data.figuredata && (this.data.figuredata.trans = trans); this.changed(); }
+    getFilled() { return this.data.figuredata?.filled ?? 0; }
+    setFilled(filled: number) { this.data.figuredata && (this.data.figuredata.filled = filled); this.changed(); }
+    getColor() { return this.data.figuredata?.color ?? 0; }
+    setColor(col: number) { this.data.figuredata && (this.data.figuredata.color = col); this.changed(); }
 }
