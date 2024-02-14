@@ -17,6 +17,7 @@ export type RsInterfaceDomTree = {
     el: HTMLDivElement;
     rootcomps: RsInterfaceComponent[];
     interfaceid: number;
+    loadprom: Promise<void>;
     dispose: () => void;
 }
 
@@ -28,6 +29,7 @@ export class UiRenderContext {
     highlightstack: HTMLElement[] = [];
     interpreterprom: Promise<ClientScriptInterpreter> | null = null;
     touchedComps = new Set<RsInterfaceComponent>();
+    runOnloadScripts = false;
     constructor(source: CacheFileSource) {
         this.source = source;
     }
@@ -182,7 +184,21 @@ export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnT
     let dispose = () => {
         data.rootcomps.forEach(q => q.dispose());
     }
-    return { el: root, rootcomps: data.rootcomps, interfaceid: data.id, dispose };
+
+    let loadprom: Promise<void>
+    if (ctx.runOnloadScripts) {
+        loadprom = (async () => {
+            for (let comp of data.comps.values()) {
+                if (comp.data.scripts.load.length != 0) {
+                    await ctx.runClientScriptCallback(comp.compid, comp.data.scripts.load).catch(e => console.warn("comp load err", e));
+                }
+            }
+        })();
+    } else {
+        loadprom = Promise.resolve();
+    }
+
+    return { el: root, rootcomps: data.rootcomps, interfaceid: data.id, dispose, loadprom };
 }
 
 function cssColor(col: number) {
@@ -529,18 +545,18 @@ export class RsInterfaceComponent {
 }
 
 export class CS2Api {
-    data: interfaces;
-    comp: RsInterfaceComponent;
-    constructor(comp: RsInterfaceComponent) {
-        this.data = comp.data;
+    data: interfaces | null;
+    comp: RsInterfaceComponent | null;
+    constructor(comp: RsInterfaceComponent | null) {
+        this.data = comp?.data ?? null
         this.comp = comp;
     }
     changed() {
-        this.comp.ctx.touchedComps.add(this.comp);
+        this.comp?.ctx.touchedComps.add(this.comp);
     }
 
     findChild(ccid: number) {
-        return this.comp.clientChildren.find(q => q.compid == ccid);
+        return this.comp?.clientChildren.find(q => q.compid == ccid)?.api;
     }
 
     createChild(ccid: number, type: number) {
@@ -569,7 +585,7 @@ export class CS2Api {
             name2: "",
             optmask: 0,
             optmask1data_bit40: null,
-            parentid: this.comp.compid,
+            parentid: this.comp?.compid ?? -1,
             rightclickcursors: [],
             rightclickopts: [],
             scripts: {} as any,
@@ -657,70 +673,80 @@ export class CS2Api {
         } else {
             console.log(`creating unknown cc type, type=${type}, id=${ccid}`);
         }
-        let child = new RsInterfaceComponent(this.comp.ctx, data, ccid);
-        this.comp.clientChildren.push(child);
-        this.changed();
-        child.api.changed();
-        if (this.comp.element) {
-            //TODO defer this!
-            this.comp.initDom();
+        let api: CS2Api;
+        if (this.comp) {
+            let child = new RsInterfaceComponent(this.comp.ctx, data, ccid);
+            this.comp.clientChildren.push(child);
+            this.changed();
+            child.api.changed();
+            if (this.comp?.element) {
+                //TODO defer this!
+                this.comp.initDom();
+            }
+            api = child.api;
+        } else {
+            api = new CS2Api(null);
         }
-        return child;
+        return api;
     }
 
     setSize(w: number, h: number, modew: number, modeh: number) {
-        this.data.basewidth = w;
-        this.data.baseheight = h;
-        this.data.aspectwidthtype = modew;
-        this.data.aspectheighttype = modeh;
+        if (this.data) {
+            this.data.basewidth = w;
+            this.data.baseheight = h;
+            this.data.aspectwidthtype = modew;
+            this.data.aspectheighttype = modeh;
+        }
         this.changed();
     }
     setPosition(x: number, y: number, modex: number, modey: number) {
-        this.data.baseposx = x;
-        this.data.baseposy = y;
-        this.data.aspectxtype = modex;
-        this.data.aspectytype = modey;
+        if (this.data) {
+            this.data.baseposx = x;
+            this.data.baseposy = y;
+            this.data.aspectxtype = modex;
+            this.data.aspectytype = modey;
+        }
         this.changed();
     }
 
-    setHide(hide: number) { this.data.hidden = hide; }
-    setWidth(w: number) { this.data.basewidth = w; }
-    setHeight(h: number) { this.data.basewidth = h; }
-    setX(x: number) { this.data.baseposx = x; }
-    setY(y: number) { this.data.baseposy = y; }
-    getHide() { return this.data.hidden; }
-    getWidth() { return this.data.basewidth; }
-    getHeight() { return this.data.baseheight; }
-    getX() { return this.data.baseposx; }
-    getY() { return this.data.baseposy; }
-    setOp(index: number, text: string) { console.log(`setop ${this.comp.compid} ${index} ${text}`); }//TODO
-    getOp(index: number) { return this.data.rightclickopts[index] ?? ""; }
+    setHide(hide: number) { this.data && (this.data.hidden = hide); }
+    setWidth(w: number) { this.data && (this.data.basewidth = w); }
+    setHeight(h: number) { this.data && (this.data.basewidth = h); }
+    setX(x: number) { this.data && (this.data.baseposx = x); }
+    setY(y: number) { this.data && (this.data.baseposy = y); }
+    getHide() { return this.data?.hidden ?? 0; }
+    getWidth() { return this.data?.basewidth ?? 0; }
+    getHeight() { return this.data?.baseheight ?? 0; }
+    getX() { return this.data?.baseposx ?? 0; }
+    getY() { return this.data?.baseposy ?? 0; }
+    setOp(index: number, text: string) { console.log(`setop ${this.comp?.compid ?? -1} ${index} ${text}`); }//TODO
+    getOp(index: number) { return this.data?.rightclickopts[index] ?? ""; }
 
     //text
-    setText(text: string) { if (this.data.textdata) { this.data.textdata.text = text; } }
-    getText() { return this.data.textdata?.text ?? ""; }
-    setTextAlign(a: number, b: number, c: number) { this.data.textdata && (this.data.textdata.alignhor = c, this.data.textdata.alignver = b, this.data.textdata.multiline = a | 0); }
-    getTextAlign() { return [this.data.textdata?.alignhor ?? 0, this.data.textdata?.alignver ?? 0, this.data.textdata?.multiline ?? 0]; }
+    setText(text: string) { if (this.data?.textdata) { this.data.textdata.text = text; } }
+    getText() { return this.data?.textdata?.text ?? ""; }
+    setTextAlign(a: number, b: number, c: number) { this.data?.textdata && (this.data.textdata.alignhor = c, this.data.textdata.alignver = b, this.data.textdata.multiline = a | 0); }
+    getTextAlign() { return [this.data?.textdata?.alignhor ?? 0, this.data?.textdata?.alignver ?? 0, this.data?.textdata?.multiline ?? 0]; }
 
     //sprite
-    getGraphic() { return this.data.spritedata?.spriteid ?? -1; }
-    getHFlip() { return this.data.spritedata?.hflip ?? false; }
-    getVFlip() { return this.data.spritedata?.vflip ?? false; }
-    getTiling() { return this.data.spritedata?.flag2 ?? 0; }
-    setGraphic(sprite: number) { this.data.spritedata && (this.data.spritedata.spriteid = sprite); this.changed(); }
-    setHFlip(flip: boolean) { this.data.spritedata && (this.data.spritedata.hflip = flip); this.changed(); }
-    setVFlip(flip: boolean) { this.data.spritedata && (this.data.spritedata.vflip = flip); this.changed(); }
-    setTiling(tiling: number) { this.data.spritedata && (this.data.spritedata.flag2 = tiling); this.changed(); }
+    getGraphic() { return this.data?.spritedata?.spriteid ?? -1; }
+    getHFlip() { return this.data?.spritedata?.hflip ?? false; }
+    getVFlip() { return this.data?.spritedata?.vflip ?? false; }
+    getTiling() { return this.data?.spritedata?.flag2 ?? 0; }
+    setGraphic(sprite: number) { this.data?.spritedata && (this.data.spritedata.spriteid = sprite); this.changed(); }
+    setHFlip(flip: boolean) { this.data?.spritedata && (this.data.spritedata.hflip = flip); this.changed(); }
+    setVFlip(flip: boolean) { this.data?.spritedata && (this.data.spritedata.vflip = flip); this.changed(); }
+    setTiling(tiling: number) { this.data?.spritedata && (this.data.spritedata.flag2 = tiling); this.changed(); }
 
     //model
-    setModel(id: number) { this.data.modeldata && (this.data.modeldata.modelid = id); this.changed(); }
-    getModel() { return this.data.modeldata?.modelid ?? -1; }
+    setModel(id: number) { this.data?.modeldata && (this.data.modeldata.modelid = id); this.changed(); }
+    getModel() { return this.data?.modeldata?.modelid ?? -1; }
 
     //figure
-    getTrans() { return this.data.figuredata?.trans ?? 0; }
-    setTrans(trans: number) { this.data.figuredata && (this.data.figuredata.trans = trans); this.changed(); }
-    getFilled() { return this.data.figuredata?.filled ?? 0; }
-    setFilled(filled: number) { this.data.figuredata && (this.data.figuredata.filled = filled); this.changed(); }
-    getColor() { return this.data.figuredata?.color ?? 0; }
-    setColor(col: number) { this.data.figuredata && (this.data.figuredata.color = col); this.changed(); }
+    getTrans() { return this.data?.figuredata?.trans ?? 0; }
+    setTrans(trans: number) { this.data?.figuredata && (this.data.figuredata.trans = trans); this.changed(); }
+    getFilled() { return this.data?.figuredata?.filled ?? 0; }
+    setFilled(filled: number) { this.data?.figuredata && (this.data.figuredata.filled = filled); this.changed(); }
+    getColor() { return this.data?.figuredata?.color ?? 0; }
+    setColor(col: number) { this.data?.figuredata && (this.data.figuredata.color = col); this.changed(); }
 }

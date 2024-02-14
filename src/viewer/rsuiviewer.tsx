@@ -3,14 +3,11 @@ import { RsInterfaceComponent, RsInterfaceDomTree, UiRenderContext, loadRsInterf
 import { DomWrap } from "./scriptsui";
 import type { ThreejsSceneCache } from "../3d/modeltothree";
 import { ThreeJsRenderer } from "./threejsrender";
-import { interfaces } from "../../generated/interfaces";
-import { prepareClientScript, renderClientScript } from "../clientscript";
 import { CacheFileSource } from "../cache";
-import { cacheMajors } from "../constants";
-import { ClientScriptInterpreter } from "../clientscript/interpreter";
 
 export function RsUIViewer(p: { data: string }) {
 	let [ui, setui] = React.useState<RsInterfaceDomTree | null>(null);
+	let [refreshcount, refresh] = React.useReducer((v: number) => v + 1, 0);
 	let scene: ThreejsSceneCache = globalThis.sceneCache;//TODO pass this properly using args
 	let render: ThreeJsRenderer = globalThis.render;//TODO
 	let ctx = React.useMemo(() => {
@@ -18,7 +15,8 @@ export function RsUIViewer(p: { data: string }) {
 		res.sceneCache = scene;
 		res.renderer = render;
 		return res;
-	}, [p.data, scene, render]);
+	}, [scene, render]);
+
 	React.useEffect(() => {
 		let needed = true;
 		let uiinfo = JSON.parse(p.data);
@@ -33,11 +31,15 @@ export function RsUIViewer(p: { data: string }) {
 			needed = false;
 			cleanup();
 		}
-	}, [ctx]);
+	}, [ctx, p.data, refreshcount, ctx.runOnloadScripts]);
 
 	return (
-		<div style={{ position: "absolute", inset: "0px", display: "grid", gridTemplate: '"a" 1fr "b" 1fr / 1fr' }}>
+		<div style={{ position: "absolute", inset: "0px", display: "grid", gridTemplate: '"a" 1fr "b" auto "c" 1fr / 1fr' }}>
 			<DomWrap style={{ position: "relative" }} el={ui?.el} />
+			<div>
+				<label><input type="checkbox" checked={ctx.runOnloadScripts} onChange={e => { ctx.runOnloadScripts = e.currentTarget.checked; refresh(); }} />Run load scripts</label>
+				<input type="button" className="sub-btn" onClick={refresh} value="reload" />
+			</div>
 			<div style={{ overflowY: "auto" }}>
 				{ui?.rootcomps.map((q, i) => <RsInterfaceDebugger ctx={ctx} key={i} source={scene.engine} comp={q} />)}
 			</div>

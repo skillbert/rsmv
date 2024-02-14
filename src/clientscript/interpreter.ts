@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript"
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
-import type { RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
+import { CS2Api, RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { CacheFileSource } from "../cache";
@@ -32,7 +32,7 @@ export class ClientScriptInterpreter {
     mockscripts = new Map<number, (number | bigint | string)[]>();
     scope: ScriptScope | null = null;
     activecompid = -1;
-    clientcomps: (RsInterfaceComponent | undefined)[] = [undefined, undefined];
+    clientcomps: (CS2Api | undefined)[] = [undefined, undefined];
     stalled: Promise<boolean> | void = undefined;
     uictx: UiRenderContext | null = null;
     constructor(calli: ClientscriptObfuscation, uictx: UiRenderContext | null = null) {
@@ -40,7 +40,9 @@ export class ClientScriptInterpreter {
         this.uictx = uictx;
     }
     reset() {
-        if (this.stalled) { console.log("resetting cs2 interpreter while an async op is running, everything is probably corrupt"); }
+        if (this.stalled) {
+            console.log("resetting cs2 interpreter while an async op is running, everything is probably corrupt");
+        }
         this.scopeStack.length = 0;
         this.scope = null;
         this.intstack.length = 0;
@@ -57,13 +59,11 @@ export class ClientScriptInterpreter {
         if (!comp) { throw new Error(`clientcomp not set`); }
         return comp;
     }
-    getComponent<T extends RsInterFaceTypes | "any" = "any">(compid: number, type = "any" as T): TypedRsInterFaceComponent<T> {
+    getComponent(compid: number) {
         if ((compid | 0) == MAGIC_CONST_CURRENTCOMP) { compid = this.activecompid; }
-        if (!this.uictx) { throw new Error("tried to run ui op without ui"); }//TODO implement with nops?
-        let comp = this.uictx.comps.get(compid);
-        if (!comp) { throw new Error("component doesn't exist"); }
-        if (type != "any" && !comp.isCompType(type)) { throw new Error(`${type} component expected`); }
-        return comp as TypedRsInterFaceComponent<T>;
+        let comp = this.uictx?.comps.get(compid);
+        if (!comp) { return new CS2Api(null); }
+        return comp.api;
     }
     async callscriptid(id: number) {
         let data = await this.calli.source.getFileById(cacheMajors.clientscript, id);
@@ -200,10 +200,7 @@ export class ClientScriptInterpreter {
         }
 
         if (res instanceof Promise) {
-            this.stalled = res.then(() => {
-                this.stalled = undefined;
-                return true;
-            });
+            this.stalled = res.finally(() => this.stalled = undefined).then(q => true).catch(q => false);
             return this.stalled;
         } else {
             return true;
@@ -220,6 +217,7 @@ export class ClientScriptInterpreter {
         res += `${this.longstack.join(",")}\n`;
         res += `${this.stringstack.map(q => `"${q}"`).join(",")}\n`;
         if (this.scope) {
+            res += `script stack ${this.scopeStack.slice(-3).map(q => q.scriptid).join(", ")}\n`;
             for (let i = -5; i < 10; i++) {
                 let index = this.scope.index + i;
                 if (index < 0 || index >= this.scope.ops.length) { continue; }
@@ -318,11 +316,16 @@ implementedops.set(namedClientScriptOps.enum_getvalue, async inter => {
 implementedops.set(namedClientScriptOps.struct_getparam, async inter => {
     let param = inter.popint();
     let structid = inter.popint();
+    let parammeta = inter.calli.parammeta.get(param);
+    if (!parammeta) { throw new Error(`unkown param ${param}`); }
 
-    let file = await inter.calli.source.getFileById(cacheMajors.structs, structid);
-    let json = parse.structs.read(file, inter.calli.source);
-    let match = json.extra?.find(q => q.prop == param);
-    if (!match) { inter.pushint(-1); }//TODO should probly be 0 if subtype is plain int
+    let file: Buffer | null = null;
+    try {
+        file = await inter.calli.source.getFileById(cacheMajors.structs, structid);
+    } catch (e) { }
+    let json = file && parse.structs.read(file, inter.calli.source);
+    let match = json?.extra?.find(q => q.prop == param);
+    if (!match) { inter.pushint(parammeta.type?.defaultint ?? -1); }
     else if (match.intvalue == undefined) { throw new Error("param is not of type int"); }
     else { inter.pushint(match.intvalue); }
 });
@@ -442,67 +445,67 @@ namedimplementations.set("ENUM_GETOUTPUTCOUNT", async inter => {
     inter.pushint((json.intArrayValue1 ?? json.intArrayValue2?.values ?? json.stringArrayValue1 ?? json.stringArrayValue2?.values)?.length ?? 0);
 });
 
-namedimplementations.set("CC_CREATE", (inter, op) => { inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(2)).api.createChild(inter.popint(), inter.popint()); });
-namedimplementations.set("CC_FIND", (inter, op) => inter.pushint(+!!(inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(1)).api.findChild(inter.popint()))));
+namedimplementations.set("CC_CREATE", (inter, op) => { inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(2)).createChild(inter.popint(), inter.popint()); });
+namedimplementations.set("CC_FIND", (inter, op) => inter.pushint(+!!(inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(1)).findChild(inter.popint()))));
 namedimplementations.set("IF_GETLAYER", inter => { inter.popint(); inter.pushint(-1) });//mocked to be -1
 namedimplementations.set("IF_GETPARENTLAYER", inter => { inter.popint(); inter.pushint(-1) });//not sure what the difference is
 
-namedimplementations.set("IF_SETHIDE", inter => inter.popComponent().api.setHide(inter.popint()));
-namedimplementations.set("IF_GETHEIGHT", inter => inter.pushint(inter.popComponent().api.getHeight()));
-namedimplementations.set("IF_GETWIDTH", inter => inter.pushint(inter.popComponent().api.getWidth()));
-namedimplementations.set("IF_GETX", inter => inter.pushint(inter.popComponent().api.getX()));
-namedimplementations.set("IF_GETY", inter => inter.pushint(inter.popComponent().api.getY()));
-namedimplementations.set("IF_SETOP", inter => inter.popComponent().api.setOp(inter.popint(), inter.popstring()));
-namedimplementations.set("IF_GETHIDE", inter => inter.pushint(inter.popComponent().api.getHide()));
-namedimplementations.set("IF_GETTEXT", inter => inter.pushstring(inter.popComponent().api.getText()));
-namedimplementations.set("IF_SETTEXT", inter => inter.popComponent().api.setText(inter.popstring()));
-namedimplementations.set("IF_SETTEXTALIGN", inter => inter.popComponent().api.setTextAlign(inter.popint(), inter.popint(), inter.popint()));
-namedimplementations.set("IF_GETGRAPHIC", inter => inter.pushint(inter.popComponent().api.getGraphic()));
-namedimplementations.set("IF_GETHFLIP", inter => inter.pushint(+inter.popComponent().api.getHFlip()));
-namedimplementations.set("IF_GETVFLIP", inter => inter.pushint(+inter.popComponent().api.getVFlip()));
-namedimplementations.set("IF_SETGRAPHIC", inter => inter.popComponent().api.setGraphic(inter.popint()));
-namedimplementations.set("IF_SETHFLIP", inter => inter.popComponent().api.setHFlip(!!inter.popint()));
-namedimplementations.set("IF_SETVFLIP", inter => inter.popComponent().api.setVFlip(!!inter.popint()));
-namedimplementations.set("IF_SETMODEL", inter => inter.popComponent().api.setModel(inter.popint()));
-namedimplementations.set("IF_GETTRANS", inter => inter.pushint(inter.popComponent().api.getTrans()));
-namedimplementations.set("IF_GETCOLOUR", inter => inter.pushint(inter.popComponent().api.getColor()));
-namedimplementations.set("IF_GETFILLED", inter => inter.pushint(inter.popComponent().api.getFilled()));
-namedimplementations.set("IF_SETTRANS", inter => inter.popComponent().api.setTrans(inter.popint()));
-namedimplementations.set("IF_SETCOLOUR", inter => inter.popComponent().api.setColor(inter.popint()));
-namedimplementations.set("IF_SETFill", inter => inter.popComponent().api.setFilled(inter.popint()));
-namedimplementations.set("IF_SETSIZE", inter => inter.popComponent().api.setSize(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
-namedimplementations.set("IF_SETPOSITION", inter => inter.popComponent().api.setPosition(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
-namedimplementations.set("IF_SETTILING", inter => inter.popComponent().api.setTiling(inter.popint()));
-namedimplementations.set("IF_GETTILING", inter => inter.pushint(inter.popComponent().api.getTiling()));
+namedimplementations.set("IF_SETHIDE", inter => inter.popComponent().setHide(inter.popint()));
+namedimplementations.set("IF_GETHEIGHT", inter => inter.pushint(inter.popComponent().getHeight()));
+namedimplementations.set("IF_GETWIDTH", inter => inter.pushint(inter.popComponent().getWidth()));
+namedimplementations.set("IF_GETX", inter => inter.pushint(inter.popComponent().getX()));
+namedimplementations.set("IF_GETY", inter => inter.pushint(inter.popComponent().getY()));
+namedimplementations.set("IF_SETOP", inter => inter.popComponent().setOp(inter.popint(), inter.popstring()));
+namedimplementations.set("IF_GETHIDE", inter => inter.pushint(inter.popComponent().getHide()));
+namedimplementations.set("IF_GETTEXT", inter => inter.pushstring(inter.popComponent().getText()));
+namedimplementations.set("IF_SETTEXT", inter => inter.popComponent().setText(inter.popstring()));
+namedimplementations.set("IF_SETTEXTALIGN", inter => inter.popComponent().setTextAlign(inter.popint(), inter.popint(), inter.popint()));
+namedimplementations.set("IF_GETGRAPHIC", inter => inter.pushint(inter.popComponent().getGraphic()));
+namedimplementations.set("IF_GETHFLIP", inter => inter.pushint(+inter.popComponent().getHFlip()));
+namedimplementations.set("IF_GETVFLIP", inter => inter.pushint(+inter.popComponent().getVFlip()));
+namedimplementations.set("IF_SETGRAPHIC", inter => inter.popComponent().setGraphic(inter.popint()));
+namedimplementations.set("IF_SETHFLIP", inter => inter.popComponent().setHFlip(!!inter.popint()));
+namedimplementations.set("IF_SETVFLIP", inter => inter.popComponent().setVFlip(!!inter.popint()));
+namedimplementations.set("IF_SETMODEL", inter => inter.popComponent().setModel(inter.popint()));
+namedimplementations.set("IF_GETTRANS", inter => inter.pushint(inter.popComponent().getTrans()));
+namedimplementations.set("IF_GETCOLOUR", inter => inter.pushint(inter.popComponent().getColor()));
+namedimplementations.set("IF_GETFILLED", inter => inter.pushint(inter.popComponent().getFilled()));
+namedimplementations.set("IF_SETTRANS", inter => inter.popComponent().setTrans(inter.popint()));
+namedimplementations.set("IF_SETCOLOUR", inter => inter.popComponent().setColor(inter.popint()));
+namedimplementations.set("IF_SETFill", inter => inter.popComponent().setFilled(inter.popint()));
+namedimplementations.set("IF_SETSIZE", inter => inter.popComponent().setSize(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
+namedimplementations.set("IF_SETPOSITION", inter => inter.popComponent().setPosition(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
+namedimplementations.set("IF_SETTILING", inter => inter.popComponent().setTiling(inter.popint()));
+namedimplementations.set("IF_GETTILING", inter => inter.pushint(inter.popComponent().getTiling()));
 
 //exactly the same as above but with clientcomp from imm instead of server comp from stack
-namedimplementations.set("CC_SETHIDE", (inter, op) => inter.getClientComp(op.imm).api.setHide(inter.popint()));
-namedimplementations.set("CC_GETHEIGHT", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getHeight()));
-namedimplementations.set("CC_GETWIDTH", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getWidth()));
-namedimplementations.set("CC_GETX", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getX()));
-namedimplementations.set("CC_GETY", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getY()));
-namedimplementations.set("CC_SETOP", (inter, op) => inter.getClientComp(op.imm).api.setOp(inter.popint(), inter.popstring()));
-namedimplementations.set("CC_GETHIDE", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getHide()));
-namedimplementations.set("CC_GETTEXT", (inter, op) => inter.pushstring(inter.getClientComp(op.imm).api.getText()));
-namedimplementations.set("CC_SETTEXT", (inter, op) => inter.getClientComp(op.imm).api.setText(inter.popstring()));
-namedimplementations.set("CC_SETTEXTALIGN", (inter, op) => inter.getClientComp(op.imm).api.setTextAlign(inter.popint(), inter.popint(), inter.popint()))
-namedimplementations.set("CC_GETGRAPHIC", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getGraphic()));
-namedimplementations.set("CC_GETHFLIP", (inter, op) => inter.pushint(+inter.getClientComp(op.imm).api.getHFlip()));
-namedimplementations.set("CC_GETVFLIP", (inter, op) => inter.pushint(+inter.getClientComp(op.imm).api.getVFlip()));
-namedimplementations.set("CC_SETGRAPHIC", (inter, op) => inter.getClientComp(op.imm).api.setGraphic(inter.popint()));
-namedimplementations.set("CC_SETHFLIP", (inter, op) => inter.getClientComp(op.imm).api.setHFlip(!!inter.popint()));
-namedimplementations.set("CC_SETVFLIP", (inter, op) => inter.getClientComp(op.imm).api.setVFlip(!!inter.popint()));
-namedimplementations.set("CC_SETMODEL", (inter, op) => inter.getClientComp(op.imm).api.setModel(inter.popint()));
-namedimplementations.set("CC_GETTRANS", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getTrans()));
-namedimplementations.set("CC_GETCOLOUR", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getColor()));
-namedimplementations.set("CC_GETFILLED", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getFilled()));
-namedimplementations.set("CC_SETTRANS", (inter, op) => inter.getClientComp(op.imm).api.setTrans(inter.popint()));
-namedimplementations.set("CC_SETCOLOUR", (inter, op) => inter.getClientComp(op.imm).api.setColor(inter.popint()));
-namedimplementations.set("CC_SETFill", (inter, op) => inter.getClientComp(op.imm).api.setFilled(inter.popint()));
-namedimplementations.set("CC_SETSIZE", (inter, op) => inter.getClientComp(op.imm).api.setSize(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
-namedimplementations.set("CC_SETPOSITION", (inter, op) => inter.getClientComp(op.imm).api.setPosition(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
-namedimplementations.set("CC_SETTILING", (inter, op) => inter.getClientComp(op.imm).api.setTiling(inter.popint()));
-namedimplementations.set("CC_GETTILING", (inter, op) => inter.pushint(inter.getClientComp(op.imm).api.getTiling()));
+namedimplementations.set("CC_SETHIDE", (inter, op) => inter.getClientComp(op.imm).setHide(inter.popint()));
+namedimplementations.set("CC_GETHEIGHT", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getHeight()));
+namedimplementations.set("CC_GETWIDTH", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getWidth()));
+namedimplementations.set("CC_GETX", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getX()));
+namedimplementations.set("CC_GETY", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getY()));
+namedimplementations.set("CC_SETOP", (inter, op) => inter.getClientComp(op.imm).setOp(inter.popint(), inter.popstring()));
+namedimplementations.set("CC_GETHIDE", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getHide()));
+namedimplementations.set("CC_GETTEXT", (inter, op) => inter.pushstring(inter.getClientComp(op.imm).getText()));
+namedimplementations.set("CC_SETTEXT", (inter, op) => inter.getClientComp(op.imm).setText(inter.popstring()));
+namedimplementations.set("CC_SETTEXTALIGN", (inter, op) => inter.getClientComp(op.imm).setTextAlign(inter.popint(), inter.popint(), inter.popint()))
+namedimplementations.set("CC_GETGRAPHIC", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getGraphic()));
+namedimplementations.set("CC_GETHFLIP", (inter, op) => inter.pushint(+inter.getClientComp(op.imm).getHFlip()));
+namedimplementations.set("CC_GETVFLIP", (inter, op) => inter.pushint(+inter.getClientComp(op.imm).getVFlip()));
+namedimplementations.set("CC_SETGRAPHIC", (inter, op) => inter.getClientComp(op.imm).setGraphic(inter.popint()));
+namedimplementations.set("CC_SETHFLIP", (inter, op) => inter.getClientComp(op.imm).setHFlip(!!inter.popint()));
+namedimplementations.set("CC_SETVFLIP", (inter, op) => inter.getClientComp(op.imm).setVFlip(!!inter.popint()));
+namedimplementations.set("CC_SETMODEL", (inter, op) => inter.getClientComp(op.imm).setModel(inter.popint()));
+namedimplementations.set("CC_GETTRANS", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getTrans()));
+namedimplementations.set("CC_GETCOLOUR", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getColor()));
+namedimplementations.set("CC_GETFILLED", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getFilled()));
+namedimplementations.set("CC_SETTRANS", (inter, op) => inter.getClientComp(op.imm).setTrans(inter.popint()));
+namedimplementations.set("CC_SETCOLOUR", (inter, op) => inter.getClientComp(op.imm).setColor(inter.popint()));
+namedimplementations.set("CC_SETFill", (inter, op) => inter.getClientComp(op.imm).setFilled(inter.popint()));
+namedimplementations.set("CC_SETSIZE", (inter, op) => inter.getClientComp(op.imm).setSize(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
+namedimplementations.set("CC_SETPOSITION", (inter, op) => inter.getClientComp(op.imm).setPosition(inter.popdeep(3), inter.popdeep(2), inter.popdeep(1), inter.popdeep(0)));
+namedimplementations.set("CC_SETTILING", (inter, op) => inter.getClientComp(op.imm).setTiling(inter.popint()));
+namedimplementations.set("CC_GETTILING", (inter, op) => inter.pushint(inter.getClientComp(op.imm).getTiling()));
 
 
 // namedimplementations.set("xxxxx", inter => xxxx)
