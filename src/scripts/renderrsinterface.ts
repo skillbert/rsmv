@@ -336,6 +336,9 @@ function spriteCss(spritedata: interfaces["spritedata"] & {}) {
         //TODO this doesn't handle the alpha channel correctly
         imgstyle += `scale:${spritedata.hflip ? -1 : 1} ${spritedata.vflip ? -1 : 1};`;
     }
+    if (spritedata.rotation != 0) {
+        imgstyle += `rotate:${(-spritedata.rotation / 0x10000 * 360).toFixed(2)}deg;`;
+    }
     if ((spritedata.color & 0xffffff) != 0xffffff) {
         imgstyle += `background-color:${cssColor(spritedata.color)};background-blend-mode:multiply;`;
     }
@@ -415,7 +418,7 @@ export class RsInterfaceComponent {
             let spritecss = spriteCss(this.data.spritedata);
             let sprite = await spritePromise(ctx, this.data.spritedata.spriteid);
             spritecss += `background-image:${sprite.imgcss};`;
-            childhtml += `<div class="rs-image${!this.data.spritedata.flag2 ? " rs-image--cover" : ""}" style="${escapeHTML(spritecss)}"></div>`;
+            childhtml += `<div class="rs-image${!this.data.spritedata.tiling ? " rs-image--cover" : ""}" style="${escapeHTML(spritecss)}"></div>`;
         }
         let html = "";
         html += `<div class="rs-component" data-compid=${this.compid} style="${escapeHTML(style)}" onclick="mod.click(event)" title="${escapeHTML(title)}">\n`;
@@ -477,7 +480,7 @@ export class RsInterfaceComponent {
                     this.spriteChild.classList.add("rs-image");
                 }
                 this.spriteChild.style.cssText = spriteCss(this.data.spritedata);
-                this.spriteChild.classList.toggle("rs-image--cover", !this.data.spritedata.flag2);
+                this.spriteChild.classList.toggle("rs-image--cover", !this.data.spritedata.tiling);
                 spritePromise(this.ctx, this.data.spritedata.spriteid).then(({ imgcss, spriteid }) => {
                     if (this.spriteChild && spriteid == this.data.spritedata?.spriteid) {
                         this.spriteChild.style.backgroundImage = imgcss;
@@ -644,11 +647,11 @@ export class CS2Api {
                 borderthickness: 0,
                 clickmask: null,
                 color: 0xffffff,
-                flag2: 0,
+                tiling: 0,
                 hflip: false,
                 vflip: false,
                 transparency: 0,
-                unk1: 0,
+                rotation: 0,
                 unk2: 0,
                 v6unk: 0
             }
@@ -732,11 +735,13 @@ export class CS2Api {
     getGraphic() { return this.data?.spritedata?.spriteid ?? -1; }
     getHFlip() { return this.data?.spritedata?.hflip ?? false; }
     getVFlip() { return this.data?.spritedata?.vflip ?? false; }
-    getTiling() { return this.data?.spritedata?.flag2 ?? 0; }
+    getTiling() { return this.data?.spritedata?.tiling ?? 0; }
+    getRotation() { return this.data?.spritedata?.rotation ?? 0; }
     setGraphic(sprite: number) { this.data?.spritedata && (this.data.spritedata.spriteid = sprite); this.changed(); }
     setHFlip(flip: boolean) { this.data?.spritedata && (this.data.spritedata.hflip = flip); this.changed(); }
     setVFlip(flip: boolean) { this.data?.spritedata && (this.data.spritedata.vflip = flip); this.changed(); }
-    setTiling(tiling: number) { this.data?.spritedata && (this.data.spritedata.flag2 = tiling); this.changed(); }
+    setTiling(tiling: number) { this.data?.spritedata && (this.data.spritedata.tiling = tiling); this.changed(); }
+    setRotation(rot: number) { this.data?.spritedata && (this.data.spritedata.rotation = rot); this.changed(); }
 
     //model
     setModel(id: number) { this.data?.modeldata && (this.data.modeldata.modelid = id); this.changed(); }

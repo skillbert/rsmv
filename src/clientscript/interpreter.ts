@@ -217,7 +217,7 @@ export class ClientScriptInterpreter {
         res += `${this.longstack.join(",")}\n`;
         res += `${this.stringstack.map(q => `"${q}"`).join(",")}\n`;
         if (this.scope) {
-            res += `script stack ${this.scopeStack.slice(-3).map(q => q.scriptid).join(", ")}\n`;
+            res += `script stack ${this.scopeStack.map(q => q.scriptid).join(", ")}\n`;
             for (let i = -5; i < 10; i++) {
                 let index = this.scope.index + i;
                 if (index < 0 || index >= this.scope.ops.length) { continue; }
@@ -309,8 +309,8 @@ implementedops.set(namedClientScriptOps.enum_getvalue, async inter => {
     let enumjson = await loadEnum(inter.calli.source, enumid);
 
     if (outprim != "int") { throw new Error("enum_getvalue can only look up int values"); }
-    //TODO probably need -1 default if subtype type isn't simple int
-    let res = (enumjson.intArrayValue1 ?? enumjson.intArrayValue2?.values)?.find(q => q[0] == key)?.[1] ?? enumjson.intValue ?? 0;
+    //TODO probably should default to 0 if the type is a simple int
+    let res = (enumjson.intArrayValue1 ?? enumjson.intArrayValue2?.values)?.find(q => q[0] == key)?.[1] ?? enumjson.intValue ?? -1;
     inter.pushint(res);
 });
 implementedops.set(namedClientScriptOps.struct_getparam, async inter => {
@@ -449,6 +449,7 @@ namedimplementations.set("CC_CREATE", (inter, op) => { inter.clientcomps[op.imm]
 namedimplementations.set("CC_FIND", (inter, op) => inter.pushint(+!!(inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(1)).findChild(inter.popint()))));
 namedimplementations.set("IF_GETLAYER", inter => { inter.popint(); inter.pushint(-1) });//mocked to be -1
 namedimplementations.set("IF_GETPARENTLAYER", inter => { inter.popint(); inter.pushint(-1) });//not sure what the difference is
+namedimplementations.set("ACHIEVEMENT_FINDNEXT", inter => inter.pushint(-1));
 
 namedimplementations.set("IF_SETHIDE", inter => inter.popComponent().setHide(inter.popint()));
 namedimplementations.set("IF_GETHEIGHT", inter => inter.pushint(inter.popComponent().getHeight()));

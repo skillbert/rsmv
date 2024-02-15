@@ -44,8 +44,8 @@ export type interfaces = {
 	} | null,
 	spritedata: {
 		spriteid: number,
-		unk1: number,
-		flag2: number,
+		rotation: number,
+		tiling: number,
 		aspectwidthdata: (number|-1),
 		aspectheightdata: (number|-1),
 		transparency: number,
