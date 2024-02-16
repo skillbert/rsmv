@@ -16,6 +16,7 @@ import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import { ClientScriptSubtypeSolver, detectSubtypes } from "./subtypedetector";
 import { TsWriterContext, debugAst } from "./codewriter";
+import * as datastore from "idb-keyval";
 
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
@@ -312,18 +313,22 @@ export class ClientscriptObfuscation {
         if (!firstindex) { throw new Error("cache has no clientscripts"); }
         let firstscript = await source.getFileById(firstindex.major, firstindex.minor);
         let crc = crc32(firstscript);
-        return `cache/opcodes-build${source.getBuildNr()}-${crc}.json`;
+        return `opcodes-build${source.getBuildNr()}-${crc}.json`;
     }
 
     async save() {
-        if (typeof fs == "undefined") {
-            throw new Error("no filesystem access");
-        }
         let json = this.toJson();
+        let filename = await ClientscriptObfuscation.getSaveName(this.source)
         let filedata = JSON.stringify(json);
-        let filename = await ClientscriptObfuscation.getSaveName(this.source);
-        await fs.mkdir(path.dirname(filename), { recursive: true });
-        await fs.writeFile(filename, filedata);
+        if (fs.constants) {
+            let pathname = `cache/${filename}`;
+            await fs.mkdir(path.dirname(pathname), { recursive: true });
+            await fs.writeFile(pathname, filedata);
+        } else if (datastore.set) {
+            await datastore.set(filename, filedata);
+        } else {
+            console.log(`did not save cs2 callibration since there is no fs and no browser indexeddb`);
+        }
     }
 
     private constructor(source: CacheFileSource) {
@@ -333,9 +338,18 @@ export class ClientscriptObfuscation {
     static async create(source: CacheFileSource, nocached = false) {
         if (!nocached) {
             try {
-                let file = await fs.readFile(await this.getSaveName(source), "utf8");
-                let json = JSON.parse(file);
-                return this.fromJson(source, json);
+                let filename = await this.getSaveName(source);
+                let file: string | undefined = undefined;
+                if (fs.constants) {
+                    let pathname = `cache/${filename}`;
+                    file = await fs.readFile(pathname, "utf8");
+                } else if (datastore.get) {
+                    file = await datastore.get(filename);
+                }
+                if (file) {
+                    let json = JSON.parse(file);
+                    return this.fromJson(source, json);
+                }
             } catch { }
         }
         let res = new ClientscriptObfuscation(source);
