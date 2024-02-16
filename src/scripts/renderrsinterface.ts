@@ -562,6 +562,12 @@ export class CS2Api {
         return this.comp?.clientChildren.find(q => q.compid == ccid)?.api;
     }
 
+    getNextChildId() {
+        if (!this.comp) { return 0; }
+        let max = this.comp.clientChildren.reduce((a, v) => Math.max(a, v.compid), -1);
+        return max + 1;
+    }
+
     createChild(ccid: number, type: number) {
         let data: interfaces = {
             type: type,

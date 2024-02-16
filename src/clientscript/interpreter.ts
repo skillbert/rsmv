@@ -449,6 +449,7 @@ namedimplementations.set("CC_CREATE", (inter, op) => { inter.clientcomps[op.imm]
 namedimplementations.set("CC_FIND", (inter, op) => inter.pushint(+!!(inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(1)).findChild(inter.popint()))));
 namedimplementations.set("IF_GETLAYER", inter => { inter.popint(); inter.pushint(-1) });//mocked to be -1
 namedimplementations.set("IF_GETPARENTLAYER", inter => { inter.popint(); inter.pushint(-1) });//not sure what the difference is
+namedimplementations.set("IF_GETNEXTSUBID", inter => inter.pushint(inter.popComponent().getNextChildId()));
 namedimplementations.set("ACHIEVEMENT_FINDNEXT", inter => inter.pushint(-1));
 
 namedimplementations.set("IF_SETHIDE", inter => inter.popComponent().setHide(inter.popint()));
