@@ -1,0 +1,57 @@
+// GENERATED DO NOT EDIT
+// This source data is located at '..\src\opcodes\models_feb2024.jsonc'
+// run `npm run filetypes` to rebuild
+
+export type models_feb2024 = {
+	format: number,
+	version: number,
+	always_0f: number,
+	meshCount: number,
+	unkCount0: number,
+	unkCount1: number,
+	unkCount2: number,
+	unkCount3: number,
+	meshes: {
+		unkint: (number|number),
+		materialArgument: (number|0),
+		faceCount: number,
+		hasVertices: number,
+		hasVertexAlpha: number,
+		hasFaceBones: number,
+		hasBoneIds: number,
+		isHidden: number,
+		hasSkin: number,
+		colourBuffer: (Uint16Array|null),
+		alphaBuffer: (Uint8Array|null),
+		faceboneidBuffer: Uint16Array | null,
+		indexBuffers: (Uint16Array[]|null),
+		vertexCount: (number|number|0),
+		positionBuffer: Int16Array | null,
+		normalBuffer: (Int8Array|Int16Array) | null,
+		tagentBuffer: (Int16Array|null) | null,
+		uvBuffer: (Uint16Array|Float32Array) | null,
+		boneidBuffer: Uint16Array | null,
+		skin: ({
+				skinWeightCount: number,
+				skinBoneBuffer: Uint16Array,
+				skinWeightBuffer: Uint8Array,
+			}|null),
+		weirdskin: ({
+				ids: number[],
+				weights: number[],
+			}[]|null),
+		vertexColours: (Uint16Array|null),
+		vertexAlpha: (Uint8Array|null),
+		vertexFacebones: (Uint16Array|null),
+	}[],
+	renders: {
+		unkint: number,
+		unkbyte1: number,
+		materialArgument: number,
+		unkbyte2: number,
+		buf: Uint16Array,
+	}[] | null,
+	unk1Buffer: Uint8Array[],
+	unk2Buffer: Uint8Array[],
+	unk3Buffer: Uint8Array[],
+};

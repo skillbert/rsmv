@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { alignedRefOrCopy, ArrayBufferConstructor } from "./gltfutil";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
+import { models } from "../../generated/models";
 
 export type BoneCenter = {
 	xsum: number,
@@ -95,160 +96,222 @@ export function getModelCenter(model: ModelData) {
 	return center;
 }
 
+function parsePosData(arr: Int16Array) {
+	return new THREE.BufferAttribute(new Float32Array(arr), 3);
+}
+
+function addBoneIdBuffer(attributes: ModelMeshData["attributes"], boneidBuffer: Uint16Array) {
+	let quadboneids = new Uint8Array(boneidBuffer.length * 4);
+	let quadboneweights = new Uint8Array(boneidBuffer.length * 4);
+	const maxshort = (1 << 16) - 1;
+	for (let i = 0; i < boneidBuffer.length; i++) {
+		let id = boneidBuffer[i]
+		id = (id == maxshort ? 0 : id + 1);
+		quadboneids[i * 4] = id;
+		quadboneweights[i * 4] = 255;
+	}
+	attributes.boneids = new THREE.BufferAttribute(quadboneids, 4);
+	attributes.boneweights = new THREE.BufferAttribute(quadboneweights, 4, true);
+}
+
+function addUvBuffer(attributes: ModelMeshData["attributes"], vertexCount: number, uvBuffer: Uint16Array | Float32Array) {
+	if (uvBuffer instanceof Uint16Array) {
+		//unpack from float 16
+		let uvBufferCopy = new Float32Array(vertexCount * 2);
+		for (let i = 0; i < vertexCount * 2; i++) {
+			uvBufferCopy[i] = ushortToHalf(uvBuffer[i]);
+		}
+		attributes.texuvs = new THREE.BufferAttribute(uvBufferCopy, 2);
+	} else {
+		attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
+	}
+}
+
+function addNormalsBuffer(attributes: ModelMeshData["attributes"], normalBuffer: Int8Array | Int16Array) {
+	let normalsrepacked = new Float32Array(normalBuffer.length);
+	//TODO threejs can probly do this for us
+	for (let i = 0; i < normalBuffer.length; i += 3) {
+		let x = normalBuffer[i + 0];
+		let y = normalBuffer[i + 1];
+		let z = normalBuffer[i + 2];
+		//recalc instead of taking 127 or 32k because apparently its not normalized properly
+		let len = Math.hypot(x, y, z);
+		if (len == 0) {
+			//TODO what does the rs engine do with missing normals?
+			len = 1;
+		}
+		normalsrepacked[i + 0] = x / len;
+		normalsrepacked[i + 1] = y / len;
+		normalsrepacked[i + 2] = z / len;
+	}
+	attributes.normals = new THREE.BufferAttribute(normalsrepacked, 3);// { newtype: "f32", vecsize: 3, source: normalsrepacked };}
+}
+
 export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 	let parsed = parse.models.read(modelfile, source);
-
-	let maxy = 0;
-	let miny = 0;
-	let bonecount = 0;
-	let skincount = 0;
 	let meshes: ModelMeshData[] = [];
 
-	for (let mesh of parsed.meshes) {
-		if (mesh.isHidden) {
-			//probably something particle related
-			continue;
+	if (parsed.meshes) {
+		for (let mesh of parsed.meshes) {
+			let indexBuffers = mesh.indexBuffers;
+			let indexlods = indexBuffers.map(q => new THREE.BufferAttribute(q, 1));
+			let indexbuf = indexBuffers[0];
+
+			let attributes: ModelMeshData["attributes"] = {
+				pos: parsePosData(mesh.positionBuffer!)
+			}
+
+			if (mesh.skin) {
+				let skinIdBuffer = new Uint16Array(mesh.vertexCount * 4);
+				let skinWeightBuffer = new Uint8Array(mesh.vertexCount * 4);
+				let weightin = mesh.skin.skinWeightBuffer;
+				let idin = mesh.skin.skinBoneBuffer;
+				let idindex = 0;
+				let weightindex = 0;
+				for (let i = 0; i < mesh.vertexCount; i++) {
+					let remainder = 255;
+					for (let j = 0; j < 4; j++) {
+						let weight = weightin[weightindex++];
+						let boneid = idin[idindex++];
+						let actualweight = (weight != 0 ? weight : remainder);
+						remainder -= weight;
+						skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);//TODO this should be boneid+1since we're shifting in -1 to 0?
+						skinWeightBuffer[i * 4 + j] = actualweight;
+						if (weight == 0) { break; }
+					}
+				}
+				if (idindex != mesh.skin.skinWeightCount || weightindex != mesh.skin.skinWeightCount) {
+					console.log("model skin decode failed");
+					debugger;
+				}
+				attributes.skinids = new THREE.BufferAttribute(skinIdBuffer, 4);
+				attributes.skinweights = new THREE.BufferAttribute(skinWeightBuffer, 4, true);
+			}
+
+			if (mesh.colourBuffer) {
+				if (!indexbuf) { throw new Error("need index buf in order to read per-face colors"); }
+				let vertexcolor = new Uint8Array(mesh.vertexCount * 4);
+				let alphaBuffer = mesh.alphaBuffer;
+				for (let i = 0; i < mesh.faceCount; i++) {
+					let [r, g, b] = HSL2RGB(packedHSL2HSL(mesh.colourBuffer[i]));
+					//iterate triangle vertices
+					for (let j = 0; j < 3; j++) {
+						let index = indexbuf[i * 3 + j] * 4;
+						vertexcolor[index + 0] = r;
+						vertexcolor[index + 1] = g;
+						vertexcolor[index + 2] = b;
+						if (alphaBuffer) {
+							vertexcolor[index + 3] = alphaBuffer[i];
+						} else {
+							vertexcolor[index + 3] = 255;
+						}
+					}
+				}
+				attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
+			}
+
+			if (mesh.boneidBuffer) { addBoneIdBuffer(attributes, mesh.boneidBuffer); }
+			if (mesh.uvBuffer) { addUvBuffer(attributes, mesh.vertexCount, mesh.uvBuffer); }
+			if (mesh.normalBuffer) { addNormalsBuffer(attributes, mesh.normalBuffer); }
+
+			meshes.push({
+				indices: indexlods[0],
+				indexLODs: indexlods,
+				materialId: mesh.materialArgument - 1,
+				hasVertexAlpha: !!mesh.alphaBuffer,
+				needsNormalBlending: false,
+				attributes: attributes
+			});
+		}
+	} else if (parsed.meshdata) {
+		let mesh = parsed.meshdata
+		let attributes: ModelMeshData["attributes"] = {
+			pos: parsePosData(mesh.positionBuffer!)
 		}
 
-		//highest level of detail only
-		let indexBuffers = mesh.indexBuffers;
-		let positionBuffer = mesh.positionBuffer;
-		let boneidBuffer = mesh.boneidBuffer;
-		let normalBuffer = mesh.normalBuffer;
-
-		if (!positionBuffer) { continue; }
-
-		//TODO let threejs do this while making the bounding box
-		for (let i = 0; i < positionBuffer.length; i += 3) {
-			if (positionBuffer[i + 1] > maxy) {
-				maxy = positionBuffer[i + 1];
+		if (mesh.vertexColours) {
+			let vertexcolor = new Uint8Array(mesh.vertexCount * 4);
+			let alphaBuffer = mesh.vertexAlpha;
+			for (let i = 0; i < mesh.vertexColours.length; i++) {
+				let [r, g, b] = HSL2RGB(packedHSL2HSL(mesh.vertexColours[i]));
+				let alpha = (alphaBuffer ? alphaBuffer[i] : 255);
+				let index = i * 4;
+				vertexcolor[index + 0] = r;
+				vertexcolor[index + 1] = g;
+				vertexcolor[index + 2] = b;
+				vertexcolor[index + 3] = alpha;
 			}
-			if (positionBuffer[i + 1] < miny) {
-				miny = positionBuffer[i + 1];
-			}
+			attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
 		}
-		let indexlods = indexBuffers.map(q => new THREE.BufferAttribute(q, 1));
 
-		let indexbuf = indexBuffers[0];
-
-		let meshdata: ModelMeshData = {
-			indices: indexlods[0],
-			indexLODs: indexlods,
-			materialId: mesh.materialArgument - 1,
-			hasVertexAlpha: !!mesh.alphaBuffer,
-			needsNormalBlending: false,
-			attributes: {
-				pos: new THREE.BufferAttribute(new Float32Array(mesh.positionBuffer!), 3)
-			}
-		};
-
-		//every modern animation system uses 4 skinned bones per vertex instead of one
 		if (mesh.skin) {
 			let skinIdBuffer = new Uint16Array(mesh.vertexCount * 4);
 			let skinWeightBuffer = new Uint8Array(mesh.vertexCount * 4);
-			let weightin = mesh.skin.skinWeightBuffer;
-			let idin = mesh.skin.skinBoneBuffer;
-			let idindex = 0;
-			let weightindex = 0;
-			for (let i = 0; i < mesh.vertexCount; i++) {
+			for (let i = 0; i < mesh.skin.length; i++) {
+				let entry = mesh.skin[i];
 				let remainder = 255;
-				for (let j = 0; j < 4; j++) {
-					let weight = weightin[weightindex++];
-					let boneid = idin[idindex++];
+				if (entry.ids.length != entry.weights.length) { throw new Error("unexpected length difference in skin weights/ids"); }
+				for (let j = 0; j < entry.ids.length; j++) {
+					let weight = entry.weights[j];
+					let boneid = entry.ids[j];
 					let actualweight = (weight != 0 ? weight : remainder);
 					remainder -= weight;
 					skinIdBuffer[i * 4 + j] = (boneid == 65535 ? 0 : boneid);//TODO this should be boneid+1since we're shifting in -1 to 0?
 					skinWeightBuffer[i * 4 + j] = actualweight;
-					if (boneid >= skincount) {
-						skincount = boneid + 2;//we are adding a root bone at 0, and count is max+1
-					}
 					if (weight == 0) { break; }
 				}
 			}
-			if (idindex != mesh.skin.skinWeightCount || weightindex != mesh.skin.skinWeightCount) {
-				console.log("model skin decode failed");
-				debugger;
-			}
-			meshdata.attributes.skinids = new THREE.BufferAttribute(skinIdBuffer, 4);
-			meshdata.attributes.skinweights = new THREE.BufferAttribute(skinWeightBuffer, 4, true);
+			attributes.skinids = new THREE.BufferAttribute(skinIdBuffer, 4);
+			attributes.skinweights = new THREE.BufferAttribute(skinWeightBuffer, 4, true);
 		}
-		if (boneidBuffer) {
-			let quadboneids = new Uint8Array(boneidBuffer.length * 4);
-			let quadboneweights = new Uint8Array(boneidBuffer.length * 4);
-			const maxshort = (1 << 16) - 1;
-			for (let i = 0; i < boneidBuffer.length; i++) {
-				let id = boneidBuffer[i]
-				id = (id == maxshort ? 0 : id + 1);
-				quadboneids[i * 4] = id;
-				quadboneweights[i * 4] = 255;
-				if (id >= bonecount) {
-					bonecount = id + 2;//we are adding a root bone at 0, and count is max+1
-				}
-			}
-			meshdata.attributes.boneids = new THREE.BufferAttribute(quadboneids, 4);
-			meshdata.attributes.boneweights = new THREE.BufferAttribute(quadboneweights, 4, true);
+		if (mesh.boneidBuffer) { addBoneIdBuffer(attributes, mesh.boneidBuffer); }
+		if (mesh.uvBuffer) { addUvBuffer(attributes, mesh.vertexCount, mesh.uvBuffer); }
+		if (mesh.normalBuffer) { addNormalsBuffer(attributes, mesh.normalBuffer); }
+
+		for (let render of mesh.renders) {
+			let index = new THREE.BufferAttribute(render.buf, 1);
+			meshes.push({
+				indices: index,
+				indexLODs: [index],
+				materialId: render.materialArgument - 1,
+				hasVertexAlpha: !!mesh.vertexAlpha,//TODO probably also requires flag
+				needsNormalBlending: false,
+				attributes: attributes
+			})
 		}
-
-
-		if (mesh.uvBuffer) {
-			if (mesh.uvBuffer instanceof Uint16Array) {
-				//unpack from float 16
-				let uvBuffer = new Float32Array(mesh.vertexCount * 2);
-				for (let i = 0; i < mesh.vertexCount * 2; i++) {
-					uvBuffer[i] = ushortToHalf(mesh.uvBuffer[i]);
-				}
-				meshdata.attributes.texuvs = new THREE.BufferAttribute(uvBuffer, 2);
-			} else {
-				meshdata.attributes.texuvs = new THREE.BufferAttribute(mesh.uvBuffer, 2);
-			}
-		}
-
-
-		if (normalBuffer) {
-			let normalsrepacked = new Float32Array(normalBuffer.length);
-			//TODO threejs can probly do this for us
-			for (let i = 0; i < normalBuffer.length; i += 3) {
-				let x = normalBuffer[i + 0];
-				let y = normalBuffer[i + 1];
-				let z = normalBuffer[i + 2];
-				//recalc instead of taking 127 or 32k because apparently its not normalized properly
-				let len = Math.hypot(x, y, z);
-				if (len == 0) {
-					//TODO what does the rs engine do with missing normals?
-					len = 1;
-				}
-				normalsrepacked[i + 0] = x / len;
-				normalsrepacked[i + 1] = y / len;
-				normalsrepacked[i + 2] = z / len;
-			}
-			meshdata.attributes.normals = new THREE.BufferAttribute(normalsrepacked, 3);// { newtype: "f32", vecsize: 3, source: normalsrepacked };
-		}
-
-		//convert per-face attributes to per-vertex
-		if (mesh.colourBuffer) {
-			let vertexcolor = new Uint8Array(mesh.vertexCount * 4);
-			let alphaBuffer = mesh.alphaBuffer;
-			meshdata.attributes.color = new THREE.BufferAttribute(vertexcolor, 4, true);
-			for (let i = 0; i < mesh.faceCount; i++) {
-				let [r, g, b] = HSL2RGB(packedHSL2HSL(mesh.colourBuffer[i]));
-				//iterate triangle vertices
-				for (let j = 0; j < 3; j++) {
-					let index = indexbuf[i * 3 + j] * 4;
-					vertexcolor[index + 0] = r;
-					vertexcolor[index + 1] = g;
-					vertexcolor[index + 2] = b;
-					if (alphaBuffer) {
-						vertexcolor[index + 3] = alphaBuffer[i];
-					} else {
-						vertexcolor[index + 3] = 255;
-					}
-				}
-			}
-		}
-
-		meshes.push(meshdata);
 	}
 
+	return makeModelData(meshes);
+}
+
+export function makeModelData(meshes: ModelData["meshes"]) {
+	let maxy = 0;
+	let miny = 0;
+	let bonecount = 0;
+	let skincount = 0;
+	for (let mesh of meshes) {
+		//TODO let threejs do this while making the bounding box
+		let pos = mesh.attributes.pos;
+		for (let i = 0; i < pos.count; i++) {
+			let y = pos.getY(i);
+			if (y > maxy) { maxy = y }
+			if (y < miny) { miny = y }
+		}
+		let boneids = mesh.attributes.boneids;
+		if (boneids) {
+			for (let i = 0; i < boneids.count; i++) {
+				bonecount = Math.max(bonecount, boneids.getX(i), boneids.getY(i), boneids.getZ(i), boneids.getW(i))
+			}
+			bonecount += 2;//+1 for max->count, +1 since we add a root bone with id 0
+		}
+		let skinids = mesh.attributes.skinids;
+		if (skinids) {
+			for (let i = 0; i < skinids.count; i++) {
+				skincount = Math.max(skincount, skinids.getX(i), skinids.getY(i), skinids.getZ(i), skinids.getW(i))
+			}
+			skincount += 2;//+1 for max->count, +1 since we add a root bone with id 0
+		}
+	}
 	let r: ModelData = { maxy, miny, meshes, bonecount: bonecount, skincount: skincount };
 	return r;
 }

@@ -1,7 +1,7 @@
 ["struct",
 	["format","ubyte"],
-	["unk1","ubyte"],
 	["version","ubyte"],
+	["always_0f","ubyte"],
 
 	["meshCount","ubyte"],
 	["unkCount0","ubyte"],
@@ -9,7 +9,7 @@
 	["unkCount2","ubyte"],
 	["unkCount3","ubyte"],
 
-	["meshes",["array",["ref","meshCount"],["struct",
+	["meshes",["opt","version<=3",["array",["ref","meshCount"],["struct",
 		["$groupFlags","ubyte"],
 		["unkint","uint"],
 		["materialArgument","ushort le"],
@@ -53,12 +53,42 @@
 			["skinBoneBuffer",["buffer",["ref","skinWeightCount"],"ushort",1]],
 			["skinWeightBuffer",["buffer",["ref","skinWeightCount"],"ubyte",1]]
 		]]]
+	]]]],
+	["meshdata",["opt","version>3",["struct",
+		["$groupFlags","ubyte"],
+		["unkint","ubyte"],
+		["faceCount","ushort le"],
+
+		["hasVertices",["ref","$groupFlags",[0,1]]],
+		["hasVertexAlpha",["ref","$groupFlags",[1,1]]],
+		["hasFaceBones",["ref","$groupFlags",[2,1]]],
+		["hasBoneIds",["ref","$groupFlags",[3,1]]],
+		["isHidden",["ref","$groupFlags",[4,1]]],
+		["hasSkin",["ref","$groupFlags",[5,1]]],
+
+		["vertexCount","uint le"],
+		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
+		["normalBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"byte",3]]],
+		["tagentBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",2]]],
+		["uvBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],
+		["boneidBuffer",["opt",["hasBoneIds",1],["buffer",["ref","vertexCount"],"ushort"]]],
+		
+		["skin",["opt","hasSkin==1",["array",["ref","vertexCount"],["struct",
+			["ids",["array","ushort le","ushort le"]],
+			["weights",["array","ushort le","ubyte"]]
+		]]]],
+		["vertexColours",["opt","hasVertices==1",["buffer",["ref","vertexCount"],"ushort"]]],
+		["vertexAlpha",["opt","hasVertices==1",["buffer",["ref","vertexCount"],"ubyte"]]],
+		["vertexFacebones",["opt","hasFaceBones==1",["buffer",["ref","vertexCount"],"ushort"]]],
+		["renders",["array",["ref","meshCount"],["struct",
+			["unkint","uint"],
+			["unkbyte1","ubyte"],
+			["materialArgument","ushort le"],
+			["unkbyte2","ubyte"],
+			["buf",["buffer","ushort le","ushort"]]
+		]]]
 	]]],
 
-	// ["billboards",["array",["ref","unkCount1"],["struct",
-	// 	["flags","ubyte"],//00-0a
-	// 	[]
-	// ]]],
 	["unk1Buffer",["array",["ref","unkCount1"],["buffer",["match","buildnr",{">=923":39,">=0":37}],"hex"]]],
 	["unk2Buffer",["array",["ref","unkCount2"],["buffer",["match","buildnr",{">=923":50,">=0":44}],"hex"]]],
 	["unk3Buffer",["array",["ref","unkCount3"],["buffer",["match","buildnr",{">=923":18,">=0":16}],"hex"]]]

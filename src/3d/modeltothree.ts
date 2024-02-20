@@ -873,6 +873,7 @@ export function getModelHashes(model: models, id: number) {
 	const bufsize = matchvertices * 2 * 2;
 	const normalssize = matchvertices * 3;
 	const possize = matchvertices * 3 * 2;
+	if (!model.meshes) { throw new Error("model hash not supported for new model format"); }
 	for (let [sub, mesh] of model.meshes.entries()) {
 		let uvshead = 0;
 		let uvsfull = 0;
