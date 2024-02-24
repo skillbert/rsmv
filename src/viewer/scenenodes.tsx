@@ -9,7 +9,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode, ThreeJsRenderer } from "./threejsrender";
-import { cacheFileJsonModes, cacheFileDecodeModes } from "../scripts/filetypes";
+import { cacheFileJsonModes, cacheFileDecodeModes, cacheFileDecodeGroups } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap, UIScriptConsole } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
@@ -2109,10 +2109,31 @@ function PreviewFilesScript(p: UiScriptProps) {
 	)
 }
 
+function ModeDropDownOptions() {
+	let jsonmodes: JSX.Element[] = [];
+	let binmodes: JSX.Element[] = [];
+	for (let mode of Object.keys(cacheFileDecodeModes)) {
+		if (Object.hasOwn(cacheFileJsonModes, mode)) { continue; }
+		binmodes.push(<option key={mode} value={mode}>{mode}</option>);
+	}
+	for (let jsonmode of Object.keys(cacheFileJsonModes)) {
+		jsonmodes.push(<option key={jsonmode} value={jsonmode}>{jsonmode}</option>);
+	}
+	return (
+		<React.Fragment>
+			{Object.entries(cacheFileDecodeGroups).map(([k, v]) => (
+				<optgroup key={k} label={k}>
+					{Object.keys(v).map(k => <option key={k} value={k}>{k}</option>)}
+				</optgroup>
+			))}
+		</React.Fragment>
+	);
+}
+
 function ExtractFilesScript(p: UiScriptProps) {
 	let [initmode, initbatched, initkeepbuffs, initfilestext] = p.initialArgs.split(":");
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
-	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
+	let [mode, setMode] = React.useState<string>(initmode || "items");
 	let [batched, setbatched] = React.useState(initbatched == "true");
 	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
 
@@ -2124,17 +2145,21 @@ function ExtractFilesScript(p: UiScriptProps) {
 		p.onRun(output, `${mode}:${batched}:${keepbuffers}:${filestext}`);
 	}
 
+	let descr = React.useMemo(() => cacheFileDecodeModes[mode]?.({}).description ?? "", [mode]);
+
 	return (
 		<React.Fragment>
 			<p>Extract files from the cache.<br />The ranges field uses logical file id's for JSON based files, {"<major>.<minor>"} notation for bin mode, or {"<x>.<z>"} for map based files.</p>
 			<LabeledInput label="Mode">
 				<select value={mode} onChange={e => setMode(e.currentTarget.value as any)}>
-					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+					{/* {Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)} */}
+					<ModeDropDownOptions />
 				</select>
 			</LabeledInput>
 			<LabeledInput label="File ranges">
 				<InputCommitted type="text" onChange={e => setFilestext(e.currentTarget.value)} value={filestext} />
 			</LabeledInput>
+			<div>{descr}</div>
 			<div><label><input type="checkbox" checked={batched} onChange={e => setbatched(e.currentTarget.checked)} />Concatenate group files</label></div>
 			<div><label><input type="checkbox" checked={keepbuffers} onChange={e => setkepbuffers(e.currentTarget.checked)} />Keep binary buffers (can be very large)</label></div>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
@@ -2161,7 +2186,8 @@ function ExtractHistoricScript(p: UiScriptProps) {
 			<p>Tracks a single file's update history using openrs2 caches. Each known cache will be compared and all changes are shown. {"<major>.<minor>"} notation for bin mode, or {"<x>.<z>"} for map based files.</p>
 			<LabeledInput label="Mode">
 				<select value={mode} onChange={e => setMode(e.currentTarget.value as any)}>
-					{Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)}
+					{/* {Object.keys(cacheFileDecodeModes).map(k => <option key={k} value={k}>{k}</option>)} */}
+					<ModeDropDownOptions />
 				</select>
 			</LabeledInput>
 			<LabeledInput label="File ranges">

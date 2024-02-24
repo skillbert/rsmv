@@ -319,7 +319,8 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 			},
 			combineSubs(b) {
 				return `{"$schema":"${batchschemaurl}","files":[\n\n${b.join("\n,\n\n")}]}`;
-			}
+			},
+			description: "View the JSON representation of a file"
 		}
 	}
 	return constr;
@@ -346,7 +347,8 @@ export type DecodeMode<T = Buffer | string> = {
 	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
 	prepareWrite(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
 	write(file: Buffer, fileid: LogicalIndex, source: CacheFileSource): Buffer | Promise<Buffer>,
-	combineSubs(files: T[]): T
+	combineSubs(files: T[]): T,
+	description: string
 } & DecodeLookup;
 
 const decodeBinary: DecodeModeFactory = () => {
@@ -357,7 +359,8 @@ const decodeBinary: DecodeModeFactory = () => {
 		prepareWrite() { },
 		read(b) { return b; },
 		write(b) { return b; },
-		combineSubs(b: Buffer[]) { return Buffer.concat(b); }
+		combineSubs(b: Buffer[]) { return Buffer.concat(b); },
+		description: "Outputs the raw files as they are in the cache"
 	}
 }
 
@@ -383,7 +386,8 @@ const decodeMusic: DecodeModeFactory = () => {
 		...throwOnNonSimple,
 		read(buf, fileid, source) {
 			return parseMusic(source, cacheMajors.music, fileid[0], buf, true);
-		}
+		},
+		description: "Stitches child music fragments onto header fragments, only a small number of music fragments are header fragments, ids that lead to child fragments are ignored."
 	}
 }
 const decodeSound = (major: number, allowdownload: boolean): DecodeModeFactory => () => {
@@ -393,7 +397,8 @@ const decodeSound = (major: number, allowdownload: boolean): DecodeModeFactory =
 		...throwOnNonSimple,
 		read(buf, fileid, source) {
 			return parseMusic(source, major, fileid[0], buf, allowdownload);
-		}
+		},
+		description: "Extracts sound files from cache"
 	}
 }
 
@@ -405,7 +410,8 @@ const decodeCutscene: DecodeModeFactory = () => {
 		async read(buf, fileid, source) {
 			let res = await renderCutscene(source, buf);
 			return res.doc;
-		}
+		},
+		description: "Decodes and assembles 2d vector cutscenes (first added in 2023). These cutscenes are saved in cache without image compression so take a while to decode. Sounds effects might be missing if you use a local game cache since the game normally only downloads them on demand."
 	}
 }
 
@@ -426,7 +432,8 @@ const decodeInterface: DecodeModeFactory = () => {
 		async read(buf, fileid, source) {
 			let res = await renderRsInterfaceHTML(new UiRenderContext(source), fileid[0]);
 			return res;
-		}
+		},
+		description: "Extracts an interface and converts the template to a html file. Model and scripts will be missing and therefore the result might be incomplete."
 	}
 }
 const decodeInterface2: DecodeModeFactory = () => {
@@ -445,7 +452,8 @@ const decodeInterface2: DecodeModeFactory = () => {
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
 			return JSON.stringify({ id: fileid[0] });
-		}
+		},
+		description: "Doesn't extract anything but invokes the built-in RSMV interface viewer."
 	}
 }
 
@@ -468,7 +476,8 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 			let res = parse.clientscript.write(obj, source.getDecodeArgs());
 			// throw new Error("exit dryrun");
 			return res;
-		}
+		},
+		description: "Extracts clientscript VM code (cs2) and converts it to something that is typescript-compatible."
 	}
 }
 const decodeClientScriptViewer: DecodeModeFactory = () => {
@@ -481,7 +490,8 @@ const decodeClientScriptViewer: DecodeModeFactory = () => {
 		},
 		read(buf, fileid, source) {
 			return JSON.stringify(parse.clientscript.read(buf, source));
-		}
+		},
+		description: "Basic implementation of the clientscript VM (cs2). Can be used to debug programs and step through code."
 	}
 }
 
@@ -497,6 +507,7 @@ const decodeOldProcTexture: DecodeModeFactory = () => {
 			if (sprites.length != 1) { throw new Error("exactly one subsprite expected"); }
 			return pixelsToImageFile(sprites[0].img, "png", 1);
 		},
+		description: "Procedural textures are highly compressed textures used in early rshd."
 	}
 }
 
@@ -509,7 +520,8 @@ const decodeLegacySprite = (minor: number): DecodeModeFactory => () => {
 			let metafile = await source.findSubfileByName(legacyMajors.data, minor, "INDEX.DAT");
 			let img = parseLegacySprite(metafile!.buffer, b);
 			return pixelsToImageFile(img.img, "png", 1);
-		}
+		},
+		description: "Textures from the 'legacy' era, very early rs2"
 	}
 }
 
@@ -521,7 +533,8 @@ const decodeSprite = (major: number): DecodeModeFactory => () => {
 		read(b, id) {
 			//TODO support subimgs
 			return pixelsToImageFile(parseSprite(b)[0].img, "png", 1);
-		}
+		},
+		description: "Sprites are all images that are used in ui. The client stores sprites are uncompressed bitmaps. Currently only the first frame for multi-frame sprites is extracted."
 	}
 }
 
@@ -539,7 +552,8 @@ const decodeTexture = (major: number): DecodeModeFactory => () => {
 		combineSubs(b: Buffer[]) {
 			if (b.length != 1) { throw new Error("not supported"); }
 			return b[0];
-		}
+		},
+		description: "Textures are images that are wrapped around models to display colors are fine details."
 	}
 }
 
@@ -558,7 +572,8 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 			}
 			return str;
 		},
-		combineSubs(b: string[]) { return "[" + b.join(",\n") + "]"; }
+		combineSubs(b: string[]) { return "[" + b.join(",\n") + "]"; },
+		description: "Used to efficiently compare images."
 	}
 }
 
@@ -572,7 +587,8 @@ const decodeMeshHash: DecodeModeFactory = () => {
 			let meshhashes = getModelHashes(model, id[0]);
 			return JSON.stringify(meshhashes);
 		},
-		combineSubs(b: string[]) { return "[" + b.filter(q => q).join(",\n") + "]"; }
+		combineSubs(b: string[]) { return "[" + b.filter(q => q).join(",\n") + "]"; },
+		description: "Used to efficiently compare models."
 	}
 }
 
@@ -619,6 +635,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	maptiles: { parser: parse.mapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
 	maptiles_nxt: { parser: parse.mapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
 	maplocations: { parser: parse.mapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
+	mapenvs: { parser: parse.mapsquareEnvironment, lookup: worldmapIndex(cacheMapFiles.env) },
 	maptiles_old: { parser: parse.mapsquareTiles, lookup: oldWorldmapIndex("m") },
 	maplocations_old: { parser: parse.mapsquareLocations, lookup: oldWorldmapIndex("l") },
 
@@ -660,18 +677,23 @@ const npcmodels: DecodeModeFactory = function () {
 		},
 		combineSubs(b) {
 			return `[${b.join(",\n")}]`;
-		}
+		},
+		description: "Extract model metadata from npc configs."
 	}
 }
 
-export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
-	bin: decodeBinary,
+const cacheFileDecodersImage = constrainedMap<DecodeModeFactory>()({
 	sprites: decodeSprite(cacheMajors.sprites),
+	textures_dds: decodeTexture(cacheMajors.texturesDds),
+	textures_png: decodeTexture(cacheMajors.texturesPng),
+	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
+	textures_ktx: decodeTexture(cacheMajors.texturesKtx)
+});
+
+const cacheFileDecodersLegacyImage = constrainedMap<DecodeModeFactory>()({
 	legacy_sprites: decodeLegacySprite(legacyGroups.sprites),
 	legacy_textures: decodeLegacySprite(legacyGroups.textures),
-	oldproctexture_img: decodeOldProcTexture,
-	spritehash: decodeSpriteHash,
-	modelhash: decodeMeshHash,
+	textures_proc: decodeOldProcTexture,
 	textures_oldpng: decodeTexture(cacheMajors.texturesOldPng),
 	textures_2015png: decodeTexture(cacheMajors.textures2015Png),
 	textures_2015dds: decodeTexture(cacheMajors.textures2015Dds),
@@ -679,21 +701,36 @@ export const cacheFileDecodeModes = constrainedMap<DecodeModeFactory>()({
 	textures_2015compoundpng: decodeTexture(cacheMajors.textures2015CompoundPng),
 	textures_2015compounddds: decodeTexture(cacheMajors.textures2015CompoundDds),
 	textures_2015compoundpngmips: decodeTexture(cacheMajors.textures2015CompoundPngMips),
-	textures_dds: decodeTexture(cacheMajors.texturesDds),
-	textures_png: decodeTexture(cacheMajors.texturesPng),
-	textures_bmp: decodeTexture(cacheMajors.texturesBmp),
-	textures_ktx: decodeTexture(cacheMajors.texturesKtx),
+});
+const cacheFileDecodersSound = constrainedMap<DecodeModeFactory>()({
 	sounds: decodeSound(cacheMajors.sounds, true),
 	musicfragments: decodeSound(cacheMajors.music, false),
 	music: decodeMusic,
+});
+const cacheFileDecodersInteractive = constrainedMap<DecodeModeFactory>()({
 	cutscenehtml: decodeCutscene,
 	interfacehtml: decodeInterface,
 	interfaceviewer: decodeInterface2,
 	clientscripttext: decodeClientScriptText,
 	clientscriptviewer: decodeClientScriptViewer,
+})
+const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({
+	bin: decodeBinary,
+	spritehash: decodeSpriteHash,
+	modelhash: decodeMeshHash,
 	npcmodels: npcmodels,
+});
 
+const cacheFileDecodersJson = (Object.fromEntries(Object.entries(cacheFileJsonModes)
+	.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump, v.prepareParser)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 
-	...(Object.fromEntries(Object.entries(cacheFileJsonModes)
-		.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump, v.prepareParser)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
-} as const);
+export const cacheFileDecodeGroups = {
+	image: cacheFileDecodersImage,
+	legacyImage: cacheFileDecodersLegacyImage,
+	interactive: cacheFileDecodersInteractive,
+	sound: cacheFileDecodersSound,
+	other: cacheFileDecodersOther,
+	json: cacheFileDecodersJson,
+}
+
+export const cacheFileDecodeModes = Object.fromEntries(Object.values(cacheFileDecodeGroups).flatMap(q => Object.entries(q)))
