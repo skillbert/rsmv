@@ -102,6 +102,7 @@ function allParsers() {
 		mapsquareUnderlays: FileParser.fromJson<import("../generated/mapsquare_underlays").mapsquare_underlays>(require("./opcodes/mapsquare_underlays.jsonc")),
 		mapsquareOverlays: FileParser.fromJson<import("../generated/mapsquare_overlays").mapsquare_overlays>(require("./opcodes/mapsquare_overlays.jsonc")),
 		mapsquareLocations: FileParser.fromJson<import("../generated/mapsquare_locations").mapsquare_locations>(require("./opcodes/mapsquare_locations.json")),
+		mapsquareEnvironment: FileParser.fromJson<import("../generated/mapsquare_envs").mapsquare_envs>(require("./opcodes/mapsquare_envs.jsonc")),
 		mapZones: FileParser.fromJson<import("../generated/mapzones").mapzones>(require("./opcodes/mapzones.json")),
 		enums: FileParser.fromJson<import("../generated/enums").enums>(require("./opcodes/enums.json")),
 		mapscenes: FileParser.fromJson<import("../generated/mapscenes").mapscenes>(require("./opcodes/mapscenes.json")),

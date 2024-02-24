@@ -55,7 +55,8 @@ export const cacheMapFiles = {
 	locations: 0,
 	squares: 3,
 	squaresWater: 4,
-	square_nxt: 5
+	square_nxt: 5,
+	env: 6
 } as const;
 
 export const cacheConfigPages = {
