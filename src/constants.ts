@@ -49,7 +49,7 @@ export const cacheMajors = {
 //represents the largest build number that this application is aware off
 //is used as default value when a cache is considered "current"
 //only needs to be updated when backward incompatible code paths are added
-export const latestBuildNumber = 934;
+export const latestBuildNumber = 935;
 
 export const cacheMapFiles = {
 	locations: 0,
@@ -91,6 +91,7 @@ export const cacheConfigPages = {
 } as const;
 
 export const lastLegacyBuildnr = 377;
-//unclear if there ended up beign overlap with (public) rs2 since this was 12 years after rs2 release
+//unclear if there ended up being overlap with (public) rs2 since this was 12 years after rs2 release
 //first known rs2 is 254
+//TODO apparently there was some overlap with rs2 beta caches which are technically not possible to support because of this
 export const lastClassicBuildnr = 235;
