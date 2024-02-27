@@ -2,11 +2,13 @@ import * as fs from "fs";
 import * as path from "path";
 import * as opcode_reader from "./opcode_reader";
 import * as commentjson from "comment-json";
-
+import { maprenderConfigSchema } from "./jsonschemas";
 
 async function buildFileTypes() {
 	let basedir = path.resolve("./src/opcodes");
 	let outdir = path.resolve("./generated");
+
+	//generate config file metas
 	let files = fs.readdirSync(basedir);
 	if (files.some(f => !path.basename(f).match(/\.jsonc?$/))) {
 		console.error("non-json files matched, is path wrong?");
@@ -35,6 +37,8 @@ async function buildFileTypes() {
 		fs.writeFileSync(outfile, typesfile);
 	}
 
+	//other one off files
+	fs.writeFileSync(path.resolve(outdir, "maprenderconfig.schema.json"), JSON.stringify(maprenderConfigSchema, undefined, "\t"));
 }
 
 buildFileTypes();

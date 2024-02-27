@@ -1,0 +1,100 @@
+{
+	"properties": {
+		"layers": {
+			"items": {
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": [
+							"3d",
+							"map",
+							"height",
+							"collision",
+							"locs",
+							"maplabels",
+							"rendermeta",
+							"minimap"
+						]
+					},
+					"name": {
+						"type": "string"
+					},
+					"pxpersquare": {
+						"type": "number"
+					},
+					"level": {
+						"type": "number"
+					},
+					"format": {
+						"type": "string",
+						"enum": [
+							"png",
+							"webp"
+						]
+					},
+					"usegzip": {
+						"type": "boolean"
+					},
+					"subtractlayers": {
+						"items": {
+							"type": "string"
+						}
+					},
+					"dxdy": {
+						"type": "number"
+					},
+					"dzdy": {
+						"type": "number"
+					},
+					"wallsonly": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"mode",
+					"name",
+					"level",
+					"pxpersquare"
+				]
+			}
+		},
+		"tileimgsize": {
+			"type": "number"
+		},
+		"mapsizex": {
+			"type": "number"
+		},
+		"mapsizez": {
+			"type": "number"
+		},
+		"area": {
+			"default": "full",
+			"description": "A string representing the the map area to render. Either one of the named presets (main, full, test ...), or one or more chunk ranges. eg: 50.50,20.20-70.70",
+			"anyOf": [
+				{
+					"type": "string",
+					"pattern": "^\\d+\\.\\d+(-\\d+\\.\\d+)?(,\\d+\\.\\d+(-\\d+\\.\\d+)?)*$"
+				},
+				{
+					"type": "string",
+					"enum": [
+						"main",
+						"full",
+						"test"
+					]
+				},
+				{
+					"type": "string",
+					"pattern": "^\\w+$"
+				}
+			]
+		}
+	},
+	"required": [
+		"layers",
+		"tileimgsize",
+		"mapsizex",
+		"mapsizez",
+		"area"
+	]
+}

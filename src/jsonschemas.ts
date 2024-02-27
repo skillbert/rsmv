@@ -173,7 +173,15 @@ export const maprenderConfigSchema: JSONSchema6 = {
         tileimgsize: number,
         mapsizex: number,
         mapsizez: number,
-        area: string
+        area: {
+            default: "full",
+            description: "A string representing the the map area to render. Either one of the named presets (main, full, test ...), or one or more chunk ranges. eg: 50.50,20.20-70.70",
+            anyOf: [
+                { type: "string", pattern: /^\d+\.\d+(-\d+\.\d+)?(,\d+\.\d+(-\d+\.\d+)?)*$/.source },
+                { type: "string", enum: ["main", "full", "test"] },
+                { type: "string", pattern: /^\w+$/.source },
+            ]
+        }
     },
     required: ["layers", "tileimgsize", "mapsizex", "mapsizez", "area"]
 }

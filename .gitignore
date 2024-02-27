@@ -3,7 +3,7 @@ node_modules/
 !/src/libs/sqljsfork/dist/
 .vscode/
 /cache*/
-/extract/
+/extract*/
 *.code-workspace
 .*
 *.sqlite3

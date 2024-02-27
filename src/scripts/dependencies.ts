@@ -9,6 +9,8 @@ import { crc32, crc32addInt } from "../libs/crc32util";
 import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
 import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
+import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
+import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 
 const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
 const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
@@ -51,7 +53,7 @@ function chunkDeps(data: ChunkData, addDep: DepCallback, addHash: HashCallback) 
 	}
 	//set iterators are same as insertion order according to the spec
 	overlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
-	underlays.forEach(id => addDep("overlay", id, "mapsquare", squareindex));
+	underlays.forEach(id => addDep("underlay", id, "mapsquare", squareindex));
 }
 
 const mapsquareDeps2: DepCollector = async (cache, addDep, addHash, args) => {
@@ -68,27 +70,41 @@ const mapsquareDeps2: DepCollector = async (cache, addDep, addHash, args) => {
 	});
 }
 
+function coltoint(col: number[] | undefined | null) {
+	if (!col) { return 0xff00ff; }
+	return col[0] << 16 | col[1] << 8 | col[2];
+}
+
+function hashFloorType(lay: mapsquare_overlays & mapsquare_underlays, hash: number) {
+	hash = crc32addInt(+!!lay.bleedToUnderlay, hash);
+	hash = crc32addInt(lay.bleedpriority ?? -1, hash);
+	hash = crc32addInt(lay.materialbyte ?? lay.material ?? -1, hash);
+	hash = crc32addInt(coltoint(lay.color), hash);
+	hash = crc32addInt(coltoint(lay.secondary_colour), hash);
+	hash = crc32addInt(coltoint(lay.tertiary_colour), hash);
+	hash = crc32addInt(lay.material_tiling ?? -1, hash);
+	return hash;
+}
+
 const mapUnderlayDeps: DepCollector = async (cache, addDep, addHash) => {
 	for (let [id, underlay] of cache.mapUnderlays.entries()) {
 		if (!underlay) { continue; }
-		//the original underlay file may not even exist in some versions, just rebuild one for the hash
-		//its actually an overlay config in legacy caches
-		let rebuiltfile = (cache.legacyData ? parse.mapsquareOverlays : parse.mapsquareUnderlays).write(underlay);
-		let crc = crc32(rebuiltfile);
+
+		let crc = hashFloorType(underlay, 0);
 		addHash("underlay", id, crc, 0);
 		if (underlay.material) {
 			addDep("material", underlay.material, "underlay", id);
 		}
 	}
 }
+
 const mapOverlayDeps: DepCollector = async (cache, addDep, addHash) => {
 	for (let [id, overlay] of cache.mapOverlays.entries()) {
 		if (!overlay) { continue; }
 		//the original overlay file may not even exist in some versions, just rebuild one for the hash
-		let rebuiltfile = parse.mapsquareOverlays.write(overlay);
-		let crc = crc32(rebuiltfile);
+		let crc = hashFloorType(overlay, 0);
 		if (overlay.material) {
-			addDep("material", overlay.material, "underlay", id);
+			addDep("material", overlay.material, "overlay", id);
 		}
 		addHash("overlay", id, crc, 0);
 	}
