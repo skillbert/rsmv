@@ -1,63 +1,5 @@
 {
 	"properties": {
-		"layers": {
-			"items": {
-				"properties": {
-					"mode": {
-						"type": "string",
-						"enum": [
-							"3d",
-							"map",
-							"height",
-							"collision",
-							"locs",
-							"maplabels",
-							"rendermeta",
-							"minimap"
-						]
-					},
-					"name": {
-						"type": "string"
-					},
-					"pxpersquare": {
-						"type": "number"
-					},
-					"level": {
-						"type": "number"
-					},
-					"format": {
-						"type": "string",
-						"enum": [
-							"png",
-							"webp"
-						]
-					},
-					"usegzip": {
-						"type": "boolean"
-					},
-					"subtractlayers": {
-						"items": {
-							"type": "string"
-						}
-					},
-					"dxdy": {
-						"type": "number"
-					},
-					"dzdy": {
-						"type": "number"
-					},
-					"wallsonly": {
-						"type": "boolean"
-					}
-				},
-				"required": [
-					"mode",
-					"name",
-					"level",
-					"pxpersquare"
-				]
-			}
-		},
 		"tileimgsize": {
 			"type": "number"
 		},
@@ -88,6 +30,118 @@
 					"pattern": "^\\w+$"
 				}
 			]
+		},
+		"layers": {
+			"items": {
+				"properties": {
+					"mode": {
+						"type": "string"
+					},
+					"pxpersquare": {
+						"type": "number"
+					},
+					"name": {
+						"type": "string"
+					},
+					"level": {
+						"type": "number"
+					},
+					"usegzip": {
+						"type": "boolean"
+					},
+					"subtractlayers": {
+						"items": {
+							"type": "string"
+						}
+					},
+					"format": {
+						"type": "string",
+						"enum": [
+							"png",
+							"webp"
+						]
+					},
+					"mipmode": {
+						"enum": [
+							"default",
+							"avg"
+						]
+					}
+				},
+				"required": [
+					"mode",
+					"name",
+					"pxpersquare",
+					"level"
+				],
+				"oneOf": [
+					{
+						"properties": {
+							"mode": {
+								"enum": [
+									"3d",
+									"minimap"
+								]
+							},
+							"dxdy": {
+								"type": "number"
+							},
+							"dzdy": {
+								"type": "number"
+							},
+							"hidelocs": {
+								"type": "boolean"
+							},
+							"overlaywalls": {
+								"type": "boolean"
+							},
+							"overlayicons": {
+								"type": "boolean"
+							}
+						},
+						"required": [
+							"mode",
+							"dxdy",
+							"dzdy"
+						]
+					},
+					{
+						"properties": {
+							"mode": {
+								"const": "map"
+							},
+							"wallsonly": {
+								"type": "boolean"
+							},
+							"mapicons": {
+								"type": "boolean"
+							},
+							"thicklines": {
+								"type": "boolean"
+							}
+						},
+						"required": [
+							"mode"
+						]
+					},
+					{
+						"properties": {
+							"mode": {
+								"enum": [
+									"height",
+									"collision",
+									"locs",
+									"maplabels",
+									"rendermeta"
+								]
+							}
+						},
+						"required": [
+							"mode"
+						]
+					}
+				]
+			}
 		}
 	},
 	"required": [

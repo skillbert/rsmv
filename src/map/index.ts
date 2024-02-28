@@ -44,7 +44,7 @@ export type RenderedMapMeta = {
 export type Mapconfig = {
 	layers: LayerConfig[],
 	tileimgsize: number,
-	mapsizex: number,
+	mapsizex: number,//used to determine lowest scaling mip level
 	mapsizez: number,
 	area: string
 }

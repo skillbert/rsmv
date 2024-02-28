@@ -153,23 +153,6 @@ export const scenarioStateSchema: JSONSchema6 = {
 
 export const maprenderConfigSchema: JSONSchema6 = {
     properties: {
-        layers: {
-            items: {
-                properties: {
-                    mode: { type: "string", enum: ["3d", "map", "height", "collision", "locs", "maplabels", "rendermeta", "minimap"] },
-                    name: string,
-                    pxpersquare: number,
-                    level: number,
-                    format: { type: "string", enum: ["png", "webp"] },
-                    usegzip: boolean,
-                    subtractlayers: { items: string },
-                    dxdy: number,
-                    dzdy: number,
-                    wallsonly: boolean
-                },
-                required: ["mode", "name", "level", "pxpersquare"]
-            }
-        },
         tileimgsize: number,
         mapsizex: number,
         mapsizez: number,
@@ -181,6 +164,45 @@ export const maprenderConfigSchema: JSONSchema6 = {
                 { type: "string", enum: ["main", "full", "test"] },
                 { type: "string", pattern: /^\w+$/.source },
             ]
+        },
+        layers: {
+            items: {
+                properties: {
+                    mode: string,
+                    pxpersquare: number,
+                    name: string,
+                    level: number,
+                    usegzip: boolean,
+                    subtractlayers: { items: string },
+                    format: { type: "string", enum: ["png", "webp"] },
+                    mipmode: { enum: ["default", "avg"] }
+                },
+                required: ["mode", "name", "pxpersquare", "level"],
+                oneOf: [{
+                    properties: {
+                        mode: { enum: ["3d", "minimap"] },
+                        dxdy: number,
+                        dzdy: number,
+                        hidelocs: boolean,
+                        overlaywalls: boolean,
+                        overlayicons: boolean
+                    },
+                    required: ["mode", "dxdy", "dzdy"]
+                }, {
+                    properties: {
+                        mode: { const: "map" },
+                        wallsonly: boolean,
+                        mapicons: boolean,
+                        thicklines: boolean
+                    },
+                    required: ["mode"]
+                }, {
+                    properties: {
+                        mode: { enum: ["height", "collision", "locs", "maplabels", "rendermeta"] }
+                    },
+                    required: ["mode"]
+                }]
+            }
         }
     },
     required: ["layers", "tileimgsize", "mapsizex", "mapsizez", "area"]
