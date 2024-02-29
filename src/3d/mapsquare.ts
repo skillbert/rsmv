@@ -965,26 +965,26 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 		let nxttilefile: Buffer | null = null;
 		let locsfile: Buffer | null = null;
 		if (engine.getBuildNr() >= 759) {
-			let mapunderlaymeta = await engine.getCacheIndex(cacheMajors.mapsquares);
-			let selfindex = mapunderlaymeta[squareindex];
-			if (!selfindex) {
+			let mapcacheindex = await engine.getCacheIndex(cacheMajors.mapsquares);
+			let chunkindex = mapcacheindex[squareindex];
+			if (!chunkindex) {
 				// console.log(`skipping mapsquare ${rect.x + x} ${rect.z + z} as it does not exist`);
 				return null;
 			}
-			filehash = selfindex.crc;
-			fileversion = selfindex.version;
-			let selfarchive = await engine.getFileArchive(selfindex);
+			filehash = chunkindex.crc;
+			fileversion = chunkindex.version;
+			let selfarchive = await engine.getFileArchive(chunkindex);
 
-			let tileindex = selfindex.subindices.indexOf(cacheMapFiles.squares);
+			let tileindex = chunkindex.subindices.indexOf(cacheMapFiles.squares);
 			if (tileindex == -1) { return null; }
 			tilefile = selfarchive[tileindex].buffer;
-			let locsindex = selfindex.subindices.indexOf(cacheMapFiles.locations);
+			let locsindex = chunkindex.subindices.indexOf(cacheMapFiles.locations);
 			if (locsindex != -1) {
 				locsfile = selfarchive[locsindex].buffer;
 			}
 			//builds before 861 contain the file, but it's slightly different and seems to be missing water overlay ids
 			if (engine.getBuildNr() >= 861) {
-				let nxttileindex = selfindex.subindices.indexOf(cacheMapFiles.square_nxt);
+				let nxttileindex = chunkindex.subindices.indexOf(cacheMapFiles.square_nxt);
 				if (nxttileindex != -1) {
 					nxttilefile = selfarchive[nxttileindex].buffer;
 				}
@@ -1070,40 +1070,40 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 	return chunk;
 }
 
-export async function parseMapsquare(engine: EngineCache, rect: MapRect, opts?: ParsemapOpts) {
+export async function parseMapsquare(engine: EngineCache, chunkx: number, chunkz: number, opts?: ParsemapOpts) {
 	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
 	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
 	let grid = new TileGrid(engine, {
-		x: rect.x * squareSize - chunkfloorpadding,
-		z: rect.z * squareSize - chunkfloorpadding,
-		xsize: rect.xsize * squareSize + chunkfloorpadding * 2,
-		zsize: rect.zsize * squareSize + chunkfloorpadding * 2
+		x: chunkx * squareSize - chunkfloorpadding,
+		z: chunkz * squareSize - chunkfloorpadding,
+		xsize: squareSize + chunkfloorpadding * 2,
+		zsize: squareSize + chunkfloorpadding * 2
 	}, opts?.mask);
-	let chunks: ChunkData[] = [];
-	for (let z = -chunkpadding; z < rect.zsize + chunkpadding; z++) {
-		for (let x = -chunkpadding; x < rect.xsize + chunkpadding; x++) {
-			let chunk = await getMapsquareData(engine, rect.x + x, rect.z + z);
-			if (!chunk) {
+	let chunk: ChunkData | null = null;
+	for (let z = -chunkpadding; z <= chunkpadding; z++) {
+		for (let x = -chunkpadding; x <= chunkpadding; x++) {
+			let chunkdata = await getMapsquareData(engine, chunkx + x, chunkz + z);
+			if (!chunkdata) {
 				continue;
 			}
-			grid.addMapsquare(chunk.tiles, chunk.nxttiles, chunk.tilerect, chunk.levelcount, !!opts?.collision);
+			grid.addMapsquare(chunkdata.tiles, chunkdata.nxttiles, chunkdata.tilerect, chunkdata.levelcount, !!opts?.collision);
 
 			//only add the actual ones we need to the queue
-			if (chunk.mapsquarex < rect.x || chunk.mapsquarex >= rect.x + rect.xsize) { continue; }
-			if (chunk.mapsquarez < rect.z || chunk.mapsquarez >= rect.z + rect.zsize) { continue; }
-			chunks.push(chunk);
+			if (chunkdata.mapsquarex == chunkx && chunkdata.mapsquarez == chunkz) {
+				chunk = chunkdata;
+			}
 		}
 	}
 	if (engine.classicData) {
 		classicModifyTileGrid(grid);
 	}
 	grid.blendUnderlays();
-	for (let chunk of chunks) {
+	if (chunk) {
 		chunk.locs = await mapsquareObjects(engine, grid, chunk.rawlocs, chunk.tilerect.x, chunk.tilerect.z, !!opts?.collision);
 	}
 
-	return { grid, chunks };
+	return { grid, chunk };
 }
 
 export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: ChunkData) {

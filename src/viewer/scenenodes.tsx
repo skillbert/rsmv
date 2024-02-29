@@ -21,7 +21,7 @@ import { drawTexture, findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
 import { items } from "../../generated/items";
-import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
+import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSMapChunkGroup, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
@@ -135,13 +135,13 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 						<span>{p.action.type} {targetname}</span>
 						{remove}
 					</div>
-					<div style={{ ...gridstyle(0), gridTemplateColumns: "1fr 2fr repeat(3,minmax(0,1fr))" }}>
-						<span style={{ gridColumn: "2" }}>Floor</span>
-						<InputCommitted type="number" value={action.level} step={1} style={{ gridColumn: "span 3" }} onChange={e => p.onChange({ ...action, level: +e.currentTarget.value })} />
-						<span style={{ gridColumn: "2" }}>Position x,y,z</span>
+					<div style={{ ...gridstyle(0), gridTemplateColumns: "1em 2fr repeat(2,minmax(0,1fr))" }}>
+						<span style={{ gridColumn: "2" }}>Floor+offset</span>
+						<InputCommitted type="number" value={action.level} step={1} onChange={e => p.onChange({ ...action, level: +e.currentTarget.value })} />
+						<InputCommitted type="number" value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
+						<span style={{ gridColumn: "2" }}>Position x,z</span>
 						<InputCommitted type="number" value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
 						<InputCommitted type="number" value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
-						<InputCommitted type="number" value={action.dy} onChange={e => p.onChange({ ...action, dy: +e.currentTarget.value })} />
 					</div>
 				</React.Fragment>
 			);
@@ -461,7 +461,7 @@ async function modelInitToModel(cache: ThreejsSceneCache, init: string): Promise
 }
 
 export class SceneScenario extends React.Component<LookupModeProps, ScenarioInterfaceState>{
-	models = new Map<ScenarioComponent, RSModel | RSMapChunk>();
+	models = new Map<ScenarioComponent, RSModel | RSMapChunk | RSMapChunkGroup>();
 	idcounter = 0;
 	mapoffset: { x: number, z: number } | null = null;
 	mapgrid = new CombinedTileGrid([]);
@@ -570,7 +570,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 	}
 
 	ensureComp(uictx: UIContextReady, newcomp: ScenarioComponent | null, oldcomp: ScenarioComponent | null) {
-		let newmodel: RSModel | RSMapChunk | undefined = undefined;
+		let newmodel: RSModel | RSMapChunk | RSMapChunkGroup | undefined = undefined;
 		if (oldcomp) {
 			let oldmodel = this.models.get(oldcomp);
 			if (newcomp && oldcomp.modelkey == newcomp.modelkey) {
@@ -594,7 +594,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 					}))
 					newmodel = new RSModel(uictx.sceneCache, mappedmodel, newcomp.name);
 				} else if (newcomp.type == "map") {
-					newmodel = new RSMapChunk(newcomp.mapRect, uictx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
+					newmodel = new RSMapChunkGroup(newcomp.mapRect, uictx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
 					newmodel.on("loaded", this.updateGrids);
 					let hasmap = Object.values(this.state.components).some(q => q.type == "map");
 					if (!hasmap || !this.mapoffset) {
@@ -603,7 +603,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 							z: (newcomp.mapRect.z + newcomp.mapRect.zsize / 2) * rs2ChunkSize
 						};
 					}
-					newmodel.rootnode.position.set(-this.mapoffset.x * tiledimensions, 0, -this.mapoffset.z * tiledimensions);
+					newmodel.chunks.forEach(q => q.rootnode.position.set(-this.mapoffset!.x * tiledimensions, 0, -this.mapoffset!.z * tiledimensions));
 				} else {
 					throw new Error("invalid model init");
 				}
@@ -657,18 +657,24 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 	updateGrids() {
 		let grids: { src: TileGrid, rect: MapRect }[] = [];
 		for (let comp of Object.values(this.state.components)) {
-			if (comp.type != "map") { continue };
-			let model = this.models.get(comp) as RSMapChunk | undefined;
-			if (!model?.loaded) { continue; }
-			grids.push({
-				src: model.loaded.grid,
-				rect: {
-					x: model.rect.x * rs2ChunkSize,
-					z: model.rect.z * rs2ChunkSize,
-					xsize: model.rect.xsize * rs2ChunkSize,
-					zsize: model.rect.zsize * rs2ChunkSize
-				}
-			});
+			if (comp.type != "map") { continue }
+			let model = this.models.get(comp);
+			let chunks: RSMapChunk[] = [];
+			if (model instanceof RSMapChunk) { chunks.push(model); }
+			else if (model instanceof RSMapChunkGroup) { chunks.push(...model.chunks); }
+			else { continue; }
+			for (let chunk of chunks) {
+				if (!chunk.loaded) { continue; }
+				grids.push({
+					src: chunk.loaded.grid,
+					rect: {
+						x: chunk.chunkx * rs2ChunkSize,
+						z: chunk.chunkz * rs2ChunkSize,
+						xsize: rs2ChunkSize,
+						zsize: rs2ChunkSize
+					}
+				});
+			}
 		}
 		this.mapgrid = new CombinedTileGrid(grids);
 		this.restartAnims();
@@ -1619,7 +1625,7 @@ type DiffMesh = {
 }
 
 type SceneMapState = {
-	chunkgroups: { rect: MapRect, models: Map<ThreejsSceneCache, RSMapChunk>, diffs: DiffMesh[] }[],
+	chunkgroups: { chunkx: number, chunkz: number, models: Map<ThreejsSceneCache, RSMapChunk>, diffs: DiffMesh[] }[],
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>,
 	selectionData: any,
@@ -1666,15 +1672,16 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		let cachea = entrya[0];
 		let cacheb = entryb[0];
 
+		if (!chunka.chunk || !chunkb.chunk) { throw new Error("unexpected"); }
 		let depsa = await cachea.engine.getDependencyGraph();
-		depsa.insertMapChunk(chunka.chunks[0]);
+		depsa.insertMapChunk(chunka.chunk);
 		let depsb = await cacheb.engine.getDependencyGraph();
-		depsb.insertMapChunk(chunkb.chunks[0]);
+		depsb.insertMapChunk(chunkb.chunk);
 
-		let floordepsa = (chunka.chunks.length == 0 ? [] : mapsquareFloorDependencies(chunka.grid, depsa, chunka.chunks[0]));
-		let locdepsa = mapsquareLocDependencies(chunka.grid, depsa, chunka.modeldata, chunka.rect);
-		let floordepsb = (chunkb.chunks.length == 0 ? [] : mapsquareFloorDependencies(chunkb.grid, depsb, chunkb.chunks[0]));
-		let locdepsb = mapsquareLocDependencies(chunkb.grid, depsb, chunkb.modeldata, chunkb.rect);
+		let floordepsa = mapsquareFloorDependencies(chunka.grid, depsa, chunka.chunk);
+		let locdepsa = mapsquareLocDependencies(chunka.grid, depsa, chunka.modeldata, chunka.chunk.mapsquarex, chunka.chunk.mapsquarez);
+		let floordepsb = mapsquareFloorDependencies(chunkb.grid, depsb, chunkb.chunk);
+		let locdepsb = mapsquareLocDependencies(chunkb.grid, depsb, chunkb.modeldata, chunkb.chunk.mapsquarex, chunkb.chunk.mapsquarez);
 
 		let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
 		let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
@@ -1761,54 +1768,55 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 	}
 
 	@boundMethod
-	async addArea(rect: MapRect) {
+	async addChunk(chunkx: number, chunkz: number) {
 		for (let version of this.state.versions) {
-			this.loadChunk(rect, version.cache);
+			this.loadChunk(chunkx, chunkz, version.cache);
 		}
 		this.fixVisibility();
 	}
 
-	async loadChunk(rect: MapRect, sceneCache: ThreejsSceneCache | undefined) {
-		const renderer = this.props.ctx?.renderer;
-		if (!sceneCache || !renderer) { return; }
-
-		let chunk = new RSMapChunk(rect, sceneCache, { skybox: true });
-		chunk.on("changed", () => {
-			let toggles = this.state.toggles;
-			let changed = false;
-			[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
-				if (typeof toggles[q] != "boolean") {
-					toggles[q] = !!q.match(/^(floor|objects)\d+/);
-					// toggles[q] = !!q.match(/^mini_(floor|objects)0/);
-					// toggles[q] = !!q.match(/^mini_(objects)0/);
-					// toggles[q] = !!q.match(/^mini_(floor)0/);
-					changed = true;
-				}
-			});
-			let match = this.state.versions.find(q => q.cache == sceneCache);
-			chunk.setToggles(toggles, match && !match.visible);
-			if (changed) {
-				this.setState({ toggles });
-				this.fixVisibility(toggles);
-			}
-		})
-		let center = this.state.center;
-		if (this.state.chunkgroups.length == 0) {
-			let chunksize = (sceneCache.engine.classicData ? classicChunkSize : rs2ChunkSize);
-			center = {
-				x: (rect.x + rect.xsize / 2) * chunksize * 512,
-				z: (rect.z + rect.zsize / 2) * chunksize * 512,
-			}
-		}
-		let combined = chunk.rootnode;
-		combined.position.add(new Vector3(-center.x, 0, -center.z));
-		chunk.addToScene(renderer);
+	loadChunk(chunkx: number, chunkz: number, sceneCache: ThreejsSceneCache | undefined) {
 		this.setState(prevstate => {
-			let group = prevstate.chunkgroups.find(q => q.rect.x == rect.x && q.rect.z == rect.z && q.rect.xsize == rect.xsize && q.rect.zsize == rect.zsize);
+			const renderer = this.props.ctx?.renderer;
+			if (!sceneCache || !renderer) { return; }
+
+			let chunk = new RSMapChunk(chunkx, chunkz, sceneCache, { skybox: true });
+			chunk.on("changed", () => {
+				let toggles = this.state.toggles;
+				let changed = false;
+				[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
+					if (typeof toggles[q] != "boolean") {
+						toggles[q] = !!q.match(/^(floor|objects)\d+/);
+						// toggles[q] = !!q.match(/^mini_(floor|objects)0/);
+						// toggles[q] = !!q.match(/^mini_(objects)0/);
+						// toggles[q] = !!q.match(/^mini_(floor)0/);
+						changed = true;
+					}
+				});
+				let match = this.state.versions.find(q => q.cache == sceneCache);
+				chunk.setToggles(toggles, match && !match.visible);
+				if (changed) {
+					this.setState({ toggles });
+					this.fixVisibility(toggles);
+				}
+			})
+			let center = prevstate.center;
+			if (prevstate.chunkgroups.length == 0) {
+				let chunksize = (sceneCache.engine.classicData ? classicChunkSize : rs2ChunkSize);
+				center = {
+					x: (chunkx + 0.5) * chunksize * 512,
+					z: (chunkz + 0.5) * chunksize * 512,
+				}
+			}
+			let combined = chunk.rootnode;
+			combined.position.add(new Vector3(-center.x, 0, -center.z));
+			chunk.addToScene(renderer);
+
+			let group = prevstate.chunkgroups.find(q => q.chunkx == chunkx && q.chunkz == chunkz);
 			let newstate: Partial<SceneMapState> = {};
 			newstate.center = center;
 			if (!group) {
-				group = { rect, models: new Map(), diffs: [] };
+				group = { chunkx, chunkz, models: new Map(), diffs: [] };
 				newstate.chunkgroups = [...prevstate.chunkgroups, group];
 			}
 			group.models.set(sceneCache, chunk);
@@ -1824,7 +1832,11 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			//TODO some sort of warning?
 			return;
 		}
-		this.addArea(rect);
+		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
+			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
+				this.addChunk(x, z);
+			}
+		}
 	}
 
 	fixVisibility(newtoggles = this.state.toggles) {
@@ -1854,7 +1866,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			let engine = await EngineCache.create(cache);
 			let scene = await ThreejsSceneCache.create(engine);
 			for (let area of this.state.chunkgroups) {
-				this.loadChunk(area.rect, scene);
+				this.loadChunk(area.chunkx, area.chunkz, scene);
 			}
 			this.setState({ versions: [...this.state.versions, { cache: scene, visible: true }] });
 		}
@@ -1908,8 +1920,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		let xmin = Infinity, xmax = -Infinity;
 		let zmin = Infinity, zmax = -Infinity;
 		for (let chunk of this.state.chunkgroups) {
-			xmin = Math.min(xmin, chunk.rect.x); xmax = Math.max(xmax, chunk.rect.x + chunk.rect.xsize);
-			zmin = Math.min(zmin, chunk.rect.z); zmax = Math.max(zmax, chunk.rect.z + chunk.rect.zsize);
+			xmin = Math.min(xmin, chunk.chunkx); xmax = Math.max(xmax, chunk.chunkx + 1);
+			zmin = Math.min(zmin, chunk.chunkz); zmax = Math.max(zmax, chunk.chunkz + 1);
 		}
 		let xsize = xmax - xmin + 2;
 		let zsize = zmax - zmin + 2;
@@ -1924,7 +1936,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 					gridRow: "" + (zmin + zsize - z),
 					border: "1px solid rgba(255,255,255,0.2)"
 				}
-				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.addArea({ x, z, xsize: 1, zsize: 1 })} style={style}></div>);
+				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.addChunk(x, z)} style={style}></div>);
 			}
 		}
 
@@ -1944,7 +1956,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				)}
 				{this.state.chunkgroups.length != 0 && (
 					<div className="mv-sidebar-scroll">
-						<Map2dView chunks={this.state.chunkgroups.map(q => q.models.get(this.props.ctx!.sceneCache)!).filter(q => q)} addArea={this.addArea} gridsize={40} mapscenes={false} />
+						<Map2dView chunks={this.state.chunkgroups.map(q => q.models.get(this.props.ctx!.sceneCache)!).filter(q => q)} addArea={this.addChunk} gridsize={40} mapscenes={false} />
 
 						<input type="button" className="sub-btn" onClick={this.clear} value="Clear" />
 						<input type="button" className="sub-btn" onClick={this.viewmap} value="View Map" />
@@ -2016,7 +2028,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 type Map2dState = {
 	cache: Map<RSMapChunk, { render: Promise<string>, src: string | null }>,
 };
-export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => void, chunks: RSMapChunk[], gridsize: number, mapscenes: boolean }, Map2dState> {
+export class Map2dView extends React.Component<{ addArea?: (x: number, z: number) => void, chunks: RSMapChunk[], gridsize: number, mapscenes: boolean }, Map2dState> {
 	constructor(p) {
 		super(p);
 
@@ -2029,8 +2041,8 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 		let xmin = Infinity, xmax = -Infinity;
 		let zmin = Infinity, zmax = -Infinity;
 		for (let chunk of this.props.chunks) {
-			xmin = Math.min(xmin, chunk.rect.x); xmax = Math.max(xmax, chunk.rect.x + chunk.rect.xsize);
-			zmin = Math.min(zmin, chunk.rect.z); zmax = Math.max(zmax, chunk.rect.z + chunk.rect.zsize);
+			xmin = Math.min(xmin, chunk.chunkx); xmax = Math.max(xmax, chunk.chunkx + 1);
+			zmin = Math.min(zmin, chunk.chunkz); zmax = Math.max(zmax, chunk.chunkz + 1);
 		}
 		let xsize = xmax - xmin + 2;
 		let zsize = zmax - zmin + 2;
@@ -2045,7 +2057,7 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 					gridRow: "" + (zmin + zsize - z),
 					border: "1px solid rgba(255,255,255,0.2)"
 				}
-				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.props.addArea?.({ x, z, xsize: 1, zsize: 1 })} style={style}></div>);
+				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.props.addArea?.(x, z)} style={style}></div>);
 			}
 		}
 
@@ -2057,8 +2069,8 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 				<div className="map-grid-root" style={{ gridTemplateColumns: `${pad}px repeat(${xsize - 2},${gridsize}px) ${pad}px`, gridTemplateRows: `${pad}px repeat(${zsize - 2},${gridsize}px) ${pad}px` }}>
 					{this.props.chunks.flatMap((chunk, i) => {
 						let style: React.CSSProperties = {
-							gridColumn: `${chunk.rect.x - xmin + 1}/span ${chunk.rect.xsize}`,
-							gridRow: `${zsize - (chunk.rect.z - zmin) - chunk.rect.zsize + 1}/span ${chunk.rect.zsize}`
+							gridColumn: `${chunk.chunkx - xmin + 1}/span ${1}`,
+							gridRow: `${zsize - (chunk.chunkz - zmin)}/span ${1}`
 						}
 						let cached = this.state.cache.get(chunk);
 						if (cached?.src) {
@@ -2072,15 +2084,10 @@ export class Map2dView extends React.Component<{ addArea?: (rect: MapRect) => vo
 								this.forceUpdate();
 							});
 						}
-						for (let x = chunk.rect.x; x < chunk.rect.x + chunk.rect.xsize; x++) {
-							for (let z = chunk.rect.z; z < chunk.rect.z + chunk.rect.zsize; z++) {
-								addgrid[(x - xmin) * zsize + (z - zmin)] = null;
-							}
-						}
+						addgrid[(chunk.chunkx - xmin) * zsize + (chunk.chunkz - zmin)] = null;
 						return (
 							<div key={i} className={classNames("map-grid-area", { "map-grid-area-loading": !cached?.src })} style={style}>
-								{chunk.rect.xsize == 1 && chunk.rect.zsize == 1 ? "" : <React.Fragment>{chunk.rect.xsize}x{chunk.rect.zsize}<br /></React.Fragment>}
-								{chunk.rect.x},{chunk.rect.z}
+								{chunk.chunkx},{chunk.chunkz}
 							</div>
 						);
 					})}

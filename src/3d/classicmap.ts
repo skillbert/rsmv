@@ -3,7 +3,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { objects } from "../../generated/objects";
-import { ChunkData, MapRect, PlacedMesh, tiledimensions, TileGrid, TileGridSource, TileProps, tileshapes } from "../3d/mapsquare";
+import { MapRect, TileGrid, TileProps, tileshapes } from "../3d/mapsquare";
 import { ClassicConfig, classicGroups } from "../cache/classicloader";
 import { combineLegacyTexture } from "../cache/legacycache";
 import { crc32 } from "../libs/crc32util";

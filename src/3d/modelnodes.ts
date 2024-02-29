@@ -363,14 +363,49 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 
 export type RSMapChunkData = {
 	grid: TileGrid,
-	chunks: ChunkData[],
+	chunk: ChunkData | null,
 	chunkSize: number,
 	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
 	modeldata: PlacedMesh[][],
 	chunkmodels: Group[],
-	rect: MapRect
+	chunkx: number,
+	chunkz: number
 }
+
+export class RSMapChunkGroup extends TypedEmitter<{ loaded: undefined, changed: undefined }> implements ThreeJsSceneElementSource {
+	chunks: RSMapChunk[];
+	rootnode = new THREE.Group();
+	renderscene: ThreeJsRenderer | null = null;
+	mixer = new AnimationMixer(this.rootnode);
+	getSceneElements() {
+		return this.chunks.map(q => q.getSceneElements())
+	}
+	addToScene(scene: ThreeJsRenderer) {
+		this.renderscene = scene;
+		scene.addSceneElement(this);
+	}
+	cleanup() {
+		this.listeners = {};
+		this.chunks.forEach(q => q.cleanup());
+		this.renderscene?.removeSceneElement(this);
+		this.renderscene = null;
+	}
+	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
+		super();
+		this.chunks = [];
+		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
+			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
+				let sub = new RSMapChunk(x, z, cache, extraopts);
+				this.chunks.push(sub);
+			}
+		}
+		Promise.all(this.chunks.map(q => q.chunkdata)).then(q => {
+			this.emit("loaded", undefined);
+		});
+	}
+}
+
 
 export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: undefined }> implements ThreeJsSceneElementSource {
 	chunkdata: Promise<RSMapChunkData>;
@@ -380,7 +415,8 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	mixer = new AnimationMixer(this.rootnode);
 	renderscene: ThreeJsRenderer | null = null;
 	toggles: Record<string, boolean> = {};
-	rect: MapRect;
+	chunkx: number;
+	chunkz: number;
 
 	cleanup() {
 		this.listeners = {};
@@ -396,9 +432,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	}
 
 	async renderSvg(level = 0, wallsonly = false, pxpersquare = 1) {
-		let { chunks, grid, chunkSize } = await this.chunkdata;
-		let rect: MapRect = { x: this.rect.x * chunkSize, z: this.rect.z * chunkSize, xsize: this.rect.xsize * chunkSize, zsize: this.rect.zsize * chunkSize };
-		return svgfloor(this.cache.engine, grid, chunks.flatMap(q => q.locs), rect, level, pxpersquare, wallsonly, false);
+		let { chunk, grid, chunkSize, chunkx, chunkz } = await this.chunkdata;
+		let rect: MapRect = { x: chunkx * chunkSize, z: chunkz * chunkSize, xsize: chunkSize, zsize: chunkSize };
+		return svgfloor(this.cache.engine, grid, chunk?.locs ?? [], rect, level, pxpersquare, wallsonly, false);
 	}
 
 	getSceneElements(): ThreeJsSceneElement {
@@ -436,33 +472,35 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		});
 	}
 
-	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
+	constructor(chunkx: number, chunkz: number, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
 		super();
-		this.rect = rect;
 		this.cache = cache;
+		this.chunkx = chunkx;
+		this.chunkz = chunkz;
 		this.chunkdata = (async () => {
 			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
-			let { grid, chunks } = await parseMapsquare(cache.engine, rect, opts);
-			let processedChunks = await Promise.all(chunks.map(async chunkdata => {
-				let floors = await mapsquareFloors(cache, grid, chunkdata, opts);
-				let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(cache.engine, grid, chunkdata.locs));
-				let models = mapsquareObjectModels(cache.engine, chunkdata.locs);
+			let { grid, chunk } = await parseMapsquare(cache.engine, chunkx, chunkz, opts);
+			let modeldata: PlacedMesh[][] = [];
+			let chunkmodels: THREE.Group[] = [];
+			if (chunk) {
+				let floors = await mapsquareFloors(cache, grid, chunk, opts);
+				let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(cache.engine, grid, chunk.locs));
+				let models = mapsquareObjectModels(cache.engine, chunk.locs);
 				let locmeshes = await generateLocationMeshgroups(cache, models);
 				let allmeshes = [...locmeshes.byMaterial, ...overlays];
 				if (opts.minimap) {
-					let minimodels = mapsquareObjectModels(cache.engine, chunkdata.locs, true);
+					let minimodels = mapsquareObjectModels(cache.engine, chunk.locs, true);
 					let minimeshes = await generateLocationMeshgroups(cache, minimodels, true);
 					allmeshes.push(...minimeshes.byMaterial);
 				}
-				let group = await mapsquareToThreeSingle(this.cache, grid, chunkdata, floors, allmeshes);
-				return { locmeshes, group };
-			}));
-			let sky = (extraopts?.skybox ? await mapsquareSkybox(cache, chunks[0]) : null);
+				let group = await mapsquareToThreeSingle(cache, grid, chunk, floors, allmeshes);
+				this.rootnode.add(group);
+				chunkmodels.push(group);
+				modeldata = locmeshes.byLogical;
+			}
+			let sky = (chunk && extraopts?.skybox ? await mapsquareSkybox(cache, chunk) : null);
 
 			let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
-			if (processedChunks.length != 0) {
-				this.rootnode.add(...processedChunks.map(q => q.group));
-			}
 
 			let groups = new Set<string>();
 			this.rootnode.traverse(node => {
@@ -488,9 +526,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 			//TODO remove
 			globalThis.chunk = this;
 
-			let modeldata = processedChunks.flatMap(q => q.locmeshes.byLogical);
-			let chunkmodels = processedChunks.map(q => q.group);
-			this.loaded = { grid, chunks, groups, sky, modeldata, chunkmodels, chunkSize, rect };
+			this.loaded = { chunkx, chunkz, grid, chunk, groups, sky, modeldata, chunkmodels, chunkSize };
 			this.onModelLoaded();
 			return this.loaded;
 		})();

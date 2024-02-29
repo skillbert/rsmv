@@ -34,7 +34,7 @@ export type ThreeJsRendererEvents = {
 }
 
 export interface ThreeJsSceneElementSource {
-	getSceneElements(): ThreeJsSceneElement
+	getSceneElements(): ThreeJsSceneElement | ThreeJsSceneElement[]
 }
 
 export type ThreeJsSceneElement = {
@@ -241,22 +241,25 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let nodeDeleteList = new Set(this.modelnode.children);
 		this.animationCallbacks.clear();
 		for (let source of this.sceneElements) {
-			let el = source.getSceneElements();
-			if (el.sky) { sky = el.sky; }
-			if (el.updateAnimation) {
-				this.animationCallbacks.add(el.updateAnimation);
-			}
-			if (el.options?.hideFog) { hideFog = true; }
-			if (el.options?.opaqueBackground) { opaqueBackground = true; }
-			if (el.options?.hideFloor) { showfloor = false; }
-			if (el.options?.camMode) { cammode = el.options.camMode; }
-			if (el.options?.camControls) { controls = el.options.camControls; }
-			if (el.options?.aspect) { aspect = el.options.aspect; }
-			if (el.options?.autoFrames) { autoframes = el.options.autoFrames }
-			if (el.modelnode) {
-				nodeDeleteList.delete(el.modelnode);
-				if (el.modelnode.parent != this.modelnode) {
-					this.modelnode.add(el.modelnode);
+			let elgroup = source.getSceneElements();
+			if (!Array.isArray(elgroup)) { elgroup = [elgroup]; }
+			for (let el of elgroup) {
+				if (el.sky) { sky = el.sky; }
+				if (el.updateAnimation) {
+					this.animationCallbacks.add(el.updateAnimation);
+				}
+				if (el.options?.hideFog) { hideFog = true; }
+				if (el.options?.opaqueBackground) { opaqueBackground = true; }
+				if (el.options?.hideFloor) { showfloor = false; }
+				if (el.options?.camMode) { cammode = el.options.camMode; }
+				if (el.options?.camControls) { controls = el.options.camControls; }
+				if (el.options?.aspect) { aspect = el.options.aspect; }
+				if (el.options?.autoFrames) { autoframes = el.options.autoFrames }
+				if (el.modelnode) {
+					nodeDeleteList.delete(el.modelnode);
+					if (el.modelnode.parent != this.modelnode) {
+						this.modelnode.add(el.modelnode);
+					}
 				}
 			}
 		}

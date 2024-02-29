@@ -353,17 +353,17 @@ export class MapRenderer {
 				z: z,
 				loaded: null,
 				loadprom: new CallbackPromise(),
-				chunk: new RSMapChunk({ x, z, xsize: 1, zsize: 1 }, this.scenecache, this.opts),
+				chunk: new RSMapChunk(x, z, this.scenecache, this.opts),
 				id
 			}
 			square.chunk.chunkdata.then(async (chunkdata) => {
 				square.loaded = {
 					rendermeta: {
-						x: chunkdata.rect.x,
-						z: chunkdata.rect.z,
+						x: chunkdata.chunkx,
+						z: chunkdata.chunkz,
 						version: this.config.version,
-						floor: (chunkdata.chunks.length == 0 ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunks[0])),
-						locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, square.chunk.rect)
+						floor: (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk[0])),
+						locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz)
 					},
 					grid: chunkdata.grid,
 					chunkdata: chunkdata
@@ -626,7 +626,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 				let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize);
 				await Promise.all(chunks.map(q => q.loadprom));
 				// console.log("running", task.file, "old", meta?.hash, "new", task.hash);
-				if (!chunks.some(q => q.loaded!.chunkdata.chunks.length != 0)) {
+				if (!chunks.some(q => q.loaded!.chunkdata.chunk)) {
 					//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
 					continue;
 				}
@@ -716,9 +716,9 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 									if (!other) { throw new Error("unexpected"); }
 
 									let modelmatrix = new Matrix4().makeTranslation(
-										chunk.chunk.rect.x * tiledimensions * chunk.chunk.loaded!.chunkSize,
+										chunk.chunk.chunkx * tiledimensions * chunk.chunk.loaded!.chunkSize,
 										0,
-										chunk.chunk.rect.z * tiledimensions * chunk.chunk.loaded!.chunkSize,
+										chunk.chunk.chunkz * tiledimensions * chunk.chunk.loaded!.chunkSize,
 									).premultiply(chunk.chunk.rootnode.matrixWorld);
 
 									let proj = cam.projectionMatrix.clone()
@@ -778,13 +778,13 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 							let grid = new CombinedTileGrid(chunks.map(ch => ({
 								src: ch.loaded.grid,
 								rect: {
-									x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
-									z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
-									xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
-									zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
+									x: ch.chunk.chunkx * ch.loaded.chunkdata.chunkSize,
+									z: ch.chunk.chunkz * ch.loaded.chunkdata.chunkSize,
+									xsize: ch.loaded.chunkdata.chunkSize,
+									zsize: ch.loaded.chunkdata.chunkSize,
 								}
 							})));
-							let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+							let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunk?.locs ?? []);
 							let svg = await svgfloor(engine, grid, locs, worldrect, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.overlaywalls, !!thiscnf.overlayicons, true);
 							let wallimg = new Image();
 							wallimg.src = `data:image/svg+xml;base64,${btoa(svg)}`;
@@ -832,13 +832,13 @@ const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, ba
 			let grid = new CombinedTileGrid(chunks.map(ch => ({
 				src: ch.loaded.grid,
 				rect: {
-					x: ch.chunk.rect.x * ch.loaded.chunkdata.chunkSize,
-					z: ch.chunk.rect.z * ch.loaded.chunkdata.chunkSize,
-					xsize: ch.chunk.rect.xsize * ch.loaded.chunkdata.chunkSize,
-					zsize: ch.chunk.rect.zsize * ch.loaded.chunkdata.chunkSize,
+					x: ch.chunk.chunkx * ch.loaded.chunkdata.chunkSize,
+					z: ch.chunk.chunkz * ch.loaded.chunkdata.chunkSize,
+					xsize: ch.loaded.chunkdata.chunkSize,
+					zsize: ch.loaded.chunkdata.chunkSize,
 				}
 			})));
-			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunk?.locs ?? []);
 			let svg = await svgfloor(engine, grid, locs, worldrect, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons, !!thiscnf.thicklines);
 			return {
 				file: () => Promise.resolve(Buffer.from(svg, "utf8"))
@@ -921,7 +921,7 @@ const rendermodeMaplabels: RenderMode<"height"> = function (engine, config, cnf,
 		async run(chunks) {
 			let { chunkSize } = chunks[0].loaded.chunkdata;
 			let rawarea = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
-			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunks.flatMap(q => q.locs));
+			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunk?.locs ?? []);
 			let iconjson = await jsonIcons(engine, locs, rawarea, thiscnf.level);
 			let textual = prettyJson(iconjson, { indent: "\t" });
 			let buf = Buffer.from(textual, "utf8");

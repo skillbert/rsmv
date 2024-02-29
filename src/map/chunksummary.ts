@@ -8,6 +8,7 @@ import { KnownMapFile, MapRender } from "./backends";
 import { CacheFileSource } from "../cache";
 import { RenderedMapMeta } from ".";
 import { crc32addInt } from "../libs/crc32util";
+import type { RSMapChunk } from "../3d/modelnodes";
 
 export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
 	let sum = new Vector3();
@@ -154,7 +155,7 @@ function compareChunkLoc(a: ChunkLocDependencies["instances"][number], b: ChunkL
 	return a.plane - b.plane || a.x - b.x || a.z - b.z || a.rotation - b.rotation || a.type - b.type;
 }
 
-export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], rect: MapRect) {
+export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], chunkx: number, chunkz: number) {
 	const boxAttribute = new BufferAttribute(new Float32Array(3 * 8), 3);
 	const v0 = new Vector3();
 	const v1 = new Vector3();
@@ -206,7 +207,7 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 			boxAttribute.setXYZ(7, v1.x, v1.y, v1.z);
 
 			let first = loc[0];
-			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, rect.x * tiledimensions * rs2ChunkSize, rect.z * tiledimensions * rs2ChunkSize);
+			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, chunkx * rs2ChunkSize * tiledimensions, chunkz * rs2ChunkSize * tiledimensions);
 			// trans.newpos.applyMatrix4(trans.matrix);
 			let bounds = [...trans.newpos.array as Float32Array].map(v => v | 0);
 			outgroup.instances.push({
@@ -609,7 +610,9 @@ globalThis.diffmodel = mapdiffmesh;
 globalThis.test = async (low: number, high: number) => {
 	globalThis.deps ??= await globalThis.getdeps(globalThis.engine, { area: { x: 49, z: 49, xsize: 3, zsize: 3 } });
 
-	let locdeps = mapsquareLocDependencies(globalThis.chunk.loaded.grid, globalThis.deps, globalThis.chunk.loaded.modeldata, globalThis.chunk.rect);
+	let chunk: RSMapChunk = globalThis.chunk;
+	if (!chunk.loaded) { return; }
+	let locdeps = mapsquareLocDependencies(chunk.loaded.grid, globalThis.deps, chunk.loaded.modeldata, chunk.loaded.chunkx, chunk.loaded.chunkz);
 	let locdifs = compareLocDependencies(locdeps, locdeps, low, high);
 	let locdifmesh = await mapdiffmesh(globalThis.sceneCache, locdifs);
 	globalThis.render.modelnode.add(locdifmesh);
