@@ -667,8 +667,11 @@ export class ThreejsSceneCache {
 function clamp(num: number) {
 	return (num > 255 ? 255 : num < 0 ? 0 : num);
 }
+function clamp1(num: number) {
+	return (num > 1 ? 1 : num < 0 ? 0 : num);
+}
 
-export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVariant: boolean) {
+export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVariant: boolean, inplace = false) {
 	let oldcol = mesh.geometry.getAttribute("color");
 	let hasVertexAlpha = !!oldcol && oldcol.itemSize == 4;
 	mesh.material = parsedmat.mat;
@@ -684,8 +687,8 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVari
 			let newrcomp = parsedmat.matmeta.baseColorFraction * basecolor[0];
 			let newgcomp = parsedmat.matmeta.baseColorFraction * basecolor[1];
 			let newbcomp = parsedmat.matmeta.baseColorFraction * basecolor[2];
-			let stride = hasVertexAlpha ? 4 : 3;
-			let buf = new Uint8Array(stride * vertcount);
+			let itemsize = hasVertexAlpha ? 4 : 3;
+			let newcol = (inplace && oldcol ? oldcol : new BufferAttribute(new Uint8Array(itemsize * vertcount), itemsize, true));
 			if (hasVertexAlpha && !oldcol) {
 				throw new Error("material has vertex alpha, but mesh doesn't have vertex colors");
 			}
@@ -693,14 +696,18 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVari
 				let oldr = (oldcol ? oldcol.getX(i) : 1);
 				let oldg = (oldcol ? oldcol.getY(i) : 1);
 				let oldb = (oldcol ? oldcol.getZ(i) : 1);
-				buf[i * stride + 0] = clamp((oldr * oldfrac + newrcomp) * 255);
-				buf[i * stride + 1] = clamp((oldg * oldfrac + newgcomp) * 255);
-				buf[i * stride + 2] = clamp((oldb * oldfrac + newbcomp) * 255);
+				newcol.setXYZ(
+					i,
+					//TODO can i skip clamp here?
+					clamp1((oldr * oldfrac + newrcomp)),
+					clamp1((oldg * oldfrac + newgcomp)),
+					clamp1((oldb * oldfrac + newbcomp))
+				);
 				if (hasVertexAlpha) {
-					buf[i * stride + 3] = oldcol.getW(i) * 255;
+					newcol.setW(i, oldcol.getW(i));
 				}
 			}
-			mesh.geometry.setAttribute("color", new BufferAttribute(buf, stride, true));
+			mesh.geometry.setAttribute("color", newcol);
 		}
 	} else if (mesh.geometry.getAttribute("color")) {
 		mesh.geometry.deleteAttribute("color");

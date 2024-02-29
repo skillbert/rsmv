@@ -485,12 +485,10 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 			if (chunk) {
 				let floors = await mapsquareFloors(cache, grid, chunk, opts);
 				let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(cache.engine, grid, chunk.locs));
-				let models = mapsquareObjectModels(cache.engine, chunk.locs);
-				let locmeshes = await generateLocationMeshgroups(cache, models);
+				let locmeshes = await generateLocationMeshgroups(cache, chunk.locs);
 				let allmeshes = [...locmeshes.byMaterial, ...overlays];
 				if (opts.minimap) {
-					let minimodels = mapsquareObjectModels(cache.engine, chunk.locs, true);
-					let minimeshes = await generateLocationMeshgroups(cache, minimodels, true);
+					let minimeshes = await generateLocationMeshgroups(cache, chunk.locs, true);
 					allmeshes.push(...minimeshes.byMaterial);
 				}
 				let group = await mapsquareToThreeSingle(cache, grid, chunk, floors, allmeshes);

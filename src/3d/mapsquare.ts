@@ -7,7 +7,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { ModelMeshData, ModelData } from "./rt7model";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, applyMaterial } from "./modeltothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, applyMaterial, ParsedMaterial } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
@@ -16,7 +16,7 @@ import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { legacyMajors } from "../cache/legacycache";
 import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
-import { MeshBuilder, topdown2dWallModels } from "./modelutils";
+import { MeshBuilder, computePartialNormals, topdown2dWallModels } from "./modelutils";
 import { CacheFileSource } from "../cache";
 import { CanvasImage } from "../imgutils";
 import { minimapFloorMaterial, minimapWaterMaterial } from "../rs3shaders";
@@ -482,23 +482,25 @@ export function modifyMesh(mesh: ModelMeshData, mods: ModelModifications) {
 	return newmesh;
 }
 
-export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number) {
+export function getMorphMatrix(morph: FloorMorph, gridoffsetx: number, gridoffsetz: number) {
 	let matrix = new THREE.Matrix4()
 		.makeTranslation(morph.translate.x - gridoffsetx, morph.translate.y, morph.translate.z - gridoffsetz)
 		.multiply(new THREE.Matrix4().makeRotationFromQuaternion(morph.rotation))
 		.multiply(new THREE.Matrix4().makeScale(morph.scale.x, morph.scale.y, morph.scale.z));
+	return matrix;
+}
 
-	let vector = new THREE.Vector3();
-
+export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number, newpos?: THREE.BufferAttribute, newposindex = 0) {
+	let matrix = getMorphMatrix(morph, gridoffsetx, gridoffsetz);
 	let centery = getTileHeight(grid, (morph.originx) / tiledimensions, (morph.originz) / tiledimensions, morph.level);
+	let vector = new THREE.Vector3();
 
 	//let ceiling = typeof morph.tiletransform?.scaleModelHeight != "undefined";
 	let followfloor = morph.placementMode == "followfloor" || morph.placementMode == "followfloorceiling";
 	let followceiling = morph.placementMode == "followfloorceiling";
 	let yscale = (followceiling && modelheight > 0 ? 1 / modelheight : 1);
 
-	let newposarray = new Float32Array(pos.count * 3);
-	let newpos = new THREE.BufferAttribute(newposarray, 3);
+	newpos ??= new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3);
 	// const maxdistance = tiledimensions / 2;
 	for (let i = 0; i < pos.count; i++) {
 		vector.fromBufferAttribute(pos, i);
@@ -519,52 +521,9 @@ export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph
 		} else {
 			vector.y += centery;
 		}
-		newpos.setXYZ(i, vector.x, vector.y, vector.z);
+		newpos.setXYZ(newposindex + i, vector.x, vector.y, vector.z);
 	}
-	return { newpos, matrix };
-}
-
-export function transformMesh(mesh: ModelMeshData, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number) {
-	let { newpos, matrix } = transformVertexPositions(mesh.attributes.pos, morph, grid, modelheight, gridoffsetx, gridoffsetz);
-
-	let vector = new THREE.Vector3();
-	let newnorm = mesh.attributes.normals;
-	if (mesh.attributes.normals) {
-		let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
-		let norm = mesh.attributes.normals;
-		newnorm = mesh.attributes.normals.clone();
-		for (let i = 0; i < norm.count; i++) {
-			vector.fromBufferAttribute(norm, i);
-			vector.applyMatrix3(matrix3);
-			newnorm.setXYZ(i, vector.x, vector.y, vector.z);
-		}
-	}
-
-	let indices = mesh.indices;
-	if (matrix.determinant() < 0) {
-		//reverse the winding order if the model is mirrored
-		let oldindices = indices;
-		indices = indices.clone();
-		for (let i = 0; i < indices.count; i += 3) {
-			indices.setX(i + 0, oldindices.getX(i + 0));
-			indices.setX(i + 1, oldindices.getX(i + 2));
-			indices.setX(i + 2, oldindices.getX(i + 1));
-		}
-	}
-
-	let r: ModelMeshData = {
-		materialId: mesh.materialId,
-		hasVertexAlpha: mesh.hasVertexAlpha,
-		needsNormalBlending: mesh.needsNormalBlending,
-		indices,
-		indexLODs: [indices],//only the current lod is transformed, the rest is invalid
-		attributes: {
-			...mesh.attributes,
-			normals: newnorm,
-			pos: newpos
-		}
-	}
-	return r;
+	return newpos;
 }
 
 export interface TileGridSource {
@@ -945,7 +904,7 @@ export class TileGrid implements TileGridSource {
 }
 
 export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, minimap?: boolean, skybox?: boolean, mask?: MapRect[] };
-export type ChunkModelData = { floors: FloorMeshData[], models: MapsquareLocation[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
+export type ChunkModelData = { floors: FloorMeshData[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
 export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -1180,7 +1139,8 @@ export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: Til
 	node.updateMatrix();
 
 	if (placedlocs.length != 0) {
-		node.add(...await Promise.all(placedlocs.map(q => meshgroupsToThree(scene, grid, q, rootx, rootz))));
+		let materials = await Promise.all(placedlocs.map(q => scene.getMaterial(q.materialId, q.hasVertexAlpha, q.minimapVariant)));
+		node.add(...placedlocs.map((q, i) => meshgroupsToThree(grid, q, rootx, rootz, materials[i])));
 	}
 
 	let floors = (await Promise.all(floordatas.map(f => floorToThree(scene, f)))).filter(q => q) as any;
@@ -1468,225 +1428,195 @@ export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, loc
 	return floors.flatMap(f => [f.wallgroup, ...f.mapscenes.values()]);
 }
 
-export function mapsquareObjectModels(cache: CacheFileSource, locs: WorldLocation[], minimap = false) {
-	type CachedLoc = {
-		translate: THREE.Vector3,
-		rotate: THREE.Quaternion,
-		scale: THREE.Vector3,
-		mirrored: boolean,
-		modelmods: ModelModifications
+export function mapsquareObjectModels(cache: CacheFileSource, inst: WorldLocation, minimap = false) {
+	let locmodels: MapsquareLocation["models"] = [];
+	let objectmeta = inst.location;
+	let isGroundDecor = inst.type == 22 && !objectmeta.unknown_49;
+
+	let modelmods: ModelModifications = {
+		replaceColors: objectmeta.color_replacements ?? undefined,
+		replaceMaterials: objectmeta.material_replacements ?? undefined,
+		lodLevel: (minimap ? 100 : undefined)
+	};
+	if (cache.getBuildNr() > lastClassicBuildnr && cache.getBuildNr() < 377) {
+		//old caches just use one prop to replace both somehow
+		//TODO buildnr cutoff for this is off by like 2 years
+		modelmods.replaceMaterials = modelmods.replaceColors;
 	}
-	let modelcache = new Map<number, CachedLoc>();
 
-	let models: MapsquareLocation[] = [];
+	const translatefactor = 4;//no clue why but seems right
+	let translate = new Vector3(
+		(objectmeta.translateX ?? 0) * translatefactor,
+		-(objectmeta.translateY ?? 0) * translatefactor,//minus y!!!
+		(objectmeta.translateZ ?? 0) * translatefactor
+	);
+	const scalefactor = 1 / 128;//estimated fit was 127.5 ...
+	let scale = new Vector3(
+		(objectmeta.scaleX ?? 128) * scalefactor,
+		(objectmeta.scaleY ?? 128) * scalefactor,
+		(objectmeta.scaleZ ?? 128) * scalefactor
+	);
 
-	for (let inst of locs) {
-		let model = modelcache.get(inst.locid);
-		let locmodels: MapsquareLocation["models"] = [];
-		let objectmeta = inst.location;
-		let isGroundDecor = inst.type == 22 && !objectmeta.unknown_49;
-		if (isGroundDecor && minimap) { continue; }
-		if (!model) {
-			let modelmods: ModelModifications = {
-				replaceColors: objectmeta.color_replacements ?? undefined,
-				replaceMaterials: objectmeta.material_replacements ?? undefined,
-				lodLevel: (minimap ? 100 : undefined)
-			};
-			if (cache.getBuildNr() > lastClassicBuildnr && cache.getBuildNr() < 377) {
-				//old caches just use one prop to replace both somehow
-				//TODO buildnr cutoff for this is off by like 2 years
-				modelmods.replaceMaterials = modelmods.replaceColors;
-			}
+	let originx = (inst.x + inst.sizex / 2) * tiledimensions;
+	let originz = (inst.z + inst.sizez / 2) * tiledimensions;
 
-			const translatefactor = 4;//no clue why but seems right
-			let translate = new Vector3(
-				(objectmeta.translateX ?? 0) * translatefactor,
-				-(objectmeta.translateY ?? 0) * translatefactor,//minus y!!!
-				(objectmeta.translateZ ?? 0) * translatefactor
-			);
-			const scalefactor = 1 / 128;//estimated fit was 127.5 ...
-			let scale = new Vector3(
-				(objectmeta.scaleX ?? 128) * scalefactor,
-				(objectmeta.scaleY ?? 128) * scalefactor,
-				(objectmeta.scaleZ ?? 128) * scalefactor
-			);
-			let rotate = new THREE.Quaternion();
-			model = {
-				rotate,
-				scale,
-				translate,
-				modelmods,
-				mirrored: !!objectmeta.mirror
-			};
-			modelcache.set(inst.locid, model);
+	let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, inst.rotation / 2 * Math.PI);
+	if (inst.rotation % 2 == 1) {
+		let tmp = scale.x;
+		scale.x = scale.z;
+		scale.z = tmp;
+	}
+	if (objectmeta.mirror) { scale.z *= -1; }
+	translate.add(new Vector3(originx, 0, originz));
+	if (minimap) { translate.y -= 0.2 * tiledimensions; }
+
+	if (inst.placement) {
+		translate.add(new Vector3().set(
+			inst.placement.translateX ?? 0,
+			-(inst.placement.translateY ?? 0),
+			inst.placement.translateZ ?? 0
+		));
+		if (inst.placement.scale) {
+			scale.multiplyScalar((inst.placement.scale ?? 128) / 128);
 		}
-		let modelmods = model.modelmods;
-
-		let originx = (inst.x + inst.sizex / 2) * tiledimensions;
-		let originz = (inst.z + inst.sizez / 2) * tiledimensions
-		let translate = new THREE.Vector3().copy(model.translate);
-
-		let scale = new THREE.Vector3().copy(model.scale);
-		let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, inst.rotation / 2 * Math.PI);
-		if (inst.rotation % 2 == 1) {
-			let tmp = scale.x;
-			scale.x = scale.z;
-			scale.z = tmp;
-		}
-		if (model.mirrored) { scale.z *= -1; }
-		translate.add(new Vector3(originx, 0, originz));
-		if (minimap) { translate.y -= 0.2 * tiledimensions; }
-
-		if (inst.placement) {
-			translate.add(new Vector3().set(
-				inst.placement.translateX ?? 0,
-				-(inst.placement.translateY ?? 0),
-				inst.placement.translateZ ?? 0
+		if (inst.placement.scaleX || inst.placement.scaleY || inst.placement.scaleZ) {
+			scale.multiply(new Vector3().set(
+				(inst.placement.scaleX ?? 128) / 128,
+				(inst.placement.scaleY ?? 128) / 128,
+				(inst.placement.scaleZ ?? 128) / 128,
 			));
-			if (inst.placement.scale) {
-				scale.multiplyScalar((inst.placement.scale ?? 128) / 128);
-			}
-			if (inst.placement.scaleX || inst.placement.scaleY || inst.placement.scaleZ) {
-				scale.multiply(new Vector3().set(
-					(inst.placement.scaleX ?? 128) / 128,
-					(inst.placement.scaleY ?? 128) / 128,
-					(inst.placement.scaleZ ?? 128) / 128,
-				));
-			}
-			if (inst.placement.rotation) {
-				let scale = 1 / (1 << 15);
-				//flip the y axis by flipping x and z sign
-				let rot = new THREE.Quaternion(
-					-inst.placement.rotation[0] * scale,
-					inst.placement.rotation[1] * scale,
-					-inst.placement.rotation[2] * scale,
-					inst.placement.rotation[3] * scale
-				);
-				rotation.premultiply(rot);
-			}
 		}
-		let linkabove = typeof objectmeta.probably_morphCeilingOffset != "undefined";
-		let followfloor = linkabove || !!objectmeta.probably_morphFloor;
+		if (inst.placement.rotation) {
+			let scale = 1 / (1 << 15);
+			//flip the y axis by flipping x and z sign
+			let rot = new THREE.Quaternion(
+				-inst.placement.rotation[0] * scale,
+				inst.placement.rotation[1] * scale,
+				-inst.placement.rotation[2] * scale,
+				inst.placement.rotation[3] * scale
+			);
+			rotation.premultiply(rot);
+		}
+	}
+	let linkabove = typeof objectmeta.probably_morphCeilingOffset != "undefined";
+	let followfloor = linkabove || !!objectmeta.probably_morphFloor;
 
-		let morph: FloorMorph = {
-			translate, rotation, scale,
-			level: inst.plane,
-			placementMode: (linkabove ? "followfloorceiling" : followfloor ? "followfloor" : "simple"),
-			scaleModelHeightOffset: objectmeta.probably_morphCeilingOffset ?? 0,
-			originx, originz
-		};
+	let morph: FloorMorph = {
+		translate, rotation, scale,
+		level: inst.plane,
+		placementMode: (linkabove ? "followfloorceiling" : followfloor ? "followfloor" : "simple"),
+		scaleModelHeightOffset: objectmeta.probably_morphCeilingOffset ?? 0,
+		originx, originz
+	};
 
-		let extras: ModelExtrasLocation = {
-			modeltype: "location",
-			isclickable: false,
-			modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid && inst.location.probably_animation == undefined ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
-			locationid: inst.locid,
-			worldx: inst.x,
-			worldz: inst.z,
-			rotation: inst.rotation,
-			mirror: !!objectmeta.mirror,
-			isGroundDecor,
-			level: inst.visualLevel,
-			locationInstance: inst
-		};
+	let extras: ModelExtrasLocation = {
+		modeltype: "location",
+		isclickable: false,
+		modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid && inst.location.probably_animation == undefined ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
+		locationid: inst.locid,
+		worldx: inst.x,
+		worldz: inst.z,
+		rotation: inst.rotation,
+		mirror: !!objectmeta.mirror,
+		isGroundDecor,
+		level: inst.visualLevel,
+		locationInstance: inst
+	};
 
-		let modelcount = 0;
-		let addmodel = (type: number, finalmorph: FloorMorph) => {
-			if (objectmeta.models) {
-				for (let ch of objectmeta.models) {
-					if (ch.type != type) { continue; }
-					modelcount++;
-					for (let modelid of ch.values) {
-						locmodels.push({ model: modelid, morph: finalmorph });
-					}
+	let modelcount = 0;
+	let addmodel = (type: number, finalmorph: FloorMorph) => {
+		if (minimap && isGroundDecor) { return; }
+		if (objectmeta.models) {
+			for (let ch of objectmeta.models) {
+				if (ch.type != type) { continue; }
+				modelcount++;
+				for (let modelid of ch.values) {
+					locmodels.push({ model: modelid, morph: finalmorph });
 				}
-			} else if (objectmeta.models_05) {
-				for (let ch of objectmeta.models_05.models) {
-					if (ch.type != type) { continue; }
-					modelcount++;
-					for (let modelid of ch.values) {
-						locmodels.push({ model: modelid, morph: finalmorph });
-					}
+			}
+		} else if (objectmeta.models_05) {
+			for (let ch of objectmeta.models_05.models) {
+				if (ch.type != type) { continue; }
+				modelcount++;
+				for (let modelid of ch.values) {
+					locmodels.push({ model: modelid, morph: finalmorph });
 				}
 			}
 		}
-		//0 straight wall
-		//1 wall short corner
-		//2 wall long corner (only half of model is stored and needs to be copied+transformed)
-		//3 end of wall/pillar
-		//4 wall attachment
-		//5 wall attachment on inside wall, translates a little in local x (model taken from type 4)
-		//6 wall attachment on diagonal inside wall, translates a little and uses model 4
-		//7 diagonal outside wall ornament 225deg diagonal using model 4
-		//8 BOTH 6 and 7, both using model 4
-		//9 diagonal wall
-		//10 scenery (most areas are built exclusively from this type)
-		//11 diagonal scenery (uses model 10)
-		//12 straight roof
-		//13 corner roof (diagonal)
-		//14 concave corner roof 
-		//15 concave roof (with angle)
-		//16 also corner roof (with angle)
-		//17 flat center roof
-		//18 roof overhang
-		//19 corner roof overhang (diagonal)
-		//21 corner roof overhang (with angle)
-		//22 floor decoration
-		if (inst.type == 11) {
-			addmodel(10, {
-				...morph,
-				rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 4).premultiply(morph.rotation)
-			});
-		} else if (inst.type == 8 || inst.type == 7 || inst.type == 6) {
-			if (inst.type == 6 || inst.type == 8) {
-				let dx = tiledimensions * 0.6;
-				let angle = Math.PI / 4;
-				let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, angle).premultiply(morph.rotation)
-				addmodel(4, {
-					...morph,
-					rotation,
-					translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(rotation).add(morph.translate)
-				});
-			}
-			if (inst.type == 7 || inst.type == 8) {
-				let dx = tiledimensions * 0.5;
-				let angle = Math.PI / 4 * 5;
-				let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, angle).premultiply(morph.rotation)
-				addmodel(4, {
-					...morph,
-					rotation,
-					translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(rotation).add(morph.translate)
-				});
-			}
-		} else if (inst.type == 2) {
-			//corner wall made out of 2 pieces
-			addmodel(2, {
-				...morph,
-				scale: new Vector3(1, 1, -1).multiply(morph.scale)
-			});
-			addmodel(2, {
-				...morph,
-				rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 2).premultiply(morph.rotation)
-			});
-		} else if (inst.type == 5) {
-			//moves the model some amount in x direction
-			//this might actually for real try to move depending on the size of objects it shares a tile with
-			//this doesn't take every other transform into account! but should be good enough for old 
-			//models that actually use this prop
-			let dx = tiledimensions / 6;
+	}
+	//0 straight wall
+	//1 wall short corner
+	//2 wall long corner (only half of model is stored and needs to be copied+transformed)
+	//3 end of wall/pillar
+	//4 wall attachment
+	//5 wall attachment on inside wall, translates a little in local x (model taken from type 4)
+	//6 wall attachment on diagonal inside wall, translates a little and uses model 4
+	//7 diagonal outside wall ornament 225deg diagonal using model 4
+	//8 BOTH 6 and 7, both using model 4
+	//9 diagonal wall
+	//10 scenery (most areas are built exclusively from this type)
+	//11 diagonal scenery (uses model 10)
+	//12 straight roof
+	//13 corner roof (diagonal)
+	//14 concave corner roof 
+	//15 concave roof (with angle)
+	//16 also corner roof (with angle)
+	//17 flat center roof
+	//18 roof overhang
+	//19 corner roof overhang (diagonal)
+	//21 corner roof overhang (with angle)
+	//22 floor decoration
+	if (inst.type == 11) {
+		addmodel(10, {
+			...morph,
+			rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 4).premultiply(morph.rotation)
+		});
+	} else if (inst.type == 8 || inst.type == 7 || inst.type == 6) {
+		if (inst.type == 6 || inst.type == 8) {
+			let dx = tiledimensions * 0.6;
+			let angle = Math.PI / 4;
+			let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, angle).premultiply(morph.rotation)
 			addmodel(4, {
 				...morph,
-				translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(morph.rotation).add(morph.translate)
+				rotation,
+				translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(rotation).add(morph.translate)
 			});
-		} else {
-			addmodel(inst.type, morph);
 		}
-		if (modelcount == 0) {
-			// console.log("model not found for render type", inst.type, objectmeta);
+		if (inst.type == 7 || inst.type == 8) {
+			let dx = tiledimensions * 0.5;
+			let angle = Math.PI / 4 * 5;
+			let rotation = new THREE.Quaternion().setFromAxisAngle(upvector, angle).premultiply(morph.rotation)
+			addmodel(4, {
+				...morph,
+				rotation,
+				translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(rotation).add(morph.translate)
+			});
 		}
-		models.push({ models: locmodels, mods: modelmods, extras: extras });
+	} else if (inst.type == 2) {
+		//corner wall made out of 2 pieces
+		addmodel(2, {
+			...morph,
+			scale: new Vector3(1, 1, -1).multiply(morph.scale)
+		});
+		addmodel(2, {
+			...morph,
+			rotation: new Quaternion().setFromAxisAngle(upvector, Math.PI / 2).premultiply(morph.rotation)
+		});
+	} else if (inst.type == 5) {
+		//moves the model some amount in x direction
+		//this might actually for real try to move depending on the size of objects it shares a tile with
+		//this doesn't take every other transform into account! but should be good enough for old 
+		//models that actually use this prop
+		let dx = tiledimensions / 6;
+		addmodel(4, {
+			...morph,
+			translate: new THREE.Vector3(dx, 0, 0).applyQuaternion(morph.rotation).add(morph.translate)
+		});
+	} else {
+		addmodel(inst.type, morph);
 	}
-	return models;
+
+	return { models: locmodels, mods: modelmods, extras: extras };
 }
 
 export type WorldLocation = {
@@ -1951,15 +1881,21 @@ function mapsquareCollisionToThree(grid: TileGrid, chunk: ChunkData, level: numb
 	return model;
 }
 
-export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs: MapsquareLocation[], minimap = false) {
+export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locbases: WorldLocation[], minimap = false) {
 	let loadedmodels = new Map<number, ModelData>();
 
 	let matmeshes: Map<string, Map<number, PlacedModel>> = new Map();
 	let byLogical: PlacedMesh[][] = [];
 
+
+	let locs = locbases.map(loc => mapsquareObjectModels(scene.engine, loc, minimap));
 	let loadproms: Promise<any>[] = [];
+	//dedupe fetches even though the scenecache already dedupes it, this still prevents a bunch of async microtasks
+	let queuedmodels = new Set<number>();
 	for (let loc of locs) {
 		for (let model of loc.models) {
+			if (queuedmodels.has(model.model)) { continue; }
+			queuedmodels.add(model.model);
 			loadproms.push(scene.getModelData(model.model).catch(e => {
 				console.warn("ignoring missing model", model.model, "in loc", loc.extras.locationInstance.location.name ?? loc.extras.locationid);
 				return { bonecount: 0, skincount: 0, miny: 0, maxy: 0, meshes: [] } as ModelData;
@@ -2021,39 +1957,114 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locs:
 	return { byMaterial, byLogical };
 }
 
-async function meshgroupsToThree(scene: ThreejsSceneCache, grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number) {
-	let geos = meshgroup.models.map(m => {
-		let transformed = transformMesh(m.model, m.morph, grid, m.maxy - m.miny, rootx, rootz);
-		let attrs = transformed.attributes;
-		let geo = new THREE.BufferGeometry();
-		geo.setAttribute("position", attrs.pos.clone());
-		if (attrs.color) { geo.setAttribute("color", attrs.color); }
-		if (attrs.normals) { geo.setAttribute("normal", attrs.normals); }
-		else {
-			//TODO remove this
-			// console.log("calculating missing normals");
-			geo.computeVertexNormals();
+function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number, material: ParsedMaterial) {
+	let totalverts = meshgroup.models.reduce((a, v) => a + v.model.attributes.pos.count, 0);
+	let totalindices = meshgroup.models.reduce((a, v) => a + v.model.indices.count, 0);
+	let vertalphas = meshgroup.models.reduce((a, v) => a + +v.model.hasVertexAlpha, 0);
+	if (vertalphas != 0 && vertalphas != meshgroup.models.length) { throw new Error("all meshes are expected to have same vertexAlpha setting"); }
+	let hasvertexAlpha = vertalphas != 0;
+	let vertindex = 0;
+	let indexindex = 0;
+
+	let pos = new BufferAttribute(new Float32Array(totalverts * 3), 3);
+	let uvs = new BufferAttribute(new Float32Array(totalverts * 2), 2);
+	let col = new BufferAttribute(new Uint8Array(totalverts * (hasvertexAlpha ? 4 : 3)), (hasvertexAlpha ? 4 : 3), true);
+	let normals = new BufferAttribute(new Float32Array(totalverts * 3), 3);//TODO use i8 norm here?
+	let indices = new BufferAttribute(totalverts > 0xffff ? new Uint32Array(totalindices) : new Uint16Array(totalindices), 1);
+
+	let indexcounts: number[] = [];
+	for (let m of meshgroup.models) {
+		let mesh = m.model;
+		let matrix = getMorphMatrix(m.morph, rootx, rootz);
+		let vertexcount = mesh.attributes.pos.count;
+		indexcounts.push(indexindex);
+
+		//indices
+		let oldindices = mesh.indices;
+		if (matrix.determinant() < 0) {
+			//reverse the winding order if the model is mirrored
+			for (let i = 0; i < oldindices.count; i += 3) {
+				let ii = indexindex + i;
+				indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
+				indices.setX(ii + 1, vertindex + oldindices.getX(i + 2));
+				indices.setX(ii + 2, vertindex + oldindices.getX(i + 1));
+			}
+		} else {
+			for (let i = 0; i < oldindices.count; i += 3) {
+				let ii = indexindex + i;
+				indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
+				indices.setX(ii + 1, vertindex + oldindices.getX(i + 1));
+				indices.setX(ii + 2, vertindex + oldindices.getX(i + 2));
+			}
 		}
-		if (attrs.texuvs) { geo.setAttribute("uv", attrs.texuvs); }
-		geo.index = transformed.indices;
-		return geo;
-	});
-	let mergedgeo = mergeBufferGeometries(geos);
+
+		//position
+		transformVertexPositions(mesh.attributes.pos, m.morph, grid, m.maxy - m.miny, rootx, rootz, pos, vertindex);
+
+		//normals
+		let vector = new THREE.Vector3();
+		if (mesh.attributes.normals) {
+			let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
+			let norm = mesh.attributes.normals;
+			for (let i = 0; i < norm.count; i++) {
+				vector.fromBufferAttribute(norm, i);
+				vector.applyMatrix3(matrix3);
+				normals.setXYZ(vertindex + i, vector.x, vector.y, vector.z);
+			}
+		} else {
+			computePartialNormals(indices, pos, normals, indexindex, indexindex + oldindices.count);
+		}
+
+		//color
+		let oldcol = mesh.attributes.color;
+		if (oldcol) {
+			if (hasvertexAlpha) {
+				for (let i = 0; i < vertexcount; i++) {
+					col.setXYZW(vertindex + i, oldcol.getX(i), oldcol.getY(i), oldcol.getZ(i), oldcol.getW(i));
+				}
+			} else {
+				for (let i = 0; i < vertexcount; i++) {
+					col.setXYZ(vertindex + i, oldcol.getX(i), oldcol.getY(i), oldcol.getZ(i));
+				}
+			}
+		} else {
+			for (let i = 0; i < vertexcount; i++) {
+				col.setXYZ(vertindex + i, 1, 1, 1);
+				if (hasvertexAlpha) { col.setW(vertindex + i, 1); }
+			}
+		}
+
+		//uvs
+		let olduvs = mesh.attributes.texuvs;
+		if (olduvs) {
+			for (let i = 0; i < vertexcount; i++) {
+				uvs.setXY(vertindex + i, olduvs.getX(i), olduvs.getY(i));
+			}
+		} else {
+			for (let i = 0; i < vertexcount; i++) {
+				uvs.setXY(vertindex + i, 0, 0);
+			}
+		}
+
+		vertindex += mesh.attributes.pos.count;
+		indexindex += mesh.indices.count;
+	}
+
+	let mergedgeo = new THREE.BufferGeometry();
+	mergedgeo.setAttribute("position", pos);
+	mergedgeo.setAttribute("normal", normals);
+	mergedgeo.setAttribute("color", col);
+	mergedgeo.setAttribute("uv", uvs);
+	mergedgeo.setIndex(indices);
+
 	let mesh = new THREE.Mesh(mergedgeo);
-	let material = await scene.getMaterial(meshgroup.materialId, meshgroup.hasVertexAlpha, meshgroup.minimapVariant);
 	applyMaterial(mesh, material, meshgroup.minimapVariant);
 
-	let count = 0;
-	let counts: number[] = [];
-	for (let geo of geos) {
-		counts.push(count);
-		count += geo.index!.count;
-	}
 	let clickable: ModelExtras = {
 		modeltype: "locationgroup",
 		modelgroup: meshgroup.groupid,
 		isclickable: true,
-		subranges: counts,
+		subranges: indexcounts,
 		searchPeers: true,
 		subobjects: meshgroup.models.map(q => q.extras)
 	}

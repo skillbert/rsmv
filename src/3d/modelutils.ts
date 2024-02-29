@@ -1,4 +1,4 @@
-import { BufferAttribute } from "three";
+import { BufferAttribute, Vector3 } from "three";
 import { ModelData, ModelMeshData } from "./rt7model";
 
 type rgb = [r: number, g: number, b: number];
@@ -160,6 +160,46 @@ export class MeshBuilder {
     }
     convert() {
         return this.parent!.convert();
+    }
+}
+
+//same as THREE.BufferGeometry.computeVertexNormals, but only does a certain index range
+export function computePartialNormals(index: THREE.BufferAttribute, positionAttribute: THREE.BufferAttribute, normalAttribute: THREE.BufferAttribute, indexstart: number, indexend: number) {
+    const a = new Vector3();
+    const b = new Vector3();
+    const c = new Vector3();
+    const d = new Vector3();
+
+    for (let i = indexstart; i < indexend; i += 3) {
+        const vA = index.getX(i + 0);
+        const vB = index.getX(i + 1);
+        const vC = index.getX(i + 2);
+
+        a.fromBufferAttribute(positionAttribute, vA);
+        b.fromBufferAttribute(positionAttribute, vB);
+        c.fromBufferAttribute(positionAttribute, vC);
+
+        c.sub(b);
+        a.sub(b);
+        d.crossVectors(c, a);
+
+        a.fromBufferAttribute(normalAttribute, vA);
+        b.fromBufferAttribute(normalAttribute, vB);
+        c.fromBufferAttribute(normalAttribute, vC);
+
+        a.add(d);
+        b.add(d);
+        c.add(d);
+
+        normalAttribute.setXYZ(vA, a.x, a.y, a.z);
+        normalAttribute.setXYZ(vB, b.x, b.y, b.z);
+        normalAttribute.setXYZ(vC, c.x, c.y, c.z);
+    }
+
+    for (let i = indexstart; i < indexend; i++) {
+        d.fromBufferAttribute(normalAttribute, i);
+        d.normalize();
+        normalAttribute.setXYZ(i, d.x, d.y, d.z);
     }
 }
 

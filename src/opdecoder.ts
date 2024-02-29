@@ -15,6 +15,7 @@ let bytesleftoverwarncount = 0;
 export class FileParser<T> {
 	parser: opcode_reader.ChunkParser;
 	originalSource: string;
+	totaltime = 0;
 
 	static fromJson<T>(jsonObject: string) {
 		let opcodeobj = commentJson.parse(jsonObject, undefined, true) as any
@@ -27,7 +28,9 @@ export class FileParser<T> {
 	}
 
 	readInternal(state: opcode_reader.DecodeState) {
+		let t = performance.now();
 		let res = this.parser.read(state);
+		this.totaltime += performance.now() - t;
 		if (state.scan != state.endoffset) {
 			bytesleftoverwarncount++;
 			if (bytesleftoverwarncount < 100) {
@@ -86,6 +89,12 @@ export class FileParser<T> {
 		scratchbuf.fill(0, 0, state.scan);
 		return r;
 	}
+}
+
+globalThis.parserTimings = () => {
+	let all = Object.entries(parse).map(q => ({ name: q[0], t: q[1].totaltime }));
+	all.sort((a, b) => b.t - a.t);
+	all.slice(0, 10).filter(q => q.t > 0.01).forEach(q => console.log(`${q.name} ${q.t.toFixed(3)}s`));
 }
 
 export const parse = allParsers();

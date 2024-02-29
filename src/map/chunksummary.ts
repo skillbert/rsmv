@@ -49,7 +49,7 @@ export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRe
 		}
 		sum.divideScalar(count);
 		pointAttribute.setXYZ(0, sum.x, sum.y, sum.z);
-		let { newpos } = transformVertexPositions(pointAttribute, first.morph, grid, first.maxy - first.miny, 0, 0);
+		let newpos = transformVertexPositions(pointAttribute, first.morph, grid, first.maxy - first.miny, 0, 0);
 
 		locs.push({
 			id: info.locationid,
@@ -208,8 +208,7 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 
 			let first = loc[0];
 			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, chunkx * rs2ChunkSize * tiledimensions, chunkz * rs2ChunkSize * tiledimensions);
-			// trans.newpos.applyMatrix4(trans.matrix);
-			let bounds = [...trans.newpos.array as Float32Array].map(v => v | 0);
+			let bounds = [...trans.array as Float32Array].map(v => v | 0);
 			outgroup.instances.push({
 				plane: first.extras.locationInstance.plane,
 				x: first.extras.locationInstance.x,
