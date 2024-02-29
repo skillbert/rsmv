@@ -274,7 +274,7 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 				indices: index,
 				indexLODs: [index],
 				materialId: render.materialArgument - 1,
-				hasVertexAlpha: !!mesh.vertexAlpha,//TODO probably also requires flag
+				hasVertexAlpha: !!render.hasVertexAlpha,
 				needsNormalBlending: false,
 				attributes: attributes
 			})

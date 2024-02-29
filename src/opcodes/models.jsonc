@@ -81,8 +81,15 @@
 		["vertexAlpha",["opt","hasVertices==1",["buffer",["ref","vertexCount"],"ubyte"]]],
 		["vertexFacebones",["opt","hasFaceBones==1",["buffer",["ref","vertexCount"],"ushort"]]],
 		["renders",["array",["ref","meshCount"],["struct",
+			["$groupFlags","ubyte"],
+			["hasVertices",["ref","$groupFlags",[0,1]]],
+			["hasVertexAlpha",["ref","$groupFlags",[1,1]]],
+			["hasFaceBones",["ref","$groupFlags",[2,1]]],
+			["hasBoneIds",["ref","$groupFlags",[3,1]]],
+			["isHidden",["ref","$groupFlags",[4,1]]],
+			["hasSkin",["ref","$groupFlags",[5,1]]],
+			
 			["unkint","uint"],
-			["unkbyte1","ubyte"],
 			["materialArgument","ushort le"],
 			["unkbyte2","ubyte"],
 			["buf",["buffer","ushort le","ushort"]]
