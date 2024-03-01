@@ -492,7 +492,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 					allmeshes.push(...minimeshes.byMaterial);
 				}
 				let group = await mapsquareToThreeSingle(cache, grid, chunk, floors, allmeshes);
-				this.rootnode.add(group);
 				chunkmodels.push(group);
 				modeldata = locmeshes.byLogical;
 			}
@@ -500,6 +499,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 
 			let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
 
+			if (chunkmodels.length != 0) {
+				this.rootnode.add(...chunkmodels);
+			}
 			let groups = new Set<string>();
 			this.rootnode.traverse(node => {
 				if (node.userData.modelgroup) {
