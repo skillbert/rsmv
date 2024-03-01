@@ -20,7 +20,7 @@ import { parseLegacySprite, parseSprite, parseTgaSprite, SubImageData } from "./
 import { combineLegacyTexture, LegacyData, legacyGroups, legacyMajors, legacyPreload, parseLegacyImageFile } from "../cache/legacycache";
 import { classicConfig, ClassicConfig, ClassicFileSource, classicGroups } from "../cache/classicloader";
 import { parseRT2Model } from "./rt2model";
-import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof17, classicRoof12, materialPreviewCube, classicWall, classicWallDiag, classicRoof15 } from "./modelutils";
+import { classicRoof14, classicRoof16, classicRoof13, classicRoof10, classicRoof17, classicRoof12, materialPreviewCube, classicWall, classicWallDiag, classicRoof15, getAttributeBackingStore } from "./modelutils";
 import { classicOverlays, classicUnderlays } from "./classicmap";
 import { HSL2RGB, HSL2RGBfloat, packedHSL2HSL } from "../utils";
 import { loadProcTexture } from "./proceduraltexture";
@@ -684,27 +684,30 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVari
 			let vertcount = mesh.geometry.getAttribute("position").count;
 			let oldcol = mesh.geometry.getAttribute("color");
 			let oldfrac = 1 - parsedmat.matmeta.baseColorFraction;
-			let newrcomp = parsedmat.matmeta.baseColorFraction * basecolor[0];
-			let newgcomp = parsedmat.matmeta.baseColorFraction * basecolor[1];
-			let newbcomp = parsedmat.matmeta.baseColorFraction * basecolor[2];
+			let newrcomp = parsedmat.matmeta.baseColorFraction * basecolor[0] * 255;
+			let newgcomp = parsedmat.matmeta.baseColorFraction * basecolor[1] * 255;
+			let newbcomp = parsedmat.matmeta.baseColorFraction * basecolor[2] * 255;
 			let itemsize = hasVertexAlpha ? 4 : 3;
 			let newcol = (inplace && oldcol ? oldcol : new BufferAttribute(new Uint8Array(itemsize * vertcount), itemsize, true));
 			if (hasVertexAlpha && !oldcol) {
 				throw new Error("material has vertex alpha, but mesh doesn't have vertex colors");
 			}
+
+			let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(oldcol);
+			let [newbuf, newoffset, newstride] = getAttributeBackingStore(newcol);
+			let hasoldcol = !!oldcol;
+
 			for (let i = 0; i < vertcount; i++) {
-				let oldr = (oldcol ? oldcol.getX(i) : 1);
-				let oldg = (oldcol ? oldcol.getY(i) : 1);
-				let oldb = (oldcol ? oldcol.getZ(i) : 1);
-				newcol.setXYZ(
-					i,
-					//TODO can i skip clamp here?
-					clamp1((oldr * oldfrac + newrcomp)),
-					clamp1((oldg * oldfrac + newgcomp)),
-					clamp1((oldb * oldfrac + newbcomp))
-				);
+				let ii = newoffset + newstride * i;
+				let jj = oldoffset + oldstride * i;
+				let oldr = (hasoldcol ? oldbuf[jj + 0] : 255);
+				let oldg = (hasoldcol ? oldbuf[jj + 1] : 255);
+				let oldb = (hasoldcol ? oldbuf[jj + 2] : 255);
+				newbuf[ii + 0] = clamp(oldr * oldfrac + newrcomp);
+				newbuf[ii + 1] = clamp(oldg * oldfrac + newgcomp);
+				newbuf[ii + 2] = clamp(oldb * oldfrac + newbcomp);
 				if (hasVertexAlpha) {
-					newcol.setW(i, oldcol.getW(i));
+					newbuf[ii + 3] = (hasoldcol ? oldbuf[jj + 3] : 255);
 				}
 			}
 			mesh.geometry.setAttribute("color", newcol);

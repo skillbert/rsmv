@@ -16,7 +16,7 @@ import * as THREE from "three";
 import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { legacyMajors } from "../cache/legacycache";
 import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
-import { MeshBuilder, computePartialNormals, topdown2dWallModels } from "./modelutils";
+import { MeshBuilder, computePartialNormals, getAttributeBackingStore, topdown2dWallModels } from "./modelutils";
 import { CacheFileSource } from "../cache";
 import { CanvasImage } from "../imgutils";
 import { minimapFloorMaterial, minimapWaterMaterial } from "../rs3shaders";
@@ -501,9 +501,15 @@ export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph
 	let yscale = (followceiling && modelheight > 0 ? 1 / modelheight : 1);
 
 	newpos ??= new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3);
-	// const maxdistance = tiledimensions / 2;
+	let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(pos);
+	let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(newpos);
+	let newoffset = newsuboffset + newposindex * newstride;
 	for (let i = 0; i < pos.count; i++) {
-		vector.fromBufferAttribute(pos, i);
+		let ii = newoffset + newstride * i;
+		let jj = oldoffset + oldstride * i;
+		vector.x = oldbuf[jj + 0];
+		vector.y = oldbuf[jj + 1];
+		vector.z = oldbuf[jj + 2];
 		let vertexy = vector.y;
 		vector.applyMatrix4(matrix);
 		if (followfloor) {
@@ -521,7 +527,9 @@ export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph
 		} else {
 			vector.y += centery;
 		}
-		newpos.setXYZ(newposindex + i, vector.x, vector.y, vector.z);
+		newbuf[ii + 0] = vector.x;
+		newbuf[ii + 1] = vector.y;
+		newbuf[ii + 2] = vector.z;
 	}
 	return newpos;
 }
@@ -1977,24 +1985,27 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		let mesh = m.model;
 		let matrix = getMorphMatrix(m.morph, rootx, rootz);
 		let vertexcount = mesh.attributes.pos.count;
+		let indexcount = mesh.indices.count;
 		indexcounts.push(indexindex);
 
 		//indices
-		let oldindices = mesh.indices;
-		if (matrix.determinant() < 0) {
-			//reverse the winding order if the model is mirrored
-			for (let i = 0; i < oldindices.count; i += 3) {
-				let ii = indexindex + i;
-				indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
-				indices.setX(ii + 1, vertindex + oldindices.getX(i + 2));
-				indices.setX(ii + 2, vertindex + oldindices.getX(i + 1));
-			}
-		} else {
-			for (let i = 0; i < oldindices.count; i += 3) {
-				let ii = indexindex + i;
-				indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
-				indices.setX(ii + 1, vertindex + oldindices.getX(i + 1));
-				indices.setX(ii + 2, vertindex + oldindices.getX(i + 2));
+		{
+			let oldindices = mesh.indices;
+			if (matrix.determinant() < 0) {
+				//reverse the winding order if the model is mirrored
+				for (let i = 0; i < oldindices.count; i += 3) {
+					let ii = indexindex + i;
+					indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
+					indices.setX(ii + 1, vertindex + oldindices.getX(i + 2));
+					indices.setX(ii + 2, vertindex + oldindices.getX(i + 1));
+				}
+			} else {
+				for (let i = 0; i < oldindices.count; i += 3) {
+					let ii = indexindex + i;
+					indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
+					indices.setX(ii + 1, vertindex + oldindices.getX(i + 1));
+					indices.setX(ii + 2, vertindex + oldindices.getX(i + 2));
+				}
 			}
 		}
 
@@ -2002,47 +2013,77 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		transformVertexPositions(mesh.attributes.pos, m.morph, grid, m.maxy - m.miny, rootx, rootz, pos, vertindex);
 
 		//normals
-		let vector = new THREE.Vector3();
-		if (mesh.attributes.normals) {
-			let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
-			let norm = mesh.attributes.normals;
-			for (let i = 0; i < norm.count; i++) {
-				vector.fromBufferAttribute(norm, i);
-				vector.applyMatrix3(matrix3);
-				normals.setXYZ(vertindex + i, vector.x, vector.y, vector.z);
+		{
+			let vector = new THREE.Vector3();
+			if (mesh.attributes.normals) {
+				let norm = mesh.attributes.normals;
+				let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(norm);
+				let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(normals);
+				let newoffset = vertindex * newstride + newsuboffset;
+				let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
+				for (let i = 0; i < norm.count; i++) {
+					let ii = newoffset + i * newstride;
+					let jj = oldoffset + i * oldstride;
+					vector.set(oldbuf[jj + 0], oldbuf[jj + 1], oldbuf[jj + 2]);
+					vector.fromBufferAttribute(norm, i);
+					vector.applyMatrix3(matrix3);
+					newbuf[ii + 0] = vector.x;
+					newbuf[ii + 1] = vector.y;
+					newbuf[ii + 2] = vector.z;
+				}
+			} else {
+				computePartialNormals(indices, pos, normals, indexindex, indexindex + indexcount);
 			}
-		} else {
-			computePartialNormals(indices, pos, normals, indexindex, indexindex + oldindices.count);
 		}
 
 		//color
-		let oldcol = mesh.attributes.color;
-		if (oldcol) {
-			if (hasvertexAlpha) {
-				for (let i = 0; i < vertexcount; i++) {
-					col.setXYZW(vertindex + i, oldcol.getX(i), oldcol.getY(i), oldcol.getZ(i), oldcol.getW(i));
+		{
+			let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(col);
+			let newoffset = vertindex * newstride + newsuboffset;
+			if (mesh.attributes.color) {
+				let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(mesh.attributes.color);
+				if (hasvertexAlpha) {
+					for (let i = 0; i < vertexcount; i++) {
+						let ii = newoffset + i * newstride;
+						let jj = oldoffset + i * oldstride;
+						newbuf[ii + 0] = oldbuf[jj + 0];
+						newbuf[ii + 1] = oldbuf[jj + 1];
+						newbuf[ii + 2] = oldbuf[jj + 2];
+						newbuf[ii + 3] = oldbuf[jj + 3];
+					}
+				} else {
+					for (let i = 0; i < vertexcount; i++) {
+						let ii = newoffset + i * newstride;
+						let jj = oldoffset + i * oldstride;
+						newbuf[ii + 0] = oldbuf[jj + 0];
+						newbuf[ii + 1] = oldbuf[jj + 1];
+						newbuf[ii + 2] = oldbuf[jj + 2];
+					}
 				}
 			} else {
 				for (let i = 0; i < vertexcount; i++) {
-					col.setXYZ(vertindex + i, oldcol.getX(i), oldcol.getY(i), oldcol.getZ(i));
+					let ii = newoffset + i * newstride;
+					newbuf[ii + 0] = 1;
+					newbuf[ii + 1] = 1;
+					newbuf[ii + 2] = 1;
+					if (hasvertexAlpha) {
+						newbuf[ii + 3] = 1;
+					}
 				}
-			}
-		} else {
-			for (let i = 0; i < vertexcount; i++) {
-				col.setXYZ(vertindex + i, 1, 1, 1);
-				if (hasvertexAlpha) { col.setW(vertindex + i, 1); }
 			}
 		}
 
 		//uvs
-		let olduvs = mesh.attributes.texuvs;
-		if (olduvs) {
-			for (let i = 0; i < vertexcount; i++) {
-				uvs.setXY(vertindex + i, olduvs.getX(i), olduvs.getY(i));
-			}
-		} else {
-			for (let i = 0; i < vertexcount; i++) {
-				uvs.setXY(vertindex + i, 0, 0);
+		{
+			let olduvs = mesh.attributes.texuvs;
+			if (olduvs) {
+				for (let i = 0; i < vertexcount; i++) {
+					uvs.setXY(vertindex + i, olduvs.getX(i), olduvs.getY(i));
+				}
+			} else {
+				for (let i = 0; i < vertexcount; i++) {
+					uvs.setXY(vertindex + i, 0, 0);
+				}
 			}
 		}
 

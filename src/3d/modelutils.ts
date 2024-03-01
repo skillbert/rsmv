@@ -1,4 +1,4 @@
-import { BufferAttribute, Vector3 } from "three";
+import { BufferAttribute, InterleavedBufferAttribute, Vector3 } from "three";
 import { ModelData, ModelMeshData } from "./rt7model";
 
 type rgb = [r: number, g: number, b: number];
@@ -160,6 +160,18 @@ export class MeshBuilder {
     }
     convert() {
         return this.parent!.convert();
+    }
+}
+
+export function getAttributeBackingStore(attr: BufferAttribute | InterleavedBufferAttribute): [data: ArrayBufferView, offset: number, stride: number] {
+    if (attr instanceof InterleavedBufferAttribute) {
+        let data = attr.data.array;
+        if (!ArrayBuffer.isView(data)) { throw new Error("typed array backing store expected"); }
+        return [data, attr.offset, attr.data.stride];
+    } else {
+        let data = attr.array;
+        if (!ArrayBuffer.isView(data)) { throw new Error("typed array backing store expected"); }
+        return [data, 0, attr.itemSize];
     }
 }
 
