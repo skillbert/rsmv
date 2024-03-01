@@ -1646,11 +1646,10 @@ export type WorldLocation = {
 export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, locations: mapsquare_locations["locations"], originx: number, originz: number, collision = false) {
 	let locs: WorldLocation[] = [];
 
-	//prefetch all loc files
-	// locations.map(q => resolveMorphedObject(engine, q.id));
-
-	for (let loc of locations) {
-		let { morphedloc, rawloc, resolvedid } = await resolveMorphedObject(engine, loc.id);
+	let locdatas = await Promise.all(locations.map(q => resolveMorphedObject(engine, q.id)));
+	for (let locindex = 0; locindex < locations.length; locindex++) {
+		let loc = locations[locindex];
+		let { morphedloc, rawloc, resolvedid } = locdatas[locindex];
 		if (!morphedloc) { continue; }
 
 		for (let inst of loc.uses) {
