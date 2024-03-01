@@ -13,7 +13,6 @@ import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
 import { parseSprite } from "./sprite";
 import * as THREE from "three";
-import { mergeBufferGeometries } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { legacyMajors } from "../cache/legacycache";
 import { classicModifyTileGrid, getClassicLoc, getClassicMapData } from "./classicmap";
 import { MeshBuilder, computePartialNormals, getAttributeBackingStore, topdown2dWallModels } from "./modelutils";
@@ -2475,18 +2474,12 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 		mat.wireframe = true;
 	} else if (floor.mode != "worldmap") {
 		let img = floor.atlas.convert();
-
-		//no clue why this doesn't work
-		// mat.map = new THREE.Texture(img);
-		// globalThis.bug = mat.map;
-		let data = img.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, img.width, img.height);
-		let map = new THREE.DataTexture(data.data, img.width, img.height, RGBAFormat);
-
+		let map = new THREE.CanvasTexture(img);
+		map.flipY = false;//FALFALSEFLASEFALSE WHY IS THIS ON BY DEFAULT
 		map.magFilter = THREE.LinearFilter;
 		map.minFilter = THREE.LinearMipMapNearestFilter;
 		map.generateMipmaps = true;
 		map.encoding = THREE.sRGBEncoding;
-		map.needsUpdate = true;
 
 		if (floor.mode == "minimap") {
 			if (floor.iswater) {

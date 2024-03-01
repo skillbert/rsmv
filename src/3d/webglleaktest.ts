@@ -1,6 +1,148 @@
+import { dumpTexture } from "../imgutils";
 import { delay } from "../utils";
 
+//copied from lib.es5, not sure why vscode understands but webpack doesn't
+interface WeakKeyTypes { object: object; }
+type WeakKey = WeakKeyTypes[keyof WeakKeyTypes];
 
+class IterableWeakMap<K extends WeakKey, V> {
+	weakMap = new WeakMap<K, { value: V, ref: WeakRef<K> }>();
+	refSet = new Set<WeakRef<K>>();
+	finalizationGroup = new FinalizationRegistry(IterableWeakMap.cleanup);
+
+	static cleanup({ set, ref }) {
+		set.delete(ref);
+	}
+
+	constructor() {
+	}
+
+	set(key: K, value: V) {
+		const ref = new WeakRef(key);
+		let prev = this.weakMap.get(key);
+		if (prev) { this.refSet.delete(prev.ref); }
+		this.weakMap.set(key, { value, ref });
+		this.refSet.add(ref);
+		this.finalizationGroup.register(key, {
+			set: this.refSet,
+			ref
+		}, ref);
+	}
+
+	get(key: K) {
+		const entry = this.weakMap.get(key);
+		return entry && entry.value;
+	}
+
+	delete(key: K) {
+		const entry = this.weakMap.get(key);
+		if (!entry) {
+			return false;
+		}
+
+		this.weakMap.delete(key);
+		this.refSet.delete(entry.ref);
+		this.finalizationGroup.unregister(entry.ref);
+		return true;
+	}
+
+	*[Symbol.iterator]() {
+		for (const ref of this.refSet) {
+			const key = ref.deref();
+			if (!key) continue;
+			const { value } = this.weakMap.get(key)!;
+			yield [key, value] as [K, V];
+		}
+	}
+
+	entries() {
+		return this[Symbol.iterator]();
+	}
+
+	*keys() {
+		for (const [key, value] of this) {
+			yield key;
+		}
+	}
+
+	*values() {
+		for (const [key, value] of this) {
+			yield value;
+		}
+	}
+}
+
+export function hookgltextures() {
+	console.log("hooking global gl texture code, this should be turned off in production!");
+
+	let texes = new IterableWeakMap<WebGLTexture, WebGL2RenderingContext>();
+	let oldbind = WebGL2RenderingContext.prototype.bindTexture;
+	WebGL2RenderingContext.prototype.bindTexture = function (target, tex) {
+		if (tex) { texes.set(tex, this); }
+		oldbind.call(this, target, tex);
+	}
+	function texlist() {
+		return [...texes];
+	}
+
+	let drawtex: HTMLElement[] = [];
+	function alltex(size = 64) {
+		cleartex();
+		let texes = texlist();
+		let cols = Math.ceil(1000 / size);
+		for (let [i, tex] of texes.entries()) {
+			let v = dumptexx(tex, size, size);
+			v.style.left = `${(i % cols) * size}px`;
+			v.style.top = `${Math.floor(i / cols) * size}px`;
+			drawtex.push(v);
+		}
+	}
+
+	function cleartex() {
+		drawtex.forEach(q => q.remove());
+		drawtex.length = 0;
+	}
+	function dumptexx(tex: [WebGLTexture, WebGL2RenderingContext], width = 128, height = 128) {
+		return dumpTexture(readTextureToImageData(tex[1], tex[0], width, height));
+	}
+	globalThis.texlist = texlist;
+	globalThis.dumptexx = dumptexx;
+	globalThis.alltex = alltex;
+	globalThis.cleartex = cleartex;
+
+	function readTextureToImageData(gl: WebGL2RenderingContext, texture: WebGLTexture, width: number, height: number) {
+		let boundFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+		let boundTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
+
+		// Get the texture size
+		var level = 0;
+		// var width = 128;//gl.getTexParameter(gl.TEXTURE_2D, level, gl.);
+		// var height = 128;//gl.getTexParameter(gl.TEXTURE_2D, level, gl.TEXTURE_HEIGHT);
+
+		// Create a framebuffer
+		var framebuffer = gl.createFramebuffer();
+		gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+		// Attach the texture to the framebuffer
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, level);
+
+		// Read pixels from the framebuffer
+		var pixels = new Uint8Array(width * height * 4); // 4 channels (RGBA)
+		gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+		// Restore the initial WebGL state
+		gl.bindFramebuffer(gl.FRAMEBUFFER, boundFramebuffer);
+		gl.bindTexture(gl.TEXTURE_2D, boundTexture);
+
+		// Cleanup
+		gl.deleteFramebuffer(framebuffer);
+
+		// Create ImageData from the pixels
+		var imageData = new ImageData(new Uint8ClampedArray(pixels), width, height);
+
+		return imageData;
+	}
+}
 
 export function createGCTracker<T extends object>(changecb: () => void) {
 	let inv = new Map<number, WeakRef<T>>();
