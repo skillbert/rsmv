@@ -1174,6 +1174,7 @@ class SimpleTexturePacker {
 	allocy = 0;
 	allocLineHeight = 0;
 	result: HTMLCanvasElement | null = null;
+	resultSource: THREE.Texture | null = null;
 	constructor(size: number) {
 		this.size = size;
 	}
@@ -1211,6 +1212,17 @@ class SimpleTexturePacker {
 		this.allocx += sizex;
 		this.map.set(id, alloc);
 		return true;
+	}
+	convertToThreeTexture() {
+		return this.resultSource ??= (() => {
+			let map = new THREE.CanvasTexture(this.convert());
+			map.flipY = false;//FALFALSEFLASEFALSE WHY IS THIS ON BY DEFAULT
+			map.magFilter = THREE.LinearFilter;
+			map.minFilter = THREE.LinearMipMapNearestFilter;
+			map.generateMipmaps = true;
+			map.encoding = THREE.sRGBEncoding;
+			return map;
+		})();
 	}
 	convert() {
 		if (this.result) { return this.result; }
@@ -2473,13 +2485,7 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	if (floor.mode == "wireframe") {
 		mat.wireframe = true;
 	} else if (floor.mode != "worldmap") {
-		let img = floor.atlas.convert();
-		let map = new THREE.CanvasTexture(img);
-		map.flipY = false;//FALFALSEFLASEFALSE WHY IS THIS ON BY DEFAULT
-		map.magFilter = THREE.LinearFilter;
-		map.minFilter = THREE.LinearMipMapNearestFilter;
-		map.generateMipmaps = true;
-		map.encoding = THREE.sRGBEncoding;
+		let map = floor.atlas.convertToThreeTexture();
 
 		if (floor.mode == "minimap") {
 			if (floor.iswater) {

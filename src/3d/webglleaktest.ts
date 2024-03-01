@@ -74,12 +74,30 @@ class IterableWeakMap<K extends WeakKey, V> {
 
 export function hookgltextures() {
 	console.log("hooking global gl texture code, this should be turned off in production!");
-
-	let texes = new IterableWeakMap<WebGLTexture, WebGL2RenderingContext>();
+	type Texmeta = { ctx: WebGL2RenderingContext, width: number, height: number };
+	let texes = new IterableWeakMap<WebGLTexture, Texmeta>();
 	let oldbind = WebGL2RenderingContext.prototype.bindTexture;
+	let oldstorage2d = WebGL2RenderingContext.prototype.texStorage2D;
+	let lasttarget = -1;
+	let lasttex: WebGLTexture | null = null;
 	WebGL2RenderingContext.prototype.bindTexture = function (target, tex) {
-		if (tex) { texes.set(tex, this); }
 		oldbind.call(this, target, tex);
+		if (tex && !texes.get(tex)) { texes.set(tex, { ctx: this, width: 0, height: 0 }); }
+		lasttarget = target;
+		lasttex = tex;
+	}
+	WebGL2RenderingContext.prototype.texStorage2D = function (target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) {
+		oldstorage2d.call(this, target, levels, internalformat, width, height);
+		if (lasttarget != target) { console.log(`skipped tracking texture upload as binding target was not same as last bind ${lasttarget} vs ${target}`) }
+		else if (lasttex == null) { console.log(`last bound texture was null`); }
+		else {
+			let meta = texes.get(lasttex);
+			if (!meta) { }
+			else {
+				meta.width = width;
+				meta.height = height;
+			}
+		}
 	}
 	function texlist() {
 		return [...texes];
@@ -102,8 +120,8 @@ export function hookgltextures() {
 		drawtex.forEach(q => q.remove());
 		drawtex.length = 0;
 	}
-	function dumptexx(tex: [WebGLTexture, WebGL2RenderingContext], width = 128, height = 128) {
-		return dumpTexture(readTextureToImageData(tex[1], tex[0], width, height));
+	function dumptexx(tex: [WebGLTexture, Texmeta], width = 128, height = 128) {
+		return dumpTexture(readTextureToImageData(tex[1].ctx, tex[0], width, height));
 	}
 	globalThis.texlist = texlist;
 	globalThis.dumptexx = dumptexx;
