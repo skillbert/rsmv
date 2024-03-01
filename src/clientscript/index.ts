@@ -24,7 +24,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     let script = parse.clientscript.read(buf, source);
     let full = true;//TODO remove
     let { rootfunc, sections, typectx } = parseClientScriptIm(calli, script, fileid, full);
-    globalThis[`cs${fileid}`] = rootfunc;//TODO remove
+    // globalThis[`cs${fileid}`] = rootfunc;//TODO remove
 
     let writer = new TsWriterContext(calli, typectx);
 

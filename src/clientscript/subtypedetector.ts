@@ -26,7 +26,6 @@ const looseOps = [
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
 ];
-globalThis.looseOps = looseOps;
 
 export class ClientScriptSubtypeSolver {
     map = new Map<number, Set<number>>();
@@ -283,5 +282,3 @@ export function assignKnowTypes(calli: ClientscriptObfuscation, knowntypes: Map<
     }
     return knowntypes;
 }
-
-globalThis.detectSubTypes = detectSubtypes;

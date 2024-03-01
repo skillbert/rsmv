@@ -512,11 +512,7 @@ function mountAnimation(rootboneinits: BoneInit[], clips: ReturnType<typeof getF
         for (let j = 0; j < 4; j++) { bonestates[i * 16 + 5 * j] = 1; }
     }
     let rootbones = rootboneinits.map(b => iter(b, bonestates));
-
     let skeleton = new Skeleton(indexedbones);
-    globalThis.skeleton = skeleton;//TODO remove
-    globalThis.rootbones = rootbones;
-
     let clip = new AnimationClip(`sequence_${Math.random() * 1000 | 0}`, undefined, keyframetracks);
 
     if (missingpivots != 0) {

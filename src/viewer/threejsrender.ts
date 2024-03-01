@@ -120,7 +120,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		const scene = new THREE.Scene();
 		this.scene = scene;
-		globalThis.scene = this.scene;
 		scene.add(this.camera);
 		scene.add(this.topdowncam);
 
@@ -205,7 +204,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		if (!this.vr360cam) {
 			this.vr360cam = new VR360Render(this.renderer, 512, 0.1, 1000);
 			this.camera.add(this.vr360cam.cubeCamera);
-			globalThis.cube = this.vr360cam.cubeCamera;
 		}
 		return this.vr360cam;
 	}

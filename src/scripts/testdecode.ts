@@ -270,10 +270,6 @@ export function testDecodeFile(decoder: FileParser<any>, buffer: Buffer, source:
 	} catch (e) {
 		error = e;
 	}
-	// let opcodeerr = (e + "").match(/unknown chunk 0x(\w+)/);
-	// if (opcodeerr && parseInt(opcodeerr[1], 16) > (globalThis.decodemax ?? 0x16)) {
-	// 	return { success: true as true, result: {} };
-	// }
 	let debugdata = getDebug(false)!;
 
 	let getDebugFile = function <T extends Outputmode>(outmode: T): T extends "hextext" | "original" ? Buffer : string {

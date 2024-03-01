@@ -161,5 +161,3 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
 
     return r;
 }
-
-globalThis.parseRT2Model = parseRT2Model;

@@ -305,9 +305,8 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 		this.mixer.stopAllAction();
 		let action = this.mixer.clipAction(clip, mesh);
 		action.play();
-		this.skeletonHelper?.removeFromParent();
-		this.skeletonHelper = new SkeletonHelper(mesh);
-		globalThis.skeletonhelper = this.skeletonHelper;
+		// this.skeletonHelper?.removeFromParent();
+		// this.skeletonHelper = new SkeletonHelper(mesh);
 		// (this.renderscene as any)?.scene.add(this.skeletonHelper);
 		this.mountedanim = clip;
 	}
@@ -524,7 +523,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 			});
 
 			//TODO remove
-			globalThis.chunk = this;
+			// globalThis.chunk = this;
 
 			this.loaded = { chunkx, chunkz, grid, chunk, groups, sky, modeldata, chunkmodels, chunkSize };
 			this.onModelLoaded();

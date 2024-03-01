@@ -55,7 +55,6 @@ export async function loadProcTexture(engine: EngineCache, id: number, size = 25
     let filesize = buf.byteLength;
     let javabuf = new JavaStream([...buf]);
     let tex = new Texture(javabuf);
-    globalThis.proctex = tex;//TODO remove
     let deps = await TextureGroup.create(engine, tex);
     filesize += deps.filesize;
     let img = renderProcTexture(tex, deps, size, raw);

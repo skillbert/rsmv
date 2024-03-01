@@ -667,9 +667,6 @@ export class ThreejsSceneCache {
 function clamp(num: number) {
 	return (num > 255 ? 255 : num < 0 ? 0 : num);
 }
-function clamp1(num: number) {
-	return (num > 1 ? 1 : num < 0 ? 0 : num);
-}
 
 export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVariant: boolean, inplace = false) {
 	let oldcol = mesh.geometry.getAttribute("color");

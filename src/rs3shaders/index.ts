@@ -111,8 +111,6 @@ export function minimapLocMaterial(texture: Texture, alphamode: MaterialData["al
 
     mat.vertexShader = vert;
     mat.fragmentShader = frag;
-    globalThis.locvert = vert;
-    globalThis.locfrag = frag;
 
     mat.uniforms.uTextureAtlas = { value: texture };
     mat.uniforms.uInvSunDirection.value[2] *= -1;//z flip
@@ -192,8 +190,6 @@ export function minimapFloorMaterial(texture: Texture) {
 
     mat.vertexShader = vert;
     mat.fragmentShader = frag;
-    globalThis.vert = vert;
-    globalThis.frag = frag;
 
     mat.uniforms.uTextureAtlas = { value: texture };
     mat.uniforms.uInvSunDirection.value[2] *= -1;//z flip
@@ -255,8 +251,6 @@ export function minimapWaterMaterial(texture: Texture) {
 
     mat.vertexShader = vert;
     mat.fragmentShader = frag;
-    globalThis.vert = vert;
-    globalThis.frag = frag;
 
     mat.uniforms.uTextureAtlas = { value: texture };
     mat.uniforms.uInvSunDirection.value[2] *= -1;//z flip

@@ -170,8 +170,6 @@ function sampleInverseBezierSection(x0: number, x1: number, x2: number, x3: numb
 	return solution;
 }
 
-globalThis.samplebeziersection = sampleInverseBezierSection;
-
 export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSceneCache, framebaseid: number) {
 	let base = parse.framemaps.read(await cache.engine.getFileById(cacheMajors.framemaps, framebaseid), cache.engine.rawsource);
 	if (!base.skeleton) {

@@ -403,10 +403,7 @@ export function RGB2HSL(r: number, g: number, b: number): [number, number, numbe
 	return [h, s, l];
 }
 
-globalThis.rgb2hsl = RGB2HSL;
-globalThis.hsl2rgb = HSL2RGB;
-globalThis.packed2hsl = packedHSL2HSL;
-globalThis.hsl2packed = HSL2packHSL;
+globalThis.hsl = (v: number) => HSL2RGB(packedHSL2HSL(v));
 
 
 export function HSL2packHSL(h: number, s: number, l: number) {

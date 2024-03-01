@@ -15,7 +15,6 @@ import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
 import { ClientScriptSubtypeSolver, detectSubtypes } from "./subtypedetector";
-import { TsWriterContext, debugAst } from "./codewriter";
 import * as datastore from "idb-keyval";
 
 
@@ -888,10 +887,6 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
 
     let testSection = (eq: StackDiffEquation) => {
         let { section, unknowns } = eq;
-        if (Array.isArray(globalThis.test) && section.scriptid == globalThis.test[0] && section.originalindex == globalThis.test[1]) {
-            debugAst(eq.section);
-            debugger;
-        }
 
         //scan through the ops from front to back
         let frontstack = new StackList();

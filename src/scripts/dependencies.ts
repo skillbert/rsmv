@@ -359,9 +359,6 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 		maxVersion = Math.max(maxVersion, version);
 	}
 
-	globalThis.dependentsMap = dependentsMap;
-
-
 	let runDependencyGroup = async (run: DepCollector, args) => {
 		try {
 			console.log(`starting ${run.name}`);
@@ -446,5 +443,3 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies, hasEntry, insertMapChunk, preloadChunkDependencies };
 }
 
-//TODO remove
-globalThis.getdeps = getDependencies;
