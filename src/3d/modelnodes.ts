@@ -2,15 +2,15 @@ import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
-import { ModelModifications, constrainedMap, TypedEmitter, CallbackPromise } from '../utils';
+import { ModelModifications, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, parseMapsquare, mapsquareToThreeSingle, ChunkData, TileGrid, mapsquareSkybox, generateLocationMeshgroups, PlacedMesh, classicChunkSize, rs2ChunkSize, tiledimensions, ModelExtras, mapsquareFloors, mapsquareObjectModels, mapsquareOverlays, PlacedModel } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
+import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, RSMapChunkData, renderMapSquare, WorldLocation, ThreeJsRenderSection } from '../3d/mapsquare';
+import { AnimationClip, AnimationMixer, Material, Mesh, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
 import { ModelData } from "../3d/rt7model";
 import { mountSkeletalSkeleton, parseSkeletalAnimation } from "../3d/animationskeletal";
-import { jsonIcons, svgfloor } from "../map/svgrender";
+import { svgfloor } from "../map/svgrender";
 import { ThreeJsRenderer, ThreeJsSceneElement, ThreeJsSceneElementSource } from "../viewer/threejsrender";
 import { animgroupconfigs } from "../../generated/animgroupconfigs";
 import fetch from "node-fetch";
@@ -359,19 +359,6 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 	}
 }
 
-
-export type RSMapChunkData = {
-	grid: TileGrid,
-	chunk: ChunkData | null,
-	chunkSize: number,
-	groups: Set<string>,
-	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
-	modeldata: PlacedMesh[][],
-	chunkmodels: Group[],
-	chunkx: number,
-	chunkz: number
-}
-
 export class RSMapChunkGroup extends TypedEmitter<{ loaded: undefined, changed: undefined }> implements ThreeJsSceneElementSource {
 	chunks: RSMapChunk[];
 	rootnode = new THREE.Group();
@@ -390,12 +377,12 @@ export class RSMapChunkGroup extends TypedEmitter<{ loaded: undefined, changed: 
 		this.renderscene?.removeSceneElement(this);
 		this.renderscene = null;
 	}
-	constructor(rect: MapRect, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
+	constructor(cache: ThreejsSceneCache, rect: MapRect, extraopts?: ParsemapOpts) {
 		super();
 		this.chunks = [];
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				let sub = new RSMapChunk(x, z, cache, extraopts);
+				let sub = new RSMapChunk(cache, x, z, extraopts);
 				this.chunks.push(sub);
 			}
 		}
@@ -417,15 +404,41 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	chunkx: number;
 	chunkz: number;
 
+	constructor(cache: ThreejsSceneCache, chunkx: number, chunkz: number, extraopts?: ParsemapOpts) {
+		super();
+		this.cache = cache;
+		this.chunkx = chunkx;
+		this.chunkz = chunkz;
+		let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
+		this.chunkdata = renderMapSquare(cache, chunkx, chunkz, opts).then(data => {
+			this.loaded = data;
+			this.rootnode.add(data.chunkroot);
+			this.onModelLoaded();
+			return data;
+		});
+	}
+
+	extractLoc(loc: WorldLocation) {
+		let entry = this.loaded?.locRenders.get(loc) ?? [];
+		let cloned = new THREE.Group();
+		for (let i = 0; i < entry.length; i++) {
+			let sub = entry[i];
+			let newsection = sub.mesh.cloneSection(sub);
+			cloned.add(newsection.mesh);
+			sub.mesh.removeSection(sub);
+			entry[i] = newsection;
+		}
+		return cloned;
+	}
+
 	cleanup() {
 		this.listeners = {};
 
+		delete globalThis[`chunk_${this.chunkx}_${this.chunkz}`];
 		//only clear vertex memory for now, materials might be reused and are up to the scenecache
-		this.chunkdata.then(q => q.chunkmodels.forEach(node => {
-			node.traverse(obj => {
-				if (obj instanceof Mesh) { obj.geometry.dispose(); }
-			});
-		}))
+		this.chunkdata.then(q => q.chunkroot.traverse(obj => {
+			if (obj instanceof Mesh) { obj.geometry.dispose(); }
+		}));
 		this.renderscene?.removeSceneElement(this);
 		this.renderscene = null;
 	}
@@ -447,6 +460,8 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	addToScene(scene: ThreeJsRenderer) {
 		this.renderscene = scene;
 		scene.addSceneElement(this);
+
+		globalThis[`chunk_${this.chunkx}_${this.chunkz}`] = this;
 	}
 
 	onModelLoaded() {
@@ -469,66 +484,6 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 				});
 			}
 		});
-	}
-
-	constructor(chunkx: number, chunkz: number, cache: ThreejsSceneCache, extraopts?: ParsemapOpts) {
-		super();
-		this.cache = cache;
-		this.chunkx = chunkx;
-		this.chunkz = chunkz;
-		this.chunkdata = (async () => {
-			let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
-			let { grid, chunk } = await parseMapsquare(cache.engine, chunkx, chunkz, opts);
-			let modeldata: PlacedMesh[][] = [];
-			let chunkmodels: THREE.Group[] = [];
-			if (chunk) {
-				let floors = await mapsquareFloors(cache, grid, chunk, opts);
-				let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(cache.engine, grid, chunk.locs));
-				let locmeshes = await generateLocationMeshgroups(cache, chunk.locs);
-				let allmeshes = [...locmeshes.byMaterial, ...overlays];
-				if (opts.minimap) {
-					let minimeshes = await generateLocationMeshgroups(cache, chunk.locs, true);
-					allmeshes.push(...minimeshes.byMaterial);
-				}
-				let group = await mapsquareToThreeSingle(cache, grid, chunk, floors, allmeshes);
-				chunkmodels.push(group);
-				modeldata = locmeshes.byLogical;
-			}
-			let sky = (chunk && extraopts?.skybox ? await mapsquareSkybox(cache, chunk) : null);
-
-			let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
-
-			if (chunkmodels.length != 0) {
-				this.rootnode.add(...chunkmodels);
-			}
-			let groups = new Set<string>();
-			this.rootnode.traverse(node => {
-				if (node.userData.modelgroup) {
-					groups.add(node.userData.modelgroup);
-				}
-				if (node instanceof THREE.Mesh) {
-					let parent: THREE.Object3D | null = node;
-					let iswireframe = false;
-					//TODO this data should be on the mesh it concerns instead of a parent
-					while (parent) {
-						if (parent.userData.modeltype == "floorhidden") {
-							iswireframe = true;
-						}
-						parent = parent.parent;
-					}
-					if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
-						node.material.wireframe = true;
-					}
-				}
-			});
-
-			//TODO remove
-			// globalThis.chunk = this;
-
-			this.loaded = { chunkx, chunkz, grid, chunk, groups, sky, modeldata, chunkmodels, chunkSize };
-			this.onModelLoaded();
-			return this.loaded;
-		})();
 	}
 }
 

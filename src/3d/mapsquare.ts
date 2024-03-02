@@ -1,4 +1,4 @@
-import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod } from "../utils";
+import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod, getOrInsert } from "../utils";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse } from "../opdecoder";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -911,7 +911,6 @@ export class TileGrid implements TileGridSource {
 }
 
 export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, minimap?: boolean, skybox?: boolean, mask?: MapRect[] };
-export type ChunkModelData = { floors: FloorMeshData[], overlays: PlacedModel[], chunk: ChunkData, grid: TileGrid };
 
 export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -1136,31 +1135,91 @@ export async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, 
 	return floors
 }
 
-export async function mapsquareToThreeSingle(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, floordatas: FloorMeshData[], placedlocs: PlacedModel[]) {
-	let rootx = chunk.tilerect.x * tiledimensions;
-	let rootz = chunk.tilerect.z * tiledimensions;
+export type ThreeJsRenderSection = {
+	mesh: RSBatchMesh,
+	startindex: number,
+	endindex: number,
+	startvertex: number,
+	endvertex: number
+}
 
-	let node = new THREE.Group();
-	node.matrixAutoUpdate = false;
-	node.position.set(rootx, 0, rootz);
-	node.updateMatrix();
+export type RSMapChunkData = {
+	grid: TileGrid,
+	chunk: ChunkData | null,
+	chunkSize: number,
+	groups: Set<string>,
+	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
+	modeldata: PlacedMesh[][],
+	chunkroot: THREE.Group,
+	chunkx: number,
+	chunkz: number,
+	locRenders: Map<WorldLocation, ThreeJsRenderSection[]>
+}
 
-	if (placedlocs.length != 0) {
-		let materials = await Promise.all(placedlocs.map(q => scene.getMaterial(q.materialId, q.hasVertexAlpha, q.minimapVariant)));
-		node.add(...placedlocs.map((q, i) => meshgroupsToThree(grid, q, rootx, rootz, materials[i])));
+export async function renderMapSquare(cache: ThreejsSceneCache, chunkx: number, chunkz: number, opts: ParsemapOpts): Promise<RSMapChunkData> {
+	let { grid, chunk } = await parseMapsquare(cache.engine, chunkx, chunkz, opts);
+	let modeldata: PlacedMesh[][] = [];
+	let chunkroot = new THREE.Group();
+	chunkroot.name = `mapsquare ${chunkx}.${chunkz}`;
+	let locRenders = new Map<WorldLocation, ThreeJsRenderSection[]>();
+	if (chunk) {
+		let floordatas = await mapsquareFloors(cache, grid, chunk, opts);
+		let overlays = (!opts?.map2d ? [] : await mapsquareOverlays(cache.engine, grid, chunk.locs));
+		let locmeshes = await generateLocationMeshgroups(cache, chunk.locs);
+		let allmeshes = [...locmeshes.byMaterial, ...overlays];
+		if (opts.minimap) {
+			let minimeshes = await generateLocationMeshgroups(cache, chunk.locs, true);
+			allmeshes.push(...minimeshes.byMaterial);
+		}
+
+		let rootx = chunk.tilerect.x * tiledimensions;
+		let rootz = chunk.tilerect.z * tiledimensions;
+
+		chunkroot.matrixAutoUpdate = false;
+		chunkroot.position.set(rootx, 0, rootz);
+		chunkroot.updateMatrix();
+
+		if (allmeshes.length != 0) {
+			let materials = await Promise.all(allmeshes.map(q => cache.getMaterial(q.materialId, q.hasVertexAlpha, q.minimapVariant)));
+			chunkroot.add(...allmeshes.map((q, i) => meshgroupsToThree(grid, q, rootx, rootz, materials[i], locRenders)));
+		}
+
+		let floors = (await Promise.all(floordatas.map(f => floorToThree(cache, f)))).filter(q => q) as any;
+		if (floors.length != 0) { chunkroot.add(...floors); }
+
+		for (let level = 0; level < squareLevels; level++) {
+			let boxes = mapsquareCollisionToThree(grid, chunk, level);
+			if (boxes) { chunkroot.add(boxes); }
+			let rawboxes = mapsquareCollisionToThree(grid, chunk, level, true);
+			if (rawboxes) { chunkroot.add(rawboxes); }
+		}
+		modeldata = locmeshes.byLogical;
 	}
+	let sky = (chunk && opts?.skybox ? await mapsquareSkybox(cache, chunk) : null);
+	let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
 
-	let floors = (await Promise.all(floordatas.map(f => floorToThree(scene, f)))).filter(q => q) as any;
-	if (floors.length != 0) { node.add(...floors); }
+	let groups = new Set<string>();
+	chunkroot?.traverse(node => {
+		if (node.userData.modelgroup) {
+			groups.add(node.userData.modelgroup);
+		}
+		if (node instanceof THREE.Mesh) {
+			let parent: THREE.Object3D | null = node;
+			let iswireframe = false;
+			//TODO this data should be on the mesh it concerns instead of a parent
+			while (parent) {
+				if (parent.userData.modeltype == "floorhidden") {
+					iswireframe = true;
+				}
+				parent = parent.parent;
+			}
+			if (iswireframe && node.material instanceof THREE.MeshPhongMaterial) {
+				node.material.wireframe = true;
+			}
+		}
+	});
 
-	for (let level = 0; level < squareLevels; level++) {
-		let boxes = mapsquareCollisionToThree(grid, chunk, level);
-		if (boxes) { node.add(boxes); }
-		let rawboxes = mapsquareCollisionToThree(grid, chunk, level, true);
-		if (rawboxes) { node.add(rawboxes); }
-	}
-	node.name = `mapsquare ${chunk.mapsquarex}.${chunk.mapsquarez}`;
-	return node;
+	return { chunkx, chunkz, grid, chunk, groups, sky, modeldata, chunkroot, chunkSize, locRenders };
 }
 
 type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, repeatWidth: number, repeatHeight: number, img: CanvasImage }
@@ -1220,7 +1279,7 @@ class SimpleTexturePacker {
 			map.magFilter = THREE.LinearFilter;
 			map.minFilter = THREE.LinearMipMapNearestFilter;
 			map.generateMipmaps = true;
-			map.encoding = THREE.sRGBEncoding;
+			map.colorSpace = THREE.SRGBColorSpace;
 			return map;
 		})();
 	}
@@ -1975,7 +2034,50 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locba
 	return { byMaterial, byLogical };
 }
 
-function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number, material: ParsedMaterial) {
+class RSBatchMesh extends THREE.Mesh {
+	renderSections: ThreeJsRenderSection[] = [];
+	constructor(geo?: THREE.BufferGeometry, mat?: THREE.Material | THREE.Material[]) {
+		super(geo, mat);
+	}
+	cloneSection(section: ThreeJsRenderSection) {
+		let geo = new THREE.BufferGeometry();
+		for (let attrname in this.geometry.attributes) {
+			let attr = this.geometry.attributes[attrname];
+			let cloned = new BufferAttribute(attr.array.slice(section.startvertex * attr.itemSize, section.endvertex * attr.itemSize), attr.itemSize, attr.normalized);
+			geo.setAttribute(attrname, cloned);
+		}
+		let clone = new RSBatchMesh(geo, this.material);
+		let newsection: ThreeJsRenderSection = {
+			mesh: clone,
+			startindex: 0,
+			endindex: section.endindex - section.startindex,
+			startvertex: 0,
+			endvertex: section.endvertex - section.startvertex
+		};
+		clone.renderSections.push(newsection);
+		return newsection;
+	}
+	removeSection(section: ThreeJsRenderSection) {
+		let drawend = this.geometry.drawRange.count;
+		if (this.geometry.drawRange.start != 0) { throw new Error("unexpected"); }
+		if (!this.geometry.index) { throw new Error("unexpected"); }
+		if (!isFinite(drawend)) { drawend = this.geometry.index.count }
+
+		let sectionindex = this.renderSections.indexOf(section);
+		let removedcount = section.endindex - section.startindex;
+		this.geometry.index.array.copyWithin(section.startindex, section.endindex, drawend);
+		this.geometry.index.needsUpdate = true;
+		section.endindex = section.startindex;
+		for (let i = sectionindex + 1; i < this.renderSections.length; i++) {
+			let other = this.renderSections[i];
+			other.startindex -= removedcount;
+			other.endindex -= removedcount;
+		}
+		this.geometry.setDrawRange(0, drawend - removedcount);
+	}
+}
+
+export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number, material: ParsedMaterial, locrenders: Map<WorldLocation, ThreeJsRenderSection[]>) {
 	let totalverts = meshgroup.models.reduce((a, v) => a + v.model.attributes.pos.count, 0);
 	let totalindices = meshgroup.models.reduce((a, v) => a + v.model.indices.count, 0);
 	let vertalphas = meshgroup.models.reduce((a, v) => a + +v.model.hasVertexAlpha, 0);
@@ -1990,6 +2092,14 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 	let normals = new BufferAttribute(new Float32Array(totalverts * 3), 3);//TODO use i8 norm here?
 	let indices = new BufferAttribute(totalverts > 0xffff ? new Uint32Array(totalindices) : new Uint16Array(totalindices), 1);
 
+	let mergedgeo = new THREE.BufferGeometry();
+	mergedgeo.setAttribute("position", pos);
+	mergedgeo.setAttribute("normal", normals);
+	mergedgeo.setAttribute("color", col);
+	mergedgeo.setAttribute("uv", uvs);
+	mergedgeo.setIndex(indices);
+	let mergedmesh = new RSBatchMesh(mergedgeo);
+
 	let indexcounts: number[] = [];
 	for (let m of meshgroup.models) {
 		let mesh = m.model;
@@ -1997,6 +2107,19 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		let vertexcount = mesh.attributes.pos.count;
 		let indexcount = mesh.indices.count;
 		indexcounts.push(indexindex);
+
+		let section: ThreeJsRenderSection = {
+			mesh: mergedmesh,
+			startindex: indexindex,
+			endindex: indexindex + indexcount,
+			startvertex: vertindex,
+			endvertex: vertindex + vertexcount
+		};
+		mergedmesh.renderSections.push(section);
+		if (m.extras.modeltype == "location") {
+			let v = getOrInsert(locrenders, m.extras.locationInstance, () => []);
+			v.push(section);
+		}
 
 		//indices
 		{
@@ -2101,15 +2224,7 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		indexindex += mesh.indices.count;
 	}
 
-	let mergedgeo = new THREE.BufferGeometry();
-	mergedgeo.setAttribute("position", pos);
-	mergedgeo.setAttribute("normal", normals);
-	mergedgeo.setAttribute("color", col);
-	mergedgeo.setAttribute("uv", uvs);
-	mergedgeo.setIndex(indices);
-
-	let mesh = new THREE.Mesh(mergedgeo);
-	applyMaterial(mesh, material, meshgroup.minimapVariant);
+	applyMaterial(mergedmesh, material, meshgroup.minimapVariant);
 
 	let clickable: ModelExtras = {
 		modeltype: "locationgroup",
@@ -2119,13 +2234,13 @@ function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number
 		searchPeers: true,
 		subobjects: meshgroup.models.map(q => q.extras)
 	}
-	mesh.renderOrder = meshgroup.overlayIndex;
-	mesh.userData = clickable;
+	mergedmesh.renderOrder = meshgroup.overlayIndex;
+	mergedmesh.userData = clickable;
 
-	mesh.matrixAutoUpdate = false;
-	mesh.updateMatrix();
-	mesh.name = "merged locs";
-	return mesh;
+	mergedmesh.matrixAutoUpdate = false;
+	mergedmesh.updateMatrix();
+	mergedmesh.name = "merged locs";
+	return mergedmesh;
 }
 
 
