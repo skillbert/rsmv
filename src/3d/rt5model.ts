@@ -560,7 +560,7 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         maxy *= scale;
         miny *= scale;
         for (let mesh of meshes) {
-            let arr = mesh.attributes.pos.array as number[];
+            let arr = mesh.attributes.pos.array;
             for (let i = 0; i < arr.length; i++) {
                 arr[i] *= scale;
             }

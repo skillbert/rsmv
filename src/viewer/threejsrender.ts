@@ -39,7 +39,7 @@ export interface ThreeJsSceneElementSource {
 
 export type ThreeJsSceneElement = {
 	modelnode?: Object3D,
-	sky?: { skybox: THREE.Object3D<THREE.Event> | null, fogColor: number[] } | null,
+	sky?: { skybox: THREE.Object3D | null, fogColor: number[] } | null,
 	updateAnimation?: (delta: number, epochtime: number) => void,
 	options?: {
 		opaqueBackground?: boolean,
@@ -124,8 +124,8 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		scene.add(this.topdowncam);
 
 		//three typings are outdated
-		(renderer as any).useLegacyLights = false;
-		renderer.outputEncoding = THREE.sRGBEncoding;
+		renderer.useLegacyLights = false;
+		renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 		const planeSize = 11;
 
@@ -480,7 +480,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				minFilter: THREE.LinearFilter,
 				magFilter: THREE.LinearFilter,
 				format: THREE.RGBAFormat,
-				encoding: (this.camMode != "vr360" ? this.renderer.outputEncoding : THREE.LinearEncoding),
+				colorSpace: (this.camMode != "vr360" ? this.renderer.outputColorSpace : THREE.LinearSRGBColorSpace),
 				samples: gl.getParameter(gl.SAMPLES)
 			});
 			// (rendertarget as any).isXRRenderTarget = true;
@@ -521,7 +521,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.renderer.setSize(framesizex, framesizey);
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
-			this.renderer.outputEncoding = (lights == "minimap" ? THREE.LinearEncoding : THREE.sRGBEncoding);
+			this.renderer.outputColorSpace = (lights == "minimap" ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace);
 			this.minimapLights.visible = lights == "minimap";
 			this.standardLights.visible = lights == "standard";
 			this.renderScene(cam);
@@ -598,7 +598,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 						let indices = [isct.face!.a, isct.face!.b, isct.face!.c];
 
 						console.log("Click intersect");
-						for (let [id, attr] of Object.entries(isct.object.geometry.attributes)) {
+						for (let [id, attr] of Object.entries(isct.object.geometry.attributes as Record<string, THREE.BufferAttribute>)) {
 							let vals: number[][] = [];
 							for (let index of indices) {
 								let val: number[] = [];
@@ -699,7 +699,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 					minFilter: THREE.LinearFilter,
 					magFilter: THREE.LinearFilter,
 					format: THREE.RGBAFormat,
-					encoding: this.renderer.outputEncoding,
+					colorSpace: this.renderer.outputColorSpace,
 					samples: gl.getParameter(gl.SAMPLES)
 				});
 			}

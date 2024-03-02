@@ -90,7 +90,7 @@ export function augmentThreeJsMinimapLocMaterial(mat: THREE.Material) {
 				+ `#endif\n`
 				+ `#endif\n`
 			)
-			.replace("#include <encodings_fragment>",
+			.replace("#include <colorspace_fragment>",
 				"\n"
 			);
 	}
@@ -160,7 +160,7 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 				);
 		if (isminimap) {
 			shader.fragmentShader = shader.fragmentShader
-				.replace("#include <encodings_fragment>",
+				.replace("#include <colorspace_fragment>",
 					"const float outgamma=2.3;\n"
 					+ "gl_FragColor.rgb = runeapps_srgb_to_linear(gl_FragColor.rgb,outgamma);\n"//don't blame me for this, this is literally how the minimap is rendered
 				)
@@ -180,7 +180,7 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 			// 	+ `#endif\n`
 			// 	+ `#endif\n`
 			// )
-			// .replace("#include <encodings_fragment>",
+			// .replace("#include <colorspace_fragment>",
 			// 	"\n"
 			// );
 		}
@@ -446,7 +446,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 		difftex.needsUpdate = true;
 		difftex.wrapS = wraptypes;
 		difftex.wrapT = wraptypet;
-		difftex.encoding = THREE.sRGBEncoding;
+		difftex.colorSpace = THREE.SRGBColorSpace;
 		difftex.magFilter = THREE.LinearFilter;
 		difftex.minFilter = THREE.NearestMipMapNearestFilter;
 		difftex.generateMipmaps = true;
@@ -500,7 +500,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			tex.needsUpdate = true;
 			tex.wrapS = wraptypes;
 			tex.wrapT = wraptypet;
-			tex.encoding = THREE.sRGBEncoding;
+			tex.colorSpace = THREE.SRGBColorSpace;
 			tex.magFilter = THREE.LinearFilter;
 			mat.metalnessMap = tex;
 			mat.roughnessMap = tex;

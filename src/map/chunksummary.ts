@@ -369,10 +369,10 @@ export async function mapdiffmesh(scene: ThreejsSceneCache, points: number[][], 
 
 
 type KMeansBucket = {
-	center: THREE.Vector2,
-	bounds: THREE.Box2,
-	sum: THREE.Vector2,
-	runningbounds: THREE.Box2,
+	center: Vector2,
+	bounds: Box2,
+	sum: Vector2,
+	runningbounds: Box2,
 	samples: number
 };
 

@@ -1,4 +1,4 @@
-import { BufferGeometry, Camera, CubeCamera, DoubleSide, LinearFilter, Mesh, OrthographicCamera, PlaneGeometry, RawShaderMaterial, Renderer, RGBAFormat, RGBFormat, Scene, WebGLCubeRenderTarget, WebGLRenderer } from "three";
+import { BufferGeometry, Camera, CubeCamera, DoubleSide, LinearFilter, Mesh, OrthographicCamera, PlaneGeometry, RawShaderMaterial, Renderer, RGBAFormat, Scene, WebGLCubeRenderTarget, WebGLRenderer } from "three";
 
 class EquirectangularMaterial extends RawShaderMaterial {
 	transparent = true;
@@ -47,7 +47,7 @@ export class VR360Render {
 			minFilter: LinearFilter,
 			magFilter: LinearFilter,
 			format: RGBAFormat,
-			encoding: parent.outputEncoding,
+			colorSpace: parent.outputColorSpace,
 			samples: 0//gl.getParameter(gl.SAMPLES)//three.js crashes if using multisampled here
 		});
 		//threejs always renders non-default render targets in linear, however they programmed in a 

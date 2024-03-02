@@ -1,5 +1,6 @@
 import { BufferAttribute, InterleavedBufferAttribute, Vector3 } from "three";
 import { ModelData, ModelMeshData } from "./rt7model";
+import type * as THREE from "three";
 
 type rgb = [r: number, g: number, b: number];
 type xyz = [x: number, y: number, z: number];

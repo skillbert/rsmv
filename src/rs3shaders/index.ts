@@ -1,4 +1,4 @@
-import { ShaderMaterial, Texture, sRGBEncoding } from "three";
+import { SRGBColorSpace, ShaderMaterial, Texture } from "three";
 import { MaterialData } from "../3d/jmat";
 
 let inputreplace: InputReplacer = {
@@ -122,7 +122,7 @@ export function minimapLocMaterial(texture: Texture, alphamode: MaterialData["al
     }
 
     if (texture) {
-        texture.encoding = sRGBEncoding;
+        texture.colorSpace = SRGBColorSpace;
     }
     return mat;
 }
