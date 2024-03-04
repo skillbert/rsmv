@@ -776,15 +776,6 @@ export function exportThreeJsGltf(node: THREE.Object3D) {
 		let anims: AnimationClip[] = [];
 		node.traverseVisible(node => {
 			if (node.animations) { anims.push(...node.animations); }
-			if (node instanceof SkinnedMesh) {
-				let geo = node.geometry as BufferGeometry;
-				let oldbones = !!geo.attributes.RA_skinIndex_bone;
-				//TODO this probably breaks other stuff!!
-				if (!geo.attributes.skinIndex) {
-					geo.attributes.skinIndex = (oldbones ? geo.attributes.RA_skinIndex_bone : geo.attributes.RA_skinIndex_skin);
-					geo.attributes.skinWeight = (oldbones ? geo.attributes.RA_skinWeight_bone : geo.attributes.RA_skinWeight_skin);
-				}
-			}
 		});
 		exporter.parse(node, gltf => resolve(gltf as any), reject, {
 			binary: true,

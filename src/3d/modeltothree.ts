@@ -800,32 +800,16 @@ export function mergeModelDatas(models: ModelData[]) {
 
 export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData) {
 	//has to be of type skinnedmesh in order to support a skeleton somehow
-	let rootnode: Mesh;
+	let rootnode = new Object3D();
 	let nullskeleton: Skeleton = null!;
 	if (model.bonecount != 0 || model.skincount != 0) {
-		let skinnedroot = new SkinnedMesh();
 		let nullbones: Object3D[] = [];
 		let maxbones = Math.max(model.bonecount, model.skincount);
 		//TODO just need 2 skeletons here?
-		for (let i = 0; i < maxbones; i++) { nullbones.push(skinnedroot); }
+		for (let i = 0; i < maxbones; i++) { nullbones.push(rootnode); }
 		nullskeleton = new Skeleton(nullbones as any);
-		skinnedroot.bind(nullskeleton);
-		//This is so dumb, the root object has to be a skinnedmesh in order for the skeleton to bind correctly
-		//however, you cannot have a skinnedmesh without geometry when exporting to GLTF
-		//This hack seems to work, but will probably explode some time in the future
-		//sorry future self 
-		//TODO could this be solved with AnimationObjectGroup?
-		//@ts-ignore
-		skinnedroot.isSkinnedMesh = false;
-		//@ts-ignore
-		skinnedroot.isMesh = false;
-		rootnode = skinnedroot;
-	} else {
-		rootnode = new Mesh();
-		//@ts-ignore
-		rootnode.isMesh = false;
 	}
-
+	
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
 		let geo = new THREE.BufferGeometry();
@@ -838,17 +822,19 @@ export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData
 		if (attrs.boneids) { geo.setAttribute("RA_skinIndex_bone", attrs.boneids); }
 		if (attrs.boneweights) { geo.setAttribute("RA_skinWeight_bone", attrs.boneweights); }
 		geo.index = meshdata.indices;
-		//@ts-ignore
-		// mat.wireframe = true;
 		let mesh: THREE.Mesh | THREE.SkinnedMesh;
 		if (attrs.skinids || attrs.boneids) {
 			mesh = new THREE.SkinnedMesh(geo);
-			// (mesh as SkinnedMesh).bind(nullskeleton);
+			let oldbones = !!geo.attributes.RA_skinIndex_bone;
+			if (!geo.attributes.skinIndex) {
+				geo.attributes.skinIndex = (oldbones ? geo.attributes.RA_skinIndex_bone : geo.attributes.RA_skinIndex_skin);
+				geo.attributes.skinWeight = (oldbones ? geo.attributes.RA_skinWeight_bone : geo.attributes.RA_skinWeight_skin);
+			}
+			(mesh as SkinnedMesh).bind(nullskeleton);
 		} else {
 			mesh = new THREE.Mesh(geo);
 		}
 		applyMaterial(mesh, await scene.getMaterial(meshdata.materialId, meshdata.hasVertexAlpha, false), false);
-		// mesh.geometry.computeVertexNormals();//TODO remove, only used for classic models atm
 		rootnode.add(mesh);
 	}
 	if (model.debugmeshes && model.debugmeshes.length != 0) {
