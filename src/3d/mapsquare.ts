@@ -1110,9 +1110,24 @@ export async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, 
 	}
 	await Promise.all(textureproms);
 	let atlas!: SimpleTexturePacker;
-	retrysize: for (let size = 256; size <= 4096; size *= 2) {
-		atlas = new SimpleTexturePacker(size);
-		for (let [id, { tex, repeat }] of textures.entries()) {
+	//sort from large to small for more efficient packing
+	let sortedtextures = [...textures.entries()].sort((a, b) => b[1].tex.width * b[1].repeat - a[1].tex.width * a[1].repeat);
+	let sizelist: [number, number][] = [
+		[256, 256],
+		[512, 512],
+		[1024, 512],
+		[1024, 1024],
+		[1024, 2048],
+		[2048, 1024],//try both orientations because the layout algo isnt symmetric
+		[2048, 2048],
+		[2048, 2048 + 1024],
+		[2048, 4096],
+		[2048 + 1024, 4096],
+		[4096, 4096]
+	];
+	retrysize: for (let size of sizelist) {
+		atlas = new SimpleTexturePacker(size[0], size[1]);
+		for (let [id, { tex, repeat }] of sortedtextures) {
 			if (!atlas.addTexture(id, tex, repeat)) {
 				continue retrysize;
 			}
@@ -1224,11 +1239,12 @@ export async function renderMapSquare(cache: ThreejsSceneCache, chunkx: number, 
 	return { chunkx, chunkz, grid, chunk, groups, sky, modeldata, chunkroot, chunkSize, locRenders };
 }
 
-type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, repeatWidth: number, repeatHeight: number, img: CanvasImage }
+type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, repeatWidth: number, repeatHeight: number, totalpixels: number, img: CanvasImage }
 
 class SimpleTexturePacker {
 	padsize = 32;//was still bleeding at 16
-	size: number;
+	width: number;
+	height: number;
 	allocs: SimpleTexturePackerAlloc[] = [];
 	map = new Map<number, SimpleTexturePackerAlloc>()
 	allocx = 0;
@@ -1236,8 +1252,9 @@ class SimpleTexturePacker {
 	allocLineHeight = 0;
 	result: HTMLCanvasElement | null = null;
 	resultSource: THREE.Texture | null = null;
-	constructor(size: number) {
-		this.size = size;
+	constructor(width: number, height: number) {
+		this.width = width;
+		this.height = height;
 	}
 
 	addTexture(id: number, img: CanvasImage, repeat: number) {
@@ -1249,24 +1266,25 @@ class SimpleTexturePacker {
 		let repeatHeight = Math.floor(img.height * repeat);
 		let sizex = repeatWidth + 2 * this.padsize;
 		let sizey = repeatHeight + 2 * this.padsize;
-		if (this.allocx + sizex > this.size) {
+		if (this.allocx + sizex > this.width) {
 			this.allocx = 0;
 			this.allocy += this.allocLineHeight;
 			this.allocLineHeight = 0;
 		}
 		this.allocLineHeight = Math.max(this.allocLineHeight, sizey);
-		if (this.allocy + this.allocLineHeight > this.size) {
+		if (this.allocy + this.allocLineHeight > this.height) {
 			return false;
 		}
 		let alloc: SimpleTexturePackerAlloc = {
-			u: (this.allocx + this.padsize) / this.size,
-			v: (this.allocy + this.padsize) / this.size,
-			usize: img.width / this.size,
-			vsize: img.height / this.size,
+			u: (this.allocx + this.padsize) / this.width,
+			v: (this.allocy + this.padsize) / this.height,
+			usize: img.width / this.width,
+			vsize: img.height / this.height,
 			x: this.allocx + this.padsize,
 			y: this.allocy + this.padsize,
 			repeatWidth: repeatWidth,
 			repeatHeight: repeatHeight,
+			totalpixels: (this.padsize + repeatWidth + this.padsize) * (this.padsize + repeatHeight + this.padsize),
 			img
 		};
 		this.allocs.push(alloc);
@@ -1288,14 +1306,17 @@ class SimpleTexturePacker {
 	convert() {
 		if (this.result) { return this.result; }
 		let cnv = document.createElement("canvas");
-		cnv.width = this.size; cnv.height = this.size;
+		cnv.width = this.width;
+		cnv.height = this.height;
 		let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 
 		let drawSubimg = (src: CanvasImage, destx: number, desty: number, srcx = 0, srcy = 0, width = src.width, height = src.height) => {
 			ctx.drawImage(src, srcx, srcy, width, height, destx, desty, width, height);
 		}
 
-		// console.log("floor texatlas imgs", this.allocs.length, "fullness", +((this.allocy + this.allocLineHeight) / this.size).toFixed(2));
+		let usedpixels = this.allocs.reduce((a, v) => a + v.totalpixels, 0);
+		let texpixels = this.width * this.height;
+		console.log("floor texatlas imgs", this.allocs.length, `size: ${this.width}x${this.height}`, "size (kb)", +(texpixels / 1024).toFixed(0), "used (kb)", +(usedpixels / 1024).toFixed(0), "%", +(usedpixels / texpixels * 100).toFixed(0));
 		for (let alloc of this.allocs) {
 			let xx1 = -this.padsize;
 			let xx2 = alloc.repeatWidth + this.padsize
