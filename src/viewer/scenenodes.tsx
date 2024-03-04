@@ -2,7 +2,7 @@ import { ThreejsSceneCache, EngineCache, constModelsIds } from '../3d/modeltothr
 import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, ModelModifications, stringToFileRange, stringToMapArea, checkObject } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
-import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize } from '../3d/mapsquare';
+import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize, RSMapChunkData } from '../3d/mapsquare';
 import { Euler, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { cacheMajors } from "../constants";
 import * as React from "react";
@@ -21,7 +21,7 @@ import { drawTexture, findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
 import { items } from "../../generated/items";
-import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkData, RSMapChunkGroup, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
+import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, RSMapChunk, RSMapChunkGroup, RSModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/modelnodes";
 import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
@@ -594,7 +594,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 					}))
 					newmodel = new RSModel(uictx.sceneCache, mappedmodel, newcomp.name);
 				} else if (newcomp.type == "map") {
-					newmodel = new RSMapChunkGroup(newcomp.mapRect, uictx.sceneCache, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
+					newmodel = new RSMapChunkGroup(uictx.sceneCache, newcomp.mapRect, { collision: false, invisibleLayers: false, map2d: false, skybox: true });
 					newmodel.on("loaded", this.updateGrids);
 					let hasmap = Object.values(this.state.components).some(q => q.type == "map");
 					if (!hasmap || !this.mapoffset) {
@@ -1780,7 +1780,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			const renderer = this.props.ctx?.renderer;
 			if (!sceneCache || !renderer) { return; }
 
-			let chunk = new RSMapChunk(chunkx, chunkz, sceneCache, { skybox: true });
+			let chunk = new RSMapChunk(sceneCache, chunkx, chunkz, { skybox: true });
 			chunk.on("changed", () => {
 				let toggles = this.state.toggles;
 				let changed = false;

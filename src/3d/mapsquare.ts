@@ -489,7 +489,7 @@ export function getMorphMatrix(morph: FloorMorph, gridoffsetx: number, gridoffse
 	return matrix;
 }
 
-export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number, newpos?: THREE.BufferAttribute, newposindex = 0) {
+export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number, newpos?: THREE.BufferAttribute, newposindex = 0, inputstart = 0, inputend = pos.count) {
 	let matrix = getMorphMatrix(morph, gridoffsetx, gridoffsetz);
 	let centery = getTileHeight(grid, (morph.originx) / tiledimensions, (morph.originz) / tiledimensions, morph.level);
 	let vector = new THREE.Vector3();
@@ -499,11 +499,13 @@ export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph
 	let followceiling = morph.placementMode == "followfloorceiling";
 	let yscale = (followceiling && modelheight > 0 ? 1 / modelheight : 1);
 
-	newpos ??= new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3);
-	let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(pos);
+	let inputcount = inputend - inputstart;
+	newpos ??= new THREE.BufferAttribute(new Float32Array(inputcount * 3), 3);
+	let [oldbuf, oldsuboffset, oldstride] = getAttributeBackingStore(pos);
 	let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(newpos);
 	let newoffset = newsuboffset + newposindex * newstride;
-	for (let i = 0; i < pos.count; i++) {
+	let oldoffset = oldsuboffset + inputstart * oldstride;
+	for (let i = 0; i < inputcount; i++) {
 		let ii = newoffset + newstride * i;
 		let jj = oldoffset + oldstride * i;
 		vector.x = oldbuf[jj + 0];
@@ -2078,7 +2080,7 @@ class RSBatchMesh extends THREE.Mesh {
 }
 
 export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx: number, rootz: number, material: ParsedMaterial, locrenders: Map<WorldLocation, ThreeJsRenderSection[]>) {
-	let totalverts = meshgroup.models.reduce((a, v) => a + v.model.attributes.pos.count, 0);
+	let totalverts = meshgroup.models.reduce((a, v) => a + v.model.vertexend - v.model.vertexstart, 0);
 	let totalindices = meshgroup.models.reduce((a, v) => a + v.model.indices.count, 0);
 	let vertalphas = meshgroup.models.reduce((a, v) => a + +v.model.hasVertexAlpha, 0);
 	if (vertalphas != 0 && vertalphas != meshgroup.models.length) { throw new Error("all meshes are expected to have same vertexAlpha setting"); }
@@ -2104,7 +2106,7 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 	for (let m of meshgroup.models) {
 		let mesh = m.model;
 		let matrix = getMorphMatrix(m.morph, rootx, rootz);
-		let vertexcount = mesh.attributes.pos.count;
+		let vertexcount = mesh.vertexend - mesh.vertexstart;
 		let indexcount = mesh.indices.count;
 		indexcounts.push(indexindex);
 
@@ -2123,42 +2125,44 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 
 		//indices
 		{
+			let vertoffset = vertindex - mesh.vertexstart;
 			let oldindices = mesh.indices;
 			if (matrix.determinant() < 0) {
 				//reverse the winding order if the model is mirrored
-				for (let i = 0; i < oldindices.count; i += 3) {
+				for (let i = 0; i < indexcount; i += 3) {
 					let ii = indexindex + i;
-					indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
-					indices.setX(ii + 1, vertindex + oldindices.getX(i + 2));
-					indices.setX(ii + 2, vertindex + oldindices.getX(i + 1));
+					indices.setX(ii + 0, vertoffset + oldindices.getX(i + 0));
+					indices.setX(ii + 1, vertoffset + oldindices.getX(i + 2));
+					indices.setX(ii + 2, vertoffset + oldindices.getX(i + 1));
 				}
 			} else {
-				for (let i = 0; i < oldindices.count; i += 3) {
+				for (let i = 0; i < indexcount; i += 3) {
 					let ii = indexindex + i;
-					indices.setX(ii + 0, vertindex + oldindices.getX(i + 0));
-					indices.setX(ii + 1, vertindex + oldindices.getX(i + 1));
-					indices.setX(ii + 2, vertindex + oldindices.getX(i + 2));
+					indices.setX(ii + 0, vertoffset + oldindices.getX(i + 0));
+					indices.setX(ii + 1, vertoffset + oldindices.getX(i + 1));
+					indices.setX(ii + 2, vertoffset + oldindices.getX(i + 2));
 				}
 			}
 		}
 
 		//position
-		transformVertexPositions(mesh.attributes.pos, m.morph, grid, m.maxy - m.miny, rootx, rootz, pos, vertindex);
+		transformVertexPositions(mesh.attributes.pos, m.morph, grid, m.maxy - m.miny, rootx, rootz, pos, vertindex, mesh.vertexstart, mesh.vertexend);
 
 		//normals
 		{
 			let vector = new THREE.Vector3();
 			if (mesh.attributes.normals) {
 				let norm = mesh.attributes.normals;
-				let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(norm);
+				let [oldbuf, oldsuboffset, oldstride] = getAttributeBackingStore(norm);
 				let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(normals);
+				let oldoffset = mesh.vertexstart * oldstride + oldsuboffset;
 				let newoffset = vertindex * newstride + newsuboffset;
 				let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
-				for (let i = 0; i < norm.count; i++) {
+				for (let i = 0; i < vertexcount; i++) {
 					let ii = newoffset + i * newstride;
 					let jj = oldoffset + i * oldstride;
 					vector.set(oldbuf[jj + 0], oldbuf[jj + 1], oldbuf[jj + 2]);
-					vector.fromBufferAttribute(norm, i);
+					// vector.fromBufferAttribute(norm, i);
 					vector.applyMatrix3(matrix3);
 					newbuf[ii + 0] = vector.x;
 					newbuf[ii + 1] = vector.y;
@@ -2174,7 +2178,8 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 			let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(col);
 			let newoffset = vertindex * newstride + newsuboffset;
 			if (mesh.attributes.color) {
-				let [oldbuf, oldoffset, oldstride] = getAttributeBackingStore(mesh.attributes.color);
+				let [oldbuf, oldsuboffset, oldstride] = getAttributeBackingStore(mesh.attributes.color);
+				let oldoffset = mesh.vertexstart * oldstride + oldsuboffset;
 				if (hasvertexAlpha) {
 					for (let i = 0; i < vertexcount; i++) {
 						let ii = newoffset + i * newstride;
@@ -2211,7 +2216,7 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 			let olduvs = mesh.attributes.texuvs;
 			if (olduvs) {
 				for (let i = 0; i < vertexcount; i++) {
-					uvs.setXY(vertindex + i, olduvs.getX(i), olduvs.getY(i));
+					uvs.setXY(vertindex + i, olduvs.getX(mesh.vertexstart + i), olduvs.getY(mesh.vertexstart + i));
 				}
 			} else {
 				for (let i = 0; i < vertexcount; i++) {
@@ -2220,8 +2225,8 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 			}
 		}
 
-		vertindex += mesh.attributes.pos.count;
-		indexindex += mesh.indices.count;
+		vertindex += vertexcount;
+		indexindex += indexcount;
 	}
 
 	applyMaterial(mergedmesh, material, meshgroup.minimapVariant);

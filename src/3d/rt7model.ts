@@ -23,6 +23,8 @@ export type ModelData = {
 
 export type ModelMeshData = {
 	indices: THREE.BufferAttribute,
+	vertexstart: number,//used when merging partial meshes
+	vertexend: number,//used when merging partial meshes
 	indexLODs: THREE.BufferAttribute[],
 	materialId: number,
 	hasVertexAlpha: boolean,
@@ -216,6 +218,8 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 
 			meshes.push({
 				indices: indexlods[0],
+				vertexstart: 0,
+				vertexend: attributes.pos.count,
 				indexLODs: indexlods,
 				materialId: mesh.materialArgument - 1,
 				hasVertexAlpha: !!mesh.alphaBuffer,
@@ -269,9 +273,19 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 		if (mesh.normalBuffer) { addNormalsBuffer(attributes, mesh.normalBuffer); }
 
 		for (let render of mesh.renders) {
+			if (render.buf.length == 0) { continue; }
+			let minindex = render.buf[0];
+			let maxindex = render.buf[0];
+			for (let i = 0; i < render.buf.length; i++) {
+				let v = render.buf[i];
+				if (v < minindex) { minindex = v; }
+				if (v > maxindex) { maxindex = v; }
+			}
 			let index = new THREE.BufferAttribute(render.buf, 1);
 			meshes.push({
 				indices: index,
+				vertexstart: minindex,
+				vertexend: maxindex + 1,
 				indexLODs: [index],
 				materialId: render.materialArgument - 1,
 				hasVertexAlpha: !!render.hasVertexAlpha,

@@ -542,6 +542,8 @@ export function parseRT5Model(modelfile: Buffer, source: CacheFileSource) {
         let indices = new BufferAttribute(m.index, 1);
         return {
             indices: indices,
+            vertexstart: 0,
+            vertexend: m.pos.count,
             indexLODs: [indices],
             materialId: m.matid,
             hasVertexAlpha: !!modeldata.alpha,

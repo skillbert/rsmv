@@ -143,13 +143,15 @@ export class MeshBuilder {
     convertSubmesh(matid: number): ModelData["meshes"][number] {
         let indices = new BufferAttribute(new Uint16Array(this.index), 1);
         return {
+            indices,
+            vertexstart: 0,
+            vertexend: this.pos.length / 3 | 0,
             attributes: {
                 pos: new BufferAttribute(new Float32Array(this.pos), 3),
                 color: new BufferAttribute(new Uint8Array(this.color), 3, true),
                 texuvs: new BufferAttribute(new Float32Array(this.uvs), 2),
                 normals: new BufferAttribute(new Float32Array(this.normals), 3)
             },
-            indices,
             indexLODs: [indices],
             hasVertexAlpha: false,
             materialId: matid,

@@ -2,7 +2,7 @@ import { BufferAttribute, Vector3 } from "three";
 import { CacheFileSource } from "../cache";
 import { parse } from "../opdecoder";
 import { WorkingSubmesh } from "./rt5model";
-import { ModelData } from "./rt7model";
+import { ModelData, ModelMeshData } from "./rt7model";
 
 export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
     let parsed = parse.classicmodels.read(modelfile, source);
@@ -144,6 +144,9 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
         meshes: [...matmeshes.values()].map(q => {
             let indices = new BufferAttribute(q.index, 1);
             return {
+                indices: indices,
+                vertexstart: 0,
+                vertexend: q.pos.count,
                 attributes: {
                     pos: q.pos,
                     color: q.color,
@@ -151,11 +154,10 @@ export function parseRT2Model(modelfile: Buffer, source: CacheFileSource) {
                     normals: q.normals
                 },
                 hasVertexAlpha: false,
-                indices: indices,
                 indexLODs: [indices],
                 materialId: q.matid,
                 needsNormalBlending: true
-            };
+            } satisfies ModelMeshData;
         })
     }
 
