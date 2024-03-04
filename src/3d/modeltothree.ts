@@ -799,17 +799,18 @@ export function mergeModelDatas(models: ModelData[]) {
 }
 
 export async function ob3ModelToThree(scene: ThreejsSceneCache, model: ModelData) {
-	//has to be of type skinnedmesh in order to support a skeleton somehow
 	let rootnode = new Object3D();
 	let nullskeleton: Skeleton = null!;
 	if (model.bonecount != 0 || model.skincount != 0) {
 		let nullbones: Object3D[] = [];
 		let maxbones = Math.max(model.bonecount, model.skincount);
+		let rootbone = new Bone();
+		rootnode.add(rootbone);
 		//TODO just need 2 skeletons here?
-		for (let i = 0; i < maxbones; i++) { nullbones.push(rootnode); }
+		for (let i = 0; i < maxbones; i++) { nullbones.push(rootbone); }
 		nullskeleton = new Skeleton(nullbones as any);
 	}
-	
+
 	for (let meshdata of model.meshes) {
 		let attrs = meshdata.attributes;
 		let geo = new THREE.BufferGeometry();

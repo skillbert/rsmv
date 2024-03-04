@@ -38,7 +38,9 @@ export type MountableAnimation = {
 
 export function mountBakedSkeleton(rootnode: Object3D, model: ModelData) {
 	let centers = getBoneCenters(model);
-	let leafbones: Bone[] = [rootnode as Bone];
+	let rootbone = new Bone();
+	rootnode.add(rootbone);
+	let leafbones: Bone[] = [rootbone];
 	let rootbones: Bone[] = [];
 	let inverses: Matrix4[] = [new Matrix4()];
 
@@ -61,9 +63,9 @@ export function mountBakedSkeleton(rootnode: Object3D, model: ModelData) {
 		inverses.push(inverse);
 	}
 	let skeleton = new Skeleton(leafbones, inverses);
-	if (rootbones.length != 0) { rootnode.add(...rootbones); }
-	rootnode.updateMatrixWorld(true);
-	let childbind = new Matrix4().copy(rootnode.matrixWorld);
+	if (rootbones.length != 0) { rootbone.add(...rootbones); }
+	rootbone.updateMatrixWorld(true);
+	let childbind = new Matrix4().copy(rootbone.matrixWorld);
 	//TODO find out whats wrong with my own inverses
 	skeleton.calculateInverses();
 	rootnode.traverse(node => {
@@ -175,7 +177,7 @@ function matrixToDoubleBone(matrix: Matrix4, translate: Vector3, rotate1: Quater
 	matrix.decompose(translate, rotate1, scale);
 	rotate2.identity();
 
-	
+
 	// this would have resulted in perfect reconstruction, however SVD is not stable when animated
 
 	// let mat2 = [

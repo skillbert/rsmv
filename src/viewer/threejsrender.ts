@@ -770,18 +770,58 @@ export function disposeThreeTree(node: THREE.Object3D | null) {
 	console.log("disposed scene objects", count);
 }
 
-export function exportThreeJsGltf(node: THREE.Object3D) {
-	return new Promise<Buffer>((resolve, reject) => {
-		let exporter = new GLTFExporter();
-		let anims: AnimationClip[] = [];
-		node.traverseVisible(node => {
-			if (node.animations) { anims.push(...node.animations); }
-		});
+export async function exportThreeJsGltf(node: THREE.Object3D) {
+	let exporter = new GLTFExporter();
+	let anims: AnimationClip[] = [];
+	let undolist: (() => void)[] = [];
+	let hiddenattributes = [
+		"RA_skinIndex_bone",
+		"RA_skinIndex_skin",
+		"RA_skinWeight_bone",
+		"RA_skinWeight_skin"
+	];
+	//there doesn't seem to be any good way to hook the exporter, so just temporarily edit the scene
+	node.traverseVisible(node => {
+		if (node.animations) {
+			anims.push(...node.animations.filter(q => q.duration != 0));
+		}
+
+		//threejs currently bugs out with i8 normal attributes
+		//these attributes need to be padded to 4 bytes according to gltf spec but threejs doesn't
+		if (node instanceof Mesh && node.geometry instanceof BufferGeometry) {
+			let attributes = node.geometry.attributes;
+			let normal = node.geometry.attributes.normal as THREE.BufferAttribute;
+			if (normal && normal.array instanceof Int8Array) {
+				let v = new Vector3();
+				let cloned = new THREE.BufferAttribute(new Float32Array(normal.count * 3), 3)
+				for (let i = 0; i < normal.count; i++) {
+					v.fromBufferAttribute(normal, i);
+					v.normalize();
+					cloned.setXYZ(i, v.x, v.y, v.z);
+				}
+				let oldnormal = attributes.normal;
+				undolist.push(() => attributes.normal = oldnormal);
+				node.geometry.attributes.normal = cloned;
+			}
+			//for some reason blender chokes on these
+			for (let attr of hiddenattributes) {
+				if (attributes[attr]) {
+					let attrname = attr;
+					let oldval = attributes[attr];
+					delete attributes[attr];
+					undolist.push(() => attributes[attrname] = oldval);
+				}
+			}
+		}
+	});
+	let res = await new Promise<Buffer>((resolve, reject) => {
 		exporter.parse(node, gltf => resolve(gltf as any), reject, {
 			binary: true,
 			animations: anims
 		});
 	});
+	undolist.forEach(q => q());
+	return res;
 }
 
 export function exportThreeJsStl(node: THREE.Object3D) {
