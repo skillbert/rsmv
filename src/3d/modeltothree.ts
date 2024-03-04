@@ -720,70 +720,78 @@ export function applyMaterial(mesh: Mesh, parsedmat: ParsedMaterial, minimapVari
  * vertex will be merged and its bone id is lost. This bug is so entrenched in
  * the game that player models will have detached arms and waist if not replicated
  */
-export function mergeNaiveBoneids(model: ModelData) {
+export function mergeBoneids(model: ModelData) {
+	let totalverts = model.meshes.reduce((a, v) => a + v.vertexend - v.vertexstart, 0);
+	let order = new Uint32Array(totalverts);
+	let orderindex = 0;
+	for (let meshindex = 0; meshindex < model.meshes.length; meshindex++) {
+		let mesh = model.meshes[meshindex];
+		for (let i = mesh.vertexstart; i < mesh.vertexend; i++) {
+			order[orderindex++] = (meshindex << 23) | i;
+		}
+	}
+
+	function compareVertkeys(model: ModelData, a: number, b: number) {
+		const mesha = model.meshes[a >> 23];
+		const meshb = model.meshes[b >> 23];
+		const ia = a & 0x7fffff;
+		const ib = b & 0x7fffff;
+		const posa = mesha.attributes.pos;
+		const posb = meshb.attributes.pos;
+		return posa.getX(ia) - posb.getX(ib)
+			|| posa.getY(ia) - posb.getY(ib)
+			|| posa.getZ(ia) - posb.getZ(ib);
+	}
+
+	let tmp1 = new THREE.Vector3();
+	let normsum = new THREE.Vector3();
 	let mergecount = 0;
-	for (let meshid1 = 0; meshid1 < model.meshes.length; meshid1++) {
-		let mesh1 = model.meshes[meshid1];
-		//TODO figure out what the engine does here on skeletal animations when they finally get added to the player
-		if (!mesh1.attributes.color || !mesh1.needsNormalBlending && (!mesh1.attributes.boneids || !mesh1.attributes.boneweights)) { continue; }
-		for (let i1 = 0; i1 < mesh1.attributes.pos.count; i1++) {
-			let x = mesh1.attributes.pos.getX(i1); let y = mesh1.attributes.pos.getY(i1); let z = mesh1.attributes.pos.getZ(i1);
-			// let r = mesh1.attributes.color.getX(i1); let g = mesh1.attributes.color.getY(i1); let b = mesh1.attributes.color.getZ(i1);
-			for (let meshidb = 0; meshidb <= meshid1; meshidb++) {
-				let mesh2 = model.meshes[meshidb];
-				let blendnormals = mesh1.needsNormalBlending && mesh2.needsNormalBlending;
-				if (!mesh2.attributes.color || !blendnormals && (!mesh2.attributes.boneids || !mesh2.attributes.boneweights)) { continue; }
-				// if (mesh2.materialId != mesh1.materialId) { continue; }
+	order.sort((a, b) => compareVertkeys(model, a, b));
+	for (let i = 0; i < order.length;) {
+		let start = i;
+		while (compareVertkeys(model, order[start], order[++i]) == 0);
+		if (i > start + 1) {
+			const mesh1 = model.meshes[order[start] >> 23];
+			const i1 = order[start] & 0x7fffff;
 
-				let i2end = (meshidb == meshid1 ? i1 - 1 : mesh2.attributes.pos.count);
-				for (let i2 = 0; i2 < i2end; i2++) {
-					let posmatch = x == mesh2.attributes.pos.getX(i2) && y == mesh2.attributes.pos.getY(i2) && z == mesh2.attributes.pos.getZ(i2);
-					// let colmatch = r == mesh2.attributes.color.getX(i2) && g == mesh2.attributes.color.getY(i2) && b == mesh2.attributes.color.getZ(i2);
-					if (posmatch) {
-						if (mesh1.attributes.boneids && mesh1.attributes.boneweights && mesh2.attributes.boneids && mesh2.attributes.boneweights) {
-							if (mesh1.attributes.boneids.getX(i1) != mesh2.attributes.boneids.getX(i2)) {
-								mergecount++;
-							}
-							mesh1.attributes.boneids.copyAt(i1, mesh2.attributes.boneids, i2);
-							mesh1.attributes.boneweights.copyAt(i1, mesh2.attributes.boneweights, i2);
-						}
+			//calculate blended normal
+			normsum.set(0, 0, 0);
+			for (let j = start; j < i; j++) {
+				const mesh2 = model.meshes[order[j] >> 23];
+				const i2 = order[j] & 0x7fffff;
 
-						//blend the two normals
-						if (blendnormals && mesh1.attributes.normals && mesh2.attributes.normals) {
-							let x = mesh1.attributes.normals.getX(i1) + mesh2.attributes.normals.getX(i2);
-							let y = mesh1.attributes.normals.getY(i1) + mesh2.attributes.normals.getY(i2);
-							let z = mesh1.attributes.normals.getZ(i1) + mesh2.attributes.normals.getZ(i2);
-							//ignore faces with oposite normals
-							if (Math.hypot(x, y, z) > 0.01) {
-								//just sum, doing normalization later
-								mesh1.attributes.normals.setXYZ(i1, x, y, z);
-								mesh2.attributes.normals.setXYZ(i2, x, y, z);
-							}
-						}
+				if (mesh2.needsNormalBlending && mesh2.attributes.normals) {
+					tmp1.fromBufferAttribute(mesh2.attributes.normals, i2);
+					normsum.add(tmp1);
+				}
+			}
+			normsum.normalize();
+
+			for (let j = start; j < i; j++) {
+				const mesh2 = model.meshes[order[j] >> 23];
+				const i2 = order[j] & 0x7fffff;
+
+				//copy bone id and weights from first vertex
+				if (j != start && mesh1.attributes.boneids && mesh1.attributes.boneweights && mesh2.attributes.boneids && mesh2.attributes.boneweights) {
+					if (mesh1.attributes.boneids.getX(i1) != mesh2.attributes.boneids.getX(i2)) {
+						mergecount++;
+					}
+					mesh2.attributes.boneids.copyAt(i2, mesh1.attributes.boneids, i1);
+					mesh2.attributes.boneweights.copyAt(i2, mesh1.attributes.boneweights, i1);
+				}
+
+				//write blended normal
+				if (mesh2.needsNormalBlending && mesh2.attributes.normals) {
+					//ignore faces with oposite normals
+					if (normsum.lengthSq() > 0.001) {
+						//just sum, doing normalization later
+						mesh2.attributes.normals.setXYZ(i1, normsum.x, normsum.y, normsum.z);
 					}
 				}
 			}
 		}
 	}
-
-	//normalize normals again
-	for (let mesh of model.meshes) {
-		if (mesh.needsNormalBlending && mesh.attributes.normals) {
-			let normals = mesh.attributes.normals;
-			for (let i = 0; i < normals.count; i++) {
-				let x = normals.getX(i);
-				let y = normals.getY(i);
-				let z = normals.getZ(i);
-				let len = Math.hypot(x, y, z);
-				if (len > 0) {
-					let scale = 1 / len;
-					normals.setXYZ(i, x * scale, y * scale, z * scale);
-				}
-			}
-		}
-	}
-
-	console.log("merged", mergecount);
+	console.log("merged bones:", mergecount);
 }
 
 export function mergeModelDatas(models: ModelData[]) {

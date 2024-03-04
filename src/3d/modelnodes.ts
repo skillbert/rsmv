@@ -1,7 +1,7 @@
 import { parse } from "../opdecoder";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import * as THREE from "three";
-import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeNaiveBoneids, constModelsIds } from '../3d/modeltothree';
+import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
 import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, RSMapChunkData, renderMapSquare, WorldLocation, ThreeJsRenderSection } from '../3d/mapsquare';
@@ -257,7 +257,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
 				return modified;
 			}));
 			let modeldata = mergeModelDatas(meshdatas);
-			mergeNaiveBoneids(modeldata);
+			mergeBoneids(modeldata);
 			let mesh = await ob3ModelToThree(this.cache, modeldata);
 			mesh.name = name;
 
