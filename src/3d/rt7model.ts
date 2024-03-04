@@ -130,7 +130,7 @@ function addUvBuffer(attributes: ModelMeshData["attributes"], vertexCount: numbe
 }
 
 function addNormalsBuffer(attributes: ModelMeshData["attributes"], normalBuffer: Int8Array | Int16Array) {
-	let normalsrepacked = new Float32Array(normalBuffer.length);
+	let normalsrepacked = new Int8Array(normalBuffer.length);
 	//TODO threejs can probly do this for us
 	for (let i = 0; i < normalBuffer.length; i += 3) {
 		let x = normalBuffer[i + 0];
@@ -142,11 +142,12 @@ function addNormalsBuffer(attributes: ModelMeshData["attributes"], normalBuffer:
 			//TODO what does the rs engine do with missing normals?
 			len = 1;
 		}
-		normalsrepacked[i + 0] = x / len;
-		normalsrepacked[i + 1] = y / len;
-		normalsrepacked[i + 2] = z / len;
+		let scale = 127 / len;
+		normalsrepacked[i + 0] = Math.round(x * scale);
+		normalsrepacked[i + 1] = Math.round(y * scale);
+		normalsrepacked[i + 2] = Math.round(z * scale);
 	}
-	attributes.normals = new THREE.BufferAttribute(normalsrepacked, 3);// { newtype: "f32", vecsize: 3, source: normalsrepacked };}
+	attributes.normals = new THREE.BufferAttribute(normalsrepacked, 3, true);
 }
 
 export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {

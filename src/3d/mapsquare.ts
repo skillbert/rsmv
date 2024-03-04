@@ -2112,7 +2112,7 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 	let pos = new BufferAttribute(new Float32Array(totalverts * 3), 3);
 	let uvs = new BufferAttribute(new Float32Array(totalverts * 2), 2);
 	let col = new BufferAttribute(new Uint8Array(totalverts * (hasvertexAlpha ? 4 : 3)), (hasvertexAlpha ? 4 : 3), true);
-	let normals = new BufferAttribute(new Float32Array(totalverts * 3), 3);//TODO use i8 norm here?
+	let normals = new BufferAttribute(new Int8Array(totalverts * 3), 3, true);
 	let indices = new BufferAttribute(totalverts > 0xffff ? new Uint32Array(totalindices) : new Uint16Array(totalindices), 1);
 
 	let mergedgeo = new THREE.BufferGeometry();
@@ -2178,16 +2178,16 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 				let [newbuf, newsuboffset, newstride] = getAttributeBackingStore(normals);
 				let oldoffset = mesh.vertexstart * oldstride + oldsuboffset;
 				let newoffset = vertindex * newstride + newsuboffset;
-				let matrix3 = new THREE.Matrix3().setFromMatrix4(matrix);
+				let rotation = new THREE.Matrix4().makeRotationFromQuaternion(m.morph.rotation)
 				for (let i = 0; i < vertexcount; i++) {
 					let ii = newoffset + i * newstride;
 					let jj = oldoffset + i * oldstride;
 					vector.set(oldbuf[jj + 0], oldbuf[jj + 1], oldbuf[jj + 2]);
 					// vector.fromBufferAttribute(norm, i);
-					vector.applyMatrix3(matrix3);
-					newbuf[ii + 0] = vector.x;
-					newbuf[ii + 1] = vector.y;
-					newbuf[ii + 2] = vector.z;
+					vector.applyMatrix4(rotation);
+					newbuf[ii + 0] = Math.round(vector.x);
+					newbuf[ii + 1] = Math.round(vector.y);
+					newbuf[ii + 2] = Math.round(vector.z);
 				}
 			} else {
 				computePartialNormals(indices, pos, normals, indexindex, indexindex + indexcount);
