@@ -13,7 +13,7 @@ let inputreplace: InputReplacer = {
     aVertexPosition: "#define aVertexPosition position",
     aVertexPosition_BoneLabel: "#define aVertexPosition_BoneLabel vec4(position,0.0)",
     aTextureUV: "#define aTextureUV uv",
-    aVertexColour: "#define aVertexColour color",
+    aVertexColour: "#define aVertexColour vec4(color.rgb,1.0)",
     aTextureWeight: [
         "attribute vec3 color_1;",
         "#define aTextureWeight vec4(color_1,1.0)"
