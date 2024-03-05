@@ -1,106 +1,92 @@
 import { dumpTexture } from "../imgutils";
-import { delay } from "../utils";
+import { IterableWeakMap, delay } from "../utils";
 
-//copied from lib.es5, not sure why vscode understands but webpack doesn't
-interface WeakKeyTypes { object: object; }
-type WeakKey = WeakKeyTypes[keyof WeakKeyTypes];
-
-class IterableWeakMap<K extends WeakKey, V> {
-	weakMap = new WeakMap<K, { value: V, ref: WeakRef<K> }>();
-	refSet = new Set<WeakRef<K>>();
-	finalizationGroup = new FinalizationRegistry(IterableWeakMap.cleanup);
-
-	static cleanup({ set, ref }) {
-		set.delete(ref);
+function texBindingToGetter(gl: WebGL2RenderingContext, target: number) {
+	switch (target) {
+		case gl.TEXTURE_2D:
+			return gl.TEXTURE_BINDING_2D;
+		case gl.TEXTURE_CUBE_MAP:
+			return gl.TEXTURE_BINDING_CUBE_MAP;
+		case gl.TEXTURE_3D:
+			return gl.TEXTURE_BINDING_3D;
+		case gl.TEXTURE_2D_ARRAY:
+			return gl.TEXTURE_BINDING_2D_ARRAY;
+		default:
+			console.log(`unkown texture binding ${target}`);
+			return -1;
 	}
-
-	constructor() {
-	}
-
-	set(key: K, value: V) {
-		const ref = new WeakRef(key);
-		let prev = this.weakMap.get(key);
-		if (prev) { this.refSet.delete(prev.ref); }
-		this.weakMap.set(key, { value, ref });
-		this.refSet.add(ref);
-		this.finalizationGroup.register(key, {
-			set: this.refSet,
-			ref
-		}, ref);
-	}
-
-	get(key: K) {
-		const entry = this.weakMap.get(key);
-		return entry && entry.value;
-	}
-
-	delete(key: K) {
-		const entry = this.weakMap.get(key);
-		if (!entry) {
-			return false;
-		}
-
-		this.weakMap.delete(key);
-		this.refSet.delete(entry.ref);
-		this.finalizationGroup.unregister(entry.ref);
-		return true;
-	}
-
-	*[Symbol.iterator]() {
-		for (const ref of this.refSet) {
-			const key = ref.deref();
-			if (!key) continue;
-			const { value } = this.weakMap.get(key)!;
-			yield [key, value] as [K, V];
-		}
-	}
-
-	entries() {
-		return this[Symbol.iterator]();
-	}
-
-	*keys() {
-		for (const [key, value] of this) {
-			yield key;
-		}
-	}
-
-	*values() {
-		for (const [key, value] of this) {
-			yield value;
-		}
+}
+function bufBindingToGetter(gl: WebGL2RenderingContext, target: number) {
+	switch (target) {
+		case gl.ARRAY_BUFFER:
+			return gl.ARRAY_BUFFER_BINDING;
+		case gl.ELEMENT_ARRAY_BUFFER:
+			return gl.ELEMENT_ARRAY_BUFFER_BINDING;
+		case gl.COPY_READ_BUFFER:
+			return gl.COPY_READ_BUFFER_BINDING;
+		case gl.COPY_WRITE_BUFFER:
+			return gl.COPY_WRITE_BUFFER_BINDING;
+		case gl.TRANSFORM_FEEDBACK_BUFFER:
+			return gl.TRANSFORM_FEEDBACK_BUFFER_BINDING;
+		case gl.UNIFORM_BUFFER:
+			return gl.UNIFORM_BUFFER_BINDING;
+		case gl.PIXEL_PACK_BUFFER:
+			return gl.PIXEL_PACK_BUFFER_BINDING;
+		case gl.PIXEL_UNPACK_BUFFER:
+			return gl.PIXEL_UNPACK_BUFFER_BINDING;
+		default:
+			return -1;
 	}
 }
 
 export function hookgltextures() {
 	console.log("hooking global gl texture code, this should be turned off in production!");
 	type Texmeta = { ctx: WebGL2RenderingContext, width: number, height: number };
+	type BufMeta = { ctx: WebGL2RenderingContext, size: number };
 	let texes = new IterableWeakMap<WebGLTexture, Texmeta>();
-	let oldbind = WebGL2RenderingContext.prototype.bindTexture;
-	let oldstorage2d = WebGL2RenderingContext.prototype.texStorage2D;
-	let lasttarget = -1;
-	let lasttex: WebGLTexture | null = null;
+	let buffers = new IterableWeakMap<WebGLBuffer, BufMeta>();
+	let oldbindtexture = WebGL2RenderingContext.prototype.bindTexture;
+	let oldtexstorage2d = WebGL2RenderingContext.prototype.texStorage2D;
+	let oldbindbuffer = WebGL2RenderingContext.prototype.bindBuffer;
+	let oldbufferdata = WebGL2RenderingContext.prototype.bufferData;
+	let olddeletebuffer = WebGL2RenderingContext.prototype.deleteBuffer;
 	WebGL2RenderingContext.prototype.bindTexture = function (target, tex) {
-		oldbind.call(this, target, tex);
-		if (tex && !texes.get(tex)) { texes.set(tex, { ctx: this, width: 0, height: 0 }); }
-		lasttarget = target;
-		lasttex = tex;
+		oldbindtexture.call(this, target, tex);
+		if (tex) { texes.getOrInsert(tex, () => ({ ctx: this, width: 0, height: 0 })) }
 	}
-	WebGL2RenderingContext.prototype.texStorage2D = function (target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) {
-		oldstorage2d.call(this, target, levels, internalformat, width, height);
-		if (lasttarget != target) { console.log(`skipped tracking texture upload as binding target was not same as last bind ${lasttarget} vs ${target}`) }
-		else if (lasttex == null) { console.log(`last bound texture was null`); }
-		else {
-			let meta = texes.get(lasttex);
-			if (!meta) { }
-			else {
-				meta.width = width;
-				meta.height = height;
-			}
+	WebGL2RenderingContext.prototype.texStorage2D = function (target, levels, internalformat, width, height) {
+		oldtexstorage2d.call(this, target, levels, internalformat, width, height);
+		let tex = this.getParameter(texBindingToGetter(this, target));
+		let meta = texes.get(tex);
+		if (meta) {
+			meta.width = width;
+			meta.height = height;
 		}
+	}
+	WebGL2RenderingContext.prototype.bindBuffer = function (target, buffer) {
+		oldbindbuffer.call(this, target, buffer);
+		if (buffer) { buffers.getOrInsert(buffer, () => ({ ctx: this, size: 0 })) }
+	}
+	WebGL2RenderingContext.prototype.bufferData = function (...args: any[]) {
+		oldbufferdata.call(this, ...args);
+		let size = 0;
+		if (typeof args[1] == "number") { size = args[1]; }
+		else if (typeof args[4] == "number") { size = args[4] }
+		else { size = args[1].byteLength; }
+		let buf = buffers.get(this.getParameter(bufBindingToGetter(this, args[0])));
+		if (buf) {
+			buf.size = size;
+		}
+	}
+	WebGL2RenderingContext.prototype.deleteBuffer = function (buf) {
+		olddeletebuffer.call(this, buf);
+		if (buf) { buffers.delete(buf); }
 	}
 	function texlist() {
 		return [...texes];
+	}
+	function buflist() {
+		return [...buffers];
 	}
 
 	let drawtex: HTMLElement[] = [];
@@ -120,10 +106,11 @@ export function hookgltextures() {
 		drawtex.forEach(q => q.remove());
 		drawtex.length = 0;
 	}
-	function dumptexx(tex: [WebGLTexture, Texmeta], width = 128, height = 128) {
+	function dumptexx(tex: [WebGLTexture, Texmeta], width = tex[1].width, height = tex[1].height) {
 		return dumpTexture(readTextureToImageData(tex[1].ctx, tex[0], width, height));
 	}
 	globalThis.texlist = texlist;
+	globalThis.buflist = buflist;
 	globalThis.dumptexx = dumptexx;
 	globalThis.alltex = alltex;
 	globalThis.cleartex = cleartex;
@@ -131,11 +118,7 @@ export function hookgltextures() {
 	function readTextureToImageData(gl: WebGL2RenderingContext, texture: WebGLTexture, width: number, height: number) {
 		let boundFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
 		let boundTexture = gl.getParameter(gl.TEXTURE_BINDING_2D);
-
-		// Get the texture size
 		var level = 0;
-		// var width = 128;//gl.getTexParameter(gl.TEXTURE_2D, level, gl.);
-		// var height = 128;//gl.getTexParameter(gl.TEXTURE_2D, level, gl.TEXTURE_HEIGHT);
 
 		// Create a framebuffer
 		var framebuffer = gl.createFramebuffer();

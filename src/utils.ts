@@ -444,6 +444,7 @@ export class TypedEmitter<T extends Record<string, any>> {
 	}
 }
 
+//same as the new Promise.WithResolvers built-in (late 2023)
 export class CallbackPromise<T = void> extends Promise<T> {
 	done!: (v: T) => void;
 	err!: (e: Error) => void;
@@ -548,5 +549,130 @@ export class FetchThrottler {
 		}
 		return res;
 	}
+}
 
+//copied from lib.es5.d.ts, not sure why vscode understands but webpack doesn't
+interface WeakKeyTypes { object: object; }
+type WeakKey = WeakKeyTypes[keyof WeakKeyTypes];
+
+export class IterableWeakMap<K extends WeakKey, V> {
+	weakMap = new WeakMap<K, { value: V, ref: WeakRef<K> }>();
+	refSet = new Set<WeakRef<K>>();
+	finalizationGroup = new FinalizationRegistry(IterableWeakMap.cleanup);
+
+	static cleanup({ set, ref }) {
+		set.delete(ref);
+	}
+
+	constructor() {
+	}
+
+	set(key: K, value: V) {
+		const ref = new WeakRef(key);
+		let prev = this.weakMap.get(key);
+		if (prev) { this.refSet.delete(prev.ref); }
+		this.weakMap.set(key, { value, ref });
+		this.refSet.add(ref);
+		this.finalizationGroup.register(key, {
+			set: this.refSet,
+			ref
+		}, ref);
+	}
+
+	get(key: K) {
+		const entry = this.weakMap.get(key);
+		return entry && entry.value;
+	}
+	getOrInsert(key: K, data: () => V) {
+		let entry = this.weakMap.get(key);
+		if (entry) { return entry.value; }
+		let val = data();
+		this.set(key, val);
+		return val;
+	}
+
+	delete(key: K) {
+		const entry = this.weakMap.get(key);
+		if (!entry) {
+			return false;
+		}
+
+		this.weakMap.delete(key);
+		this.refSet.delete(entry.ref);
+		this.finalizationGroup.unregister(entry.ref);
+		return true;
+	}
+
+	*[Symbol.iterator]() {
+		for (const ref of this.refSet) {
+			const key = ref.deref();
+			if (!key) continue;
+			const { value } = this.weakMap.get(key)!;
+			yield [key, value] as [K, V];
+		}
+	}
+
+	entries() {
+		return this[Symbol.iterator]();
+	}
+
+	*keys() {
+		for (const [key, value] of this) {
+			yield key;
+		}
+	}
+
+	*values() {
+		for (const [key, value] of this) {
+			yield value;
+		}
+	}
+}
+
+export class WeakRefMap<K, V extends WeakKey> {
+	private map = new Map<K, WeakRef<V>>();
+	private registry = new FinalizationRegistry<K>(k => this.map.delete(k));
+
+	set(key: K, value: V) {
+		let prev = this.map.get(key)?.deref();
+		if (prev) { this.registry.unregister(prev); }
+		this.map.set(key, new WeakRef(value));
+		this.registry.register(value, key);
+	}
+	delete(key: K) {
+		let prev = this.map.get(key)?.deref();
+		if (prev) {
+			this.map.delete(key);
+			this.registry.unregister(prev);
+		}
+	}
+	get(key: K) {
+		return this.map.get(key)?.deref();
+	}
+	getOrDefault(key: K, create: () => V) {
+		let v = this.map.get(key)?.deref();
+		if (!v) {
+			v = create();
+			this.set(key, v);
+		}
+		return v;
+	}
+
+	*keys() {
+		yield* this.map.keys();
+	}
+
+	*values() {
+		for (const [k, v] of this) {
+			yield v;
+		}
+	}
+
+	*[Symbol.iterator]() {
+		for (const [k, ref] of this.map) {
+			const v = ref.deref();
+			if (!v) continue;
+			yield [k, v] as [K, V];
+		}
+	}
 }
