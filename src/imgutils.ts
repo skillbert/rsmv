@@ -202,8 +202,18 @@ export function flipImage(img: ImageData) {
 	}
 }
 
+export function sliceImage(img: ImageData, bounds: { x: number, y: number, width: number, height: number }) {
+	let newdata = new Uint8ClampedArray(bounds.width * bounds.height * 4);
+	let newstride = bounds.width * 4;
+	let oldstride = img.width * 4;
+	let oldoffset = oldstride * bounds.y + bounds.x * 4;
+	for (let y = 0; y < bounds.height; y++) {
+		newdata.set(img.data.slice(oldoffset + y * oldstride, oldoffset + y * oldstride + newstride), newstride * y);
+	}
+	return new ImageData(newdata, bounds.width, bounds.height);
+}
 
-export function findImageBounds(img: ImageData | ImageData) {
+export function findImageBounds(img: ImageData) {
 	let intview = new Uint32Array(img.data.buffer, img.data.byteOffset, img.data.byteLength / 4);
 
 	let minx = img.width, maxx = 0;
@@ -220,6 +230,11 @@ export function findImageBounds(img: ImageData | ImageData) {
 				maxy = Math.max(y, maxy);
 			}
 		}
+	}
+
+	if (maxx < minx || maxy < miny) {
+		minx = miny = 0;
+		maxx = maxy = -1;
 	}
 
 	return { x: minx, y: miny, width: maxx - minx + 1, height: maxy - miny + 1 };
@@ -243,6 +258,7 @@ export function dumpTexture(img: ImageData | Texture | CanvasImage, flip = false
 	}
 	return cnv;
 }
+
 globalThis.dumptex = dumpTexture;
 
 

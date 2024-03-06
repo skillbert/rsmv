@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, RSMapChunkData, renderMapSquare, WorldLocation, ThreeJsRenderSection } from '../3d/mapsquare';
+import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, RSMapChunkData, renderMapSquare, WorldLocation, ThreeJsRenderSection, tiledimensions } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Material, Mesh, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
@@ -17,6 +17,7 @@ import fetch from "node-fetch";
 import { MaterialData } from "./jmat";
 import { legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
+import { mapImageCamera } from "../map";
 
 
 export type SimpleModelDef = {
@@ -418,17 +419,39 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		});
 	}
 
-	extractLoc(loc: WorldLocation) {
+	//TODO remove
+	async testLocImg(loc: WorldLocation) {
+		if (!this.loaded) { throw new Error("not laoded") }
+		let model = this.loaded?.locRenders.get(loc) ?? [];
+
+		let sections = model.map(q => q.mesh.cloneSection(q));
+		model.map(q => q.mesh.setSectionHide(q, true));
+		let group = new Object3D();
+		group.add(...sections.map(q => q.mesh));
+		group.traverse(q => q.layers.set(1));
+		this.loaded.chunkroot.add(group);
+
+		let cam = mapImageCamera(loc.x + this.rootnode.position.x / tiledimensions - 16, loc.z + this.rootnode.position.z / tiledimensions - 16, 32, 0.15, 0.25);
+		let img = await this.renderscene!.takeMapPicture(cam, 1024, 1024, false, group);
+		group.removeFromParent();
+		model.map(q => q.mesh.setSectionHide(q, false));
+		return img;
+	}
+
+	cloneLocModel(entry: ThreeJsRenderSection[]) {
+		return entry.map(q => q.mesh.cloneSection(q));
+	}
+
+	replaceLocModel(loc: WorldLocation, newmodels?: ThreeJsRenderSection[]) {
 		let entry = this.loaded?.locRenders.get(loc) ?? [];
-		let cloned = new THREE.Group();
-		for (let i = 0; i < entry.length; i++) {
-			let sub = entry[i];
-			let newsection = sub.mesh.cloneSection(sub);
-			cloned.add(newsection.mesh);
-			sub.mesh.removeSection(sub);
-			entry[i] = newsection;
+		entry.forEach(q => q.mesh.setSectionHide(q, true));
+		if (!newmodels) {
+			this.loaded?.locRenders.delete(loc);
+		} else {
+			this.loaded?.locRenders.set(loc, newmodels);
+			newmodels.forEach(q => q.mesh.setSectionHide(q, false));
 		}
-		return cloned;
+		return entry;
 	}
 
 	cleanup() {

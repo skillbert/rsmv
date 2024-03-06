@@ -1157,7 +1157,8 @@ export type ThreeJsRenderSection = {
 	startindex: number,
 	endindex: number,
 	startvertex: number,
-	endvertex: number
+	endvertex: number,
+	hidden: boolean
 }
 
 export type RSMapChunkData = {
@@ -2069,34 +2070,57 @@ class RSBatchMesh extends THREE.Mesh {
 			let cloned = new BufferAttribute(attr.array.slice(section.startvertex * attr.itemSize, section.endvertex * attr.itemSize), attr.itemSize, attr.normalized);
 			geo.setAttribute(attrname, cloned);
 		}
+		let indexarr = this.geometry.index!.array.slice(section.startindex, section.endindex);
+		for (let i = 0; i < indexarr.length; i++) { indexarr[i] -= section.startvertex; }
+		geo.setIndex(new THREE.BufferAttribute(indexarr, 1));
 		let clone = new RSBatchMesh(geo, this.material);
 		let newsection: ThreeJsRenderSection = {
 			mesh: clone,
 			startindex: 0,
 			endindex: section.endindex - section.startindex,
 			startvertex: 0,
-			endvertex: section.endvertex - section.startvertex
+			endvertex: section.endvertex - section.startvertex,
+			hidden: false
 		};
 		clone.renderSections.push(newsection);
 		return newsection;
 	}
-	removeSection(section: ThreeJsRenderSection) {
+	setSectionHide(section: ThreeJsRenderSection, hide: boolean) {
+		if (section.hidden == hide) { return; }
+		section.hidden = hide;
 		let drawend = this.geometry.drawRange.count;
 		if (this.geometry.drawRange.start != 0) { throw new Error("unexpected"); }
 		if (!this.geometry.index) { throw new Error("unexpected"); }
 		if (!isFinite(drawend)) { drawend = this.geometry.index.count }
 
-		let sectionindex = this.renderSections.indexOf(section);
-		let removedcount = section.endindex - section.startindex;
-		this.geometry.index.array.copyWithin(section.startindex, section.endindex, drawend);
-		this.geometry.index.needsUpdate = true;
-		section.endindex = section.startindex;
-		for (let i = sectionindex + 1; i < this.renderSections.length; i++) {
-			let other = this.renderSections[i];
-			other.startindex -= removedcount;
-			other.endindex -= removedcount;
+		let len = section.endindex - section.startindex;
+		let newoffset = (hide ? drawend - len : drawend);
+
+		if (hide) {
+			let tmp = this.geometry.index.array.slice(section.startindex, section.endindex);
+			this.geometry.index.array.copyWithin(section.startindex, section.endindex, drawend);
+			this.geometry.index.array.set(tmp, newoffset);
+		} else {
+			let tmp = this.geometry.index.array.slice(section.startindex, section.endindex);
+			this.geometry.index.array.copyWithin(drawend + len, drawend, section.startindex);
+			this.geometry.index.array.set(tmp, newoffset);
 		}
-		this.geometry.setDrawRange(0, drawend - removedcount);
+
+		let front = (hide ? section.startindex : drawend);
+		let back = (hide ? drawend - len : drawend);
+		let changediff = (hide ? -len : len);
+		for (let i = 0; i < this.renderSections.length; i++) {
+			let other = this.renderSections[i];
+			if (other == section) { continue; }
+			if (other.startindex <= front || other.startindex > back) { continue; }
+			other.startindex += changediff;
+			other.endindex += changediff;
+		}
+		section.startindex = newoffset;
+		section.endindex = newoffset + len;
+
+		this.geometry.setDrawRange(0, drawend + changediff);
+		this.geometry.index.needsUpdate = true;
 	}
 }
 
@@ -2136,7 +2160,8 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 			startindex: indexindex,
 			endindex: indexindex + indexcount,
 			startvertex: vertindex,
-			endvertex: vertindex + vertexcount
+			endvertex: vertindex + vertexcount,
+			hidden: false
 		};
 		mergedmesh.renderSections.push(section);
 		if (m.extras.modeltype == "location") {

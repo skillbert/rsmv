@@ -13,7 +13,7 @@ npm run nodegl -- dist/maprender -o openrs2:1720 -c extract_map/mapconfig.jsonc
 ```
 
 ### Example config
-```json
+```jsonc
 //extract_map/mapconfig.jsonc
 {
     "$schema": "../generated/maprenderconfig.schema.json",
@@ -74,6 +74,16 @@ npm run nodegl -- dist/maprender -o openrs2:1720 -c extract_map/mapconfig.jsonc
             "mode": "rendermeta", //advanced - json file containing metadata about the chunk render, used to dedupe historic renders
             "level": 0,
             "pxpersquare": 1
+        },
+        {
+            "name": "interactions",
+            "mode": "interactions", //json file per offset map chunk with loc info and images for all interactable locs
+            "pxpersquare": 64, //same arguments as mode="3d"
+            "dxdy": 0.15,
+            "dzdy": 0.25,
+            "format": "webp",
+            "level": 0,
+            "usegzip": true
         }
     ],
     //used to determine lowest scaling mip level, should generally always be 100,200 which ensures the lowest mip level contains the entire rs world in one image

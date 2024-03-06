@@ -180,7 +180,7 @@ export const maprenderConfigSchema: JSONSchema6 = {
                 required: ["mode", "name", "pxpersquare", "level"],
                 oneOf: [{
                     properties: {
-                        mode: { enum: ["3d", "minimap"] },
+                        mode: { enum: ["3d", "minimap", "interactions"] },
                         dxdy: number,
                         dzdy: number,
                         hidelocs: boolean,

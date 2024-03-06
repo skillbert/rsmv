@@ -160,11 +160,15 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 		//classic light config
 		this.standardLights = new Group();
-		this.standardLights.add(new THREE.AmbientLight(0xffffff, 0.7));
+		let ambientlight = new THREE.AmbientLight(0xffffff, 0.7);
 		var dirLight = new THREE.DirectionalLight(0xffffff);
 		dirLight.position.set(75, 300, -75);
-		this.standardLights.add(dirLight);
 		let hemilight = new THREE.HemisphereLight(0xffffff, 0x888844);
+		ambientlight.layers.enableAll();
+		dirLight.layers.enableAll();
+		hemilight.layers.enableAll();
+		this.standardLights.add(ambientlight);
+		this.standardLights.add(dirLight);
 		this.standardLights.add(hemilight);
 		scene.add(this.standardLights);
 
@@ -314,28 +318,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			this.skybox = null;
 		}
 
-		this.forceFrame();
-	}
-
-	minimapCam(size = 128) {
-		//TODO turn this into propper code
-		this.orthoControls.minAzimuthAngle = this.orthoControls.maxAzimuthAngle = 0;
-		this.orthoControls.minPolarAngle = this.orthoControls.maxPolarAngle = 0;
-
-		// let width = this.canvas.width / 8;
-		// let height = this.canvas.height / 8;
-		let width = size;
-		let height = size;
-
-		this.topdowncam.zoom = 1;
-		this.topdowncam.left = -width / 2;
-		this.topdowncam.right = width / 2;
-		this.topdowncam.top = height / 2;
-		this.topdowncam.bottom = -height / 2;
-		this.topdowncam.updateProjectionMatrix();
-
-		this.minimapLights.visible = true;
-		this.standardLights.visible = false;
 		this.forceFrame();
 	}
 
@@ -516,19 +498,28 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return r;
 	}
 
-	async takeMapPicture(cam: Camera, framesizex: number, framesizey: number, lights: "minimap" | "standard") {
+	async takeMapPicture(cam: Camera, framesizex: number, framesizey: number, linearcolor = false, highlight: Object3D | null = null) {
 		//TODO remove lights argument
 		this.renderer.setSize(framesizex, framesizey);
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
-			this.renderer.outputColorSpace = (lights == "minimap" ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace);
-			this.minimapLights.visible = lights == "minimap";
-			this.standardLights.visible = lights == "standard";
+			let oldcolorspace = this.renderer.outputColorSpace;
+			this.renderer.outputColorSpace = (linearcolor ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace);
 			this.renderScene(cam);
+
 			let ctx = this.renderer.getContext();
+			if (highlight) {
+				this.renderer.clearColor();
+				let old = cam.layers.mask;
+				cam.layers.set(1);//TODO put this layer id in a constant somewhere
+				this.renderer.render(this.scene, cam);
+				cam.layers.mask = old;
+			}
+
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
 			img = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
+			this.renderer.outputColorSpace = oldcolorspace;
 		});
 		return img!;
 	}

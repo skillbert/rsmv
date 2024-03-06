@@ -1,11 +1,11 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions } from "../3d/mapsquare";
+import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions, RSMapChunkData } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import { jsonIcons, svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
-import { canvasToImageFile, flipImage, pixelsToImageFile } from "../imgutils";
+import { canvasToImageFile, findImageBounds, flipImage, pixelsToDataUrl, pixelsToImageFile, sliceImage } from "../imgutils";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
@@ -13,9 +13,9 @@ import { CallbackPromise, delay, stringToFileRange, trickleTasks } from "../util
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
 import { ChunkRenderMeta, chunkSummary, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies, RenderDepsTracker, RenderDepsVersionInstance } from "./chunksummary";
-import { RSMapChunk, RSMapChunkData } from "../3d/modelnodes";
+import { RSMapChunk } from "../3d/modelnodes";
 import * as zlib from "zlib";
-import { Camera, Matrix4, OrthographicCamera, Vector3 } from "three";
+import { Camera, Matrix4, Object3D, OrthographicCamera, Vector3 } from "three";
 import { KnownMapFile, MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";
@@ -59,7 +59,7 @@ export type LayerConfig = {
 	usegzip?: boolean,
 	subtractlayers?: string[]
 } & ({
-	mode: "3d" | "minimap",
+	mode: "3d" | "minimap" | "interactions",
 	dxdy: number,
 	dzdy: number,
 	hidelocs?: boolean,
@@ -318,7 +318,8 @@ export class MapRenderer {
 		this.deps = deps;
 		this.config = config;
 		this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
-		this.renderer.addSceneElement({ getSceneElements() { return { options: { opaqueBackground: true, autoFrames: "never", hideFog: true } }; } });
+		//TODO turn opaquebackground back on for map renders
+		this.renderer.addSceneElement({ getSceneElements() { return { options: { opaqueBackground: false, autoFrames: "never", hideFog: true } }; } });
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await new Promise((done, err) => {
 				let cleanup = (v: boolean) => {
@@ -353,7 +354,7 @@ export class MapRenderer {
 				z: z,
 				loaded: null,
 				loadprom: new CallbackPromise(),
-				chunk: new RSMapChunk(x, z, this.scenecache, this.opts),
+				chunk: new RSMapChunk(this.scenecache, x, z, this.opts),
 				id
 			}
 			square.chunk.chunkdata.then(async (chunkdata) => {
@@ -362,7 +363,7 @@ export class MapRenderer {
 						x: chunkdata.chunkx,
 						z: chunkdata.chunkz,
 						version: this.config.version,
-						floor: (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk[0])),
+						floor: (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk)),
 						locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz)
 					},
 					grid: chunkdata.grid,
@@ -371,6 +372,8 @@ export class MapRenderer {
 				square.loadprom.done(square.loaded);
 				this.loadcallback?.(x, z, "loaded");
 			});
+
+
 			this.squares.push(square);
 			return square;
 		}
@@ -664,6 +667,80 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 type RenderMode<MODE extends LayerConfig["mode"]> = (engine: EngineCache, config: MapRender, cnf: LayerConfig & { mode: MODE }, hasher: SimpleHasher, imgpos: { x: number, y: number }, maprect: MapRect) => RenderTask[];
 
+
+
+const rendermodeInteractions: RenderMode<"interactions"> = function (engine, config, cnf, deps, baseoutput, maprect) {
+	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
+	let thiscnf = cnf;
+	let filename = `${thiscnf.name}/${baseoutput.x}-${baseoutput.y}.${cnf.usegzip ? "json.gz" : "json"}`;
+	let depcrc = deps.recthash(loadedchunksrect);
+	return [{
+		layer: thiscnf,
+		name: filename,
+		hash: depcrc,
+		datarect: loadedchunksrect,
+		async run(chunks, renderer) {
+			let locjson: { name: string, ops: string[], id: number, resolvedid: number, x: number, y: number, img: string }[] = [];
+			let emptyimagecount = 0;
+			setChunkRenderToggles(chunks, thiscnf.level, false, true);
+			for (let chunk of chunks) {
+				let loaded = chunk.chunk.loaded;
+				if (!loaded) { throw new Error("unexpected"); }
+				for (let [loc, model] of loaded.locRenders) {
+					if (loc.x < worldrect.x || loc.x >= worldrect.x + worldrect.xsize) { continue; }
+					if (loc.z < worldrect.z || loc.z >= worldrect.z + worldrect.zsize) { continue; }
+					if (model.length == 0) { continue; }
+					if (!loc.location.name) { continue; }
+					let ops = [loc.location.actions_0, loc.location.actions_1, loc.location.actions_2, loc.location.actions_3, loc.location.actions_4].filter((q): q is string => !!q);
+					if (ops.length == 0) { continue; }
+
+					let sections = model.map(q => q.mesh.cloneSection(q));
+					model.map(q => q.mesh.setSectionHide(q, true));
+					let group = new Object3D();
+					group.add(...sections.map(q => q.mesh));
+					group.traverse(q => q.layers.set(1));
+					loaded.chunkroot.add(group);
+
+					let ntiles = 16;
+					//TODO properly center the cam on bigger locs
+					let cam = mapImageCamera(loc.x - ntiles / 2, loc.z - ntiles / 2, ntiles, 0.15, 0.25);
+					let img = await renderer.renderer.takeMapPicture(cam, ntiles * thiscnf.pxpersquare, ntiles * thiscnf.pxpersquare, false, group);
+					flipImage(img);
+					group.removeFromParent();
+
+					model.map(q => q.mesh.setSectionHide(q, false));
+
+					let bounds = findImageBounds(img);
+					if (bounds.width == 0 || bounds.height == 0) {
+						emptyimagecount++;
+						continue;
+					}
+
+					let format = thiscnf.format ?? "webp";
+					let subimg = sliceImage(img, bounds);
+					let imgfile = await pixelsToImageFile(subimg, format, 0.9);
+					locjson.push({
+						name: loc.location.name ?? "",
+						ops,
+						id: loc.locid,
+						resolvedid: loc.resolvedlocid,
+						x: loc.x,
+						y: loc.z,
+						img: `data:image/${format};base64,${imgfile.toString("base64")}`
+					});
+				}
+			}
+
+			if (emptyimagecount != 0) { console.log("interactables empty", emptyimagecount, "nonempty", locjson.length); }
+			let buf = Buffer.from(JSON.stringify(locjson, undefined, "\t"));
+			if (thiscnf.usegzip) {
+				buf = zlib.gzipSync(buf);
+			}
+			return { file: () => Promise.resolve(buf) };
+		}
+	}] satisfies RenderTask[];
+}
+
 const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf, hasher, baseoutput, maprect) {
 	let zooms = getLayerZooms(config.config, cnf);
 	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
@@ -755,7 +832,7 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 
 						let img: ImageData | null = null;
 						if (!parentFile) {
-							img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, (thiscnf.mode == "minimap" ? "minimap" : "standard"));
+							img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, thiscnf.mode == "minimap");
 							flipImage(img);
 							// isImageEmpty(img, "black");
 
@@ -954,6 +1031,7 @@ const rendermodeRenderMeta: RenderMode<"rendermeta"> = function (engine, config,
 
 const rendermodes: Record<LayerConfig["mode"], RenderMode<any>> = {
 	"3d": rendermode3d,
+	interactions: rendermodeInteractions,
 	minimap: rendermode3d,
 	collision: rendermodeCollision,
 	map: rendermodeMap,
@@ -973,17 +1051,18 @@ export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: numbe
 		0, -0.01, 0, 0,
 		0, 0, 0, 1
 	];
+	// cam.projectionMatrix.scale(new Vector3(1, -1, 1));
 	cam.projectionMatrix.transpose();
 	cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
 	return cam;
 }
-export function mapImageCamera2(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
-	let cam = new SkewOrthographicCamera(ntiles, dxdy, dzdy);
-	cam.pointDown();
-	//negative z since the camera is usually in threejs reference frame instead of the flipped rs reference frame
-	cam.position.set(x + ntiles / 2, 0, -(z + ntiles / 2));
-	return cam;
-}
+// export function mapImageCamera2(x: number, z: number, ntiles: number, dxdy: number, dzdy: number) {
+// 	let cam = new SkewOrthographicCamera(ntiles, dxdy, dzdy);
+// 	cam.pointDown();
+// 	//negative z since the camera is usually in threejs reference frame instead of the flipped rs reference frame
+// 	cam.position.set(x + ntiles / 2, 0, -(z + ntiles / 2));
+// 	return cam;
+// }
 
 export class SkewOrthographicCamera extends OrthographicCamera {
 	skewMatrix = new Matrix4();
