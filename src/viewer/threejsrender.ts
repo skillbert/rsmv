@@ -373,10 +373,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			//new stack frame to let all errors resolve
 			await delay(1);
 			if (this.renderer.getContext().isContextLost()) {
-				console.log("lost context during render");
+				console.log("lost context during render " + new Date());
 				continue;
 			} else if (prerenderlosses != this.contextLossCount) {
-				console.log("lost and regained context during render");
+				console.log("lost and regained context during render " + new Date());
 				continue;
 			}
 			return;
@@ -498,17 +498,20 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return r;
 	}
 
-	async takeMapPicture(cam: Camera, framesizex: number, framesizey: number, linearcolor = false, highlight: Object3D | null = null) {
-		//TODO remove lights argument
-		this.renderer.setSize(framesizex, framesizey);
+	async takeMapPicture(cam: Camera, framesizex = -1, framesizey = -1, linearcolor = false, highlight: Object3D | null = null) {
+		if (framesizex != -1 && framesizey != -1) {
+			this.renderer.setSize(framesizex, framesizey);
+		}
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
 			let oldcolorspace = this.renderer.outputColorSpace;
 			this.renderer.outputColorSpace = (linearcolor ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace);
-			this.renderScene(cam);
 
 			let ctx = this.renderer.getContext();
-			if (highlight) {
+			if (!highlight) {
+				this.renderScene(cam);
+			} else {
+				this.renderer.clearDepth();
 				this.renderer.clearColor();
 				let old = cam.layers.mask;
 				cam.layers.set(1);//TODO put this layer id in a constant somewhere

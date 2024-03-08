@@ -421,7 +421,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 
 	//TODO remove
 	async testLocImg(loc: WorldLocation) {
-		if (!this.loaded) { throw new Error("not laoded") }
+		if (!this.loaded) { throw new Error("not loaded") }
 		let model = this.loaded?.locRenders.get(loc) ?? [];
 
 		let sections = model.map(q => q.mesh.cloneSection(q));
@@ -432,7 +432,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		this.loaded.chunkroot.add(group);
 
 		let cam = mapImageCamera(loc.x + this.rootnode.position.x / tiledimensions - 16, loc.z + this.rootnode.position.z / tiledimensions - 16, 32, 0.15, 0.25);
-		let img = await this.renderscene!.takeMapPicture(cam, 1024, 1024, false, group);
+		let img = await this.renderscene!.takeMapPicture(cam, -1, -1, false, group);
 		group.removeFromParent();
 		model.map(q => q.mesh.setSectionHide(q, false));
 		return img;

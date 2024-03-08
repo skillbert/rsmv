@@ -44,7 +44,7 @@ export function crc32(buf: Uint8Array | Uint8ClampedArray, crc = 0, rangeStart =
 }
 
 const staticintbuf = Buffer.alloc(4);
-export function crc32addInt(int: number, crc = 0) {
+export function crc32addInt(int: number, crc: number) {
 	staticintbuf.writeUInt32BE(int >>> 0);
 	return crc32(staticintbuf, crc);
 }

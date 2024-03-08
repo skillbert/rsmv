@@ -1,6 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions, RSMapChunkData } from "../3d/mapsquare";
+import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions, RSMapChunkData, getTileHeight } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import { jsonIcons, svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
@@ -668,71 +668,64 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 type RenderMode<MODE extends LayerConfig["mode"]> = (engine: EngineCache, config: MapRender, cnf: LayerConfig & { mode: MODE }, hasher: SimpleHasher, imgpos: { x: number, y: number }, maprect: MapRect) => RenderTask[];
 
 
-
-const rendermodeInteractions: RenderMode<"interactions"> = function (engine, config, cnf, deps, baseoutput, maprect) {
-	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
+const rendermodeInteractions: RenderMode<"interactions"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
-	let filename = `${thiscnf.name}/${baseoutput.x}-${baseoutput.y}.${cnf.usegzip ? "json.gz" : "json"}`;
-	let depcrc = deps.recthash(loadedchunksrect);
+	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
 	return [{
 		layer: thiscnf,
 		name: filename,
-		hash: depcrc,
-		datarect: loadedchunksrect,
+		hash: deps.recthash(singlerect),
+		datarect: singlerect,
 		async run(chunks, renderer) {
-			let locjson: { name: string, ops: string[], id: number, resolvedid: number, x: number, y: number, img: string }[] = [];
+			let loaded = chunks[0].loaded.chunkdata;
+			if (!loaded) { throw new Error("unexpected"); }
+			let rect = { x: singlerect.x * loaded.chunkSize, z: singlerect.z * loaded.chunkSize, xsize: loaded.chunkSize, zsize: loaded.chunkSize };
+			let { hashes, locdatas, locs } = chunkSummary(loaded.grid, loaded.modeldata, rect);
 			let emptyimagecount = 0;
-			setChunkRenderToggles(chunks, thiscnf.level, false, true);
-			for (let chunk of chunks) {
-				let loaded = chunk.chunk.loaded;
-				if (!loaded) { throw new Error("unexpected"); }
-				for (let [loc, model] of loaded.locRenders) {
-					if (loc.x < worldrect.x || loc.x >= worldrect.x + worldrect.xsize) { continue; }
-					if (loc.z < worldrect.z || loc.z >= worldrect.z + worldrect.zsize) { continue; }
-					if (model.length == 0) { continue; }
-					if (!loc.location.name) { continue; }
-					let ops = [loc.location.actions_0, loc.location.actions_1, loc.location.actions_2, loc.location.actions_3, loc.location.actions_4].filter((q): q is string => !!q);
-					if (ops.length == 0) { continue; }
+			let hashimgs: Record<number, { img: string, center: number[], loc: number, dx: number, dy: number }> = {};
+			for (let [hash, { center, locdata }] of hashes) {
+				let ops = [locdata.location.actions_0, locdata.location.actions_1, locdata.location.actions_2, locdata.location.actions_3, locdata.location.actions_4].filter((q): q is string => !!q);
+				let model = loaded.locRenders.get(locdata);
+				if (!model) { continue; }
+				// if (ops.length == 0) { continue; }
+				setChunkRenderToggles(chunks, locdata.plane, false, true);
 
-					let sections = model.map(q => q.mesh.cloneSection(q));
-					model.map(q => q.mesh.setSectionHide(q, true));
-					let group = new Object3D();
-					group.add(...sections.map(q => q.mesh));
-					group.traverse(q => q.layers.set(1));
-					loaded.chunkroot.add(group);
+				let sections = model.map(q => q.mesh.cloneSection(q));
+				model.map(q => q.mesh.setSectionHide(q, true));
+				let group = new Object3D();
+				group.add(...sections.map(q => q.mesh));
+				group.traverse(q => q.layers.set(1));
+				loaded.chunkroot.add(group);
 
-					let ntiles = 16;
-					//TODO properly center the cam on bigger locs
-					let cam = mapImageCamera(loc.x - ntiles / 2, loc.z - ntiles / 2, ntiles, 0.15, 0.25);
-					let img = await renderer.renderer.takeMapPicture(cam, ntiles * thiscnf.pxpersquare, ntiles * thiscnf.pxpersquare, false, group);
-					flipImage(img);
-					group.removeFromParent();
+				let ntiles = 16;
+				let baseheight = getTileHeight(loaded.grid, locdata.x, locdata.z, locdata.plane);
+				let ypos = baseheight / tiledimensions + center[1];
+				let cam = mapImageCamera(locdata.x + center[0] + ypos * thiscnf.dxdy - ntiles / 2, locdata.z + center[2] + ypos * thiscnf.dzdy - ntiles / 2, ntiles, thiscnf.dxdy, thiscnf.dzdy);
+				let img = await renderer.renderer.takeMapPicture(cam, ntiles * thiscnf.pxpersquare, ntiles * thiscnf.pxpersquare, false, group);
+				flipImage(img);
+				group.removeFromParent();
 
-					model.map(q => q.mesh.setSectionHide(q, false));
+				model.map(q => q.mesh.setSectionHide(q, false));
 
-					let bounds = findImageBounds(img);
-					if (bounds.width == 0 || bounds.height == 0) {
-						emptyimagecount++;
-						continue;
-					}
-
-					let format = thiscnf.format ?? "webp";
-					let subimg = sliceImage(img, bounds);
-					let imgfile = await pixelsToImageFile(subimg, format, 0.9);
-					locjson.push({
-						name: loc.location.name ?? "",
-						ops,
-						id: loc.locid,
-						resolvedid: loc.resolvedlocid,
-						x: loc.x,
-						y: loc.z,
-						img: `data:image/${format};base64,${imgfile.toString("base64")}`
-					});
+				let bounds = findImageBounds(img);
+				if (bounds.width == 0 || bounds.height == 0) {
+					emptyimagecount++;
+					continue;
 				}
-			}
 
-			if (emptyimagecount != 0) { console.log("interactables empty", emptyimagecount, "nonempty", locjson.length); }
-			let buf = Buffer.from(JSON.stringify(locjson, undefined, "\t"));
+				let format = thiscnf.format ?? "webp";
+				let subimg = sliceImage(img, bounds);
+				let imgfile = await pixelsToImageFile(subimg, format, 0.9);
+				hashimgs[hash] = {
+					loc: locdata.locid,
+					dx: bounds.x - img.width / 2,
+					dy: bounds.y - img.height / 2,
+					center,
+					img: `data:image/${format};base64,${imgfile.toString("base64")}`
+				};
+			}
+			let textual = prettyJson({ locs, locdatas, rect, hashimgs, pxpertile: thiscnf.pxpersquare, dxdy: thiscnf.dxdy, dzdy: thiscnf.dzdy }, { indent: "\t" });
+			let buf = Buffer.from(textual, "utf8");
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);
 			}
@@ -975,9 +968,9 @@ const rendermodeLocs: RenderMode<"height"> = function (engine, config, cnf, deps
 		datarect: singlerect,
 		async run(chunks) {
 			let { grid, modeldata, chunkSize } = chunks[0].loaded.chunkdata;
-			let rawarea = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
-			let res = chunkSummary(grid, modeldata, rawarea);
-			let textual = prettyJson(res, { indent: "\t" });
+			let rect = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
+			let { locdatas, locs } = chunkSummary(grid, modeldata, rect);
+			let textual = prettyJson({ locdatas, locs, rect }, { indent: "\t" });
 			let buf = Buffer.from(textual, "utf8");
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);

@@ -491,7 +491,7 @@ export function getMorphMatrix(morph: FloorMorph, gridoffsetx: number, gridoffse
 
 export function transformVertexPositions(pos: BufferAttribute, morph: FloorMorph, grid: TileGrid, modelheight: number, gridoffsetx: number, gridoffsetz: number, newpos?: THREE.BufferAttribute, newposindex = 0, inputstart = 0, inputend = pos.count) {
 	let matrix = getMorphMatrix(morph, gridoffsetx, gridoffsetz);
-	let centery = getTileHeight(grid, (morph.originx) / tiledimensions, (morph.originz) / tiledimensions, morph.level);
+	let centery = getTileHeight(grid, morph.originx / tiledimensions, morph.originz / tiledimensions, morph.level);
 	let vector = new THREE.Vector3();
 
 	//let ceiling = typeof morph.tiletransform?.scaleModelHeight != "undefined";
@@ -1167,7 +1167,7 @@ export type RSMapChunkData = {
 	chunkSize: number,
 	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
-	modeldata: PlacedMesh[][],
+	modeldata: Map<WorldLocation, PlacedMesh[]>,
 	chunkroot: THREE.Group,
 	chunkx: number,
 	chunkz: number,
@@ -1176,7 +1176,7 @@ export type RSMapChunkData = {
 
 export async function renderMapSquare(cache: ThreejsSceneCache, chunkx: number, chunkz: number, opts: ParsemapOpts): Promise<RSMapChunkData> {
 	let { grid, chunk } = await parseMapsquare(cache.engine, chunkx, chunkz, opts);
-	let modeldata: PlacedMesh[][] = [];
+	let modeldata: Map<WorldLocation, PlacedMesh[]>;
 	let chunkroot = new THREE.Group();
 	chunkroot.name = `mapsquare ${chunkx}.${chunkz}`;
 	let locRenders = new Map<WorldLocation, ThreeJsRenderSection[]>();
@@ -1212,6 +1212,8 @@ export async function renderMapSquare(cache: ThreejsSceneCache, chunkx: number, 
 			if (rawboxes) { chunkroot.add(rawboxes); }
 		}
 		modeldata = locmeshes.byLogical;
+	} else {
+		modeldata = new Map();
 	}
 	let sky = (chunk && opts?.skybox ? await mapsquareSkybox(cache, chunk) : null);
 	let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -1986,8 +1988,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locba
 	let loadedmodels = new Map<number, ModelData>();
 
 	let matmeshes: Map<string, Map<number, PlacedModel>> = new Map();
-	let byLogical: PlacedMesh[][] = [];
-
+	let byLogical = new Map<WorldLocation, PlacedMesh[]>;
 
 	let locs = locbases.map(loc => mapsquareObjectModels(scene.engine, loc, minimap));
 	let loadproms: Promise<any>[] = [];
@@ -2005,7 +2006,8 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locba
 	}
 	await Promise.all(loadproms);
 
-	for (let obj of locs) {
+	for (let index = 0; index < locs.length; index++) {
+		let obj = locs[index];
 		let miny = 0;
 		let maxy = 0;
 		for (let modelinst of obj.models) {
@@ -2048,7 +2050,7 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locba
 			}
 		}
 		if (meshes.length != 0) {
-			byLogical.push(meshes);
+			byLogical.set(locbases[index], meshes);
 		}
 	}
 	let byMaterial: PlacedModel[] = [];
@@ -2106,13 +2108,13 @@ class RSBatchMesh extends THREE.Mesh {
 			this.geometry.index.array.set(tmp, newoffset);
 		}
 
-		let front = (hide ? section.startindex : drawend);
-		let back = (hide ? drawend - len : drawend);
+		let front = (hide ? section.startindex : newoffset);
+		let back = (hide ? drawend : section.endindex);
 		let changediff = (hide ? -len : len);
 		for (let i = 0; i < this.renderSections.length; i++) {
 			let other = this.renderSections[i];
 			if (other == section) { continue; }
-			if (other.startindex <= front || other.startindex > back) { continue; }
+			if (other.startindex < front || other.startindex >= back) { continue; }
 			other.startindex += changediff;
 			other.endindex += changediff;
 		}

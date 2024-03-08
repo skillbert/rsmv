@@ -1,6 +1,6 @@
 import { Box2, BufferAttribute, Group, Matrix4, Vector2, Vector3 } from "three";
 import { objects } from "../../generated/objects";
-import { ChunkData, MapRect, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
+import { ChunkData, getTileHeight, MapRect, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
 import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBuilder } from "../3d/modelutils";
 import { DependencyGraph } from "../scripts/dependencies";
@@ -10,58 +10,104 @@ import { RenderedMapMeta } from ".";
 import { crc32addInt } from "../libs/crc32util";
 import type { RSMapChunk } from "../3d/modelnodes";
 
-export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRect) {
+export function getLocImageHash(grid: TileGrid, info: WorldLocation) {
+	let loc = info.location;
+	let sizex = (loc.width ?? 1);
+	let sizez = (loc.length ?? 1);
+	if ((info.rotation % 2) == 1) {
+		//flip offsets if we are rotated with 90deg or 270deg
+		[sizex, sizez] = [sizez, sizex];
+	}
+
+	let subgrid: number[] = [];
+	for (let dfloor = 0; dfloor <= 1; dfloor++) {
+		for (let dz = 0; dz <= sizex; dz++) {
+			for (let dx = 0; dx <= sizex; dx++) {
+				subgrid.push(getTileHeight(grid, info.x + dx, info.z + dz, info.plane + dfloor));
+			}
+		}
+	}
+	let baseheight = getTileHeight(grid, info.x, info.z, info.plane);
+
+	let hash = modelPlacementHash(info, false);
+	hash = crc32addInt(info.resolvedlocid, hash);
+	for (let height of subgrid) {
+		hash = crc32addInt(height - baseheight, hash);
+	}
+	return hash;
+}
+const pointAttribute = new BufferAttribute(new Float32Array(3), 3);
+
+function getLocCenter(grid: TileGrid, model: PlacedMesh[]) {
+	let first = model[0];
 	let sum = new Vector3();
 	let tmp = new Vector3();
-	const pointAttribute = new BufferAttribute(new Float32Array(3), 3);
 
+	sum.set(0, 0, 0);
+	let count = 0;
+	for (let mesh of model) {
+		for (let i = 0; i < mesh.model.indices.count; i++) {
+			let vertindex = mesh.model.indices.getX(i);
+			tmp.fromBufferAttribute(mesh.model.attributes.pos, vertindex);
+			sum.add(tmp);
+		}
+		count += mesh.model.indices.count;
+	}
+	sum.divideScalar(count);
+	pointAttribute.setXYZ(0, sum.x, sum.y, sum.z);
+	let newpos = transformVertexPositions(pointAttribute, first.morph, grid, first.maxy - first.miny, 0, 0);
+	tmp.fromBufferAttribute(newpos, 0);
+	tmp.divideScalar(tiledimensions);
+	return tmp;
+}
+
+export function chunkSummary(grid: TileGrid, locdefs: Map<WorldLocation, PlacedMesh[]>, rect: MapRect) {
 	let locids = new Map<number, objects>();
-	let locs: { id: number, x: number, z: number, l: number, r: number, center: number[] }[] = [];
-	for (let model of models) {
-		let first = model[0];
-		let info = first.extras;
-		if (info.modeltype != "location") { continue; }
+	let locs: { id: number, x: number, z: number, l: number, r: number, h: number, center: number[] }[] = [];
+	let hashes = new Map<number, { center: number[], locdata: WorldLocation }>();
+	for (let [locdata, model] of locdefs) {
 		if (
-			info.worldx < rect.x
-			|| info.worldz < rect.z
-			|| info.worldx >= rect.x + rect.xsize
-			|| info.worldz >= rect.z + rect.zsize
+			locdata.x < rect.x
+			|| locdata.z < rect.z
+			|| locdata.x >= rect.x + rect.xsize
+			|| locdata.z >= rect.z + rect.zsize
 		) {
 			continue;
 		}
 
-		let loc = locids.get(info.locationid);
+		let loc = locids.get(locdata.locid);
 		if (!loc) {
-			loc = info.locationInstance.location;
-			locids.set(info.locationid, loc);
+			loc = locdata.location;
+			locids.set(locdata.locid, loc);
 		}
 		if (!loc.name) { continue; }
 
-		sum.set(0, 0, 0);
-		let count = 0;
-		for (let mesh of model) {
-			for (let i = 0; i < mesh.model.indices.count; i++) {
-				let vertindex = mesh.model.indices.getX(i);
-				tmp.fromBufferAttribute(mesh.model.attributes.pos, vertindex);
-				sum.add(tmp);
-			}
-			count += mesh.model.indices.count;
-		}
-		sum.divideScalar(count);
-		pointAttribute.setXYZ(0, sum.x, sum.y, sum.z);
-		let newpos = transformVertexPositions(pointAttribute, first.morph, grid, first.maxy - first.miny, 0, 0);
+		let center = getLocCenter(grid, model);
 
+		let imghash = getLocImageHash(grid, locdata);
 		locs.push({
-			id: info.locationid,
-			x: info.worldx,
-			z: info.worldz,
-			l: info.level,
-			r: info.rotation,
+			id: locdata.locid,
+			x: locdata.x,
+			z: locdata.z,
+			l: locdata.plane,
+			r: locdata.rotation,
+			h: imghash,
 			center: [
-				Math.round(newpos.getX(0) / 512 * 100) / 100,
-				Math.round(newpos.getY(0) / 512 * 100) / 100,
-				Math.round(newpos.getZ(0) / 512 * 100) / 100
+				+center.x.toFixed(2),
+				+center.y.toFixed(2),
+				+center.z.toFixed(2)
 			]
+		});
+		center.x -= locdata.x;
+		center.y -= getTileHeight(grid, locdata.x, locdata.z, locdata.plane) / tiledimensions;
+		center.z -= locdata.z;
+		hashes.set(imghash, {
+			center: [
+				+center.x.toFixed(2),
+				+center.y.toFixed(2),
+				+center.z.toFixed(2)
+			],
+			locdata
 		});
 	}
 
@@ -70,7 +116,7 @@ export function chunkSummary(grid: TileGrid, models: PlacedMesh[][], rect: MapRe
 	return {
 		locs,
 		locdatas,
-		rect
+		hashes
 	};
 }
 
@@ -155,14 +201,14 @@ function compareChunkLoc(a: ChunkLocDependencies["instances"][number], b: ChunkL
 	return a.plane - b.plane || a.x - b.x || a.z - b.z || a.rotation - b.rotation || a.type - b.type;
 }
 
-export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: PlacedMesh[][], chunkx: number, chunkz: number) {
+export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: Map<WorldLocation, PlacedMesh[]>, chunkx: number, chunkz: number) {
 	const boxAttribute = new BufferAttribute(new Float32Array(3 * 8), 3);
 	const v0 = new Vector3();
 	const v1 = new Vector3();
 	const v2 = new Vector3();
 
 	let locgroups = new Map<number, PlacedMeshBase<ModelExtrasLocation>[][]>();
-	for (let models of locs) {
+	for (let models of locs.values()) {
 		let first = models[0];//TODO why only index 0, i forgot
 		if (first.extras.modeltype == "location") {
 			let group = locgroups.get(first.extras.locationid);
@@ -652,11 +698,13 @@ globalThis.test = async (low: number, high: number) => {
 	frame();
 }
 
-function modelPlacementHash(loc: WorldLocation) {
+function modelPlacementHash(loc: WorldLocation, includeposition = true) {
 	let hash = 0;
-	hash = crc32addInt(loc.x, hash);
-	hash = crc32addInt(loc.z, hash);
-	hash = crc32addInt(loc.plane, hash);
+	if (includeposition) {
+		hash = crc32addInt(loc.x, hash);
+		hash = crc32addInt(loc.z, hash);
+		hash = crc32addInt(loc.plane, hash);
+	}
 	hash = crc32addInt(loc.rotation, hash);
 	hash = crc32addInt(loc.type, hash);
 	if (loc.placement) {
