@@ -43,17 +43,27 @@ export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implement
 		this.emit("writefile", undefined);
 		this.output?.emit("writefile", undefined);
 	}
-	readFileBuffer(name: string): Promise<Buffer> {
-		throw new Error("not implemented");
+	async readFileBuffer(name: string): Promise<Buffer> {
+		let entry = this.filesMap.get(name);
+		if (!entry) { throw new Error("file not found"); }
+		return (typeof entry.data == "string" ? Buffer.from(entry.data, "utf8") : entry.data);
 	}
-	readFileText(name: string): Promise<string> {
-		throw new Error("not implemented");
+	async readFileText(name: string): Promise<string> {
+		let entry = this.filesMap.get(name);
+		if (!entry) { throw new Error("file not found"); }
+		return (typeof entry.data == "string" ? entry.data : entry.data.toString("utf8"));
 	}
 	readDir(name: string): Promise<string[]> {
 		throw new Error("not implemented");
 	}
 	unlink(name: string): Promise<void> {
 		throw new Error("not implemented");
+	}
+	async copyFile(from: string, to: string, symlink: boolean) {
+		let file = this.filesMap.get(from);
+		if (!file) { throw new Error("symlink file doesn't exist"); }
+		this.filesMap.set(to, file);
+		if (this.rootdirhandle) { await this.saveLocalFile(to, file.data); }
 	}
 
 	async setSaveDirHandle(dir: FileSystemDirectoryHandle) {

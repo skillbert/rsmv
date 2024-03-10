@@ -23,7 +23,7 @@ export function BlobImage(p: { file: Uint8Array, ext: string, fillHeight?: boole
 	let urlref = React.useRef("");
 	let ref = React.useCallback((el: HTMLImageElement | null) => {
 		if (el) {
-			let blob = new Blob([p.file], { type: `image/${p.ext}` });
+			let blob = new Blob([p.file], { type: `image/${p.ext == "svg" ? "svg+xml" : p.ext}` });
 			let url = URL.createObjectURL(blob);
 			urlref.current = url;
 			el.src = url;

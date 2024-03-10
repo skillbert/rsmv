@@ -1,7 +1,9 @@
-import fs from "fs/promises";
 import path from "path";
 import { LayerConfig, Mapconfig } from ".";
 import { FetchThrottler } from "../utils";
+import { ScriptFS } from "../scriptrunner";
+import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
+import * as commentjson from "comment-json";
 
 export type VersionFilter = { from?: number, to?: number };
 
@@ -10,6 +12,13 @@ export type UniqueMapFile = { name: string, hash: number };
 export type KnownMapFile = { hash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
 
 export type SymlinkCommand = { file: string, buildnr: number, hash: number, symlink: string, symlinkbuildnr: number, symlinkfirstbuildnr: number };
+
+export function parseMapConfig(configfile: string) {
+	let layerconfig = commentjson.parse(configfile) as any;
+	delete layerconfig.$schema;//for some reason jsonschema has special (incorrect) behavior for this
+	assertSchema(layerconfig, maprenderConfigSchema);
+	return layerconfig;
+}
 
 export abstract class MapRender {
 	config: Mapconfig;
@@ -41,17 +50,10 @@ export abstract class MapRender {
 }
 
 export class MapRenderFsBacked extends MapRender {
-	path: string;
-	copyOnSymlink = true;
-	constructor(filepath: string, config: Mapconfig) {
+	fs: ScriptFS;
+	constructor(fs: ScriptFS, config: Mapconfig) {
 		super(config);
-		this.path = path.resolve(filepath);
-	}
-	async getFilePath(name: string) {
-		let pathname = path.resolve(this.path, name);
-		let dir = path.dirname(pathname);
-		await fs.mkdir(dir, { recursive: true });
-		return pathname;
+		this.fs = fs;
 	}
 	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
 		return `${layer}/${zoom}/${x}-${y}.${ext}`;
@@ -61,14 +63,16 @@ export class MapRenderFsBacked extends MapRender {
 	}
 	async saveFile(name: string, hash: number, data: Buffer, version: number) {
 		this.assertVersion(version);
-		await fs.writeFile(await this.getFilePath(name), data);
+		await this.fs.mkDir(path.dirname(name));
+		await this.fs.writeFile(name, data);
 	}
 	async getFileResponse(name: string, version?: number) {
 		this.assertVersion(version);
 		try {
 			let ext = name.match(/\.(\w+)$/);
 			let mimetype = (ext ? ext[1] == "svg" ? "image/svg+xml" : `image/${ext[1]}` : "");
-			let file = await fs.readFile(await this.getFilePath(name));
+			await this.fs.mkDir(path.dirname(name));
+			let file = await this.fs.readFileBuffer(name);
 			return new Response(file, { headers: { "content-type": mimetype } });
 		} catch {
 			return new Response(null, { status: 404 });
@@ -76,12 +80,9 @@ export class MapRenderFsBacked extends MapRender {
 	}
 	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
 		this.assertVersion(targetversion);
-		if (this.copyOnSymlink) {
-			//don't actually symliink because windows its weird in windows
-			await fs.copyFile(await this.getFilePath(targetname), await this.getFilePath(name));
-		} else {
-			await fs.symlink(await this.getFilePath(name), await this.getFilePath(targetname), "file");
-		}
+		await this.fs.mkDir(path.dirname(name));
+		await this.fs.mkDir(path.dirname(targetname));
+		await this.fs.copyFile(name, targetname, true);
 	}
 }
 
@@ -199,3 +200,103 @@ export class MapRenderDatabaseBacked extends MapRender {
 		return this.fileThrottler.apiRequest(url, { cache: "reload" });
 	}
 }
+
+
+
+//TODO move to seperate file?
+export const examplemapconfig = `
+{
+	"$schema": "../generated/maprenderconfig.schema.json",
+	//test gives a 3x3 area around lumby, "main" for the main world map, "full" for everything, a list of rectangles is also accepted eg: "50.50,20.20-70.70"
+	"area": "test",//"45.45-55.55", //"50.45-51.46",
+	//the size of the output images, usually 256 or 512
+	"tileimgsize": 512,
+	//list of layers to render
+	"layers": [
+		{
+			"name": "level-0", //name of the layer, this will be the folder name
+			"mode": "3d", //3d world render
+			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested
+			"level": 0, //floor level of the render, 0 means ground floor and all roofs are hidden, highest level is 3 which makes all roofs visible
+			"pxpersquare": 64, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
+			"dxdy": 0.15, //dxdy and dzdy to determine the view angle, 0,0 for straight down, something like 0.15,0.25 for birds eye
+			"dzdy": 0.25
+		},
+		{
+			"name": "topdown-0", //name of the layer, this will be the folder name
+			"mode": "3d", //3d world render
+			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested
+			"level": 0, //floor level of the render, 0 means ground floor and all roofs are hidden, highest level is 3 which makes all roofs visible
+			"pxpersquare": 64, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
+			"dxdy": 0, //dxdy and dzdy to determine the view angle, 0,0 for straight down, something like 0.15,0.25 for birds eye
+			"dzdy": 0
+		},
+		{
+			"name": "map",
+			"mode": "map", //old style 2d map render
+			"format": "png",
+			"level": 0,
+			"pxpersquare": 64,
+			"mapicons": true,
+			"wallsonly": false //can be turned on to create a walls overlay layer to use on top of an existing 3d layer
+		},
+		{
+			"name": "minimap",
+			"mode": "minimap", //minimap style render, similar to 3d but uses different shaders and emulates several rs bugs.
+			"format": "webp",
+			"level": 0,
+			"pxpersquare": 64,
+			"hidelocs": false, //can be turned on to emulate partially loaded minimap
+			"mipmode": "avg", //results in every pixel of a mip image being exactly the mean of 4 zoomed pixels without any other filtering steps, required for minimap localization
+			"dxdy": 0,
+			"dzdy": 0
+		},
+		{
+			"name": "collision",
+			"mode": "collision", //pathing/line of sight as overlay image layer to use on "map" or "3d"
+			"format": "png",
+			"level": 0,
+			"pxpersquare": 64
+		},
+		{
+			"name": "height",
+			"mode": "height", //binary file per chunk containing 16bit height data and 16 bits of collision data in base3 per tile
+			"level": 0,
+			"pxpersquare": 1, //unused but required
+			"usegzip": true //gzips the resulting file, need some server config to serve the compressed file
+		},
+		{
+			"name": "locs",
+			"mode": "locs", //json file with locs per chunk
+			"level": 0,
+			"pxpersquare": 1, //unused but required
+			"usegzip": false
+		},
+		{
+			"name": "maplabels",
+			"mode": "maplabels", //json file per chunk containing maplabel images and uses
+			"level": 0,
+			"pxpersquare": 1,
+			"usegzip": false
+		},
+		{
+			"name": "rendermeta",
+			"mode": "rendermeta", //advanced - json file containing metadata about the chunk render, used to dedupe historic renders
+			"level": 0,
+			"pxpersquare": 1
+		},
+		{
+			"name": "interactions",
+			"mode": "interactions",
+			"pxpersquare": 64, //same arguments as mode="3d"
+			"dxdy": 0.15,
+			"dzdy": 0.25,
+			"format": "webp",
+			"level": 0,
+			"usegzip": true
+		}
+	],
+	//used to determine lowest scaling mip level, should generally always be 100,200 which ensures the lowest mip level contains the entire rs world in one image
+	"mapsizex": 100,
+	"mapsizez": 200
+}`;

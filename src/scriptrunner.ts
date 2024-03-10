@@ -17,11 +17,13 @@ export interface ScriptFS {
     readFileText(name: string): Promise<string>,
     readFileBuffer(name: string): Promise<Buffer>,
     readDir(name: string): Promise<string[]>,
+    copyFile(from: string, to: string, symlink: boolean): Promise<void>,
     unlink(name: string): Promise<void>
 }
 
 export class CLIScriptFS implements ScriptFS {
     dir: string;
+    copyOnSymlink = true;
     constructor(dir: string) {
         this.dir = path.resolve(dir);
         if (dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -43,6 +45,14 @@ export class CLIScriptFS implements ScriptFS {
     }
     unlink(name: string) {
         return fs.promises.unlink(path.resolve(this.dir, name));
+    }
+    copyFile(from: string, to: string, symlink: boolean) {
+        if (!symlink || this.copyOnSymlink) {
+            //don't actually symliink because its weird in windows
+            return fs.promises.copyFile(path.resolve(this.dir, from), path.resolve(this.dir, to));
+        } else {
+            return fs.promises.symlink(path.resolve(this.dir, to), path.resolve(this.dir, from));
+        }
     }
 }
 

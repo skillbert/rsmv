@@ -654,7 +654,7 @@ export function FileDisplay(p: { file: UIScriptFile }) {
 			const cnv = cnvref.current;
 			tex.toWebgl().then(img => drawTexture(cnv.getContext("2d")!, img));
 			el = <CanvasView canvas={cnvref.current} fillHeight={true} />;
-		} else if (["png", "jpg", "jpeg", "webp", "cnv"].includes(ext)) {
+		} else if (["png", "jpg", "jpeg", "webp", "svg"].includes(ext)) {
 			el = <BlobImage file={filedata} ext={ext} fillHeight={true} />
 		} else if (ext == "jaga" || ext == "ogg") {
 			let header = filedata.readUint32BE(0);

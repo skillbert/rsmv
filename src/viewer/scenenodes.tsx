@@ -26,16 +26,18 @@ import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
 import { FileParser } from '../opdecoder';
-import { assertSchema, customModelDefSchema, parseJsonOrDefault, scenarioStateSchema } from '../jsonschemas';
+import { assertSchema, customModelDefSchema, maprenderConfigSchema, parseJsonOrDefault, scenarioStateSchema } from '../jsonschemas';
 import { fileHistory } from '../scripts/filehistory';
 import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
-import { MapRenderDatabaseBacked } from '../map/backends';
+import { MapRenderDatabaseBacked, MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../map/backends';
 import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
 import { CliApiContext, cliApi } from '../clicommands';
 import * as cmdts from "cmd-ts";
+import * as commentjson from "comment-json";
+
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
 
@@ -2208,7 +2210,8 @@ function ExtractHistoricScript(p: UiScriptProps) {
 	)
 }
 
-function MaprenderScript(p: UiScriptProps) {
+//not currently exposed, needs some fixing or just delete
+function MapRemoteRenderScript(p: UiScriptProps) {
 	let [endpoint, setEndpoint] = React.useState(localStorage.rsmv_script_map_endpoint ?? "");
 	let [auth, setAuth] = React.useState("");
 	let [mapid, setMapId] = React.useState(0);
@@ -2233,6 +2236,39 @@ function MaprenderScript(p: UiScriptProps) {
 			<LabeledInput label="mapid">
 				<InputCommitted type="number" onChange={e => setMapId(+e.currentTarget.value)} value={mapid} />
 			</LabeledInput>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
+		</React.Fragment>
+	)
+}
+
+function MaprenderScript(p: UiScriptProps) {
+	let [configjson, setconfigjson] = React.useState(examplemapconfig);
+
+	let run = async () => {
+		let output = new UIScriptOutput();
+		let fs = output.makefs("render");
+		let config = new MapRenderFsBacked(fs, parseMapConfig(configjson));
+		await fs.writeFile("mapconfig.json", configjson);
+		output.run(runMapRender, p.source, config, true);
+		p.onRun(output, "");
+	}
+
+	let editconfig = () => {
+		let modal = showModal({ title: "Map render config" }, (
+			<form style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+				<textarea name="parsertext" defaultValue={configjson} style={{ flex: "1000px 1 1", resize: "none", whiteSpace: "nowrap" }} />
+				<input type="button" className="sub-btn" value="Confirm" onClick={e => { setconfigjson(e.currentTarget.form!.parsertext.value); modal.close(); }} />
+			</form>
+		))
+	}
+
+	return (
+		<React.Fragment>
+			<p>Render 3d world map. (there is a CLI version of this command which is much more performant)</p>
+			<div>
+				<input type="button" className="sub-btn" value="Edit Config" onClick={editconfig} />
+				{configjson != examplemapconfig && <input type="button" className="sub-btn" value="Reset" onClick={e => setconfigjson(examplemapconfig)} />}
+			</div>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)

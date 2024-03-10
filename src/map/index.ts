@@ -457,6 +457,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 			let task = renderMapsquare(engine, config, depstracker, mipper, progress, chunk.x, chunk.z);
 			let lastrender = activerender;
 			let fn = (async () => {
+				if (output.state != "running") { return; }
 				for (let retry = 0; retry <= maxretries; retry++) {
 					try {
 						let renderprom = lastrender.then(() => maprender ??= getRenderer());

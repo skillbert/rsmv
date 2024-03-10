@@ -3,14 +3,12 @@ import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CLIScriptFS, CLIScriptOutput } from "../scriptrunner";
 import { runMapRender } from ".";
-import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked } from "./backends";
+import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked, parseMapConfig } from "./backends";
 import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { stringToFileRange } from "../utils";
 import { classicBuilds, ClassicFileSource, detectClassicVersions } from "../cache/classicloader";
 import path from "path";
 import fs from "fs/promises";
-import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
-import * as commentjson from "comment-json";
 
 let cmd = cmdts.command({
 	name: "download",
@@ -44,10 +42,8 @@ let cmd = cmdts.command({
 			let outdir = args.outdir ?? path.dirname(args.configfile!);
 			let configfile = await fs.readFile(args.configfile!, "utf8");
 			await fs.access(outdir);//check if we're allowed to write the outdir
-			let layerconfig = commentjson.parse(configfile) as any;
-			delete layerconfig.$schema;//for some reason jsonschema has special (incorrect) behavior for this
-			assertSchema(layerconfig, maprenderConfigSchema);
-			config = new MapRenderFsBacked(outdir, layerconfig);
+			let scriptfs = new CLIScriptFS(outdir);
+			config = new MapRenderFsBacked(scriptfs, parseMapConfig(configfile));
 		} else {
 			throw new Error("no map endpoint selected");
 		}
