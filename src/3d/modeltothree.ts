@@ -749,7 +749,7 @@ export function mergeBoneids(model: ModelData) {
 	order.sort((a, b) => compareVertkeys(model, a, b));
 	for (let i = 0; i < order.length;) {
 		let start = i;
-		while (compareVertkeys(model, order[start], order[++i]) == 0);
+		while (i < order.length && compareVertkeys(model, order[start], order[++i]) == 0);
 		if (i > start + 1) {
 			const mesh1 = model.meshes[order[start] >> 23];
 			const i1 = order[start] & 0x7fffff;
