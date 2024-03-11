@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 
 export type ScriptState = "running" | "canceled" | "error" | "done";
+export type ScriptFSEntry = { name: string, kind: "file" | "directory" };
 
 export interface ScriptOutput {
     state: ScriptState;
@@ -14,11 +15,15 @@ export interface ScriptOutput {
 export interface ScriptFS {
     mkDir(name: string): Promise<any>;
     writeFile(name: string, data: Buffer | string): Promise<void>;
-    readFileText(name: string): Promise<string>,
-    readFileBuffer(name: string): Promise<Buffer>,
-    readDir(name: string): Promise<string[]>,
-    copyFile(from: string, to: string, symlink: boolean): Promise<void>,
-    unlink(name: string): Promise<void>
+    readFileText(name: string): Promise<string>;
+    readFileBuffer(name: string): Promise<Buffer>;
+    readDir(dir: string): Promise<ScriptFSEntry[]>;
+    copyFile(from: string, to: string, symlink: boolean): Promise<void>;
+    unlink(name: string): Promise<void>;
+}
+
+export function naiveDirname(filename: string) {
+    return filename.split("/").slice(0, -1).join("/");
 }
 
 export class CLIScriptFS implements ScriptFS {
@@ -40,8 +45,9 @@ export class CLIScriptFS implements ScriptFS {
     readFileText(name: string) {
         return fs.promises.readFile(path.resolve(this.dir, name), "utf-8");
     }
-    readDir(name: string): Promise<string[]> {
-        return fs.promises.readdir(path.resolve(this.dir, name));
+    async readDir(name: string) {
+        let files = await fs.promises.readdir(path.resolve(this.dir, name), { withFileTypes: true });
+        return files.map(q => ({ name: q.name, kind: (q.isDirectory() ? "directory" as const : "file" as const) }));
     }
     unlink(name: string) {
         return fs.promises.unlink(path.resolve(this.dir, name));

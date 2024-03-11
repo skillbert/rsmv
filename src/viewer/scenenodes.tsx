@@ -2248,7 +2248,7 @@ function MaprenderScript(p: UiScriptProps) {
 		let output = new UIScriptOutput();
 		let fs = output.makefs("render");
 		let config = new MapRenderFsBacked(fs, parseMapConfig(configjson));
-		await fs.writeFile("mapconfig.json", configjson);
+		await fs.writeFile("mapconfig.jsonc", configjson);
 		output.run(runMapRender, p.source, config, true);
 		p.onRun(output, "");
 	}

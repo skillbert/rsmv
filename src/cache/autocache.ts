@@ -3,18 +3,18 @@ import { WasmGameCacheLoader } from "./sqlitewasm";
 import { ClassicFileSource } from "./classicloader";
 import { CLIScriptFS, ScriptFS } from "../scriptrunner";
 import { CacheOpts } from "../cliparser";
-import { UIScriptFS } from "../viewer/scriptsui";
+import { WebFsScriptFS } from "../viewer/scriptsui";
 //TODO .dat / .dat2
 
 export async function selectFsCache(fs: ScriptFS, opts?: CacheOpts) {
-    let filenames = await fs.readDir(".");
+    let files = await fs.readDir(".");
 
     let jcachecount = 0;
     let datcount = 0;
     let dat2count = 0;
     let jagcount = 0;
-    for (let name of filenames) {
-        let ext = name.match(/\.(\w+)$/);
+    for (let file of files) {
+        let ext = file.name.match(/\.(\w+)$/);
         if (ext?.[1] == "jcache") { jcachecount++; }
         if (ext?.[1] == "dat2") { dat2count++; }
         if (ext?.[1] == "dat") { datcount++; }
@@ -26,10 +26,10 @@ export async function selectFsCache(fs: ScriptFS, opts?: CacheOpts) {
     if (maxcount == jcachecount) {
         if (fs instanceof CLIScriptFS) {
             return new GameCacheLoader(fs.dir, !!opts?.writable);
-        } else if (fs instanceof UIScriptFS) {
-            if (!fs.rootdirhandle) { throw new Error("need fs with hard disk backing"); }
+        } else if (fs instanceof WebFsScriptFS) {
+            if (!fs.roothandle) { throw new Error("need fs with hard disk backing"); }
             let cache = new WasmGameCacheLoader();
-            await cache.giveFsDirectory(fs.rootdirhandle);
+            await cache.giveFsDirectory(fs.roothandle);
             return cache;
         }
     }

@@ -1,7 +1,6 @@
-import path from "path";
 import { LayerConfig, Mapconfig } from ".";
 import { FetchThrottler } from "../utils";
-import { ScriptFS } from "../scriptrunner";
+import { ScriptFS, naiveDirname } from "../scriptrunner";
 import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
 import * as commentjson from "comment-json";
 
@@ -63,7 +62,7 @@ export class MapRenderFsBacked extends MapRender {
 	}
 	async saveFile(name: string, hash: number, data: Buffer, version: number) {
 		this.assertVersion(version);
-		await this.fs.mkDir(path.dirname(name));
+		await this.fs.mkDir(naiveDirname(name));
 		await this.fs.writeFile(name, data);
 	}
 	async getFileResponse(name: string, version?: number) {
@@ -71,7 +70,7 @@ export class MapRenderFsBacked extends MapRender {
 		try {
 			let ext = name.match(/\.(\w+)$/);
 			let mimetype = (ext ? ext[1] == "svg" ? "image/svg+xml" : `image/${ext[1]}` : "");
-			await this.fs.mkDir(path.dirname(name));
+			await this.fs.mkDir(naiveDirname(name));
 			let file = await this.fs.readFileBuffer(name);
 			return new Response(file, { headers: { "content-type": mimetype } });
 		} catch {
@@ -80,8 +79,7 @@ export class MapRenderFsBacked extends MapRender {
 	}
 	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
 		this.assertVersion(targetversion);
-		await this.fs.mkDir(path.dirname(name));
-		await this.fs.mkDir(path.dirname(targetname));
+		await this.fs.mkDir(naiveDirname(targetname));
 		await this.fs.copyFile(name, targetname, true);
 	}
 }

@@ -1,112 +1,241 @@
 import { TypedEmitter } from "../utils";
-import * as fs from "fs";
-import * as path from "path";
 import { useEffect } from "react";
 import * as React from "react";
-import classNames from "classnames";
 import { UIContext } from "./maincomponents";
 import { TabStrip } from "./commoncontrols";
 import { showModal } from "./jsonsearch";
 import VR360Viewer from "../libs/vr360viewer";
-import { ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
+import { CLIScriptFS, ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
+import path from "path";
+
+//work around typescript being weird when compiling for browser
+const electron = require("electron/renderer");
 
 
-export type UIScriptFile = { name: string, data: Buffer | string };
+export type UIScriptFile = { name: string, kind: "file", data: Buffer | string }
+	| { name: string, kind: "directory", files: Map<string, UIScriptFile> };
 
-export class UIScriptFS extends TypedEmitter<{ writefile: undefined }> implements ScriptFS {
-	filesMap = new Map<string, UIScriptFile>();
-	rootdirhandle: FileSystemDirectoryHandle | null = null;
-	outdirhandles = new Map<string, FileSystemDirectoryHandle | null>();
+export class WebFsScriptFS implements ScriptFS {
+	roothandle: FileSystemDirectoryHandle;
+	dirhandles = new Map<string, FileSystemDirectoryHandle | null>();
+	constructor(handle: FileSystemDirectoryHandle) {
+		this.roothandle = handle;
+		this.dirhandles.set("", handle);
+	}
+	async getDir(dir: string, create: boolean) {
+		let parts = dir.split("/");
+		let cdir = this.roothandle;
+		let cpath = "";
+		for (let p of parts) {
+			if (p == "..") { throw new Error("unexpected"); }
+			if (p == "." || p == "") { continue; }
+			cpath += p + "/";
+			let subdir = this.dirhandles.get(cpath);
+			if (!subdir) {
+				if (!create) { throw new Error(`dir ${dir} does not exist`); }
+				subdir = await cdir.getDirectoryHandle(p, { create: true });
+				this.dirhandles.set(cpath, subdir);
+			}
+			cdir = subdir;
+		}
+		return cdir;
+	}
+	async getFile(name: string, create: boolean) {
+		let parts = name.split("/");
+		let filename = parts.pop()!;
+		let dir = await this.getDir(parts.join("/"), false);
+		return dir.getFileHandle(filename, { create });
+	}
+
+	async mkDir(dir: string) {
+		await this.getDir(dir, true);
+	}
+	async readDir(dirname: string) {
+		let dir = await this.getDir(dirname, false);
+		let files: { name: string, kind: "file" | "directory" }[] = [];
+		for await (let [name, v] of dir.entries()) {
+			files.push({ name, kind: v.kind });
+		}
+		return files;
+	}
+	async writeFile(name: string, data: Buffer | string) {
+		let file = await this.getFile(name, true);
+		let str = await file.createWritable({ keepExistingData: false });
+		await str.write(data);
+		await str.close();
+	}
+	async unlink(name: string) {
+		throw new Error("not implemented");
+		// let parts = name.split("/");
+		// let filename = parts.pop()!;
+		// let dir = await this.getDir(parts.join("/"), false);
+		// dir.removeEntry(filename);
+	}
+	async copyFile(from: string, to: string, symlink: boolean) {
+		await this.writeFile(to, await this.readFileBuffer(from));
+	}
+	async readFileBuffer(name: string) {
+		let file = await this.getFile(name, false);
+		return Buffer.from(await (await file.getFile()).arrayBuffer());
+	}
+	async readFileText(name: string) {
+		let file = await this.getFile(name, false);
+		return (await file.getFile()).text()
+	}
+}
+
+function getsubnode(node: UIScriptFile, name: string) {
+	if (node.kind != "directory") { return undefined; }
+	if (name == "" || name == ".") { return node; }
+	if (name == "..") { throw new Error("directory up (..) not allowed"); }
+	return node.files.get(name);
+}
+
+export class UIScriptFS extends TypedEmitter<{ writefile: string, unlink: string, mkdir: string }> implements ScriptFS {
+	rootmemfsnode: UIScriptFile = { name: ".", kind: "directory", files: new Map() };
 	output: UIScriptOutput | null;
+	backingfs: ScriptFS | null;
+	backingfsstarted: boolean;
+	stallmkdir: Promise<void> | null = null;
 
-	constructor(output: UIScriptOutput | null) {
+	constructor(output: UIScriptOutput | null, backingfs: ScriptFS | null = null) {
 		super();
 		this.output = output;
+		this.backingfs = backingfs;
+		this.backingfsstarted = !!backingfs;
+	}
+
+	getFileNode<P extends boolean = false>(name: string, parent?: P): P extends true ? UIScriptFile & { kind: "directory" } : UIScriptFile {
+		let parts = name.split("/");
+		let end = (!!parent ? parts.length - 1 : parts.length);
+		let node = this.rootmemfsnode;
+		for (let i = 0; i < end; i++) {
+			let part = parts[i];
+			let newnode = getsubnode(node, part);
+			if (!newnode) { throw new Error(`file node ${name} not found`); }
+			node = newnode;
+		}
+		if (!!parent && node.kind != "directory") { throw new Error(`${name} is not a directory`); }
+		return node as any;
 	}
 
 	async mkDir(name: string) {
-		this.outdirhandles.set(name, null);
-		this.emit("writefile", undefined);
-		this.output?.emit("writefile", undefined);
+		if (this.stallmkdir) {
+			//prevent race condition when migrating to backing fs
+			await this.stallmkdir;
+		}
+		if (this.backingfs) {
+			await this.backingfs.mkDir(name);
+		} else {
+			let node = this.rootmemfsnode;
+			let parts = name.split("/");
+			for (let part of parts) {
+				if (node.kind != "directory") { throw new Error("trying to create directory where there is already a file"); }
+				let sub = getsubnode(node, part);
+				if (!sub) {
+					sub = { name: part, kind: "directory", files: new Map() };
+					node.files.set(part, sub);
+				}
+				node = sub;
+			}
+		}
+		this.emit("mkdir", name);
 	}
 	async writeFile(name: string, data: Buffer | string) {
-		let fileentry: UIScriptFile = { name, data };
-		if (this.filesMap.has(name)) {
-			this.output?.log(`overwriting file "${name}"`);
-			// let index = this.files.findIndex(q => q.name == name);
-			// this.files[index] = fileentry;
+		if (this.backingfs) {
+			await this.backingfs.writeFile(name, data);
 		} else {
-			// this.files.push(fileentry);
+			let parent = this.getFileNode(name, true);
+			let filename = name.split("/").at(-1)!;
+			let fileentry: UIScriptFile = { name: filename, kind: "file", data };
+			if (parent.files.has(filename)) {
+				this.output?.log(`overwriting file "${filename}"`);
+			}
+			parent.files.set(filename, fileentry);
 		}
-		this.filesMap.set(name, fileentry);
-		if (this.rootdirhandle) { await this.saveLocalFile(name, data); }
-		this.emit("writefile", undefined);
-		this.output?.emit("writefile", undefined);
+		this.emit("writefile", name);
 	}
 	async readFileBuffer(name: string): Promise<Buffer> {
-		let entry = this.filesMap.get(name);
-		if (!entry) { throw new Error("file not found"); }
+		let entry = this.getFileNode(name);
+		if (!entry) {
+			if (this.backingfs) {
+				return this.backingfs.readFileBuffer(name);
+			} else {
+				throw new Error("file not found");
+			}
+		}
+		if (entry.kind != "file") { throw new Error(`node for '${name}' is not a file`); }
 		return (typeof entry.data == "string" ? Buffer.from(entry.data, "utf8") : entry.data);
 	}
 	async readFileText(name: string): Promise<string> {
-		let entry = this.filesMap.get(name);
-		if (!entry) { throw new Error("file not found"); }
+		let entry = this.getFileNode(name);
+		if (!entry) {
+			if (this.backingfs) {
+				return this.backingfs.readFileText(name);
+			} else {
+				throw new Error("file not found");
+			}
+		}
+		if (entry.kind != "file") { throw new Error(`node for '${name}' is not a file`); }
 		return (typeof entry.data == "string" ? entry.data : entry.data.toString("utf8"));
 	}
-	readDir(name: string): Promise<string[]> {
-		throw new Error("not implemented");
+	async readDir(dir: string) {
+		let files = await this.backingfs?.readDir(dir) ?? [];
+		let node = this.getFileNode(dir);
+		if (node) {
+			if (node.kind != "directory") { throw new Error("directory expected"); }
+			for (let entry of node.files.values()) {
+				files.push({ name: entry.name, kind: entry.kind });
+			}
+		}
+		return files;
 	}
 	unlink(name: string): Promise<void> {
 		throw new Error("not implemented");
 	}
 	async copyFile(from: string, to: string, symlink: boolean) {
-		let file = this.filesMap.get(from);
-		if (!file) { throw new Error("symlink file doesn't exist"); }
-		this.filesMap.set(to, file);
-		if (this.rootdirhandle) { await this.saveLocalFile(to, file.data); }
-	}
-
-	async setSaveDirHandle(dir: FileSystemDirectoryHandle) {
-		if (await dir.requestPermission() != "granted") { throw new Error("no permission"); }
-		let retroactive = !this.rootdirhandle;
-		this.rootdirhandle = dir;
-		this.outdirhandles = new Map();
-		this.outdirhandles.set("", dir);
-		if (retroactive) {
-			for (let [dir, handle] of this.outdirhandles.entries()) {
-				if (!handle) { await this.mkdirLocal(dir.split("/")); }
-			}
-			await Promise.all([...this.filesMap.values()].map(q => this.saveLocalFile(q.name, q.data)));
+		if (this.backingfs) {
+			await this.backingfs.copyFile(from, to, symlink);
+		} else {
+			let node = this.getFileNode(from);
+			let toparent = this.getFileNode(to, true);
+			toparent.files.set(to.split("/").at(-1)!, node);
 		}
-		this.output?.emit("statechange", undefined);
+		this.emit("writefile", to);
 	}
 
-	async mkdirLocal(path: string[]) {
-		let dirname = path.join("/");
-		let dir = this.outdirhandles.get(dirname);
-		if (!dir) {
-			dir = this.rootdirhandle!;
-			for (let part of path) {
-				dir = await dir.getDirectoryHandle(part, { create: true });
+	async lateBindBackingFs(fs: ScriptFS) {
+		if (this.backingfsstarted) { throw new Error("UIScriptFS already has a backingfs"); }
+		this.backingfsstarted = true;
+
+		//re-create all virtual dirs
+		//1st pass is parallel to any virtual writing that might be going on. 2nd pass is blocking
+		let copyfs = async (node: UIScriptFile, path: string, dirsonly: boolean) => {
+			if (!dirsonly && node.kind == "file") {
+				await fs.writeFile(path, node.data);
 			}
-			this.outdirhandles.set(dirname, dir);
+			if (node.kind == "directory") {
+				await fs.mkDir(path);
+				for (let [name, sub] of node.files) {
+					if (sub.kind == "directory") {
+						await copyfs(sub, `${path}/${sub.name}`, dirsonly);
+					}
+					if (!dirsonly) {
+						node.files.delete(name)
+					}
+				}
+			}
 		}
-		return dir;
-	}
-
-	async saveLocalFile(filename: string, file: Buffer | string) {
-		if (!this.rootdirhandle) { throw new Error("tried to save without dir handle"); }
-		let parts = filename.split("/");
-		let name = parts.splice(-1, 1)[0];
-		let dir = await this.mkdirLocal(parts);
-		let filehandle = await dir.getFileHandle(name, { create: true });
-		let writable = await filehandle.createWritable({ keepExistingData: false });
-		await writable.write(file);
-		await writable.close();
+		this.stallmkdir = copyfs(this.rootmemfsnode, "", true);
+		await this.stallmkdir;
+		//all dirs are sync now, we can start writing to the backing fs
+		this.backingfs = fs;
+		this.stallmkdir = null;
+		await copyfs(this.rootmemfsnode, "", false);
 	}
 }
 
-export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: undefined, writefile: undefined }> implements ScriptOutput {
+export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: undefined, newuifs: ScriptFS }> implements ScriptOutput {
 	state: ScriptState = "running";
 	logs: string[] = [];
 	outputui: HTMLElement | null = null;
@@ -229,13 +358,10 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 	let [tab, setTab] = React.useState<"console" | string>("console");
 
 	let forceUpdate = useForceUpdateDebounce();
-	React.useLayoutEffect(() => {
+
+	React.useEffect(() => {
 		p.output?.on("statechange", forceUpdate);
-		p.output?.on("writefile", forceUpdate);
-		() => {
-			p.output?.off("statechange", forceUpdate);
-			p.output?.off("writefile", forceUpdate);
-		}
+		return () => { p.output?.off("statechange", forceUpdate); }
 	}, [p.output]);
 
 	if (!p.output) {
@@ -246,7 +372,6 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 
 	let fstabmatch = tab.match(/^fs-(.*)$/);
 	let selectedfs = fstabmatch && p.output && p.output.fs[fstabmatch[1]];
-
 	let tabs = { console: "Console" };
 	for (let fsname in p.output?.fs) { tabs["fs-" + fsname] = fsname; }
 
@@ -266,43 +391,71 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 
 export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 	const initialMaxlist = 4000;
-	let [files, setFiles] = React.useState(p.fs?.filesMap);
 	let [maxlist, setMaxlist] = React.useState(initialMaxlist);
-
-	useEffect(() => {
-		if (p.fs) {
-			let debouncetimer = 0;
-			setMaxlist(initialMaxlist);
-			setFiles(p.fs.filesMap);
-			let onchange = () => {
-				if (!debouncetimer) {
-					debouncetimer = +setTimeout(() => {
-						setFiles(p.fs!.filesMap);
-						debouncetimer = 0;
-					}, 50);
+	let [folder, setfolder] = React.useState("");
+	let queueRender = useForceUpdateDebounce(50);
+	let [files, folders, addfile, addfolder] = React.useMemo(() => {
+		let files = new Set<string>();
+		let folders = new Set<string>();
+		let init = async () => {
+			if (p.fs) {
+				let all = await p.fs.readDir(folder);
+				for (let entry of all) {
+					if (entry.kind == "file") { files.add(entry.name); }
+					if (entry.kind == "directory") { folders.add(entry.name); }
 				}
+			} else {
+				files.clear();
+				folders.clear();
 			}
-			p.fs.on("writefile", onchange);
-			return () => {
-				if (debouncetimer) { clearTimeout(debouncetimer); }
-				p.fs?.off("writefile", onchange);
+			queueRender();
+		}
+		let addfolder = (name: string) => {
+			if (name.startsWith(folder) && name.indexOf("/", folder.length + 1) == -1) {
+				let subname = name.slice(folder.length);
+				if (subname == "") { return; }
+				folders.add(subname);
+				queueRender();
 			}
 		}
-	}, [p.fs]);
+		let addfile = (name: string) => {
+			if (name.startsWith(folder) && name.indexOf("/", folder.length + 1) == -1) {
+				files.add(name.slice(folder.length));
+				queueRender();
+			}
+		}
+		init();
+		return [files, folders, addfile, addfolder];
+	}, [p.fs, folder]);
 
-	let listkeydown = (e: React.KeyboardEvent) => {
+
+	React.useEffect(() => {
+		p.fs?.on("writefile", addfile);
+		p.fs?.on("mkdir", addfolder);
+		return () => {
+			p.fs?.off("writefile", queueRender);
+			p.fs?.off("mkdir", addfolder);
+		}
+	}, [p.fs, addfile, addfolder]);
+
+	let openFile = React.useCallback(async (name: string) => {
+		let data = await p.fs!.readFileBuffer(`${folder}/${name}`);
+		p.ctx.openFile({ fs: p.fs!, name, data });
+	}, [p.fs, p.ctx, folder]);
+
+	let listkeydown = React.useCallback((e: React.KeyboardEvent) => {
 		if (p.fs && p.ctx.openedfile && e.key == "ArrowDown" || e.key == "ArrowUp") {
 			e.preventDefault();
 			//bit of a yikes, map behaves as a single linked list and i'm trying to not
 			//piss of the god of JIT by writing a custom iterator
-			let previous: UIScriptFile | null = null;
-			let match: UIScriptFile | null = null;
+			let previous: string | null = null;
+			let match: string | null = null;
 			let grabnext = false;
-			for (let file of p.fs!.filesMap.values()) {
+			for (let file of files) {
 				if (grabnext) {
 					match = file;
 					break;
-				} else if (file == p.ctx.openedfile) {
+				} else if (file == p.ctx.openedfile?.name) {
 					if (e.key == "ArrowUp") {
 						match = previous;
 						break;
@@ -313,10 +466,10 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 				previous = file;
 			}
 			if (match) {
-				p.ctx.openFile(match);
+				openFile(match);
 			}
 		}
-	}
+	}, [p.fs, files, openFile])
 
 	//expose the fs to script, but make sure we don't leak it after it's gone from ui
 	useEffect(() => {
@@ -331,21 +484,46 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 	}
 	else {
 		let filelist: React.ReactNode[] = [];
-		for (let q of files.values()) {
+		if (folder != "") {
+			filelist.push(
+				<div key=".." onClick={e => setfolder(folder.split("/").slice(0, -1).join("/"))} >../</div>
+			)
+		}
+		for (let subfolder of folders) {
+			filelist.push(
+				<div key={subfolder} onClick={e => setfolder(`${folder}/${subfolder}`)}>{subfolder}/</div>
+			)
+		}
+		for (let name of files) {
 			if (filelist.length > maxlist) { break; }
 			filelist.push(
-				<div key={q.name} onClick={e => p.ctx.openFile(q)} style={q == p.ctx.openedfile ? { background: "black" } : undefined}>{q.name}</div>
+				<div key={name} onClick={e => openFile(name)} style={name == p.ctx.openedfile?.name ? { background: "black" } : undefined}>{name}</div>
 			);
 		}
 
+		let clicksave = async () => {
+			if (!p.fs) { return; }
+			let subfs: ScriptFS;
+			if (!!electron.ipcRenderer) {
+				let dir = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.HOME!, "downloads"));
+				subfs = new CLIScriptFS(dir);
+			} else {
+				let dir = await showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+				await dir.requestPermission({ mode: "readwrite" });
+				subfs = new WebFsScriptFS(dir);
+			}
+			await p.fs.lateBindBackingFs(subfs);
+		}
+
+		//TODO file dowload counter
 		return (
 			<div>
-				{p.fs && !p.fs.rootdirhandle && <input type="button" className="sub-btn" value={"Save files " + p.fs.filesMap.size} onClick={async e => p.fs?.setSaveDirHandle(await showDirectoryPicker({}))} />}
-				{p.fs?.rootdirhandle && <div>Saved files to disk: {p.fs.filesMap.size}</div>}
+				{p.fs && !p.fs.backingfsstarted && <input type="button" className="sub-btn" value={"Save files " + files.size} onClick={clicksave} />}
+				{p.fs?.backingfsstarted && <div>Saved files to disk: {"TODO"}</div>}
 				{files.size > maxlist && <div>Only showing first {maxlist} files</div>}
 				<div tabIndex={0} onKeyDownCapture={listkeydown}>
 					{filelist}
-					{files.size > maxlist && <input type="button" className="sub-btn" onClick={e => setMaxlist(maxlist + 4000)} value={`Show more (${maxlist}/${files.size})`} />}
+					{files.size > maxlist && <input type="button" className="sub-btn" onClick={e => setMaxlist(maxlist + 4000)} value={`Show more(${maxlist} / ${files.size})`} />}
 				</div>
 			</div>
 		);

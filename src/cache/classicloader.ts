@@ -131,7 +131,7 @@ export class ClassicFileSource extends CacheFileSource {
     static async create(files: ScriptFS, version?: DetectedVersion) {
         if (!version) {
             let filenames = await files.readDir(".");
-            let versions = detectClassicVersions(filenames);
+            let versions = detectClassicVersions(filenames.map(q => q.name));
             let index = localStorage.rsmv_classicversion ?? "-1";
             version = versions.at(+index)!;
         }

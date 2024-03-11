@@ -60,10 +60,10 @@ export function cliApi(ctx: CliApiContext) {
 		handler: async (args) => {
 			let errdir = args.save;
 			let olderrfiles = await errdir.readDir(".");
-			if (olderrfiles.find(q => !q.match(/^(err|pass|fail)-/))) {
+			if (olderrfiles.find(q => !q.name.match(/^(err|pass|fail)-/))) {
 				throw new Error("file not starting with 'err' in error dir");
 			}
-			await Promise.all(olderrfiles.map(q => errdir.unlink(q)));
+			await Promise.all(olderrfiles.map(q => errdir.unlink(q.name)));
 
 			let output = ctx.getConsole();
 			let source = await args.source();

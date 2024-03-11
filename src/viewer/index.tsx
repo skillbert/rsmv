@@ -8,7 +8,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
 
 import { UIScriptFile, UIScriptFS } from "./scriptsui";
-import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache } from "./maincomponents";
+import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache, UIOpenedFile } from "./maincomponents";
 import classNames from "classnames";
 import { cliApi, CliApiContext } from "../clicommands";
 import { CLIScriptOutput } from "../scriptrunner";
@@ -55,7 +55,7 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 	return root;
 }
 
-class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile | null }> {
+class App extends React.Component<{ ctx: UIContext }, { openedFile: UIOpenedFile | null }> {
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -139,7 +139,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIScriptFile
 	}
 
 	@boundMethod
-	openFile(file: UIScriptFile | null) {
+	openFile(file: UIOpenedFile | null) {
 		this.setState({ openedFile: file });
 	}
 

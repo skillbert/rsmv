@@ -57,7 +57,7 @@ let cmd = cmdts.command({
 			let classicIterator = async function* (ascending: boolean) {
 				if (args.classicFiles) {
 					let fs = new CLIScriptFS(args.classicFiles);
-					let versions = detectClassicVersions(await fs.readDir("."));
+					let versions = detectClassicVersions((await fs.readDir(".")).map(q => q.name));
 					if (!ascending) {
 						//defaults to heigh->low
 						versions.reverse();

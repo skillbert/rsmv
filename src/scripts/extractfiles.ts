@@ -148,7 +148,11 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	}
 
 	for (let file of files) {
-		let singlematch = file.match(/^(\w+)-([\d_]+)\.(\w+)$/);
+		if (file.kind != "file") { continue; }
+		//ignore dotfiles
+		if (file.name.match(/^\./)) { continue; }
+
+		let singlematch = file.name.match(/^(\w+)-([\d_]+)\.(\w+)$/);
 		if (singlematch) {
 			let logicalid = singlematch[2].split(/_/g).map(q => +q);
 			let mode = await getmode(singlematch[1]);
@@ -156,21 +160,18 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 			let archid = mode.logicalToFile(source, logicalid);
 			let arch = getarch(archid.major, archid.minor, mode);
 
-			let raw = await diffdir.readFileBuffer(file);
+			let raw = await diffdir.readFileBuffer(file.name);
 			let buf = await mode.write(raw, logicalid, source);
 			arch.files.push({ subid: archid.subid, file: buf });
 
 			continue;
 		}
 
-		let batchjson = file.match(/^(\w+)-([\d_]+)\.batch\.json$/);
+		let batchjson = file.name.match(/^(\w+)-([\d_]+)\.batch\.json$/);
 		if (batchjson) {
 			output.log("batch edit not implemented");
 			continue;
 		}
-
-		//ignore dotfiles
-		if (file.match(/^\./)) { continue; }
 
 		output.log("can't interpret file: " + file);
 	}

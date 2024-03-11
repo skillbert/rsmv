@@ -19,7 +19,7 @@ import { parse } from "../opdecoder";
 import * as path from "path";
 import classNames from "classnames";
 import { selectFsCache } from "../cache/autocache";
-import { CLIScriptFS } from "../scriptrunner";
+import { CLIScriptFS, ScriptFS } from "../scriptrunner";
 import { drawTexture } from "../imgutils";
 import { RsUIViewer } from "./rsuiviewer";
 import { ClientScriptViewer } from "./cs2viewer";
@@ -341,13 +341,14 @@ function CacheDragNDropHelp() {
 }
 
 export type UIContextReady = UIContext & { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
+export type UIOpenedFile = { fs: ScriptFS, name: string, data: string | Buffer };
 
 //i should figure out this redux thing...
-export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, statechange: undefined }>{
+export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, statechange: undefined }>{
 	source: CacheFileSource | null = null;
 	sceneCache: ThreejsSceneCache | null = null;
 	renderer: ThreeJsRenderer | null = null;
-	openedfile: UIScriptFile | null = null;
+	openedfile: UIOpenedFile | null = null;
 	rootElement: HTMLElement;
 	useServiceWorker: boolean;
 
@@ -382,9 +383,8 @@ export class UIContext extends TypedEmitter<{ openfile: UIScriptFile | null, sta
 		return !!this.source && !!this.sceneCache && !!this.renderer;
 	}
 
-
 	@boundMethod
-	openFile(file: UIScriptFile | null) {
+	openFile(file: UIOpenedFile | null) {
 		this.openedfile = file;
 		this.emit("openfile", file);
 	}
@@ -543,6 +543,27 @@ function annotatedHexDom(data: Buffer, chunks: DecodeErrorJson["chunks"]) {
 	return { hexels, textels, labelel };
 }
 
+function UnknownFileViewer(p: { data: Buffer, ext: string }) {
+	let finalext = p.ext.split(".").at(-1)!;
+	let istext = ["json", "jsonc", "ts", "js"].includes(finalext);
+
+	let [override, setoverride] = React.useState<{ ext: string, istext: boolean } | null>(null);
+
+	if (override?.ext == p.ext) {
+		istext = override.istext;
+	}
+
+	return (
+		<React.Fragment>
+			<input type="button" className="sub-btn" value={istext ? "View hex" : "View text"} onClick={e => setoverride({ ext: p.ext, istext: !istext })} />
+			<CopyButton getText={() => istext ? p.data.toString("utf8") : p.data.toString("hex")} />
+			{istext && <SimpleTextViewer file={p.data.toString("utf8")} />}
+			{!istext && <TrivialHexViewer data={p.data} />}
+		</React.Fragment>
+	)
+}
+
+
 function TrivialHexViewer(p: { data: Buffer }) {
 	let { resulthex, resultchrs } = bufToHexView(p.data);
 
@@ -628,56 +649,55 @@ function SimpleTextViewer(p: { file: string }) {
 	);
 }
 
-export function FileDisplay(p: { file: UIScriptFile }) {
+export function FileDisplay(p: { file: UIOpenedFile }) {
 	let el: React.ReactNode = null;
-	let filedata = p.file.data;
 	let cnvref = React.useRef<HTMLCanvasElement | null>(null);
 	let ext = (p.file.name.match(/\.([\w\.]+)$/i)?.[1] ?? "").toLowerCase();
-	if (typeof filedata == "string") {
-		if (ext == "hexerr.json") {
-			el = <FileDecodeErrorViewer file={filedata} />;
-		} else if (ext == "ui.json") {
-			el = <RsUIViewer data={filedata} />
-		} else if (ext == "cs2.json") {
-			el = <ClientScriptViewer data={filedata} />
-		} else if (ext == "html") {
-			el = <iframe srcDoc={filedata} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
+	let fileBuffer = () => {
+		return (typeof p.file.data == "string" ? Buffer.from(p.file.data, "utf8") : p.file.data);
+	}
+	let fileText = () => {
+		return (typeof p.file.data == "string" ? p.file.data : p.file.data.toString("utf8"));
+	}
+
+	if (ext == "hexerr.json") {
+		el = <FileDecodeErrorViewer file={fileText()} />;
+	} else if (ext == "ui.json") {
+		el = <RsUIViewer data={fileText()} />
+	} else if (ext == "cs2.json") {
+		el = <ClientScriptViewer data={fileText()} />
+	} else if (ext == "html") {
+		el = <iframe srcDoc={fileText()} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
+	} else if (ext == "rstex") {
+		let tex = new ParsedTexture(fileBuffer(), false, false);
+		cnvref.current ??= document.createElement("canvas");
+		const cnv = cnvref.current;
+		tex.toWebgl().then(img => drawTexture(cnv.getContext("2d")!, img));
+		el = <CanvasView canvas={cnvref.current} fillHeight={true} />;
+	} else if (["png", "jpg", "jpeg", "webp", "svg"].includes(ext)) {
+		el = <BlobImage file={fileBuffer()} ext={ext} fillHeight={true} />
+	} else if (ext == "jaga" || ext == "ogg") {
+		let buf = fileBuffer();
+		let header = buf.readUint32BE(0);
+		if (header == 0x4a414741) {//"JAGA"
+			let parts = parse.audio.read(buf, new CallbackCacheLoader(() => { throw new Error("dummy cache") }, false));
+			el = (
+				<React.Fragment>
+					{parts.chunks.map((q, i) => (q.data ? <BlobAudio key={i} file={q.data} autoplay={i == 0} /> : <div key={i}>{q.fileid}</div>))}
+				</React.Fragment>
+			)
+		} else if (header == 0x4f676753) {//"OggS"
+			el = <BlobAudio file={fileBuffer()} autoplay={true} />
 		} else {
-			//TODO make this not depend on wether file is Buffer or string
-			//string types so far: js, txt, json, batch.json
-			el = <SimpleTextViewer file={filedata} />;
+			console.log("unexpected header", header, header.toString(16));
 		}
 	} else {
-		if (ext == "rstex") {
-			let tex = new ParsedTexture(filedata, false, false);
-			cnvref.current ??= document.createElement("canvas");
-			const cnv = cnvref.current;
-			tex.toWebgl().then(img => drawTexture(cnv.getContext("2d")!, img));
-			el = <CanvasView canvas={cnvref.current} fillHeight={true} />;
-		} else if (["png", "jpg", "jpeg", "webp", "svg"].includes(ext)) {
-			el = <BlobImage file={filedata} ext={ext} fillHeight={true} />
-		} else if (ext == "jaga" || ext == "ogg") {
-			let header = filedata.readUint32BE(0);
-			if (header == 0x4a414741) {//"JAGA"
-				let parts = parse.audio.read(filedata, new CallbackCacheLoader(() => { throw new Error("dummy cache") }, false));
-				el = (
-					<React.Fragment>
-						{parts.chunks.map((q, i) => (q.data ? <BlobAudio key={i} file={q.data} autoplay={i == 0} /> : <div key={i}>{q.fileid}</div>))}
-					</React.Fragment>
-				)
-			} else if (header == 0x4f676753) {//"OggS"
-				el = <BlobAudio file={filedata} autoplay={true} />
-			} else {
-				console.log("unexpected header", header, header.toString(16));
-			}
-		} else {
-			el = <TrivialHexViewer data={filedata} />
-		}
+		el = <UnknownFileViewer data={fileBuffer()} ext={ext} />
 	}
 	return el;
 }
 
-export function FileViewer(p: { file: UIScriptFile, onSelectFile: (f: UIScriptFile | null) => void }) {
+export function FileViewer(p: { file: UIOpenedFile, onSelectFile: (f: UIOpenedFile | null) => void }) {
 	return (
 		<div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
 			<div className="mv-modal-head">
