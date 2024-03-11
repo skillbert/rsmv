@@ -334,7 +334,6 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 	let dependentsMap = new Map<string, string[]>();
 	let dependencyMap = new Map<string, string[]>();
 	let hashes = new Map<string, number>();
-	let maxVersion = 0;
 	let addDep = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => {
 		let holder = `${holdertype}-${holderId}`;
 		let newdep = `${deptType}-${depId}`;
@@ -356,7 +355,6 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 	let addHash = (deptType: DepTypes, depId: number, hash: number, version: number) => {
 		let depname = `${deptType}-${depId}`;
 		hashes.set(depname, hash);
-		maxVersion = Math.max(maxVersion, version);
 	}
 
 	let runDependencyGroup = async (run: DepCollector, args) => {
@@ -440,6 +438,6 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 		return makeDeptName("mapsquare", squareindex);
 	}
 
-	return { dependencyMap, dependentsMap, maxVersion, cascadeDependencies, makeDeptName, hashDependencies, hasEntry, insertMapChunk, preloadChunkDependencies };
+	return { dependencyMap, dependentsMap, cascadeDependencies, makeDeptName, hashDependencies, hasEntry, insertMapChunk, preloadChunkDependencies };
 }
 

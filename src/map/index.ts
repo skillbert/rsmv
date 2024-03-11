@@ -244,7 +244,6 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 
 	let progress = new ProgressUI();
 	progress.updateProp("source", filesource.getCacheMeta().name + "\n" + filesource.getCacheMeta().descr);
-	document.body.appendChild(progress.root);
 	let cleanup = () => progress.root.remove();
 	output.setUI(progress.root);
 
@@ -266,7 +265,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		return cleanup;
 	}
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);
-	progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
+	// progress.updateProp("version", new Date(deps.maxVersion * 1000).toUTCString());
 
 
 	let opts: ParsemapOpts = { mask };
@@ -319,7 +318,7 @@ export class MapRenderer {
 		this.config = config;
 		this.renderer = new ThreeJsRenderer(cnv, { alpha: false });
 		//TODO turn opaquebackground back on for map renders
-		this.renderer.addSceneElement({ getSceneElements() { return { options: { opaqueBackground: false, autoFrames: "never", hideFog: true } }; } });
+		this.renderer.addSceneElement({ getSceneElements() { return { options: { autoFrames: "never", hideFog: true } }; } });
 		cnv.addEventListener("webglcontextlost", async () => {
 			let isrestored = await new Promise((done, err) => {
 				let cleanup = (v: boolean) => {

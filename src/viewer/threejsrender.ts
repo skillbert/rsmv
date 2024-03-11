@@ -42,7 +42,6 @@ export type ThreeJsSceneElement = {
 	sky?: { skybox: THREE.Object3D | null, fogColor: number[] } | null,
 	updateAnimation?: (delta: number, epochtime: number) => void,
 	options?: {
-		opaqueBackground?: boolean,
 		hideFloor?: boolean,
 		hideFog?: boolean,
 		camMode?: RenderCameraMode,
@@ -233,7 +232,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 	sceneElementsChanged() {
 		let sky: ThreeJsSceneElement["sky"] = null;
-		let opaqueBackground = false;
 		let aspect: number | null = null;
 		let cammode: RenderCameraMode = "standard";
 		let controls: CameraControlMode = "free";
@@ -251,7 +249,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 					this.animationCallbacks.add(el.updateAnimation);
 				}
 				if (el.options?.hideFog) { hideFog = true; }
-				if (el.options?.opaqueBackground) { opaqueBackground = true; }
 				if (el.options?.hideFloor) { showfloor = false; }
 				if (el.options?.camMode) { cammode = el.options.camMode; }
 				if (el.options?.camControls) { controls = el.options.camControls; }
@@ -267,8 +264,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 		nodeDeleteList.forEach(q => this.modelnode.remove(q));
 
-		this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
-		this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
 		this.autoFrameMode = (autoframes == "auto" ? (this.animationCallbacks.size == 0 ? "forced" : "continuous") : autoframes);
 		this.floormesh.visible = showfloor;
 		if (this.camMode == "topdown" && cammode == "standard") {
@@ -504,8 +499,12 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 		let img: ImageData | null = null;
 		await this.guaranteeGlCalls(() => {
+			let opaqueBackground = !highlight;
+			//change render settings
 			let oldcolorspace = this.renderer.outputColorSpace;
 			this.renderer.outputColorSpace = (linearcolor ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace);
+			this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
+			this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
 
 			let ctx = this.renderer.getContext();
 			if (!highlight) {
@@ -522,7 +521,11 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
 			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
 			img = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
+
+			//restore render settings
 			this.renderer.outputColorSpace = oldcolorspace;
+			this.renderer.setClearColor(new THREE.Color(0, 0, 0), 0);
+			this.scene.background = null;
 		});
 		return img!;
 	}

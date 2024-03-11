@@ -33,31 +33,40 @@ export class CLIScriptFS implements ScriptFS {
         this.dir = path.resolve(dir);
         if (dir) { fs.mkdirSync(dir, { recursive: true }); }
     }
+    convertPath(sub: string) {
+        let target = path.resolve(this.dir, sub.replace(/^\//g, ""));
+        //make sure the result is indeed a subfolder of the fs
+        let rel = path.relative(this.dir, target);
+        if (target != this.dir && (rel.startsWith("..") || path.isAbsolute(rel))) {
+            throw new Error("Error while converting CLIScriptFS path");
+        }
+        return target;
+    }
     mkDir(name: string) {
-        return fs.promises.mkdir(path.resolve(this.dir, name), { recursive: true });
+        return fs.promises.mkdir(this.convertPath(name), { recursive: true });
     }
     writeFile(name: string, data: Buffer | string) {
-        return fs.promises.writeFile(path.resolve(this.dir, name), data);
+        return fs.promises.writeFile(this.convertPath(name), data);
     }
     readFileBuffer(name: string) {
-        return fs.promises.readFile(path.resolve(this.dir, name));
+        return fs.promises.readFile(this.convertPath(name));
     }
     readFileText(name: string) {
-        return fs.promises.readFile(path.resolve(this.dir, name), "utf-8");
+        return fs.promises.readFile(this.convertPath(name), "utf-8");
     }
     async readDir(name: string) {
-        let files = await fs.promises.readdir(path.resolve(this.dir, name), { withFileTypes: true });
+        let files = await fs.promises.readdir(this.convertPath(name), { withFileTypes: true });
         return files.map(q => ({ name: q.name, kind: (q.isDirectory() ? "directory" as const : "file" as const) }));
     }
     unlink(name: string) {
-        return fs.promises.unlink(path.resolve(this.dir, name));
+        return fs.promises.unlink(this.convertPath(name));
     }
     copyFile(from: string, to: string, symlink: boolean) {
         if (!symlink || this.copyOnSymlink) {
             //don't actually symliink because its weird in windows
-            return fs.promises.copyFile(path.resolve(this.dir, from), path.resolve(this.dir, to));
+            return fs.promises.copyFile(this.convertPath(from), this.convertPath(to));
         } else {
-            return fs.promises.symlink(path.resolve(this.dir, to), path.resolve(this.dir, from));
+            return fs.promises.symlink(this.convertPath(to), this.convertPath(from));
         }
     }
 }

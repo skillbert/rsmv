@@ -149,7 +149,7 @@ export async function renderRsInterfaceHTML(ctx: UiRenderContext, id: number): P
     doc += rsInterfaceStyleSheet();
     doc += `</style>\n`
     doc += "<script>\n"
-    doc += `var mod=(${embeddedjsmodule + ""})(${JSON.stringify(Object.fromEntries([...comps]))});\n`;
+    doc += `var mod=(${embeddedjsmodule + ""})(${JSON.stringify(Object.fromEntries([...comps].map(q => [q[0], q[1].data])))});\n`;
     doc += "</script>\n"
     doc += `</head>\n`
     doc += `<body>\n`

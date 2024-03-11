@@ -8,7 +8,6 @@ import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio, CopyButton } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
-import { GameCacheLoader } from "../cache/sqlite";
 import { DomWrap, UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
@@ -25,7 +24,7 @@ import { RsUIViewer } from "./rsuiviewer";
 import { ClientScriptViewer } from "./cs2viewer";
 
 //work around typescript being weird when compiling for browser
-const electron = require("electron/renderer");
+const electron = require("electron/renderer") as typeof import("electron/renderer");
 const hasElectrion = !!electron.ipcRenderer;
 
 export type SavedCacheSource = {
@@ -210,7 +209,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	@boundMethod
 	async clickOpenNative() {
 		if (!hasElectrion) { return; }
-		let dir = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.ProgramData!, "jagex/runescape"));
+		let dir: import("electron").OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.ProgramData!, "jagex/runescape"));
 		if (!dir.canceled) {
 			this.props.onOpen({ type: "autofs", location: dir.filePaths[0], writable: !!globalThis.writecache });//TODO propper ui for this
 		}
