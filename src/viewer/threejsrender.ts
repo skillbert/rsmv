@@ -95,7 +95,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			preserveDrawingBuffer: true,
 			...params
 		});
-		this.renderer.autoClear = false;
 		const renderer = this.renderer;
 		canvas.addEventListener("webglcontextlost", () => this.contextLossCount++);
 		canvas.onmousedown = this.mousedown;
