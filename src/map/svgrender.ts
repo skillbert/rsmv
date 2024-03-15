@@ -3,6 +3,9 @@ import { parseSprite } from "../3d/sprite";
 import { cacheMajors } from "../constants";
 import { EngineCache } from "../3d/modeltothree";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
+import { getOrInsert } from "../utils";
+
+type Point = { x: number, z: number }
 
 let similarangle = (a1: number, a2: number) => {
 	const PI2 = Math.PI * 2;
@@ -12,8 +15,63 @@ let similarangle = (a1: number, a2: number) => {
 	return Math.abs(d) < EPS;
 }
 
+function mergePoly(set: Set<Point[]>, corners: Point[], dirtystart: number, dirtycount: number) {
+	//find a polygon that has an edge with equal nodes but in oposite order to merge with
+	//this is like o(n^3) don't tell anyone
+	for (let group of set) {
+		if (group == corners) { continue; }
+		for (let a = 0; a < group.length; a++) {
+			let a1 = group[a];
+			let a2 = group[(a + 1) % group.length];
+			for (let b = dirtystart; b < dirtystart + dirtycount; b++) {
+				let b1 = corners[b % corners.length];
+				let b2 = corners[(b + 1) % corners.length];
+
+
+				if (a1.x == b2.x && a1.z == b2.z && a2.x == b1.x && a2.z == b1.z) {
+					//found overlapping nodes!
+					let srcoffset = b % corners.length;
+					let dstoffset = a + 1;
+					let insertgroup = [
+						...corners.slice(Math.min(srcoffset + 2, corners.length), corners.length),
+						...corners.slice(Math.max(0, srcoffset - corners.length + 2), srcoffset)
+					];
+					group.splice(dstoffset, 0, ...insertgroup);
+					set.delete(corners);
+					return mergePoly(set, group, dstoffset, insertgroup.length + 2);
+				}
+			}
+		}
+	}
+	return corners;
+}
+
+function unfoldPolygon(poly: Point[], mergelinear: boolean) {
+	for (let i = 0; i < poly.length; i++) {
+		let a = poly[i];
+		let b = poly[(i + 1) % poly.length];
+		let c = poly[(i + 2) % poly.length];
+		if (a.x == b.x && a.z == b.z) {
+			//two adjacent equal vertices
+			poly.splice((i + 1) % poly.length, 1);
+			i = Math.max(-1, i - 2);
+			continue;
+		}
+		let dx1 = b.x - a.x, dz1 = b.z - a.z
+		let dx2 = c.x - b.x, dz2 = c.z - b.z;
+		let angle1 = Math.atan2(dz1, dx1);
+		let angle2 = Math.atan2(dz2, dx2);
+		if (similarangle(angle1 + Math.PI, angle2) || (mergelinear && similarangle(angle1, angle2))) {
+			//all 3 vertices are on a line, vertex b is either in between a and c,
+			//other vertex b forms a 0 width polygon, it is redundant either way
+			poly.splice((i + 1) % poly.length, 1);
+			i = Math.max(-1, i - 2);
+		}
+	}
+}
+
 export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect: MapRect, maplevel: number) {
-	let maplabels = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
+	let maplabels = new Map<number, { src: string, width: number, height: number, uses: Point[] }>();
 
 	//number of tiles outside bounds to draw
 	const overdraw = 0;
@@ -55,11 +113,11 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	let drawmapscenes = !wallsonly;
 
 	let underlay = "";
-	let mapscenes = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
-	let maplabels = new Map<number, { src: string, width: number, height: number, uses: { x: number, z: number }[] }>();
-	let overlays: Map<number, Set<{ x: number, z: number }[]>>[] = [new Map(), new Map(), new Map(), new Map()];
-	let whitelines: { x: number, z: number }[][] = [];
-	let redlines: { x: number, z: number }[][] = [];
+	let mapscenes = new Map<number, { src: string, width: number, height: number, uses: Point[] }>();
+	let maplabels = new Map<number, { src: string, width: number, height: number, uses: Point[] }>();
+	let overlays: Map<number, Set<Point[]>>[] = [new Map(), new Map(), new Map(), new Map()];
+	let whitelines: Point[][] = [];
+	let redlines: Point[][] = [];
 
 	let transparent = 0xff00ff;
 
@@ -69,8 +127,8 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	}
 
 	let getOverlayColor = (tile: TileProps) => {
-		let overlay = tile.waterProps?.rawOverlay ?? tile.rawOverlay!;
-		let colint = coltoint(overlay.secondary_colour);
+		let overlay = tile.waterProps?.rawOverlay ?? tile.rawOverlay;
+		let colint = coltoint(overlay?.secondary_colour);
 		if (colint == transparent) { colint = coltoint(tile.waterProps?.props.color ?? tile.overlayprops.color); }
 		return colint;
 	}
@@ -116,38 +174,11 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 						}
 
 						if (vertices.length != 0) {
+							let set = getOrInsert(overlays[level], colint, () => new Set());
 							let corners = vertices.map(q => ({ x: dx + q.subx, z: dz + q.subz }));
-							let set = overlays[level].get(colint);
-							if (!set) {
-								set = new Set();
-								overlays[level].set(colint, set);
-							}
-							let merged = false;
-							//find a polygon that has an edge with equal nodes but in oposite order to merge with
-							//this is like o(n^3) don't tell anyone
-							merger: for (let group of set) {
-								for (let a = 0; a < group.length; a++) {
-									let a1 = group[a];
-									let a2 = group[(a + 1) % group.length];
-									for (let b = 0; b < corners.length; b++) {
-										let b1 = corners[b];
-										let b2 = corners[(b + 1) % corners.length];
-										if (a1.x == b2.x && a1.z == b2.z && a2.x == b1.x && a2.z == b1.z) {
-											//found overlapping nodes!
-											if (b == corners.length - 1) {
-												group.splice(a + 1, 0, ...corners.slice(1, b));
-											} else {
-												group.splice(a + 1, 0, ...corners.slice(b + 2, corners.length), ...corners.slice(0, b));
-											}
-											merged = true;
-											break merger;
-										}
-									}
-								}
-							}
-							if (!merged) {
-								set.add(corners);
-							}
+							set.add(corners);
+							let group = mergePoly(set, corners, 0, corners.length)
+							unfoldPolygon(group, false);
 						}
 					}
 				}
@@ -280,27 +311,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 		for (let overlaylayer of overlays) {
 			for (let [col, overlay] of overlaylayer.entries()) {
 				for (let poly of overlay) {
-					for (let i = 0; i < poly.length; i++) {
-						let a = poly[i];
-						let b = poly[(i + 1) % poly.length];
-						let c = poly[(i + 2) % poly.length];
-						if (a.x == b.x && a.z == b.z) {
-							//two adjacent equal vertices
-							poly.splice((i + 1) % poly.length, 1);
-							i = Math.max(-1, i - 2);
-							continue;
-						}
-						let dx1 = b.x - a.x, dz1 = b.z - a.z
-						let dx2 = c.x - b.x, dz2 = c.z - b.z;
-						let angle1 = Math.atan2(dz1, dx1);
-						let angle2 = Math.atan2(dz2, dx2);
-						if (similarangle(angle1, angle2) || similarangle(angle1 + Math.PI, angle2)) {
-							//all 3 vertices are on a line, vertex b is either in between a and c,
-							//other vertex b forms a 0 width polygon, it is redundant either way
-							poly.splice((i + 1) % poly.length, 1);
-							i = Math.max(-1, i - 2);
-						}
-					}
+					unfoldPolygon(poly, true);
 					let colstr = col.toString(16).padStart(6, "0");
 					r += `<polygon fill="#${colstr}" points="${poly.map(q => `${q.x},${q.z}`).join(" ")}"/>\n`
 				}
