@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeBoneids, constModelsIds } from '../3d/modeltothree';
 import { ModelModifications, TypedEmitter, CallbackPromise } from '../utils';
 import { boundMethod } from 'autobind-decorator';
-import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, RSMapChunkData, renderMapSquare, WorldLocation, ThreeJsRenderSection, tiledimensions } from '../3d/mapsquare';
+import { resolveMorphedObject, modifyMesh, MapRect, ParsemapOpts, RSMapChunkData, renderMapSquare, WorldLocation, ThreeJsRenderSection, tiledimensions, parseMapsquare } from '../3d/mapsquare';
 import { AnimationClip, AnimationMixer, Material, Mesh, MeshStandardMaterial, Object3D, Skeleton, SkeletonHelper, SkinnedMesh, Texture, Vector2 } from "three";
 import { mountBakedSkeleton, parseAnimationSequence4 } from "../3d/animationframes";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../constants";
@@ -383,7 +383,7 @@ export class RSMapChunkGroup extends TypedEmitter<{ loaded: undefined, changed: 
 		this.chunks = [];
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				let sub = new RSMapChunk(cache, x, z, extraopts);
+				let sub = RSMapChunk.create(cache, x, z, extraopts);
 				this.chunks.push(sub);
 			}
 		}
@@ -405,18 +405,28 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	chunkx: number;
 	chunkz: number;
 
-	constructor(cache: ThreejsSceneCache, chunkx: number, chunkz: number, extraopts?: ParsemapOpts) {
+	constructor(cache: ThreejsSceneCache, preparsed: ReturnType<typeof parseMapsquare>, chunkx: number, chunkz: number, opts: ParsemapOpts) {
 		super();
 		this.cache = cache;
 		this.chunkx = chunkx;
 		this.chunkz = chunkz;
-		let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
-		this.chunkdata = renderMapSquare(cache, chunkx, chunkz, opts).then(data => {
-			this.loaded = data;
-			this.rootnode.add(data.chunkroot);
+		this.chunkdata = (async () => {
+			this.loaded = await renderMapSquare(cache, preparsed, chunkx, chunkz, opts);
+			this.rootnode.add(this.loaded.chunkroot);
 			this.onModelLoaded();
-			return data;
-		});
+			return this.loaded;
+		})();
+	}
+
+	static defaultopts(extraopts?: ParsemapOpts) {
+		let opts: ParsemapOpts = { invisibleLayers: true, collision: true, map2d: false, padfloor: true, skybox: false, minimap: false, ...extraopts };
+		return opts;
+	}
+
+	static create(cache: ThreejsSceneCache, chunkx: number, chunkz: number, extraopts?: ParsemapOpts) {
+		let opts = this.defaultopts(extraopts);
+		let preparsed = parseMapsquare(cache.engine, chunkx, chunkz, opts);
+		return new RSMapChunk(cache, preparsed, chunkx, chunkz, opts);
 	}
 
 	//TODO remove

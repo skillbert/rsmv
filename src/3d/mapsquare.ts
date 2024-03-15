@@ -1039,13 +1039,13 @@ export async function getMapsquareData(engine: EngineCache, chunkx: number, chun
 
 export async function parseMapsquare(engine: EngineCache, chunkx: number, chunkz: number, opts?: ParsemapOpts) {
 	let chunkfloorpadding = (opts?.padfloor ? 20 : 0);//TODO same as max(blending kernel,max loc size), put this in a const somewhere
-	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
-	let chunkpadding = Math.ceil(chunkfloorpadding / squareSize);
+	let chunkSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+	let chunkpadding = Math.ceil(chunkfloorpadding / chunkSize);
 	let grid = new TileGrid(engine, {
-		x: chunkx * squareSize - chunkfloorpadding,
-		z: chunkz * squareSize - chunkfloorpadding,
-		xsize: squareSize + chunkfloorpadding * 2,
-		zsize: squareSize + chunkfloorpadding * 2
+		x: chunkx * chunkSize - chunkfloorpadding,
+		z: chunkz * chunkSize - chunkfloorpadding,
+		xsize: chunkSize + chunkfloorpadding * 2,
+		zsize: chunkSize + chunkfloorpadding * 2
 	}, opts?.mask);
 	let chunk: ChunkData | null = null;
 	for (let z = -chunkpadding; z <= chunkpadding; z++) {
@@ -1070,7 +1070,7 @@ export async function parseMapsquare(engine: EngineCache, chunkx: number, chunkz
 		chunk.locs = await mapsquareObjects(engine, grid, chunk.rawlocs, chunk.tilerect.x, chunk.tilerect.z, !!opts?.collision);
 	}
 
-	return { grid, chunk };
+	return { grid, chunk, chunkSize, chunkx, chunkz };
 }
 
 export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: ChunkData) {
@@ -1174,8 +1174,8 @@ export type RSMapChunkData = {
 	locRenders: Map<WorldLocation, ThreeJsRenderSection[]>
 }
 
-export async function renderMapSquare(cache: ThreejsSceneCache, chunkx: number, chunkz: number, opts: ParsemapOpts): Promise<RSMapChunkData> {
-	let { grid, chunk } = await parseMapsquare(cache.engine, chunkx, chunkz, opts);
+export async function renderMapSquare(cache: ThreejsSceneCache, parsedsquare: ReturnType<typeof parseMapsquare>, chunkx: number, chunkz: number, opts: ParsemapOpts): Promise<RSMapChunkData> {
+	let { grid, chunk } = await parsedsquare;
 	let modeldata: Map<WorldLocation, PlacedMesh[]>;
 	let chunkroot = new THREE.Group();
 	chunkroot.name = `mapsquare ${chunkx}.${chunkz}`;

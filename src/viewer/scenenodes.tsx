@@ -1782,7 +1782,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			const renderer = this.props.ctx?.renderer;
 			if (!sceneCache || !renderer) { return; }
 
-			let chunk = new RSMapChunk(sceneCache, chunkx, chunkz, { skybox: true });
+			let chunk = RSMapChunk.create(sceneCache, chunkx, chunkz, { skybox: true });
 			chunk.on("changed", () => {
 				let toggles = this.state.toggles;
 				let changed = false;
@@ -2242,9 +2242,10 @@ function MapRemoteRenderScript(p: UiScriptProps) {
 }
 
 function MaprenderScript(p: UiScriptProps) {
-	let [configjson, setconfigjson] = React.useState(examplemapconfig);
+	let [configjson, setconfigjson] = React.useState(localStorage.rsmv_script_map_lastconfig || examplemapconfig);
 
 	let run = async () => {
+		localStorage.rsmv_script_map_lastconfig = (configjson == examplemapconfig ? "" : configjson);
 		let output = new UIScriptOutput();
 		let fs = output.makefs("render");
 		let config = new MapRenderFsBacked(fs, parseMapConfig(configjson));

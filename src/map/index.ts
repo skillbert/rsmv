@@ -1,6 +1,6 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions, RSMapChunkData, getTileHeight } from "../3d/mapsquare";
+import { ParsemapOpts, MapRect, worldStride, CombinedTileGrid, classicChunkSize, rs2ChunkSize, TileGrid, tiledimensions, RSMapChunkData, getTileHeight, parseMapsquare } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import { jsonIcons, svgfloor } from "./svgrender";
 import { cacheMajors } from "../constants";
@@ -9,7 +9,7 @@ import { canvasToImageFile, findImageBounds, flipImage, pixelsToDataUrl, pixelsT
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
-import { CallbackPromise, delay, stringToFileRange, trickleTasks } from "../utils";
+import { AsyncReturnType, CallbackPromise, delay, stringToFileRange, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
 import { ChunkRenderMeta, chunkSummary, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies, RenderDepsTracker, RenderDepsVersionInstance } from "./chunksummary";
@@ -30,6 +30,11 @@ type RenderedMapVersionMeta = {
 	running: boolean,
 	workerid: string,
 	rendertimestamp: string
+}
+
+type RenderResult = {
+	file?: () => Promise<Buffer>,
+	symlink?: undefined | KnownMapFile
 }
 
 export type RenderedMapMeta = {
@@ -270,6 +275,8 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 
 	let opts: ParsemapOpts = { mask };
 	if (config.config.layers.some(q => q.mode == "minimap")) { opts.minimap = true; }
+	if (config.config.layers.some(q => q.mode == "collision")) { opts.collision = true; }
+	opts = RSMapChunk.defaultopts(opts);
 	let getRenderer = () => {
 		let cnv = document.createElement("canvas");
 		let renderer = new MapRenderer(cnv, config, engine, deps, opts);
@@ -289,15 +296,16 @@ type MaprenderSquareData = {
 };
 
 type MaprenderSquare = {
-	chunk: RSMapChunk,
-	loaded: MaprenderSquareData | null,
-	loadprom: CallbackPromise<MaprenderSquareData>,
+	parseprom: ReturnType<typeof parseMapsquare>,
 	x: number,
 	z: number,
-	id: number
+	id: number,
+	model: RSMapChunk | null,
+	loaded: MaprenderSquareData | null,
+	loadprom: Promise<MaprenderSquareData> | null,
 };
 
-type MaprenderSquareLoaded = MaprenderSquare & { loaded: MaprenderSquareData };
+type MaprenderSquareLoaded = MaprenderSquare & { model: RSMapChunk, loaded: MaprenderSquareData };
 
 export class MapRenderer {
 	renderer: ThreeJsRenderer;
@@ -337,63 +345,69 @@ export class MapRenderer {
 		});
 	}
 
-	private async getChunk(x: number, z: number) {
-		let existing = this.squares.find(q => q.x == x && q.z == z);
-		if (existing) {
-			return existing;
+	private async getChunk(x: number, z: number, needsmodels: boolean) {
+		let square = this.squares.find(q => q.x == x && q.z == z);
+		if (square && (!needsmodels || square.model)) {
+			return square;
 		} else {
 			this.loadcallback?.(x, z, "loading");
-			let id = this.idcounter++;
 			if (!this.scenecache) {
 				console.log("refreshing scenecache");
 				this.scenecache = await ThreejsSceneCache.create(this.engine);
 			}
-			let square: MaprenderSquare = {
-				x: x,
-				z: z,
-				loaded: null,
-				loadprom: new CallbackPromise(),
-				chunk: new RSMapChunk(this.scenecache, x, z, this.opts),
-				id
+			if (!square) {
+				let parseprom = parseMapsquare(this.scenecache.engine, x, z, this.opts);
+				let id = this.idcounter++;
+				square = {
+					id,
+					x: x,
+					z: z,
+					parseprom: parseprom,
+					model: null,
+					loaded: null,
+					loadprom: null,
+				}
+				this.squares.push(square);
 			}
-			square.chunk.chunkdata.then(async (chunkdata) => {
-				square.loaded = {
-					rendermeta: {
-						x: chunkdata.chunkx,
-						z: chunkdata.chunkz,
-						version: this.config.version,
-						floor: (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk)),
-						locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz)
-					},
-					grid: chunkdata.grid,
-					chunkdata: chunkdata
-				};
-				square.loadprom.done(square.loaded);
-				this.loadcallback?.(x, z, "loaded");
-			});
-
-
-			this.squares.push(square);
+			if (needsmodels) {
+				square.model = new RSMapChunk(this.scenecache, square.parseprom, x, z, this.opts);
+				square.loadprom = (async () => {
+					let chunkdata = await square.model!.chunkdata;
+					square!.loaded = {
+						rendermeta: {
+							x: chunkdata.chunkx,
+							z: chunkdata.chunkz,
+							version: this.config.version,
+							floor: (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk)),
+							locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz)
+						},
+						grid: chunkdata.grid,
+						chunkdata: chunkdata
+					};
+					this.loadcallback?.(x, z, "loaded");
+					return square!.loaded;
+				})()
+			}
 			return square;
 		}
 	}
 
-	async setArea(x: number, z: number, xsize: number, zsize: number) {
+	async setArea(x: number, z: number, xsize: number, zsize: number, needsmodels: boolean) {
 		let load: MaprenderSquare[] = [];
 		//load topright last to increase chance of cache hit later on
 		for (let dx = 0; dx < xsize; dx++) {
 			for (let dz = 0; dz < zsize; dz++) {
-				load.push(await this.getChunk(x + dx, z + dz))
+				load.push(await this.getChunk(x + dx, z + dz, needsmodels))
 			}
 		}
 		await Promise.all(load.map(q => q.loadprom));
-		load.forEach(q => q.chunk.addToScene(this.renderer));
+		load.forEach(q => q.model?.addToScene(this.renderer));
 		let obsolete = this.squares.filter(square => !load.includes(square));
 		if (obsolete.length >= this.maxunused) {
 			obsolete.sort((a, b) => b.id - a.id);
 			let removed = obsolete.slice(this.minunused);
 			removed.forEach(r => {
-				r.chunk.cleanup();
+				r.model?.cleanup();
 				this.loadcallback?.(r.x, r.z, "unloaded");
 			});
 			this.squares = this.squares.filter(sq => !removed.includes(sq));
@@ -507,7 +521,8 @@ type RenderTask = {
 	dedupeDependencies?: string[],
 	mippable?: null | { zoom: number, outputx: number, outputy: number, hash: number },
 	//first callback depends on state and should be series, 2nd is deferred and can be parallel
-	run: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<{ file?: () => Promise<Buffer>, symlink?: undefined | KnownMapFile }>,
+	run2d?: (chunks: AsyncReturnType<typeof parseMapsquare>[]) => Promise<RenderResult>,
+	run?: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<RenderResult>,
 }
 
 function setChunkRenderToggles(chunks: MaprenderSquare[], floornr: number, isminimap: boolean, hidelocs: boolean) {
@@ -525,7 +540,7 @@ function setChunkRenderToggles(chunks: MaprenderSquare[], floornr: number, ismin
 		toggles["collision-raw" + i] = false;
 	}
 	for (let chunk of chunks) {
-		chunk.chunk.setToggles(toggles);
+		chunk.model?.setToggles(toggles);
 	}
 }
 
@@ -626,14 +641,25 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 				if (!renderer) {
 					renderer = await renderpromise;
 				}
-				let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize);
-				await Promise.all(chunks.map(q => q.loadprom));
-				// console.log("running", task.file, "old", meta?.hash, "new", task.hash);
-				if (!chunks.some(q => q.loaded!.chunkdata.chunk)) {
-					//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
-					continue;
+				let skipmodels = !task.run;
+				let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, !skipmodels);
+				let parsedchunks = await Promise.all(chunks.map(q => q.parseprom));
+
+				//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
+				if (!parsedchunks.some(q => q.chunk)) { continue; }
+
+				//run the render task
+				let data: RenderResult;
+				if (task.run) {
+					await Promise.all(chunks.map(q => q.loadprom));
+					data = await task.run(chunks as MaprenderSquareLoaded[], renderer, parentinfo);
+				} else if (task.run2d) {
+					data = await task.run2d(parsedchunks);
+				} else {
+					throw new Error("task has no run and also no run2d method");
 				}
-				let data = await task.run(chunks as MaprenderSquareLoaded[], renderer, parentinfo);
+
+				//store it
 				if (data.symlink) {
 					existingfile = data.symlink;
 				} else if (data.file) {
@@ -786,10 +812,10 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 									if (!other) { throw new Error("unexpected"); }
 
 									let modelmatrix = new Matrix4().makeTranslation(
-										chunk.chunk.chunkx * tiledimensions * chunk.chunk.loaded!.chunkSize,
+										chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
 										0,
-										chunk.chunk.chunkz * tiledimensions * chunk.chunk.loaded!.chunkSize,
-									).premultiply(chunk.chunk.rootnode.matrixWorld);
+										chunk.model.chunkz * tiledimensions * chunk.model.loaded!.chunkSize,
+									).premultiply(chunk.model.rootnode.matrixWorld);
 
 									let proj = cam.projectionMatrix.clone()
 										.multiply(cam.matrixWorldInverse)
@@ -848,13 +874,13 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 							let grid = new CombinedTileGrid(chunks.map(ch => ({
 								src: ch.loaded.grid,
 								rect: {
-									x: ch.chunk.chunkx * ch.loaded.chunkdata.chunkSize,
-									z: ch.chunk.chunkz * ch.loaded.chunkdata.chunkSize,
+									x: ch.model.chunkx * ch.loaded.chunkdata.chunkSize,
+									z: ch.model.chunkz * ch.loaded.chunkdata.chunkSize,
 									xsize: ch.loaded.chunkdata.chunkSize,
 									zsize: ch.loaded.chunkdata.chunkSize,
 								}
 							})));
-							let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunk?.locs ?? []);
+							let locs = chunks.flatMap(ch => ch.model.loaded!.chunk?.locs ?? []);
 							let svg = await svgfloor(engine, grid, locs, worldrect, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.overlaywalls, !!thiscnf.overlayicons, true);
 							let wallimg = new Image();
 							wallimg.src = `data:image/svg+xml;base64,${btoa(svg)}`;
@@ -897,18 +923,17 @@ const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, ba
 		hash: depcrc,
 		datarect: loadedchunksrect,
 		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base, hash: depcrc },
-		async run(chunks) {
-			//TODO try enable 2d map render without loading all the 3d stuff
-			let grid = new CombinedTileGrid(chunks.map(ch => ({
-				src: ch.loaded.grid,
+		async run2d(parsedata) {
+			let grid = new CombinedTileGrid(parsedata.map(pp => ({
+				src: pp.grid,
 				rect: {
-					x: ch.chunk.chunkx * ch.loaded.chunkdata.chunkSize,
-					z: ch.chunk.chunkz * ch.loaded.chunkdata.chunkSize,
-					xsize: ch.loaded.chunkdata.chunkSize,
-					zsize: ch.loaded.chunkdata.chunkSize,
+					x: pp.chunkx * pp.chunkSize,
+					z: pp.chunkz * pp.chunkSize,
+					xsize: pp.chunkSize,
+					zsize: pp.chunkSize,
 				}
 			})));
-			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunk?.locs ?? []);
+			let locs = parsedata.flatMap(ch => ch.chunk?.locs ?? []);
 			let svg = await svgfloor(engine, grid, locs, worldrect, thiscnf.level, thiscnf.pxpersquare, !!thiscnf.wallsonly, !!thiscnf.mapicons, !!thiscnf.thicklines);
 			return {
 				file: () => Promise.resolve(Buffer.from(svg, "utf8"))
@@ -929,9 +954,9 @@ const rendermodeCollision: RenderMode<"collision"> = function (engine, config, c
 		hash: depcrc,
 		datarect: loadedchunksrect,
 		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base, hash: depcrc },
-		async run(chunks) {
+		async run2d(chunks) {
 			//TODO try enable 2d map render without loading all the 3d stuff
-			let grids = chunks.map(q => q.loaded.grid);
+			let grids = chunks.map(q => q.grid);
 			let file = drawCollision(grids, worldrect, thiscnf.level, thiscnf.pxpersquare, 1);
 			return { file: () => file };
 		}
@@ -946,9 +971,9 @@ const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, de
 		name: filename,
 		hash: deps.recthash(singlerect),
 		datarect: singlerect,
-		async run(chunks) {
+		async run2d(chunks) {
 			//TODO what to do with classic 48x48 chunks?
-			let file = chunks[0].loaded.grid.getHeightCollisionFile(singlerect.x * 64, singlerect.z * 64, thiscnf.level, 64, 64);
+			let file = chunks[0].grid.getHeightCollisionFile(singlerect.x * 64, singlerect.z * 64, thiscnf.level, 64, 64);
 			let buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);
@@ -988,10 +1013,10 @@ const rendermodeMaplabels: RenderMode<"height"> = function (engine, config, cnf,
 		name: filename,
 		hash: deps.recthash(singlerect),
 		datarect: singlerect,
-		async run(chunks) {
-			let { chunkSize } = chunks[0].loaded.chunkdata;
+		async run2d(chunks) {
+			let chunkSize = chunks[0].chunkSize;
 			let rawarea = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
-			let locs = chunks.flatMap(ch => ch.chunk.loaded!.chunk?.locs ?? []);
+			let locs = chunks.flatMap(ch => ch.chunk?.locs ?? []);
 			let iconjson = await jsonIcons(engine, locs, rawarea, thiscnf.level);
 			let textual = prettyJson(iconjson, { indent: "\t" });
 			let buf = Buffer.from(textual, "utf8");
@@ -1024,8 +1049,8 @@ const rendermodeRenderMeta: RenderMode<"rendermeta"> = function (engine, config,
 
 const rendermodes: Record<LayerConfig["mode"], RenderMode<any>> = {
 	"3d": rendermode3d,
-	interactions: rendermodeInteractions,
 	minimap: rendermode3d,
+	interactions: rendermodeInteractions,
 	collision: rendermodeCollision,
 	map: rendermodeMap,
 	height: rendermodeHeight,

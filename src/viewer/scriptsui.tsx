@@ -422,11 +422,13 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 			queueRender();
 		}
 		let addfolder = (name: string) => {
-			if (name.startsWith(folder) && name.indexOf("/", folder.length + 1) == -1) {
-				let subname = name.slice(folder.length);
+			if (name.startsWith(folder)) {
+				let subname = name.slice(folder.length).split("/")[0];
 				if (subname == "") { return; }
-				folders.add(subname);
-				queueRender();
+				if (!folders.has(subname)) {
+					folders.add(subname);
+					queueRender();
+				}
 			}
 		}
 		let addfile = (name: string) => {

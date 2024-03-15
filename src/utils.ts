@@ -1,4 +1,6 @@
 
+export type AsyncReturnType<T extends (...args: any[]) => Promise<any>> = T extends (...args: any[]) => Promise<infer Q> ? Q : never;
+
 export type FileRange = {
 	start: [number, number, number],
 	end: [number, number, number]
