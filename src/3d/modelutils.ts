@@ -89,8 +89,8 @@ export class MeshBuilder {
         }
 
         if (points.length > 2) {
-            let dx1 = points[2][0] - points[1][0], dy1 = points[2][0] - points[1][0], dz1 = points[2][0] - points[1][0];
-            let dx2 = points[0][0] - points[1][0], dy2 = points[0][0] - points[1][0], dz2 = points[0][0] - points[1][0];
+            let dx1 = points[2][0] - points[1][0], dy1 = points[2][1] - points[1][1], dz1 = points[2][2] - points[1][2];
+            let dx2 = points[0][0] - points[1][0], dy2 = points[0][1] - points[1][1], dz2 = points[0][2] - points[1][2];
             let normx = dy2 * dz1 - dy1 * dz2;
             let normy = dz2 * dx1 - dz1 * dx2;
             let normz = dx2 * dy1 - dx1 * dy2;
@@ -100,6 +100,7 @@ export class MeshBuilder {
             normz /= len;
 
             //top polygon
+            let startindex = this.index.length;
             let zeroindex = -1;
             let previndex = -1;
             for (let a = 0; a < points.length; a++) {
@@ -121,8 +122,9 @@ export class MeshBuilder {
             //bottom polygon
             zeroindex = -1;
             previndex = -1;
-            for (let a = points.length - 1; a >= 0; a--) {
-                let point = points[a];
+            for (let a = points.length; a > 0; a--) {
+                //start at vertex 0 in order to allow this vertex to be non-convex (use in corner walls, type=2)
+                let point = points[a % points.length];
                 this.pos.push(...point);
                 this.color.push(...color);
                 this.uvs.push(0, 0);
@@ -315,43 +317,45 @@ export const topdown2dWallModels = generateTopdown2dWallModels();
 
 
 function generateTopdown2dWallModels() {
-    const thick = tile / 8;
+    const edge = halftile;
+    const offset = halftile - tile / 8;
     const height = 0;
     const wallvec: xyz = [0, height, 0];
     return {
-        wall: new ModelBuilder().mat(0).addExtrusion(white, wallvec, [
-            [-halftile, 0, -halftile],
-            [-halftile, 0, halftile],
-            [-halftile + thick, 0, halftile],
-            [-halftile + thick, 0, -halftile]
+        wall: new ModelBuilder().mat(-1).addExtrusion(white, wallvec, [
+            [-edge, 0, -edge],
+            [-edge, 0, edge],
+            [-offset, 0, edge],
+            [-offset, 0, -edge]
         ]).convert(),
-        shortcorner: new ModelBuilder().mat(0).addExtrusion(white, wallvec, [
-            [-halftile, 0, halftile],
-            [-halftile + thick, 0, halftile],
-            [-halftile + thick, 0, halftile - thick],
-            [-halftile, 0, halftile - thick]
+        shortcorner: new ModelBuilder().mat(-1).addExtrusion(white, wallvec, [
+            [-edge, 0, edge],
+            [-offset, 0, edge],
+            [-offset, 0, offset],
+            [-edge, 0, offset]
         ]).convert(),
-        longcorner: new ModelBuilder().mat(0).addExtrusion(white, wallvec, [
-            [-halftile + thick, 0, halftile - thick],
-            [-halftile + thick, 0, -halftile],
-            [-halftile, 0, -halftile],
-            [-halftile, 0, halftile],
-            [halftile, 0, halftile],
-            [halftile, 0, halftile - thick],
+        longcorner: new ModelBuilder().mat(-1).addExtrusion(white, wallvec, [
+            [-offset, 0, offset],
+            [-offset, 0, -edge],
+            [-edge, 0, -edge],
+            [-edge, 0, edge],
+            [edge, 0, edge],
+            [edge, 0, offset],
         ]).convert(),
-        pillar: new ModelBuilder().mat(0).addExtrusion(white, wallvec, [
-            [-halftile + thick, 0, halftile - thick],
-            [-halftile + thick, 0, -halftile],
-            [-halftile, 0, -halftile],
-            [-halftile, 0, halftile],
-            [halftile, 0, halftile],
-            [halftile, 0, halftile - thick],
+        pillar: new ModelBuilder().mat(-1).addExtrusion(white, wallvec, [
+            //same as shortcorner
+            [-edge, 0, edge],
+            [-offset, 0, edge],
+            [-offset, 0, offset],
+            [-edge, 0, offset]
         ]).convert(),
-        diagonal: new ModelBuilder().mat(0).addExtrusion(white, wallvec, [
-            [-halftile, 0, halftile],
-            [-halftile + thick, 0, halftile],
-            [-halftile + thick, 0, halftile - thick],
-            [-halftile, 0, halftile - thick]
+        diagonal: new ModelBuilder().mat(-1).addExtrusion(white, wallvec, [
+            [-edge, 0, -edge],
+            [-edge, 0, -offset],
+            [offset, 0, edge],
+            [edge, 0, edge],
+            [edge, 0, offset],
+            [-offset, 0, -edge]
         ]).convert(),
     }
 }

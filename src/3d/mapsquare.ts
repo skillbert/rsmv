@@ -1198,7 +1198,7 @@ export async function renderMapSquare(cache: ThreejsSceneCache, parsedsquare: Re
 		chunkroot.updateMatrix();
 
 		if (allmeshes.length != 0) {
-			let materials = await Promise.all(allmeshes.map(q => cache.getMaterial(q.materialId, q.hasVertexAlpha, q.minimapVariant)));
+			let materials = await Promise.all(allmeshes.map(q => q.material ?? cache.getMaterial(q.materialId, q.hasVertexAlpha, q.minimapVariant)));
 			chunkroot.add(...allmeshes.map((q, i) => meshgroupsToThree(grid, q, rootx, rootz, materials[i], locRenders)));
 		}
 
@@ -1361,6 +1361,7 @@ export type PlacedMesh = PlacedMeshBase<ModelExtrasLocation> | PlacedMeshBase<Mo
 export type PlacedModel = {
 	models: PlacedMesh[],
 	materialId: number,
+	material: ParsedMaterial | null,
 	hasVertexAlpha: boolean,
 	minimapVariant: boolean,
 	overlayIndex: number,
@@ -1417,7 +1418,8 @@ export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, loc
 			groupid: "walls" + level,
 			minimapVariant: false,
 			hasVertexAlpha: false,
-			materialId: 0,
+			materialId: -1,
+			material: { mat, matmeta: { ...defaultMaterial() } },
 			overlayIndex: 1
 		}
 
@@ -1467,9 +1469,9 @@ export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, loc
 		group = {
 			groupid: "mapscenes" + loc.effectiveLevel,
 			hasVertexAlpha: false,
-			materialId: 0,
+			materialId: -1,
 			minimapVariant: false,
-			// material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
+			material: { mat, matmeta: { ...defaultMaterial(), alphamode: "cutoff" } },
 			models: [],
 			overlayIndex: 2
 		};
@@ -1512,6 +1514,7 @@ export async function mapsquareOverlays(engine: EngineCache, grid: TileGrid, loc
 	}
 
 	for (let loc of locs) {
+		if (loc.effectiveLevel == -1) { continue; }
 		if (loc.type == 0) {
 			addwall(topdown2dWallModels.wall, loc);
 		} else if (loc.type == 1) {
@@ -1736,7 +1739,8 @@ export type WorldLocation = {
 	sizez: number,
 	placement: mapsquare_locations["locations"][number]["uses"][number]["extra"],
 	visualLevel: number,
-	effectiveLevel: number
+	effectiveLevel: number,
+	forceVisible: boolean
 }
 
 export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, locations: mapsquare_locations["locations"], originx: number, originz: number, collision = false) {
@@ -1787,7 +1791,8 @@ export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, loca
 				rotation: inst.rotation,
 				plane: inst.plane,
 				visualLevel,
-				effectiveLevel: callingtile.effectiveLevel
+				effectiveLevel: callingtile.effectiveLevel,
+				forceVisible: !!(callingtile.settings & 0x8)
 			});
 
 			const fullcollisiontypes = [
@@ -2026,18 +2031,15 @@ export async function generateLocationMeshgroups(scene: ThreejsSceneCache, locba
 					group = new Map();
 					matmeshes.set(obj.extras.modelgroup, group);
 				}
-				let matgroup = group.get(matkey);
-				if (!matgroup) {
-					matgroup = {
-						materialId: modified.materialId,
-						hasVertexAlpha: modified.hasVertexAlpha,
-						minimapVariant: minimap,
-						models: [],
-						groupid: obj.extras.modelgroup,
-						overlayIndex: 0
-					};
-					group.set(matkey, matgroup);
-				}
+				let matgroup = getOrInsert(group, matkey, () => ({
+					materialId: modified.materialId,
+					material: null,
+					hasVertexAlpha: modified.hasVertexAlpha,
+					minimapVariant: minimap,
+					models: [],
+					groupid: obj.extras.modelgroup,
+					overlayIndex: 0
+				}));
 				let mesh: PlacedModel["models"][number] = {
 					model: modified,
 					morph: modelinst.morph,

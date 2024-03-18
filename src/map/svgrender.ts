@@ -78,7 +78,8 @@ export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect
 	for (let loc of locs) {
 		if (loc.x < rect.x - overdraw || loc.z < rect.z - overdraw) { continue; }
 		if (loc.x >= rect.x + rect.xsize + overdraw || loc.z >= rect.z + rect.zsize + overdraw) { continue; }
-		if (loc.effectiveLevel != maplevel) { continue; }
+
+		if (loc.effectiveLevel == -1 || (!loc.forceVisible && loc.effectiveLevel > maplevel)) { continue; }
 
 		if (loc.location.mapFunction) {
 			let group = maplabels.get(loc.location.mapFunction);
@@ -151,7 +152,8 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 				let occluded = false;
 				for (let level = squareLevels - 1; !occluded && level >= 0; level--) {
 					let tile = grid.getTile(rect.x + dx, rect.z + dz, level);
-					if (!tile || tile.effectiveLevel > maplevel) {
+					//TODO move this settings&8 check somewhere else
+					if (!tile || (!(tile.settings & 0x8) && tile.effectiveLevel > maplevel)) {
 						continue;
 					}
 					if (tile.underlayVisible) {
@@ -218,7 +220,8 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 	for (let loc of locs) {
 		if (loc.x < rect.x - overdraw || loc.z < rect.z - overdraw) { continue; }
 		if (loc.x >= rect.x + rect.xsize + overdraw || loc.z >= rect.z + rect.zsize + overdraw) { continue; }
-		if (loc.effectiveLevel > maplevel) { continue; }
+
+		if (loc.effectiveLevel == -1 || (!loc.forceVisible && loc.effectiveLevel > maplevel)) { continue; }
 
 		let linegroup = (loc.location.deletable || loc.location.actions_0 ? redlines : whitelines);
 
@@ -254,7 +257,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 			}
 			group.uses.push({ x: loc.x - rect.x, z: loc.z - rect.z });
 		}
-		if (loc.location.mapscene == undefined) {
+		if (!loc.location.mapscene) {
 			if (drawwalls && !occluded) {
 				if (loc.type == 0) {
 					addline(linegroup, loc.x - rect.x, loc.z - rect.z, 3, 0, loc.rotation);
