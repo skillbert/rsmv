@@ -156,6 +156,7 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 
 	if (parsed.meshes) {
 		for (let mesh of parsed.meshes) {
+			if (mesh.isHidden) { continue; }
 			let indexBuffers = mesh.indexBuffers;
 			let indexlods = indexBuffers.map(q => new THREE.BufferAttribute(q, 1));
 			let indexbuf = indexBuffers[0];
@@ -274,6 +275,7 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 		if (mesh.normalBuffer) { addNormalsBuffer(attributes, mesh.normalBuffer); }
 
 		for (let render of mesh.renders) {
+			if (render.isHidden) { continue; }
 			if (render.buf.length == 0) { continue; }
 			let minindex = render.buf[0];
 			let maxindex = render.buf[0];
