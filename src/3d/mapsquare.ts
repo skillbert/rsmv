@@ -32,7 +32,7 @@ const heightScale = 1 / 16;
 
 const upvector = new THREE.Vector3(0, 1, 0);
 
-const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, materialBleedpriority: 0, color: [255, 0, 255] };
+const defaultVertexProp: TileVertex = { material: -1, materialTiling: 128, materialBleedpriority: -1, color: [255, 0, 255] };
 
 export const { tileshapes, defaulttileshape, defaulttileshapeflipped } = generateTileShapes();
 
@@ -213,7 +213,7 @@ export class TileProps {
 			this.underlayprops = {
 				material: underlay.material ?? -1,
 				materialTiling: underlay.material_tiling ?? 128,
-				materialBleedpriority: 0,
+				materialBleedpriority: -1,
 				color: underlay.color ?? [255, 0, 255]
 			};
 			this.rawUnderlay = underlay;
@@ -2557,7 +2557,7 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 							let prop: TileVertex = {
 								material: 0,
 								materialTiling: 128,
-								materialBleedpriority: 0,
+								materialBleedpriority: -1,
 								color: tile.underlayprops.color
 							};
 							props = Array<TileVertex>(shape.underlay.length).fill(prop);
