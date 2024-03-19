@@ -74,7 +74,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	private forceAspectRatio: number | null = null;
 
 	private standardLights: Group;
-	private minimapLights: Group;
 
 	private camMode: RenderCameraMode = "standard";
 	private camera: THREE.PerspectiveCamera;
@@ -169,23 +168,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		this.standardLights.add(dirLight);
 		this.standardLights.add(hemilight);
 		scene.add(this.standardLights);
-
-		//TODO remove?
-		//minimap lights
-		this.minimapLights = new Group();
-		//obsolete since lights are now baked into the custom shader uniforms
-		// let minidirlight = new THREE.DirectionalLight(new THREE.Color().setRGB(0.8666666746139526, 0.8078431487083435, 0.7333333492279053), 2);
-		// minidirlight.position.set(-0.5391638875007629, 0.6469966173171997, 0.5391638875007629);
-		// // minidirlight.color.convertSRGBToLinear();
-		// let minimapambientlight = new THREE.AmbientLight(new THREE.Color(0.6059895753860474, 0.5648590922355652, 0.5127604007720947), 2);
-		// // minimapambientlight.color.convertSRGBToLinear()
-		// this.minimapLights.visible = false;
-		// this.minimapLights.add(minidirlight);
-		// this.minimapLights.add(minimapambientlight);
-		// scene.add(this.minimapLights);
-
 		this.scene.fog = new THREE.Fog("#FFFFFF", 10000, 10000);
-
 		this.sceneElementsChanged();
 	}
 
@@ -412,8 +395,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			cam.updateProjectionMatrix();
 		}
 
-		this.renderer.clearColor();
-		this.renderer.clearDepth();
+		let oldautoclear = this.renderer.autoClear;
 		if (cam == this.camera && this.skybox) {
 			this.skybox.camera.matrixAutoUpdate = false;
 			this.camera.updateWorldMatrix(true, true);
@@ -421,9 +403,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			this.skybox.camera.matrix.setPosition(0, 0, 0);
 			this.skybox.camera.projectionMatrix.copy(this.camera.projectionMatrix);
 			this.renderer.render(this.skybox.scene, this.skybox.camera);
+			//only clear depth for next render
+			//need to do this weird flipflop since threejs doesn't respect the autoclear color when manually calling renderer.clearColor() for the first time
 			this.renderer.clearDepth();
+			this.renderer.autoClear = false;
 		}
 		this.renderer.render(this.scene, cam);
+		this.renderer.autoClear = oldautoclear;
+
 		this.contextLossCountLastRender = this.contextLossCount;
 	}
 
