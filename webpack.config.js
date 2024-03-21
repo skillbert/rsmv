@@ -46,7 +46,6 @@ module.exports = {
 		"sharp": { commonjs: "sharp" },
 		"zlib": { commonjs: "zlib" },
 		"lzma": { commonjs: "lzma" },
-		"cmd-ts": { commonjs: "cmd-ts" },
 		"comment-json": { commonjs: "comment-json" },
 		"gl": { commonjs: "gl" },
 		"canvas": { commonjs: "canvas" }

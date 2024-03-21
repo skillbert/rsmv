@@ -21,6 +21,7 @@ import { CanvasImage } from "../imgutils";
 import { minimapFloorMaterial, minimapWaterMaterial } from "../rs3shaders";
 import { mapsquare_tiles_nxt } from "../../generated/mapsquare_tiles_nxt";
 import { crc32addInt } from "../libs/crc32util";
+import { generateFloorHashBoxes, generateLocationHashBoxes } from "../map/chunksummary";
 
 
 export const tiledimensions = 512;
@@ -912,7 +913,7 @@ export class TileGrid implements TileGridSource {
 	}
 }
 
-export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, minimap?: boolean, skybox?: boolean, mask?: MapRect[] };
+export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, collision?: boolean, map2d?: boolean, minimap?: boolean, hashboxes?: boolean, skybox?: boolean, mask?: MapRect[] };
 
 export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
@@ -1165,7 +1166,6 @@ export type RSMapChunkData = {
 	grid: TileGrid,
 	chunk: ChunkData | null,
 	chunkSize: number,
-	groups: Set<string>,
 	sky: { skybox: Object3D, fogColor: number[], skyboxModelid: number } | null,
 	modeldata: Map<WorldLocation, PlacedMesh[]>,
 	chunkroot: THREE.Group,
@@ -1211,6 +1211,12 @@ export async function renderMapSquare(cache: ThreejsSceneCache, parsedsquare: Re
 			let rawboxes = mapsquareCollisionToThree(grid, chunk, level, true);
 			if (rawboxes) { chunkroot.add(rawboxes); }
 		}
+		if (opts.hashboxes) {
+			for (let level = 0; level < squareLevels; level++) {
+				chunkroot.add(await generateLocationHashBoxes(cache, locmeshes.byLogical, grid, chunk.mapsquarex, chunk.mapsquarez, level));
+				chunkroot.add(await generateFloorHashBoxes(cache, grid, chunk, level));
+			}
+		}
 		modeldata = locmeshes.byLogical;
 	} else {
 		modeldata = new Map();
@@ -1218,11 +1224,7 @@ export async function renderMapSquare(cache: ThreejsSceneCache, parsedsquare: Re
 	let sky = (chunk && opts?.skybox ? await mapsquareSkybox(cache, chunk) : null);
 	let chunkSize = (cache.engine.classicData ? classicChunkSize : rs2ChunkSize);
 
-	let groups = new Set<string>();
 	chunkroot?.traverse(node => {
-		if (node.userData.modelgroup) {
-			groups.add(node.userData.modelgroup);
-		}
 		if (node instanceof THREE.Mesh) {
 			let parent: THREE.Object3D | null = node;
 			let iswireframe = false;
@@ -1239,7 +1241,7 @@ export async function renderMapSquare(cache: ThreejsSceneCache, parsedsquare: Re
 		}
 	});
 
-	return { chunkx, chunkz, grid, chunk, groups, sky, modeldata, chunkroot, chunkSize, locRenders };
+	return { chunkx, chunkz, grid, chunk, sky, modeldata, chunkroot, chunkSize, locRenders };
 }
 
 type SimpleTexturePackerAlloc = { u: number, v: number, usize: number, vsize: number, x: number, y: number, repeatWidth: number, repeatHeight: number, totalpixels: number, img: CanvasImage }

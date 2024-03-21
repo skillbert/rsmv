@@ -1,6 +1,6 @@
 import { Box2, BufferAttribute, Group, Matrix4, Vector2, Vector3 } from "three";
 import { objects } from "../../generated/objects";
-import { ChunkData, getTileHeight, MapRect, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
+import { ChunkData, getTileHeight, MapRect, ModelExtras, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, PlacedModel, rs2ChunkSize, tiledimensions, TileGrid, tileshapes, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
 import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBuilder } from "../3d/modelutils";
 import { DependencyGraph } from "../scripts/dependencies";
@@ -9,6 +9,7 @@ import { CacheFileSource } from "../cache";
 import { RenderedMapMeta } from ".";
 import { crc32addInt } from "../libs/crc32util";
 import type { RSMapChunk } from "../3d/modelnodes";
+import { getOrInsert } from "../utils";
 
 export function getLocImageHash(grid: TileGrid, info: WorldLocation) {
 	let loc = info.location;
@@ -29,8 +30,7 @@ export function getLocImageHash(grid: TileGrid, info: WorldLocation) {
 	}
 	let baseheight = getTileHeight(grid, info.x, info.z, info.plane);
 
-	let hash = modelPlacementHash(info, false);
-	hash = crc32addInt(info.resolvedlocid, hash);
+	let hash = modelPlacementHash(info);
 	for (let height of subgrid) {
 		hash = crc32addInt(height - baseheight, hash);
 	}
@@ -150,34 +150,39 @@ export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph
 	const groupsize = 2;
 	for (let x = 0; x < chunk.tilerect.xsize; x += groupsize) {
 		for (let z = 0; z < chunk.tilerect.zsize; z += groupsize) {
-			let tilehashes = new Array(grid.levels).fill(0);
+			let tilehashes = new Array<number>(grid.levels).fill(0);
 			let maxy = 0;
 			//can't use Set here since we need determinisitic order
 			let overlays: number[] = [];
 			let underlays: number[] = [];
-			for (let dx = 0; dx < groupsize; dx++) {
-				for (let dz = 0; dz < groupsize; dz++) {
-					for (let level = 0; level < grid.levels; level++) {
+			for (let level = 0; level < grid.levels; level++) {
+				let minlevel = level;
+				for (let dx = 0; dx < groupsize; dx++) {
+					for (let dz = 0; dz < groupsize; dz++) {
+						let tilehash = 0;
 						let tile = grid.getTile(chunk.tilerect.x + x + dx, chunk.tilerect.z + z + dz, level);
-						// if (!tile) { throw new Error("missing tile"); }
 						if (!tile || (!tile.underlayVisible && !tile.overlayVisible)) { continue; }
-						let tilehash = tilehashes[tile.effectiveVisualLevel];
+						minlevel = Math.min(minlevel, tile.effectiveVisualLevel);
 
 						let rawtile = tile.debug_raw;
 						//TODO make a nxt branch here
 						if (!rawtile) { throw new Error("can't calculate chunkhash since rawtile isn't set"); }
-						tilehash = crc32addInt(rawtile.flags, tilehash);//TODO get rid of this one
 						tilehash = crc32addInt(rawtile.height ?? -1, tilehash);
 						tilehash = crc32addInt(rawtile.overlay ?? -1, tilehash);
 						tilehash = crc32addInt(rawtile.settings ?? -1, tilehash);
 						tilehash = crc32addInt(rawtile.shape ?? -1, tilehash);
 						tilehash = crc32addInt(rawtile.underlay ?? -1, tilehash);
 
+						tilehash = crc32addInt(tile.effectiveVisualLevel, tilehash);
+
 						if (rawtile.overlay != null && overlays.indexOf(rawtile.overlay) == -1) { overlays.push(rawtile.overlay); }
 						if (rawtile.underlay != null && underlays.indexOf(rawtile.underlay) == -1) { underlays.push(rawtile.underlay); }
 
 						maxy = Math.max(maxy, tile.y, tile.y01, tile.y10, tile.y11);
-						tilehashes[tile.effectiveVisualLevel] = tilehash;
+
+						for (let i = tile.effectiveVisualLevel; i < grid.levels; i++) {
+							tilehashes[i] = crc32addInt(tilehash, tilehashes[i]);
+						}
 					}
 				}
 			}
@@ -207,17 +212,10 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 	const v1 = new Vector3();
 	const v2 = new Vector3();
 
-	let locgroups = new Map<number, PlacedMeshBase<ModelExtrasLocation>[][]>();
-	for (let models of locs.values()) {
-		let first = models[0];//TODO why only index 0, i forgot
-		if (first.extras.modeltype == "location") {
-			let group = locgroups.get(first.extras.locationid);
-			if (!group) {
-				group = [];
-				locgroups.set(first.extras.locationid, group);
-			}
-			group.push(models as PlacedMeshBase<ModelExtrasLocation>[]);
-		}
+	let locgroups = new Map<number, WorldLocation[]>();
+	for (let loc of locs.keys()) {
+		let group = getOrInsert(locgroups, loc.locid, () => []);
+		group.push(loc);
 	}
 
 	let outlocgroups: ChunkLocDependencies[] = [];
@@ -231,9 +229,10 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 		}
 		outlocgroups.push(outgroup);
 		for (let loc of group) {
+			let models = locs.get(loc)!;
 			v0.set(0, 0, 0);
 			v1.set(0, 0, 0);
-			for (let mesh of loc) {
+			for (let mesh of models) {
 				let posattr = mesh.model.attributes.pos;
 				for (let i = 0; i < posattr.count; i++) {
 					v2.set(posattr.getX(i), posattr.getY(i), posattr.getZ(i));
@@ -252,18 +251,18 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 			boxAttribute.setXYZ(6, v1.x, v1.y, v0.z);
 			boxAttribute.setXYZ(7, v1.x, v1.y, v1.z);
 
-			let first = loc[0];
+			let first = models[0];
 			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, chunkx * rs2ChunkSize * tiledimensions, chunkz * rs2ChunkSize * tiledimensions);
 			let bounds = [...trans.array as Float32Array].map(v => v | 0);
 			outgroup.instances.push({
-				plane: first.extras.locationInstance.plane,
-				x: first.extras.locationInstance.x,
-				z: first.extras.locationInstance.z,
-				rotation: first.extras.locationInstance.rotation,
-				type: first.extras.locationInstance.type,
+				plane: loc.plane,
+				x: loc.x,
+				z: loc.z,
+				rotation: loc.rotation,
+				type: loc.type,
 
-				visualLevel: first.extras.locationInstance.visualLevel,
-				placementhash: modelPlacementHash(first.extras.locationInstance),
+				visualLevel: loc.visualLevel,
+				placementhash: modelPlacementHash(loc),
 				bounds: bounds
 			});
 		}
@@ -273,26 +272,27 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 	return outlocgroups;
 }
 
+function tileSetVertices(tile: ChunkTileDependencies) {
+	let x0 = tile.x * tiledimensions;
+	let x1 = x0 + tile.xzsize * tiledimensions;
+	let z0 = tile.z * tiledimensions;
+	let z1 = z0 + tile.xzsize * tiledimensions;
+	let y0 = 0;
+	let y1 = tile.maxy;
+	return [
+		x0, y0, z0,
+		x0, y0, z1,
+		x0, y1, z0,
+		x0, y1, z1,
+		x1, y0, z0,
+		x1, y0, z1,
+		x1, y1, z0,
+		x1, y1, z1,
+	];
+}
+
 export function compareFloorDependencies(tilesa: ChunkTileDependencies[], tilesb: ChunkTileDependencies[], levela: number, levelb: number) {
 	let vertsets: number[][] = [];
-	let addtile = (tile: ChunkTileDependencies) => {
-		let x0 = tile.x * tiledimensions;
-		let x1 = x0 + tile.xzsize * tiledimensions;
-		let z0 = tile.z * tiledimensions;
-		let z1 = z0 + tile.xzsize * tiledimensions;
-		let y0 = 0;
-		let y1 = tile.maxy;
-		vertsets.push([
-			x0, y0, z0,
-			x0, y0, z1,
-			x0, y1, z0,
-			x0, y1, z1,
-			x1, y0, z0,
-			x1, y0, z1,
-			x1, y1, z0,
-			x1, y1, z1,
-		]);
-	}
 	for (let i = 0; i < tilesa.length; i++) {
 		let tilea = tilesa[i];
 		let tileb = tilesb[i];
@@ -302,18 +302,12 @@ export function compareFloorDependencies(tilesa: ChunkTileDependencies[], tilesb
 			mismatch = true;
 		} else if (tilea.tilehashes.length <= maxfloor || tileb.tilehashes.length <= maxfloor) {
 			mismatch = true;
-		} else {
-			for (let level = 0; level <= maxfloor; level++) {
-				let hasha = level <= levela ? tilea.tilehashes[level] : 0;
-				let hashb = level <= levelb ? tileb.tilehashes[level] : 0;
-				if (hasha != hashb) {
-					mismatch = true
-				}
-			}
+		} else if (tilea.tilehashes[levela] != tileb.tilehashes[levelb]) {
+			mismatch = true
 		}
 		if (mismatch) {
-			addtile(tilea);
-			addtile(tileb);
+			vertsets.push(tileSetVertices(tilea));
+			vertsets.push(tileSetVertices(tileb));
 		}
 	}
 	return vertsets;
@@ -323,8 +317,9 @@ export function compareLocDependencies(chunka: ChunkLocDependencies[], chunkb: C
 	let vertsets: number[][] = [];
 	let iloca = 0, ilocb = 0;
 	while (true) {
-		let loca = chunka[iloca];
-		let locb = chunkb[ilocb];
+		//explicit bounds check because reading past end is really bad for performance apparently
+		let loca = (iloca < chunka.length ? chunka[iloca] : undefined);
+		let locb = (ilocb < chunkb.length ? chunkb[ilocb] : undefined);
 
 		if (!loca && !locb) { break }
 		else if (loca && locb && loca.id == locb.id) {
@@ -371,7 +366,7 @@ export function compareLocDependencies(chunka: ChunkLocDependencies[], chunkb: C
 			ilocb++;
 		} else if (!loca || locb && locb.id < loca.id) {
 			//locb inserted
-			vertsets.push(...locb.instances.map(q => q.bounds));
+			vertsets.push(...locb!.instances.map(q => q.bounds));
 			ilocb++;
 		} else if (!locb || loca && loca.id < locb.id) {
 			//locb inserted
@@ -389,8 +384,8 @@ export async function mapdiffmesh(scene: ThreejsSceneCache, points: number[][], 
 		verts.slice(c * 3, c * 3 + 3) as any
 	);
 	let models = new Group();
-	models.position.x -= tiledimensions * rs2ChunkSize / 2;
-	models.position.z -= tiledimensions * rs2ChunkSize / 2;
+	models.matrixAutoUpdate = false;
+	models.updateMatrix();
 	for (let group of points) {
 		let model = new ModelBuilder();
 		//double-sided box through each vertex
@@ -421,6 +416,54 @@ type KMeansBucket = {
 	runningbounds: Box2,
 	samples: number
 };
+
+
+
+export async function generateLocationHashBoxes(scene: ThreejsSceneCache, locs: Map<WorldLocation, PlacedMesh[]>, grid: TileGrid, chunkx: number, chunkz: number, level: number) {
+	let deps = await scene.engine.getDependencyGraph();
+	await deps.preloadChunkDependencies({ area: { x: chunkx, z: chunkz, xsize: 1, zsize: 1 } });
+	let locdeps = mapsquareLocDependencies(grid, deps, locs, chunkx, chunkz);
+
+	let group = new Group();
+	for (let loc of locdeps) {
+		for (let inst of loc.instances) {
+			if (inst.visualLevel != level) { continue; }
+			let totalhash = loc.dependencyhash ^ inst.placementhash;
+			let color = [(totalhash >> 16) & 0xff, (totalhash >> 8) & 0xff, (totalhash >> 0) & 0xff] as [number, number, number];
+			group.add(await mapdiffmesh(scene, [inst.bounds], color));
+		}
+	}
+	group.userData = {
+		modeltype: "overlay",
+		isclickable: false,
+		modelgroup: "hashbox_objects" + level,
+		level
+	} satisfies ModelExtras;
+
+	return group;
+}
+
+export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, level: number) {
+	let deps = await scene.engine.getDependencyGraph();
+	await deps.preloadChunkDependencies({ area: { x: chunk.mapsquarex, z: chunk.mapsquarez, xsize: 1, zsize: 1 } });
+	let floordeps = mapsquareFloorDependencies(grid, deps, chunk);
+	let group = new Group();
+	for (let dep of floordeps) {
+		let totalhash = 0;
+		totalhash = crc32addInt(dep.dephash, totalhash);
+		totalhash = crc32addInt(dep.tilehashes[level], totalhash);
+		let color = [(totalhash >> 16) & 0xff, (totalhash >> 8) & 0xff, (totalhash >> 0) & 0xff] as [number, number, number];
+		let verts = tileSetVertices(dep);
+		group.add(await mapdiffmesh(scene, [verts], color));
+	}
+	group.userData = {
+		modeltype: "overlay",
+		isclickable: false,
+		modelgroup: "hashbox_floor" + level,
+		level
+	} satisfies ModelExtras
+	return group;
+}
 
 
 /**
@@ -647,64 +690,39 @@ function rendermeans(rects: Box2[], buckets: KMeansBucket[]) {
 	}
 }
 
-//TODO remove
-globalThis.lochash = mapsquareLocDependencies;
-globalThis.floorhash = mapsquareFloorDependencies;
-globalThis.comparehash = compareLocDependencies;
-globalThis.diffmodel = mapdiffmesh;
-globalThis.test = async (low: number, high: number) => {
-	globalThis.deps ??= await globalThis.getdeps(globalThis.engine, { area: { x: 49, z: 49, xsize: 3, zsize: 3 } });
+globalThis.test = async (chunka: RSMapChunk, levela: number, levelb = 0, chunkb = chunka) => {
+	let depsa = await chunka.cache.engine.getDependencyGraph();
+	let depsb = await chunkb.cache.engine.getDependencyGraph();
+	await depsa.preloadChunkDependencies({ area: { x: chunka.chunkx, z: chunka.chunkz, xsize: 1, zsize: 1 } });
+	await depsb.preloadChunkDependencies({ area: { x: chunkb.chunkx, z: chunkb.chunkz, xsize: 1, zsize: 1 } });
+	await chunka.chunkdata;
+	await chunkb.chunkdata;
+	if (!chunka.loaded || !chunkb.loaded) { return; }
 
-	let chunk: RSMapChunk = globalThis.chunk;
-	if (!chunk.loaded) { return; }
-	let locdeps = mapsquareLocDependencies(chunk.loaded.grid, globalThis.deps, chunk.loaded.modeldata, chunk.loaded.chunkx, chunk.loaded.chunkz);
-	let locdifs = compareLocDependencies(locdeps, locdeps, low, high);
-	let locdifmesh = await mapdiffmesh(globalThis.sceneCache, locdifs);
-	globalThis.render.modelnode.add(locdifmesh);
+	let locsa = mapsquareLocDependencies(chunka.loaded.grid, depsa, chunka.loaded.modeldata, chunka.chunkx, chunka.chunkz);
+	let locsb = mapsquareLocDependencies(chunkb.loaded.grid, depsb, chunkb.loaded.modeldata, chunkb.chunkx, chunkb.chunkz);
 
-	let floordeps = mapsquareFloorDependencies(globalThis.chunk.loaded.grid, globalThis.deps, globalThis.chunk.loaded.chunks[0]);
-	let floordifs = compareFloorDependencies(floordeps, floordeps, low, high);
-	let floordifmesh = await mapdiffmesh(globalThis.sceneCache, floordifs);
-	globalThis.render.modelnode.add(floordifmesh);
+	let cmplocs = compareLocDependencies(locsa, locsb, levela, levelb);
+	let cmplocsmesh = await mapdiffmesh(chunka.cache, cmplocs);
+	chunka.rootnode.children[0].add(cmplocsmesh);
+	cmplocsmesh.userData = { modeltype: "overlay", isclickable: false, modelgroup: `cmplocs_${levela}_${levelb}`, level: levela } satisfies ModelExtras;
 
-	let frame = () => {
-		let floorproj = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(floordifmesh.matrixWorld);
-		let locproj = globalThis.render.camera.projectionMatrix.clone().multiply(globalThis.render.camera.matrixWorldInverse).multiply(locdifmesh.matrixWorld);
+	let floora = mapsquareFloorDependencies(chunka.loaded.grid, depsa, chunka.loaded.chunk!);
+	let floorb = mapsquareFloorDependencies(chunkb.loaded.grid, depsb, chunkb.loaded.chunk!);
 
-		let grid = new ImageDiffGrid();
-		grid.addPolygons(floorproj, floordifs);
-		grid.addPolygons(locproj, locdifs);
-		// let { grid, gridsize, buckets } = calculateDiffArea(locproj, locdifs);
-		let res = grid.calculateDiffArea(512, 512);
-		//TODO remove
-		let rects: Box2[] = [];
-		for (let i = 0; i < grid.grid.length; i++) {
-			if (grid.grid[i]) {
-				let x = i % grid.gridsize;
-				let y = Math.floor(i / grid.gridsize);
-				rects.push(new Box2(new Vector2(
-					-1 + 2 * x / grid.gridsize,
-					-1 + 2 * y / grid.gridsize
-				), new Vector2(
-					-1 + 2 * (x + 1) / grid.gridsize,
-					-1 + 2 * (y + 1) / grid.gridsize
-				)));
-			}
-		}
+	let cmpfloor = compareFloorDependencies(floora, floorb, levela, levelb);
+	let cmpfloormesh = await mapdiffmesh(chunka.cache, cmpfloor);
+	chunka.rootnode.children[0].add(cmpfloormesh);
+	cmpfloormesh.userData = { modeltype: "overlay", isclickable: false, modelgroup: `cmpfloor_${levela}_${levelb}`, level: levela } satisfies ModelExtras;
 
-		rendermeans(rects, res.buckets);
-		requestAnimationFrame(frame);
-	}
-	frame();
+	chunka.emit("changed", undefined);
+
+	return chunka;
 }
 
-function modelPlacementHash(loc: WorldLocation, includeposition = true) {
+function modelPlacementHash(loc: WorldLocation) {
 	let hash = 0;
-	if (includeposition) {
-		hash = crc32addInt(loc.x, hash);
-		hash = crc32addInt(loc.z, hash);
-		hash = crc32addInt(loc.plane, hash);
-	}
+	hash = crc32addInt(loc.resolvedlocid, hash);
 	hash = crc32addInt(loc.rotation, hash);
 	hash = crc32addInt(loc.type, hash);
 	if (loc.placement) {

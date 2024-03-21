@@ -23,9 +23,17 @@ import { drawTexture } from "../imgutils";
 import { RsUIViewer } from "./rsuiviewer";
 import { ClientScriptViewer } from "./cs2viewer";
 
-//work around typescript being weird when compiling for browser
-const electron = require("electron/renderer") as typeof import("electron/renderer");
-const hasElectrion = !!electron.ipcRenderer;
+//see if we have access to a valid electron import
+let electron: typeof import("electron/renderer") | null = (() => {
+	try {
+		let electron = require("electron/renderer");
+		//some enviroments polyfill an empty mock object, this also catches when electron is imported from a main process and exports only a string
+		if (electron?.ipcRenderer) {
+			return electron;
+		}
+	} catch (e) { }
+	return null;
+})();
 
 export type SavedCacheSource = {
 	type: string
@@ -57,7 +65,7 @@ export async function downloadBlob(name: string, blob: Blob) {
 
 /**@deprecated requires a service worker and is pretty sketchy, also no actual streaming output file sources atm */
 export async function downloadStream(name: string, stream: ReadableStream) {
-	if (!hasElectrion) {
+	if (!electron) {
 		let url = new URL(`download_${Math.random() * 10000 | 0}_${name}`, document.location.href).href;
 		let sw = await navigator.serviceWorker.ready;
 		if (!sw.active) { throw new Error("no service worker"); }
@@ -208,7 +216,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 
 	@boundMethod
 	async clickOpenNative() {
-		if (!hasElectrion) { return; }
+		if (!electron) { return; }
 		let dir: import("electron").OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.ProgramData!, "jagex/runescape"));
 		if (!dir.canceled) {
 			this.props.onOpen({ type: "autofs", location: dir.filePaths[0], writable: !!globalThis.writecache });//TODO propper ui for this
@@ -278,14 +286,14 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	render() {
 		return (
 			<React.Fragment>
-				{hasElectrion && (
+				{electron && (
 					<React.Fragment>
 						<h2>Native local RS3 cache</h2>
 						<p>Only works when running in electron</p>
 						<input type="button" className="sub-btn" onClick={this.clickOpenNative} value="Open native cache" />
 					</React.Fragment>
 				)}
-				{hasElectrion && (
+				{electron && (
 					<React.Fragment>
 						<h2>Jagex Servers</h2>
 						<p>Download directly from content servers. Only works when running in electron</p>
@@ -413,7 +421,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 	if (source.type == "openrs2") {
 		cache = await Openrs2CacheSource.fromId(+source.cachename);
 	}
-	if (hasElectrion && source.type == "autofs") {
+	if (electron && source.type == "autofs") {
 		let fs = new CLIScriptFS(source.location);
 		cache = await selectFsCache(fs, { writable: source.writable });
 	}

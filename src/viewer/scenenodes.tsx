@@ -1631,7 +1631,8 @@ type SceneMapState = {
 	center: { x: number, z: number },
 	toggles: Record<string, boolean>,
 	selectionData: any,
-	versions: { cache: ThreejsSceneCache, visible: boolean }[]
+	versions: { cache: ThreejsSceneCache, visible: boolean }[],
+	extramodels: boolean
 };
 export class SceneMapModel extends React.Component<LookupModeProps, SceneMapState> {
 	selectCleanup: (() => void)[] = [];
@@ -1642,7 +1643,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			center: { x: 0, z: 0 },
 			toggles: Object.create(null),
 			selectionData: undefined,
-			versions: []
+			versions: [],
+			extramodels: false
 		}
 	}
 
@@ -1782,11 +1784,17 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			const renderer = this.props.ctx?.renderer;
 			if (!sceneCache || !renderer) { return; }
 
-			let chunk = RSMapChunk.create(sceneCache, chunkx, chunkz, { skybox: true });
+			let chunk = RSMapChunk.create(sceneCache, chunkx, chunkz, { skybox: true, map2d: this.state.extramodels, hashboxes: this.state.extramodels, minimap: this.state.extramodels });
 			chunk.on("changed", () => {
 				let toggles = this.state.toggles;
 				let changed = false;
-				[...chunk.loaded!.groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
+				let groups = new Set<string>();
+				chunk.rootnode.traverse(node => {
+					if (node.userData.modelgroup) {
+						groups.add(node.userData.modelgroup);
+					}
+				});
+				[...groups].sort((a, b) => a.localeCompare(b)).forEach(q => {
 					if (typeof toggles[q] != "boolean") {
 						toggles[q] = !!q.match(/^(floor|objects)\d+/);
 						// toggles[q] = !!q.match(/^mini_(floor|objects)0/);
@@ -1952,6 +1960,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 				{this.state.chunkgroups.length == 0 && (
 					<React.Fragment>
 						<StringInput onChange={this.onSubmit} initialid={initid} />
+						<label><input type="checkbox" checked={this.state.extramodels} onChange={e => this.setState({ extramodels: e.currentTarget.checked })} />Load extra modes</label>
 						<p>Input format: x,z[,xsize=1,[zsize=xsize]]</p>
 						<p>Coordinates are in so-called mapsquare coordinates, each mapsquare is 64x64 tiles in size. The entire RuneScape map is laid out in one plane and is 100x200 mapsquares in size.</p>
 					</React.Fragment>

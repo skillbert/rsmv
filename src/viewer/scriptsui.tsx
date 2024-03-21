@@ -8,8 +8,16 @@ import VR360Viewer from "../libs/vr360viewer";
 import { CLIScriptFS, ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
 import path from "path";
 
-//work around typescript being weird when compiling for browser
-const electron = require("electron/renderer");
+//see if we have access to a valid electron import
+let electron: typeof import("electron/renderer") | null = (() => {
+	try {
+		let electron = require("electron/renderer");
+		if (electron?.ipcRenderer) {
+			return electron;
+		}
+	} catch (e) { }
+	return null;
+})();
 
 
 export type UIScriptFile = { name: string, kind: "file", data: Buffer | string }
@@ -519,7 +527,7 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 		let clicksave = async () => {
 			if (!p.fs) { return; }
 			let subfs: ScriptFS;
-			if (!!electron.ipcRenderer) {
+			if (electron) {
 				let dir: Electron.OpenDialogReturnValue = await electron.ipcRenderer.invoke("openfolder", path.resolve(process.env.HOME!, "downloads"));
 				if (dir.canceled || !dir.filePaths[0]) { return; }
 				subfs = new CLIScriptFS(dir.filePaths[0]);

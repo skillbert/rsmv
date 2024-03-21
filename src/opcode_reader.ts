@@ -641,6 +641,7 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			let len = lengthtype.read(state);
 			let bytelen = len * vectorLength * type.constr.BYTES_PER_ELEMENT;
 			let backing = new ArrayBuffer(bytelen);
+			if (state.scan + bytelen > state.endoffset) { throw new Error("trying to read outside buffer bounds"); }
 			let bytes = Buffer.from(backing);
 			bytes.set(state.buffer.subarray(state.scan, state.scan + bytelen));
 			state.scan += bytelen;

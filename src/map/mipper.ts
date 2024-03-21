@@ -138,6 +138,9 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 		if (!f) { return null; }
 		let res = await render.getFileResponse(f.name);
 		let mimetype = res.headers.get("content-type");
+		let hashheader = res.headers.get("x-amz-meta-mapfile-hash");
+		if (typeof hashheader == "string" && +hashheader != f.hash) { throw new Error("hash mismatch while creating mip file"); }
+
 		let outx = (i % 2) * subtilesize;
 		let outy = Math.floor(i / 2) * subtilesize;
 		if (avgfilter) {
