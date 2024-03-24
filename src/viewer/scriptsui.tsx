@@ -160,7 +160,7 @@ export class UIScriptFS extends TypedEmitter<{ writefile: string, unlink: string
 			let filename = name.split("/").at(-1)!;
 			let fileentry: UIScriptFile = { name: filename, kind: "file", data };
 			if (parent.files.has(filename)) {
-				this.output?.log(`overwriting file "${filename}"`);
+				this.output?.log(`overwriting file "${name}"`);
 			}
 			parent.files.set(filename, fileentry);
 		}

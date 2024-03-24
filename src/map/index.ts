@@ -625,14 +625,14 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 		let metas = await config.getMetas(nonemptytasks.filter(q => q.hash != 0));
 
-		let allparentcandidates: string[] = []
+		let allparentcandidates = new Set<string>();
 		for (let task of nonemptytasks) {
 			let existingfile = metas.find(q => q.file == task.name && q.hash == task.hash);
 			if (!existingfile) {
-				allparentcandidates.push(...task.dedupeDependencies ?? []);
+				task.dedupeDependencies?.forEach(q => allparentcandidates.add(q));
 			}
 		}
-		let parentinfo = await depstracker.forkDeps(allparentcandidates);
+		let parentinfo = await depstracker.forkDeps([...allparentcandidates]);
 
 		let renderer: MapRenderer | null = null;
 		for (let task of nonemptytasks) {

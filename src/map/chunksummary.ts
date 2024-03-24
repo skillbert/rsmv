@@ -475,22 +475,22 @@ export class ImageDiffGrid {
 
 	anyInside(projection: Matrix4, points: number[][]) {
 		//make them local vars to prevent writing into old space
-		const v0 = new Vector3();
-		const v1 = new Vector3();
-		const v2 = new Vector3();
+		const min = new Vector3();
+		const max = new Vector3();
+		const tmp = new Vector3();
 		for (let group of points) {
 			for (let i = 0; i < group.length; i += 3) {
-				v2.set(group[i + 0], group[i + 1], group[i + 2]);
-				v2.applyMatrix4(projection);
+				tmp.set(group[i + 0], group[i + 1], group[i + 2]);
+				tmp.applyMatrix4(projection);
 				if (i == 0) {
-					v0.copy(v2);
-					v1.copy(v2);
+					min.copy(tmp);
+					max.copy(tmp);
 				} else {
-					v0.min(v2);
-					v1.max(v2);
+					min.min(tmp);
+					max.max(tmp);
 				}
 			}
-			if (v0.x < 1 && v1.x > -1 && v0.y > -1 && v1.y < 1) {
+			if (min.x < 1 && max.x > -1 && min.y < 1 && max.y > -1) {
 				return true;
 			}
 		}
