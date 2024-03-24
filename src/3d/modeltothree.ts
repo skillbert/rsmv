@@ -227,6 +227,8 @@ export class EngineCache extends CachingFileSource {
 				for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.mapscenes)) {
 					this.mapMapscenes[subfile.fileid] = parse.mapscenes.read(subfile.buffer, this.rawsource);
 				}
+			}
+			if (this.getBuildNr() >= 548) {
 				for (let subfile of await this.getArchiveById(cacheMajors.config, cacheConfigPages.maplabels)) {
 					this.mapMaplabels[subfile.fileid] = parse.maplabels.read(subfile.buffer, this.rawsource);
 				}

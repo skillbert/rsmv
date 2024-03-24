@@ -29,7 +29,7 @@ export abstract class MapRender {
 	abstract getFileResponse(name: string, version?: number): Promise<Response>;
 	abstract makeFileName(layer: string, zoom: number, x: number, y: number, ext: string): string;
 	abstract saveFile(name: string, hash: number, data: Buffer, version?: number): Promise<void>;
-	abstract symlink(name: string, hash: number, targetname: string, targetversion?: number): Promise<void>;
+	abstract symlink(name: string, hash: number, symlinktarget: string, symlinkversion?: number): Promise<void>;
 
 	async symlinkBatch(files: SymlinkCommand[]) {
 		await Promise.all(files.map(f => this.symlink(f.file, f.hash, f.symlink, f.symlinkbuildnr)));
@@ -79,8 +79,8 @@ export class MapRenderFsBacked extends MapRender {
 	}
 	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
 		this.assertVersion(targetversion);
-		await this.fs.mkDir(naiveDirname(targetname));
-		await this.fs.copyFile(name, targetname, true);
+		await this.fs.mkDir(naiveDirname(name));
+		await this.fs.copyFile(targetname, name, true);
 	}
 }
 

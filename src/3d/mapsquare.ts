@@ -1319,9 +1319,9 @@ class SimpleTexturePacker {
 			ctx.drawImage(src, srcx, srcy, width, height, destx, desty, width, height);
 		}
 
-		let usedpixels = this.allocs.reduce((a, v) => a + v.totalpixels, 0);
-		let texpixels = this.width * this.height;
-		console.log("floor texatlas imgs", this.allocs.length, `size: ${this.width}x${this.height}`, "size (kb)", +(texpixels / 1024).toFixed(0), "used (kb)", +(usedpixels / 1024).toFixed(0), "%", +(usedpixels / texpixels * 100).toFixed(0));
+		// let usedpixels = this.allocs.reduce((a, v) => a + v.totalpixels, 0);
+		// let texpixels = this.width * this.height;
+		// console.log("floor texatlas imgs", this.allocs.length, `size: ${this.width}x${this.height}`, "size (kb)", +(texpixels / 1024).toFixed(0), "used (kb)", +(usedpixels / 1024).toFixed(0), "%", +(usedpixels / texpixels * 100).toFixed(0));
 		for (let alloc of this.allocs) {
 			let xx1 = -this.padsize;
 			let xx2 = alloc.repeatWidth + this.padsize
