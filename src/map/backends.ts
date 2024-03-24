@@ -8,7 +8,7 @@ export type VersionFilter = { from?: number, to?: number };
 
 export type UniqueMapFile = { name: string, hash: number };
 
-export type KnownMapFile = { hash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
+export type KnownMapFile = { hash: number, fshash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
 
 export type SymlinkCommand = { file: string, buildnr: number, hash: number, symlink: string, symlinkbuildnr: number, symlinkfirstbuildnr: number };
 

@@ -519,7 +519,7 @@ type RenderTask = {
 	hash: number,
 	datarect: MapRect,
 	dedupeDependencies?: string[],
-	mippable?: null | { zoom: number, outputx: number, outputy: number, hash: number },
+	mippable?: null | { zoom: number, outputx: number, outputy: number },
 	//first callback depends on state and should be series, 2nd is deferred and can be parallel
 	run2d?: (chunks: AsyncReturnType<typeof parseMapsquare>[]) => Promise<RenderResult>,
 	run?: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<RenderResult>,
@@ -672,7 +672,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			if (task.mippable) {
 				miptasks.push(() => {
 					let mip = task.mippable!;
-					mipper.addTask(task.layer, mip.zoom, mip.hash, mip.outputx, mip.outputy, task.name);
+					mipper.addTask(task.layer, mip.zoom, task.hash, mip.outputx, mip.outputy, task.name, existingfile?.fshash ?? task.hash);
 				});
 			}
 		}
@@ -796,11 +796,10 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 					hash: depcrc,
 					datarect: loadedchunksrect,
 					dedupeDependencies: parentCandidates.map(q => q.name),
-					mippable: (zoom == zooms.base ? { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zoom, hash: depcrc } : null),
+					mippable: (zoom == zooms.base ? { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zoom } : null),
 					async run(chunks, renderer, parentinfo) {
 						setChunkRenderToggles(chunks, thiscnf.level, thiscnf.mode == "minimap", !!thiscnf.hidelocs);
 						let cam = mapImageCamera(worldrect.x + tiles * subx, worldrect.z + tiles * subz, tiles, thiscnf.dxdy, thiscnf.dzdy);
-
 						let parentFile: undefined | KnownMapFile = undefined;
 
 						findparent: for (let parentoption of parentCandidates) {
@@ -811,6 +810,7 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 									let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
 									if (!other) { throw new Error("unexpected"); }
 
+									chunk.model.rootnode.updateWorldMatrix(true, false);
 									let modelmatrix = new Matrix4().makeTranslation(
 										chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
 										0,
@@ -859,6 +859,7 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 							chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
 							parentinfo.addLocalFile({
 								file: this.name,
+								fshash: depcrc,
 								buildnr: config.version,
 								firstbuildnr: config.version,
 								hash: depcrc,
@@ -922,7 +923,7 @@ const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, ba
 		name: filename,
 		hash: depcrc,
 		datarect: loadedchunksrect,
-		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base, hash: depcrc },
+		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base },
 		async run2d(parsedata) {
 			let grid = new CombinedTileGrid(parsedata.map(pp => ({
 				src: pp.grid,
@@ -953,7 +954,7 @@ const rendermodeCollision: RenderMode<"collision"> = function (engine, config, c
 		name: filename,
 		hash: depcrc,
 		datarect: loadedchunksrect,
-		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base, hash: depcrc },
+		mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base },
 		async run2d(chunks) {
 			//TODO try enable 2d map render without loading all the 3d stuff
 			let grids = chunks.map(q => q.grid);

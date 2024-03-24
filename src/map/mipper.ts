@@ -1,11 +1,12 @@
 import { LayerConfig } from ".";
 import { canvasToImageFile, fileToImageData, makeImageData } from "../imgutils";
 import { crc32addInt } from "../libs/crc32util";
-import { MapRender, SymlinkCommand, UniqueMapFile } from "./backends";
+import { getOrInsert } from "../utils";
+import { MapRender, SymlinkCommand } from "./backends";
 import { ProgressUI } from "./progressui";
 
-
-type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: (UniqueMapFile | null)[] };
+type MipFile = { name: string, hash: number, fshash: number };
+type MipCommand = { layer: LayerConfig, zoom: number, x: number, y: number, files: (MipFile | null)[] };
 
 export class MipScheduler {
 	render: MapRender;
@@ -17,50 +18,51 @@ export class MipScheduler {
 		this.progress = progress;
 		this.minzoom = Math.floor(Math.log2(render.config.tileimgsize / (Math.max(render.config.mapsizex, render.config.mapsizez) * 64)));
 	}
-	addTask(layer: LayerConfig, zoom: number, hash: number, x: number, y: number, srcfile: string) {
+	addTask(layer: LayerConfig, zoom: number, hash: number, x: number, y: number, srcfile: string, fshash: number) {
 		if (zoom - 1 < this.minzoom) { return; }
 		let newname = this.render.makeFileName(layer.name, zoom - 1, Math.floor(x / 2), Math.floor(y / 2), layer.format ?? "webp");
-		let incomp = this.incompletes.get(newname);
-		if (!incomp) {
-			incomp = {
-				layer,
-				zoom: zoom - 1,
-				x: Math.floor(x / 2),
-				y: Math.floor(y / 2),
-				files: [null, null, null, null]
-			};
-			this.incompletes.set(newname, incomp);
-		}
+		let incomp = getOrInsert(this.incompletes, newname, () => ({
+			layer,
+			zoom: zoom - 1,
+			x: Math.floor(x / 2),
+			y: Math.floor(y / 2),
+			files: [null, null, null, null]
+		}));
 		let isright = (x % 2) != 0;
 		let isbot = (y % 2) != 0;
 		let subindex = (isright ? 1 : 0) + (isbot ? 2 : 0);
-		incomp.files[subindex] = { name: srcfile, hash };
+		incomp.files[subindex] = { name: srcfile, hash, fshash };
 	}
 	async run(includeIncomplete = false) {
 		const maxgroup = 200;
 		let completed = 0;
 		let skipped = 0;
-		let tasks: { name: string, hash: number, run: () => Promise<void>, finally: () => void }[] = [];
+		let tasks: { name: string, hash: number, fshash: number, args: MipCommand, run: () => Promise<void> }[] = [];
 		let processTasks = async () => {
-			let oldhashes = await this.render.getMetas(tasks);
+			let oldhashes = await this.render.getMetas(tasks.map(q => ({ name: q.name, hash: q.fshash })));
 			let proms: Promise<void>[] = [];
 			let symlinks: SymlinkCommand[] = [];
+			let callbacks: (() => void)[] = [];
 			for (let task of tasks) {
 				let old = oldhashes.find(q => q.file == task.name);
+				let fshash = task.hash;
 
-				if (task.hash != 0 && old && old.hash == task.hash) {
+				if (task.hash != 0 && old && (old.fshash == task.fshash || old.hash == task.hash)) {
 					symlinks.push({ file: task.name, hash: task.hash, buildnr: this.render.version, symlink: old.file, symlinkbuildnr: old.buildnr, symlinkfirstbuildnr: old.firstbuildnr });
+					fshash = task.fshash;
 					skipped++;
 				} else {
 					proms.push(task.run().catch(e => console.warn("mipping", task.name, "failed", e)));
 					completed++;
 				}
+
+				callbacks.push(() => {
+					this.addTask(task.args.layer, task.args.zoom, task.hash, task.args.x, task.args.y, task.name, fshash);
+				});
 			}
 			proms.push(this.render.symlinkBatch(symlinks));
 			await Promise.all(proms);
-			for (let task of tasks) {
-				task.finally();
-			}
+			callbacks.forEach(q => q());
 			tasks = [];
 			this.progress.updateProp("mipqueue", "" + this.incompletes.size);
 		}
@@ -78,19 +80,20 @@ export class MipScheduler {
 				if (!includeIncomplete && args.files.some(q => !q)) { continue; }
 
 				let crc = 0;
+				let fscrc = 0;
 				for (let file of args.files) {
 					crc = crc32addInt(file?.hash ?? 0, crc);
+					fscrc = crc32addInt(file?.fshash ?? 0, fscrc);
 				}
 
 				tasks.push({
 					name: out,
 					hash: crc,
+					fshash: fscrc,
+					args: args,
 					run: async () => {
 						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9, args.layer.mipmode == "avg");
 						await this.render.saveFile(out, crc, buf);
-					},
-					finally: () => {
-						this.addTask(args.layer, args.zoom, crc, args.x, args.y, out);
 					}
 				})
 				this.incompletes.delete(out);
@@ -128,7 +131,7 @@ function avgFilterMipImage(img: ImageData) {
 	return mipped;
 }
 
-async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], format: "png" | "webp", quality: number, avgfilter: boolean) {
+async function mipCanvas(render: MapRender, files: (MipFile | null)[], format: "png" | "webp", quality: number, avgfilter: boolean) {
 	let cnv = document.createElement("canvas");
 	cnv.width = render.config.tileimgsize;
 	cnv.height = render.config.tileimgsize;
@@ -139,7 +142,8 @@ async function mipCanvas(render: MapRender, files: (UniqueMapFile | null)[], for
 		let res = await render.getFileResponse(f.name);
 		let mimetype = res.headers.get("content-type");
 		let hashheader = res.headers.get("x-amz-meta-mapfile-hash");
-		if (typeof hashheader == "string" && +hashheader != f.hash) { throw new Error("hash mismatch while creating mip file"); }
+		//TODO not sure if this is valid
+		if (typeof hashheader == "string" && +hashheader != f.fshash) { throw new Error("hash mismatch while creating mip file"); }
 
 		let outx = (i % 2) * subtilesize;
 		let outy = Math.floor(i / 2) * subtilesize;
