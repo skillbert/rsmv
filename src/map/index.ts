@@ -12,7 +12,7 @@ import { ScriptOutput } from "../scriptrunner";
 import { AsyncReturnType, CallbackPromise, delay, stringToFileRange, trickleTasks } from "../utils";
 import { drawCollision } from "./collisionimage";
 import prettyJson from "json-stringify-pretty-compact";
-import { ChunkRenderMeta, chunkSummary, compareFloorDependencies, compareLocDependencies, ImageDiffGrid, mapsquareFloorDependencies, mapsquareLocDependencies, RenderDepsTracker, RenderDepsVersionInstance } from "./chunksummary";
+import { ChunkRenderMeta, chunkSummary, compareFloorDependencies, compareLocDependencies, mapsquareFloorDependencies, mapsquareLocDependencies, pointsIntersectProjection, RenderDepsTracker, RenderDepsVersionInstance } from "./chunksummary";
 import { RSMapChunk } from "../3d/modelnodes";
 import * as zlib from "zlib";
 import { Camera, Matrix4, Object3D, OrthographicCamera, Vector3 } from "three";
@@ -708,7 +708,7 @@ const rendermodeInteractions: RenderMode<"interactions"> = function (engine, con
 			let rect = { x: singlerect.x * loaded.chunkSize, z: singlerect.z * loaded.chunkSize, xsize: loaded.chunkSize, zsize: loaded.chunkSize };
 			let { hashes, locdatas, locs } = chunkSummary(loaded.grid, loaded.modeldata, rect);
 			let emptyimagecount = 0;
-			let hashimgs: Record<number, { img: string, center: number[], loc: number, dx: number, dy: number }> = {};
+			let hashimgs: Record<number, { img: string, center: number[], loc: number, dx: number, dy: number, w: number, h: number }> = {};
 			for (let [hash, { center, locdata }] of hashes) {
 				let ops = [locdata.location.actions_0, locdata.location.actions_1, locdata.location.actions_2, locdata.location.actions_3, locdata.location.actions_4].filter((q): q is string => !!q);
 				let model = loaded.locRenders.get(locdata);
@@ -728,7 +728,6 @@ const rendermodeInteractions: RenderMode<"interactions"> = function (engine, con
 				let ypos = baseheight / tiledimensions + center[1];
 				let cam = mapImageCamera(locdata.x + center[0] + ypos * thiscnf.dxdy - ntiles / 2, locdata.z + center[2] + ypos * thiscnf.dzdy - ntiles / 2, ntiles, thiscnf.dxdy, thiscnf.dzdy);
 				let img = await renderer.renderer.takeMapPicture(cam, ntiles * thiscnf.pxpersquare, ntiles * thiscnf.pxpersquare, false, group);
-				flipImage(img);
 				group.removeFromParent();
 
 				model.map(q => q.mesh.setSectionHide(q, false));
@@ -746,6 +745,8 @@ const rendermodeInteractions: RenderMode<"interactions"> = function (engine, con
 					loc: locdata.locid,
 					dx: bounds.x - img.width / 2,
 					dy: bounds.y - img.height / 2,
+					w: bounds.width,
+					h: bounds.height,
 					center,
 					img: `data:image/${format};base64,${imgfile.toString("base64")}`
 				};
@@ -804,7 +805,6 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 
 						findparent: for (let parentoption of parentCandidates) {
 							optloop: for (let versionMatch of await parentinfo.findMatches(this.datarect, parentoption.name)) {
-								let diff = new ImageDiffGrid();
 								let isdirty = false;
 								for (let chunk of chunks) {
 									let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
@@ -827,8 +827,8 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 									// if (locs.length + floor.length > 400) {
 									// 	continue optloop;
 									// }
-									isdirty ||= diff.anyInside(proj, locs);
-									isdirty ||= diff.anyInside(proj, floor);
+									isdirty ||= pointsIntersectProjection(proj, locs);
+									isdirty ||= pointsIntersectProjection(proj, floor);
 									if (isdirty) {
 										break;
 									}
@@ -852,7 +852,6 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 						let img: ImageData | null = null;
 						if (!parentFile) {
 							img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, thiscnf.mode == "minimap");
-							flipImage(img);
 							// isImageEmpty(img, "black");
 
 							//keep reference to dedupe similar renders

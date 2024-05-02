@@ -1,0 +1,1 @@
+make a database of model file id+hash and which matetial ids they use in order to diff material changes in incremental map renders

@@ -1062,7 +1062,7 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 	let changeImg = async (instCrop = cropimg, instSize = imgsize) => {
 		if (p.renderopts!.camMode == "vr360") { instCrop = false; }
 
-		let newpixels = await p.ctx.renderer.takeCanvasPicture(instSize.w || undefined, instSize.h || undefined);
+		let newpixels = await p.ctx.renderer.takeScenePicture(instSize.w || undefined, instSize.h || undefined);
 		let newimg = makeImageData(newpixels.data, newpixels.width, newpixels.height);
 		let cnv = document.createElement("canvas");
 		let ctx = cnv.getContext("2d")!;

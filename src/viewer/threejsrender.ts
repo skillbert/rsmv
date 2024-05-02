@@ -326,7 +326,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 	}
 
 	@boundMethod
-	async guaranteeGlCalls(glfunction: () => void | Promise<void>) {
+	async guaranteeGlCalls<T>(glfunction: () => T | Promise<T>): Promise<T> {
 		let waitContext = () => {
 			if (!this.renderer.getContext().isContextLost()) {
 				return;
@@ -345,7 +345,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			await waitContext();
 			//it seems like the first render after a context loss is always failed, force 2 renders this way
 			let prerenderlosses = this.contextLossCountLastRender;
-			await glfunction();
+			let res = await glfunction();
 
 			//new stack frame to let all errors resolve
 			await delay(1);
@@ -356,7 +356,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				console.log("lost and regained context during render " + new Date());
 				continue;
 			}
-			return;
+			return res;
 		}
 		throw new Error("Failed to render frame after 5 retries");
 	}
@@ -435,7 +435,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		}
 	}
 
-	async takeCanvasPicture(width = this.canvas.width, height = this.canvas.height) {
+	async takeScenePicture(width = this.canvas.width, height = this.canvas.height) {
 		let rendertarget: THREE.WebGLRenderTarget | null = null;
 		if (width != this.canvas.width || height != this.canvas.height) {
 			let gl = this.renderer.getContext();
@@ -448,7 +448,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			});
 			// (rendertarget as any).isXRRenderTarget = true;
 		}
-		await this.guaranteeGlCalls(() => {
+		return this.guaranteeGlCalls(() => {
 			let oldtarget = this.renderer.getRenderTarget();
 			this.renderer.setRenderTarget(rendertarget);
 			this.resizeViewToRendererSize();
@@ -465,7 +465,14 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			}
 			this.renderer.setRenderTarget(oldtarget);
 			this.resizeViewToRendererSize();
+			return this.getFrameBufferPixels();
 		});
+	}
+
+	getFrameBufferPixels() {
+		let rendertarget = this.renderer.getRenderTarget();
+		let width = rendertarget?.width ?? this.canvas.width;
+		let height = rendertarget?.height ?? this.canvas.height;
 		let buf = new Uint8Array(width * height * 4);//node-gl doesn't accept clamped
 		if (rendertarget) {
 			this.renderer.readRenderTargetPixels(rendertarget as any, 0, 0, width, height, buf);
@@ -479,12 +486,11 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		return r;
 	}
 
-	async takeMapPicture(cam: Camera, framesizex = -1, framesizey = -1, linearcolor = false, highlight: Object3D | null = null) {
+	takeMapPicture(cam: Camera, framesizex = -1, framesizey = -1, linearcolor = false, highlight: Object3D | null = null) {
 		if (framesizex != -1 && framesizey != -1) {
 			this.renderer.setSize(framesizex, framesizey);
 		}
-		let img: ImageData | null = null;
-		await this.guaranteeGlCalls(() => {
+		return this.guaranteeGlCalls(() => {
 			let opaqueBackground = !highlight;
 			//change render settings
 			let oldcolorspace = this.renderer.outputColorSpace;
@@ -492,7 +498,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			this.renderer.setClearColor(new THREE.Color(0, 0, 0), (opaqueBackground ? 255 : 0));
 			this.scene.background = (opaqueBackground ? new THREE.Color(0, 0, 0) : null);
 
-			let ctx = this.renderer.getContext();
 			if (!highlight) {
 				this.renderScene(cam);
 			} else {
@@ -504,16 +509,15 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				cam.layers.mask = old;
 			}
 
-			let pixelbuffer = new Uint8ClampedArray(ctx.canvas.width * ctx.canvas.height * 4);
-			ctx.readPixels(0, 0, ctx.canvas.width, ctx.canvas.height, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelbuffer);
-			img = makeImageData(pixelbuffer, ctx.canvas.width, ctx.canvas.height);
+			let img = this.getFrameBufferPixels();
 
 			//restore render settings
 			this.renderer.outputColorSpace = oldcolorspace;
 			this.renderer.setClearColor(new THREE.Color(0, 0, 0), 0);
 			this.scene.background = null;
+
+			return img;
 		});
-		return img!;
 	}
 
 	setCameraPosition(pos: Vector3) {
@@ -697,13 +701,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 			this.renderer.clearColor();
 			this.renderer.clearDepth();
 			this.renderer.render(scene, itemcam);
-			this.renderer.setRenderTarget(oldtarget);
+			let img = this.getFrameBufferPixels()
 
-			let buf = new Uint8Array(width * height * 4);//node-gl doesn't accept clamped
-			this.renderer.readRenderTargetPixels(rendertarget, 0, 0, width, height, buf);
-			let r = makeImageData(buf, width, height);
-			flipImage(r);
-			return r;
+			this.renderer.setRenderTarget(oldtarget);
+			return img;
 		}
 		let dispose = () => rendertarget?.dispose();
 

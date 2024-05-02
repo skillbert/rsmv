@@ -18,6 +18,7 @@ import { MaterialData } from "./jmat";
 import { legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
 import { mapImageCamera } from "../map";
+import { findImageBounds, pixelsToImageFile, sliceImage } from "../imgutils";
 
 
 export type SimpleModelDef = {
@@ -404,6 +405,7 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	toggles: Record<string, boolean> = {};
 	chunkx: number;
 	chunkz: number;
+	globalname = "";
 
 	constructor(cache: ThreejsSceneCache, preparsed: ReturnType<typeof parseMapsquare>, chunkx: number, chunkz: number, opts: ParsemapOpts) {
 		super();
@@ -441,8 +443,9 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		group.traverse(q => q.layers.set(1));
 		this.loaded.chunkroot.add(group);
 
-		let cam = mapImageCamera(loc.x + this.rootnode.position.x / tiledimensions - 16, loc.z + this.rootnode.position.z / tiledimensions - 16, 32, 0.15, 0.25);
-		let img = await this.renderscene!.takeMapPicture(cam, -1, -1, false, group);
+		// let cam = mapImageCamera(loc.x + this.rootnode.position.x / tiledimensions - 16, loc.z + this.rootnode.position.z / tiledimensions - 16, 32, 0.15, 0.25);
+		let cam = this.renderscene!.getCurrent2dCamera()!;
+		let img = await this.renderscene!.takeMapPicture(cam, 256, 256, false, group);
 		group.removeFromParent();
 		model.map(q => q.mesh.setSectionHide(q, false));
 		return img;
@@ -466,8 +469,10 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 
 	cleanup() {
 		this.listeners = {};
-
-		delete globalThis[`chunk_${this.chunkx}_${this.chunkz}`];
+		if (this.globalname) {
+			delete globalThis[this.globalname];
+			this.globalname = "";
+		}
 		//only clear vertex memory for now, materials might be reused and are up to the scenecache
 		this.chunkdata.then(q => q.chunkroot.traverse(obj => {
 			if (obj instanceof Mesh) { obj.geometry.dispose(); }
@@ -494,7 +499,14 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 		this.renderscene = scene;
 		scene.addSceneElement(this);
 
-		globalThis[`chunk_${this.chunkx}_${this.chunkz}`] = this;
+		for (let i = 0; i < 10; i++) {
+			let name = `chunk_${this.chunkx}_${this.chunkz}${i == 0 ? "" : `_${i}`}`;
+			if (!globalThis[name]) {
+				globalThis[name] = this;
+				this.globalname = name;
+				break;
+			}
+		}
 	}
 
 	onModelLoaded() {

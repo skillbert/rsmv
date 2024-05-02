@@ -10,6 +10,7 @@ import { RenderedMapMeta } from ".";
 import { crc32addInt } from "../libs/crc32util";
 import type { RSMapChunk } from "../3d/modelnodes";
 import { getOrInsert } from "../utils";
+import { ThreeJsRenderer } from "../viewer/threejsrender";
 
 export function getLocImageHash(grid: TileGrid, info: WorldLocation) {
 	let loc = info.location;
@@ -465,6 +466,29 @@ export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: Til
 	return group;
 }
 
+export function pointsIntersectProjection(projection: Matrix4, points: number[][]) {
+	//make them local vars to prevent writing into old space
+	const min = new Vector3();
+	const max = new Vector3();
+	const tmp = new Vector3();
+	for (let group of points) {
+		for (let i = 0; i < group.length; i += 3) {
+			tmp.set(group[i + 0], group[i + 1], group[i + 2]);
+			tmp.applyMatrix4(projection);
+			if (i == 0) {
+				min.copy(tmp);
+				max.copy(tmp);
+			} else {
+				min.min(tmp);
+				max.max(tmp);
+			}
+		}
+		if (min.x < 1 && max.x > -1 && min.y < 1 && max.y > -1) {
+			return true;
+		}
+	}
+	return false;
+}
 
 /**
  * this class is wayyy overkill for what is currently used
@@ -472,30 +496,6 @@ export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: Til
 export class ImageDiffGrid {
 	gridsize = 64;
 	grid = new Uint8Array(this.gridsize * this.gridsize);
-
-	anyInside(projection: Matrix4, points: number[][]) {
-		//make them local vars to prevent writing into old space
-		const min = new Vector3();
-		const max = new Vector3();
-		const tmp = new Vector3();
-		for (let group of points) {
-			for (let i = 0; i < group.length; i += 3) {
-				tmp.set(group[i + 0], group[i + 1], group[i + 2]);
-				tmp.applyMatrix4(projection);
-				if (i == 0) {
-					min.copy(tmp);
-					max.copy(tmp);
-				} else {
-					min.min(tmp);
-					max.max(tmp);
-				}
-			}
-			if (min.x < 1 && max.x > -1 && min.y < 1 && max.y > -1) {
-				return true;
-			}
-		}
-		return false;
-	}
 
 	addPolygons(projection: Matrix4, points: number[][]) {
 		const v0 = new Vector3();
@@ -717,7 +717,28 @@ globalThis.test = async (chunka: RSMapChunk, levela: number, levelb = 0, chunkb 
 
 	chunka.emit("changed", undefined);
 
-	return chunka;
+
+	return () => {
+		let render = globalThis.render as ThreeJsRenderer;
+		let cam = render.getCurrent2dCamera();
+		if (!cam) { return; }
+
+		chunka.rootnode.updateWorldMatrix(true, false);
+		let modelmatrix = new Matrix4().makeTranslation(
+			chunka.chunkx * tiledimensions * chunka.loaded!.chunkSize,
+			0,
+			chunka.chunkz * tiledimensions * chunka.loaded!.chunkSize,
+		).premultiply(chunka.rootnode.matrixWorld);
+
+		let proj = cam.projectionMatrix.clone()
+			.multiply(cam.matrixWorldInverse)
+			.multiply(modelmatrix);
+
+		let locschanged = pointsIntersectProjection(proj, cmplocs);
+		let floorchanged = pointsIntersectProjection(proj, cmpfloor);
+		let anychanged = locschanged || floorchanged;
+		return { locschanged, floorchanged, anychanged };
+	}
 }
 
 function modelPlacementHash(loc: WorldLocation) {

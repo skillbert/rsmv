@@ -151,7 +151,7 @@ export async function renderAppearance(scene: ThreejsSceneCache, mode: "player" 
 	render.setCameraLimits(new Vector3(0, 0.85, 0));
 
 	let modelfile = Buffer.from(await exportThreeJsGltf(render.getModelNode()));
-	let img = await render.takeCanvasPicture();
+	let img = await render.takeScenePicture();
 	let imgfile = await pixelsToImageFile(img, "png", 1);
 
 	render.dispose();

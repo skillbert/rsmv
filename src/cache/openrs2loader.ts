@@ -76,9 +76,8 @@ export function validOpenrs2Caches() {
 				1480,
 
 				644,257,//incomplete textures
-				1456,//missing materials
+				1456,1665,//missing materials
 				1479,//missing items could probably be worked around
-				//254,255,667,256,257,1479,3
 			];
 			let allcaches: Openrs2CacheMeta[] = await fetch(`${endpoint}/caches.json`).then(q => q.json());
 			let checkedcaches = allcaches.filter(q =>
