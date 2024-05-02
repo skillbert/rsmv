@@ -1528,7 +1528,8 @@ const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s:
 				s.buffer.writeUInt16BE(v, s.scan);
 				s.scan += 2;
 			} else {
-				s.buffer.writeUint32BE(v | 0x80000000, s.scan);
+				//unsigned right shift to cast to uint32 again
+				s.buffer.writeUint32BE((v | 0x80000000) >>> 0, s.scan);
 				s.scan += 4;
 			}
 		},
@@ -1556,7 +1557,8 @@ const numberTypes: Record<string, { read: (s: DecodeState) => number, write: (s:
 				s.buffer.writeUInt16BE(v, s.scan);
 				s.scan += 2;
 			} else {
-				s.buffer.writeUint32BE(v | 0x80000000, s.scan);
+				//unsigned right shift to cast to uint32 again
+				s.buffer.writeUint32BE((v | 0x80000000) >>> 0, s.scan);
 				s.scan += 4;
 			}
 		},

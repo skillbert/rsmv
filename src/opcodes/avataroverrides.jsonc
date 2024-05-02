@@ -1,70 +1,70 @@
 ["struct",
-	["flags","ushort"],
+	["$flags","ushort"],
 	//can't use array since i don't have a way to ref array index in the flag...
 	["slots",["tuple",
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",0,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",0,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",1,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",1,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",2,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",2,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",3,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",3,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",4,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",4,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",5,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",5,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",6,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",6,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",7,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",7,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",8,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",8,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",9,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",9,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",10,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",10,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",11,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",11,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",12,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",12,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",13,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",13,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",14,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",14,"bitflag"],"playeritemedit"]]
 		],
 		["struct",
 			["slot",["itemvar","ref"]],
-			["cust",["opt",["flags",15,"bitflag"],"playeritemedit"]]
+			["cust",["opt",["$flags",15,"bitflag"],"playeritemedit"]]
 		]
 	]],
 	["haircol0","ubyte"],

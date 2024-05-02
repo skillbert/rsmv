@@ -3,7 +3,6 @@
 // run `npm run filetypes` to rebuild
 
 export type avataroverrides = {
-	flags: number,
 	slots: [
 		{
 			slot: any,
