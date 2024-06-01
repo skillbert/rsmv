@@ -786,8 +786,7 @@ export function mergeBoneids(model: ModelData) {
 				if (mesh2.needsNormalBlending && mesh2.attributes.normals) {
 					//ignore faces with oposite normals
 					if (normsum.lengthSq() > 0.001) {
-						//just sum, doing normalization later
-						mesh2.attributes.normals.setXYZ(i1, normsum.x, normsum.y, normsum.z);
+						mesh2.attributes.normals.setXYZ(i2, normsum.x, normsum.y, normsum.z);
 					}
 				}
 			}
