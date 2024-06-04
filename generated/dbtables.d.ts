@@ -15,4 +15,21 @@ export type dbtables = {
 			}[],
 		}[],
 	} | null
+	unk02?: {
+		unkint: number,
+		cols: number,
+		columndata: {
+			id: number,
+			flags: number,
+			unkbyte: number,
+			columns: {
+				type: number,
+				hasdefault: number,
+				unk1: number | null,
+				defaultint: number | null,
+				defaultstring: string | null,
+				unk2: number | null,
+			}[],
+		}[],
+	} | null
 };

@@ -338,7 +338,8 @@ implementedops.set(namedClientScriptOps.dbrow_getfield, inter => {
     let dbtable = (tablefield >> 12) & 0xffff;
     let columnid = (tablefield >> 4) & 0xff;
     let subfield = tablefield & 0xf;
-    let column = inter.calli.dbtables.get(dbtable)?.unk01?.columndata.find(q => q.id == columnid);
+    let table = inter.calli.dbtables.get(dbtable);
+    let column = table?.unk01?.columndata.find(q => q.id == columnid) ?? table?.unk02?.columndata.find(q => q.id == columnid);
     if (!column) { throw new Error(`couldn't find dbtable ${dbtable}.${columnid}`); }
     let types = (subfield != 0 ? [column.columns[subfield - 1].type] : column.columns.map(q => q.type));
     inter.pushStackdiff(new StackList(types.map(typeToPrimitive)).toStackDiff());

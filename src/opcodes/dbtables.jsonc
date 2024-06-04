@@ -16,5 +16,53 @@
                 }]]]
             ]]]
         ]]]
+    ]},
+    "0x02":{"name":"unk02","read":["struct",
+        ["unkint","uint"],
+        ["cols","ubyte"],
+        ["columndata",["nullarray","ubyte",255,["struct",
+            ["id",["ref","$opcode",[0,6]]],
+            ["flags",["ref","$opcode",[6,2]]],
+            ["$i",0],
+            ["$default",0],
+            ["unkbyte","ubyte"],
+            ["columns",["chunkedarray","ubyte",[
+                ["type","varushort"],
+                ["$colindex",["accum","$i",1]]
+            ],[
+                ["hasdefault",["accum","$default",["match",{"$colindex==1":"ubyte","other":0}]]]
+            ],[
+                ["unk1",["opt","hasdefault&0x02 && $colindex==1","ubyte"]],//this is dumb, there is currently no way to read a byte between chunkedarray chunks
+                ["defaultint",["opt","hasdefault&0x02 && type!=0x24","int"]],
+                ["defaultstring",["opt","hasdefault&0x02 && type==0x24","string"]],
+                ["unk2",["opt","hasdefault&0x02 && $colindex==1","ubyte"]]
+            ]]]
+        ]]]
     ]}
 }
+
+// alternative if the first byte were a version (it isn't because an empty dbtable starts with the 0x00 footer byte)
+// ["struct",
+//     ["version","ubyte"],
+//     ["unkint",["opt","version>=2","uint"]],
+//     ["cols","ubyte"],
+//     ["columndata",["nullarray","ubyte",255,["struct",
+//         ["id",["ref","$opcode",[0,6]]],
+//         ["flags",["ref","$opcode",[6,2]]],
+//         ["$i",0],
+//         ["$default",0],
+//         ["unkbyte",["opt","version>=2","ubyte"]],
+//         ["columns",["chunkedarray","ubyte",[
+//             ["type","varushort"],
+//             ["$colindex",["accum","$i",1]]
+//         ],[
+//             ["flagsbyte",["accum","$default",["match",{"$colindex==1 && version>=2":"ubyte","other":0}]]]
+//         ],[
+//             ["hasdefault",["match",{"version>=2 && flagsbyte&0x2":1,"version<=1 && id&0x80":1,"other":0}]],
+//             ["unk1",["opt","hasdefault==1 && $colindex==1","ubyte"]],//this is dumb, there is currently no way to read a byte between chunkedarray chunks
+//             ["defaultint",["opt","hasdefault==1 && type!=0x24","int"]],
+//             ["defaultstring",["opt","hasdefault==1 && type==0x24","string"]],
+//             ["unk2",["opt","hasdefault==1 && $colindex==1","ubyte"]]
+//         ]]]
+//     ]]]
+// ]
