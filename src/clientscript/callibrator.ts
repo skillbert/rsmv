@@ -8,7 +8,7 @@ import { clientscript } from "../../generated/clientscript";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { crc32 } from "../libs/crc32util";
+import { crc32, crc32addInt } from "../libs/crc32util";
 import { params } from "../../generated/params";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, namedClientScriptOps, variableSources, typeToPrimitive, getOpName, knownClientScriptOpNames } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
@@ -268,31 +268,34 @@ export class ClientscriptObfuscation {
     varmeta: Map<number, { name: string, maxid: number, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
     varbitmeta: Map<number, typeof varbitInfoParser extends FileParser<infer T> ? T : never> = new Map();
     parammeta = new Map<number, params>();
-    scriptargs = new Map<number, {
-        scriptname: string,
-        stack: StackInOut
-    }>();
+    scriptargs = new Map<number, { scriptname: string, stack: StackInOut }>();
     candidates = new Map<number, ScriptCandidate>();
 
-    static async fromJson(source: CacheFileSource, json: ReturnType<ClientscriptObfuscation["toJson"]>) {
-        if (json.buildnr != source.getBuildNr()) {
+    static async fromJson(source: CacheFileSource, deobjson: ReturnType<ClientscriptObfuscation["toJson"]>, scriptjson: null | ReturnType<ClientscriptObfuscation["getScriptJson"]>) {
+        if (deobjson.buildnr != source.getBuildNr()) {
             throw new Error("build numbers of json deob and loaded cache don't match");
         }
         let r = new ClientscriptObfuscation(source);
-        for (let opjson of json.mappings) {
+        for (let opjson of deobjson.mappings) {
             let op = OpcodeInfo.fromJson(opjson);
             r.mappings.set(op.scrambledid, op);
             r.decodedMappings.set(op.id, op);
         }
-        r.opidcounter = json.opidcounter;
+        r.opidcounter = deobjson.opidcounter;
         r.callibrated = true;
-        r.scriptargs = new Map(json.scriptargs.map(v => {
-            return [v.id, {
-                scriptname: "",
-                stack: StackInOut.fromJson(v.stack)
-            }];
-        }));
-        await r.preloadData(true);
+        if (scriptjson) {
+            r.scriptargs = new Map(scriptjson.scriptargs.map(v => {
+                return [v.id, {
+                    scriptname: v.scriptname ?? "",
+                    stack: StackInOut.fromJson(v.stack)
+                }];
+            }));
+            await r.preloadData(true);
+        } else {
+            await r.preloadData(false);
+            r.parseCandidateContents();
+            detectSubtypes(r);
+        }
         return r;
     }
 
@@ -301,8 +304,13 @@ export class ClientscriptObfuscation {
             buildnr: this.source.getBuildNr(),
             mappings: [...this.mappings.values()].map(v => v.toJson()),
             opidcounter: this.opidcounter,
-            scriptargs: [...this.scriptargs].map(([k, v]) => ({ id: k, stack: v.stack.toJson() }))
         }
+        return r;
+    }
+    getScriptJson() {
+        let r = {
+            scriptargs: [...this.scriptargs].map(([k, v]) => ({ id: k, scriptname: v.scriptname, stack: v.stack.toJson() }))
+        };
         return r;
     }
 
@@ -312,19 +320,28 @@ export class ClientscriptObfuscation {
         if (!firstindex) { throw new Error("cache has no clientscripts"); }
         let firstscript = await source.getFileById(firstindex.major, firstindex.minor);
         let crc = crc32(firstscript);
-        return `opcodes-build${source.getBuildNr()}-${crc}.json`;
+        let scripthash = 0;
+        for (let i = 0; i < index.length; i++) {
+            if (!index[i]) { continue; }
+            scripthash = crc32addInt(index[i].crc, scripthash)
+        }
+        return {
+            opcodename: `opcodes-build${source.getBuildNr()}-${crc}.json`,
+            scriptname: `scripts-build${source.getBuildNr()}-${scripthash}.json`
+        }
     }
 
     async save() {
-        let json = this.toJson();
-        let filename = await ClientscriptObfuscation.getSaveName(this.source)
-        let filedata = JSON.stringify(json);
+        let { opcodename, scriptname } = await ClientscriptObfuscation.getSaveName(this.source);
+        let filedata = JSON.stringify(this.toJson());
+        let scriptfiledata = JSON.stringify(this.getScriptJson());
         if (fs.constants) {
-            let pathname = `cache/${filename}`;
-            await fs.mkdir(path.dirname(pathname), { recursive: true });
-            await fs.writeFile(pathname, filedata);
+            await fs.mkdir("cache", { recursive: true });
+            await fs.writeFile(`cache/${opcodename}`, filedata);
+            await fs.writeFile(`cache/${scriptname}`, scriptfiledata);
         } else if (datastore.set) {
-            await datastore.set(filename, filedata);
+            await datastore.set(opcodename, filedata);
+            await datastore.set(scriptname, scriptfiledata);
         } else {
             console.log(`did not save cs2 callibration since there is no fs and no browser indexeddb`);
         }
@@ -335,19 +352,23 @@ export class ClientscriptObfuscation {
     }
 
     static async create(source: CacheFileSource, nocached = false) {
+        //TODO merge fromjson and runautocallibrate into this to untangle weird logic and double-loading
         if (!nocached) {
             try {
-                let filename = await this.getSaveName(source);
+                let { opcodename, scriptname } = await this.getSaveName(source);
                 let file: string | undefined = undefined;
+                let scriptfile: string | undefined = undefined;
                 if (fs.constants) {
-                    let pathname = `cache/${filename}`;
-                    file = await fs.readFile(pathname, "utf8");
+                    file = await fs.readFile(`cache/${opcodename}`, "utf8");
+                    scriptfile = await fs.readFile(`cache/${scriptname}`, "utf8").catch(() => undefined);
                 } else if (datastore.get) {
-                    file = await datastore.get(filename);
+                    file = await datastore.get(opcodename);
+                    scriptfile = await datastore.get(scriptname).catch(() => undefined);
                 }
                 if (file) {
                     let json = JSON.parse(file);
-                    return this.fromJson(source, json);
+                    let scriptjson = (scriptfile ? JSON.parse(scriptfile) : null);
+                    return this.fromJson(source, json, scriptjson);
                 }
             } catch { }
         }
