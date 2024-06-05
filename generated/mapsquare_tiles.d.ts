@@ -3,13 +3,17 @@
 // run `npm run filetypes` to rebuild
 
 export type mapsquare_tiles = {
+	magic: ([
+			number,
+			number,
+		]|null),
 	tiles: ({
 			flags: number,
 			shape: number | null,
 			overlay: number | null,
 			settings: number | null,
 			underlay: number | null,
-			height: number | null,
+			height: (number|number) | null,
 		}|{
 			flags: number,
 			shape: number | null,

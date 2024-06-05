@@ -1,8 +1,10 @@
-{"0x00":{"name":"level0","read":["array",4356,["struct",
+{
+"0x6a":{"name":"magic","read":"uint"},//"jagx\01" as header for buildnr>=936
+"0x00":{"name":"level0","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
-	["height","ubyte"],
+	["height",["match","buildnr",{">=936":"ushort","other":"ubyte"}]],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt","flags&16","ubyte"]],
+		["waterheight",["opt","flags&16",["match","buildnr",{">=936":"ushort","other":"ubyte"}]]],
 		["underlay","varushort"],
 		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
@@ -13,9 +15,9 @@
 ]]},
 "0x01":{"name":"level1","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
-	["height","ubyte"],
+	["height",["match","buildnr",{">=936":"ushort","other":"ubyte"}]],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt","flags&16","ubyte"]],
+		["waterheight",["opt","flags&16",["match","buildnr",{">=936":"ushort","other":"ubyte"}]]],
 		["underlay","varushort"],
 		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
@@ -26,9 +28,9 @@
 ]]},
 "0x02":{"name":"level2","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
-	["height","ubyte"],
+	["height",["match","buildnr",{">=936":"ushort","other":"ubyte"}]],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt","flags&16","ubyte"]],
+		["waterheight",["opt","flags&16",["match","buildnr",{">=936":"ushort","other":"ubyte"}]]],
 		["underlay","varushort"],
 		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],
@@ -39,9 +41,9 @@
 ]]},
 "0x03":{"name":"level3","read":["array",4356,["struct",
 	["flags","ubyte"],//1visible,2blocking,4bridge/flag2,8roofed,16water,32forcedraw,64roofoverhang
-	["height","ubyte"],
+	["height",["match","buildnr",{">=936":"ushort","other":"ubyte"}]],
 	["rest",["opt",["flags",0,"bitflag"],["struct",
-		["waterheight",["opt","flags&16","ubyte"]],
+		["waterheight",["opt","flags&16",["match","buildnr",{">=936":"ushort","other":"ubyte"}]]],
 		["underlay","varushort"],
 		["underlaycolor",["opt","underlay!=0","ushort"]],
 		["overlay","varushort"],

@@ -1,4 +1,5 @@
 ["struct",
+	["magic",["match","buildnr",{">=936":["tuple","uint","ubyte"],"other":null}]],//always "jagx\01"
 	["tiles",["array",16384,
 		["match","buildnr",{
 			">=750":["struct",
@@ -7,7 +8,7 @@
 				["overlay",["opt",["flags",0,"bitflag"],"variable unsigned short"]],
 				["settings",["opt",["flags",1,"bitflag"],"unsigned byte"]],
 				["underlay",["opt",["flags",2,"bitflag"],"variable unsigned short"]],
-				["height",["opt",["flags",3,"bitflag"],"unsigned byte"]]
+				["height",["opt",["flags",3,"bitflag"],["match","buildnr",{">=936":"ushort","other":"ubyte"}]]]
 			],
 			"other":["legacy_maptile"]
 		}]
