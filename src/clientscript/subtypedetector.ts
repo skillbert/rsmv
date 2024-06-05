@@ -244,6 +244,7 @@ export function detectSubtypes(calli: ClientscriptObfuscation) {
     }
     ctx.solve();
     assignKnownTypes(calli, ctx.knowntypes);
+    calli.foundSubtypes = true;
 }
 export function assignKnownTypes(calli: ClientscriptObfuscation, knowntypes: Map<number, number>) {
     for (let op of calli.mappings.values()) {

@@ -7,14 +7,13 @@ import { clientscriptdata } from "../../generated/clientscriptdata";
 import { clientscript } from "../../generated/clientscript";
 import { Openrs2CacheSource } from "../cache/openrs2loader";
 import * as fs from "fs/promises";
-import * as path from "path";
 import { crc32, crc32addInt } from "../libs/crc32util";
 import { params } from "../../generated/params";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, namedClientScriptOps, variableSources, typeToPrimitive, getOpName, knownClientScriptOpNames } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst } from "./ast";
-import { ClientScriptSubtypeSolver, detectSubtypes } from "./subtypedetector";
+import { detectSubtypes as callibrateSubtypes } from "./subtypedetector";
 import * as datastore from "idb-keyval";
 
 
@@ -252,7 +251,7 @@ async function getReferenceOpcodeDump() {
         let rootcalli = await ClientscriptObfuscation.create(rootsource);
         let refcalli = await ClientscriptObfuscation.create(refsource);
         rootcalli.setNonObbedMappings();
-        await refcalli.runCallibrationFrom(rootcalli);
+        await refcalli.runCallibrationFrom(rootcalli.generateDump());
         return refcalli.generateDump();
     })();
     return referenceOpcodeDump;
@@ -261,7 +260,10 @@ async function getReferenceOpcodeDump() {
 export class ClientscriptObfuscation {
     mappings = new Map<number, OpcodeInfo>();
     decodedMappings = new Map<number, OpcodeInfo>();
-    callibrated = false;
+    candidatesLoaded = false;
+    foundEncodings = false;
+    foundParameters = false;
+    foundSubtypes = false;
     opidcounter = 10000;
     source: CacheFileSource;
     dbtables = new Map<number, dbtables>();
@@ -282,7 +284,8 @@ export class ClientscriptObfuscation {
             r.decodedMappings.set(op.id, op);
         }
         r.opidcounter = deobjson.opidcounter;
-        r.callibrated = true;
+        r.foundEncodings = true;
+        await r.preloadData();
         if (scriptjson) {
             r.scriptargs = new Map(scriptjson.scriptargs.map(v => {
                 return [v.id, {
@@ -290,11 +293,10 @@ export class ClientscriptObfuscation {
                     stack: StackInOut.fromJson(v.stack)
                 }];
             }));
-            await r.preloadData(true);
         } else {
-            await r.preloadData(false);
+            await r.loadCandidates();
             r.parseCandidateContents();
-            detectSubtypes(r);
+            callibrateSubtypes(r);//TODO is this needed?
         }
         return r;
     }
@@ -374,7 +376,8 @@ export class ClientscriptObfuscation {
         }
         let res = new ClientscriptObfuscation(source);
         globalThis.deob = res;//TODO remove
-        await res.preloadData(false);
+        await res.preloadData();
+        await res.loadCandidates();
         return res;
     }
 
@@ -387,7 +390,7 @@ export class ClientscriptObfuscation {
         return op;
     }
 
-    async preloadData(skipcandidates: boolean) {
+    async preloadData() {
         let loadVars = async (subid: number) => {
             let archieve = await this.source.getArchiveById(cacheMajors.config, subid);
             let last = archieve.at(-1)?.fileid ?? 0;
@@ -413,31 +416,32 @@ export class ClientscriptObfuscation {
                 this.parammeta.set(file.fileid, parse.params.read(file.buffer, this.source));
             }
         }
-
-        if (!skipcandidates) {
-            let index = await this.source.getCacheIndex(cacheMajors.clientscript);
-            this.candidates.clear();
-            let source = this.source;
-            await trickleTasksTwoStep(10, function* () {
-                for (let entry of index) {
-                    if (!entry) { continue; }
-                    yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
-                        id: entry.minor,
-                        scriptname: reverseHashes.get(index[entry.minor].name!) ?? "",
-                        solutioncount: 0,
-                        buf,
-                        script: parse.clientscriptdata.read(buf, source),
-                        scriptcontents: null,
-                        argtype: null,
-                        returnType: null,
-                        unknowns: new Map(),
-                        didmatch: false
-                    }));
-                }
-            }, q => this.candidates.set(q.id, q));
-        }
+    }
+    async loadCandidates() {
+        let index = await this.source.getCacheIndex(cacheMajors.clientscript);
+        this.candidates.clear();
+        let source = this.source;
+        await trickleTasksTwoStep(10, function* () {
+            for (let entry of index) {
+                if (!entry) { continue; }
+                yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
+                    id: entry.minor,
+                    scriptname: reverseHashes.get(index[entry.minor].name!) ?? "",
+                    solutioncount: 0,
+                    buf,
+                    script: parse.clientscriptdata.read(buf, source),
+                    scriptcontents: null,
+                    argtype: null,
+                    returnType: null,
+                    unknowns: new Map(),
+                    didmatch: false
+                }));
+            }
+        }, q => this.candidates.set(q.id, q));
+        this.candidatesLoaded = true;
     }
     parseCandidateContents() {
+        if (!this.candidatesLoaded) { throw new Error("candidates not loaded"); }
         for (let cand of this.candidates.values()) {
             try {
                 cand.scriptcontents ??= parse.clientscript.read(cand.buf, this.source, { clientScriptDeob: this });
@@ -459,7 +463,7 @@ export class ClientscriptObfuscation {
         }
     }
 
-    async generateDump() {
+    generateDump() {
         let cands = this.candidates;
         let scripts: ReferenceScript[] = [];
         this.parseCandidateContents();
@@ -479,16 +483,17 @@ export class ClientscriptObfuscation {
     async runAutoCallibrate(source: CacheFileSource) {
         if (source.getBuildNr() <= lastNonObfuscatedBuild) {
             this.setNonObbedMappings();
-        } else if (!this.callibrated) {
+        } else if (!this.foundEncodings) {
             let ref = await getReferenceOpcodeDump();
-            await this.runCallibration(ref);
-            detectSubtypes(this);
+            await this.runCallibrationFrom(ref);
         }
     }
-    async runCallibrationFrom(previousCallibration: ClientscriptObfuscation) {
-        let refscript = await previousCallibration.generateDump();
-        await this.runCallibration(refscript);
-        // console.log("callibrated", this);
+    async runCallibrationFrom(refscript: ReferenceCallibration) {
+        await copyOpcodesFrom(this, refscript);
+        this.parseCandidateContents();
+        await findOpcodeImmidiates(this);
+        callibrateOperants(this);
+        callibrateSubtypes(this);
     }
     setNonObbedMappings() {
         //originally all <0x80 were ints
@@ -503,71 +508,10 @@ export class ClientscriptObfuscation {
         this.mappings.set(0x27, new OpcodeInfo(0x27, 0x27, ["byte"]));
         this.mappings.set(0x66, new OpcodeInfo(0x66, 0x66, ["byte"]));
         this.mappings.forEach(value => this.decodedMappings.set(value.id, value));
-        this.callibrated = true;
-    }
-    async runCallibration(refcalli: ReferenceCallibration) {
-        let convertedref = refcalli.scripts.map<ClientScriptOp[]>(q => translateClientScript(q.scriptops, refcalli.buildnr, this.source.getBuildNr()));
-        let candidates = this.candidates;
-
-        this.opidcounter = refcalli.opidcounter;
-        let testCandidate = (cand: ScriptCandidate, refops: ClientScriptOp[]) => {
-            if (cand.script.instructioncount != refops.length) {
-                return false;
-            }
-            let unconfirmed = new Map<number, ClientScriptOp>();
-            let offset = 0;
-            let buf = cand.script.opcodedata;
-            for (let i = 0; i < cand.script.instructioncount; i++) {
-                let refop = refops[i];
-                let reftype = opcodeToType(refop.opcode);
-
-                if (buf.byteLength < offset + 2) { return false; }
-                let opid = buf.readUint16BE(offset);
-                offset += 2;
-                let imm = parseImm(buf, offset, reftype);
-                if (!imm) { return false; }
-                offset = imm.offset;
-                let op: ClientScriptOp = { opcode: refop.opcode, imm: imm.imm, imm_obj: imm.imm_obj };
-                if (!isOpEqual(op, refop)) { return false; }
-                unconfirmed.set(opid, refop);
-            }
-            if (offset != buf.byteLength) {
-                return false;
-            }
-            cand.didmatch = true;
-            for (let [k, v] of unconfirmed) {
-                let info = new OpcodeInfo(k, v.opcode, [opcodeToType(v.opcode)]);
-                this.mappings.set(k, info);
-                this.decodedMappings.set(v.opcode, info);
-            }
-            return true;
-        }
-
-        let iter = async () => {
-            for (let [index, ref] of refcalli.scripts.entries()) {
-                let cand = candidates.get(ref.id);
-                if (!cand) { continue; }
-                testCandidate(cand, convertedref[index])
-            }
-        }
-        let oldcount = 0;
-        let itercount = 0;
-        for (; itercount < 10; itercount++) {
-            await iter();
-            let foundcount = this.mappings.size - oldcount;
-            console.log(`iter ${itercount}, found:${foundcount}`);
-            if (foundcount == 0) { break; }
-            oldcount = this.mappings.size;
-        }
-        console.log(`callibrated in ${itercount + 1} iterations`);
-
-        await findOpcodeImmidiates(this);
-        this.callibrated = true;
-        this.parseCandidateContents();
-        findOpcodeTypes(this);
+        this.foundEncodings = true;
     }
     writeOpCode = (state: EncodeState, v: unknown) => {
-        if (!this.callibrated) { throw new Error("clientscript deob not callibrated yet"); }
+        if (!this.foundEncodings) { throw new Error("clientscript deob not callibrated yet"); }
         if (typeof v != "object" || !v) { throw new Error("opcode is expected to be an object"); }
         if (!("opcode" in v) || typeof v.opcode != "number") { throw new Error("opcode prop expectec"); }
         if (!("imm" in v) || typeof v.imm != "number") { throw new Error("imm prop expected"); }
@@ -610,7 +554,7 @@ export class ClientscriptObfuscation {
         }
     }
     readOpcode: ReadOpCallback = (state: DecodeState) => {
-        if (!this.callibrated) { throw new Error("clientscript deob not callibrated yet"); }
+        if (!this.foundEncodings) { throw new Error("clientscript deob not callibrated yet"); }
         let opcode = state.buffer.readUint16BE(state.scan);
         state.scan += 2;
         let res = this.mappings.get(opcode);
@@ -651,6 +595,63 @@ export class ClientscriptObfuscation {
         if (!opinfo) { throw new Error(`op with named id ${id} not found`); }
         return opinfo;
     }
+}
+
+async function copyOpcodesFrom(deob: ClientscriptObfuscation, refcalli: ReferenceCallibration) {
+    let convertedref = refcalli.scripts.map<ClientScriptOp[]>(q => translateClientScript(q.scriptops, refcalli.buildnr, deob.source.getBuildNr()));
+    let candidates = deob.candidates;
+
+    deob.opidcounter = refcalli.opidcounter;
+    let testCandidate = (cand: ScriptCandidate, refops: ClientScriptOp[]) => {
+        if (cand.script.instructioncount != refops.length) {
+            return false;
+        }
+        let unconfirmed = new Map<number, ClientScriptOp>();
+        let offset = 0;
+        let buf = cand.script.opcodedata;
+        for (let i = 0; i < cand.script.instructioncount; i++) {
+            let refop = refops[i];
+            let reftype = opcodeToType(refop.opcode);
+
+            if (buf.byteLength < offset + 2) { return false; }
+            let opid = buf.readUint16BE(offset);
+            offset += 2;
+            let imm = parseImm(buf, offset, reftype);
+            if (!imm) { return false; }
+            offset = imm.offset;
+            let op: ClientScriptOp = { opcode: refop.opcode, imm: imm.imm, imm_obj: imm.imm_obj };
+            if (!isOpEqual(op, refop)) { return false; }
+            unconfirmed.set(opid, refop);
+        }
+        if (offset != buf.byteLength) {
+            return false;
+        }
+        cand.didmatch = true;
+        for (let [k, v] of unconfirmed) {
+            let info = new OpcodeInfo(k, v.opcode, [opcodeToType(v.opcode)]);
+            deob.mappings.set(k, info);
+            deob.decodedMappings.set(v.opcode, info);
+        }
+        return true;
+    }
+
+    let iter = async () => {
+        for (let [index, ref] of refcalli.scripts.entries()) {
+            let cand = candidates.get(ref.id);
+            if (!cand) { continue; }
+            testCandidate(cand, convertedref[index])
+        }
+    }
+    let oldcount = 0;
+    let itercount = 0;
+    for (; itercount < 10; itercount++) {
+        await iter();
+        let foundcount = deob.mappings.size - oldcount;
+        console.log(`iter ${itercount}, found:${foundcount}`);
+        if (foundcount == 0) { break; }
+        oldcount = deob.mappings.size;
+    }
+    console.log(`callibrated in ${itercount + 1} iterations`);
 }
 
 async function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
@@ -849,6 +850,9 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
     runfixedaddition();
     // console.log([...mappings].sort((a, b) => a[0] - b[0]).map(q => [q[0].toString(16), [...q[1].possibleTypes].join(",")]));
 
+
+    calli.foundEncodings = true;
+
     //TODO return values are obsolete
     return {
         test(id: number) {
@@ -893,9 +897,7 @@ async function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
     }
 }
 
-function findOpcodeTypes(calli: ClientscriptObfuscation) {
-    calli.parseCandidateContents();
-
+function callibrateOperants(calli: ClientscriptObfuscation) {
     //TODO merge with previous loop?
     let allsections: CodeBlockNode[] = [];
     for (let cand of calli.candidates.values()) {
@@ -1061,6 +1063,7 @@ function findOpcodeTypes(calli: ClientscriptObfuscation) {
         }
         console.log("total", total, "done", done, "partial", partial, "incomplete", missing.size);
     }
+    calli.foundParameters = true;
 }
 
 export function getArgType(script: clientscriptdata | clientscript) {

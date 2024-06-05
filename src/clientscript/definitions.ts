@@ -86,6 +86,7 @@ export const namedClientScriptOps = {
     cc_getparam: 10672,
     mec_getparam: 10815,
     dbrow_getfield: 10717,
+    dbrow_findnext: 10735,
 
     //arrays
     define_array: 11631,
@@ -483,8 +484,8 @@ export const dynamicOps = [
     namedClientScriptOps.pushvar,
     namedClientScriptOps.popvar,
     namedClientScriptOps.enum_getvalue,
-    namedClientScriptOps.dbrow_getfield,//dbrow_getfield
-    10735,//dbrow_findnext
+    namedClientScriptOps.dbrow_getfield,
+    namedClientScriptOps.dbrow_findnext,
 ];
 
 export function makeop(opcode: number, imm = 0, imm_obj: ClientScriptOp["imm_obj"] = null) {
