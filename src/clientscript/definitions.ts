@@ -24,13 +24,13 @@ export const namedClientScriptOps = {
     poplocalint: 34,
     pushlocalstring: 35,
     poplocalstring: 36,
-    pushlocallong: 11603,
-    poplocallong: 11607,
+    pushlocallong: 10024,
+    poplocallong: 10237,
 
     //pop discard
-    popdiscardint: 10627,
+    popdiscardint: 10004,
     popdiscardlong: 9104,//op not seen yet
-    popdiscardstring: 10983,
+    popdiscardstring: 10360,
 
     //variable number of args
     joinstring: 37,
@@ -39,8 +39,8 @@ export const namedClientScriptOps = {
     //complicated types
     pushvar: 42,
     popvar: 43,
-    pushvarbit: 11601,
-    popvarbit: 11602,
+    pushvarbit: 10022,
+    popvarbit: 10023,
 
     //control flow
     jump: 6,
@@ -50,12 +50,12 @@ export const namedClientScriptOps = {
     branch_gt: 10,
     branch_lteq: 31,
     branch_gteq: 32,
-    branch_eq_long: 11606,
-    branch_not_long: 11624,
-    branch_lt_long: 11619,
-    branch_gt_long: 11611,
-    branch_lteq_long: 11625,
-    branch_gteq_long: 11613,
+    branch_eq_long: 10153,
+    branch_not_long: 10449,
+    branch_lt_long: 10411,
+    branch_gt_long: 10321,
+    branch_lteq_long: 10491,
+    branch_gteq_long: 10349,
     switch: 51,
     return: 21,
 
@@ -69,32 +69,41 @@ export const namedClientScriptOps = {
     shorting_and: 9101,
 
     //math stuff
-    plus: 10000,
-    minus: 10006,
-    intdiv: 10001,
-    intmul: 10028,
-    strcmp: 10004,//0 for equal, might be string - operator
-    strconcat: 10060,
-    inttostring: 10687,
+    plus: 4000,
+    minus: 4001,
+    intdiv: 4003,
+    intmul: 4002,
+    strcmp: 4107,//0 for equal, might be string - operator
+    strconcat: 4101,
+    inttostring: 10064,
 
     //enums
-    enum_getvalue: 10063,
-    struct_getparam: 10023,
-    item_getparam: 10110,
-    quest_getparam: 10885,
-    npc_getparam: 10699,
-    cc_getparam: 10672,
-    mec_getparam: 10815,
-    dbrow_getfield: 10717,
-    dbrow_findnext: 10735,
+    enum_getvalue: 3408,
+    struct_getparam: 4500,
+    item_getparam: 4208,
+    quest_getparam: 10262,
+    npc_getparam: 10076,
+    cc_getparam: 10049,
+    mec_getparam: 10192,
+    dbrow_getfield: 10094,
+    dbrow_findnext: 10112,
+
+    //dynamic subtype ops
+    cc_setparam: 10098,
+    db_find_with_count: 10100,
+    lc_getparam: 10798,
+    enum_getstring: 10047,
+    enum_getreverseindex: 10154,
+    enum_getreversecount: 10240,
+    enum_hasoutput: 10244,
 
     //arrays
-    define_array: 11631,
+    define_array: 10569,
     pop_array: 46,
     push_array: 45,
 
     //interface stuff
-    printmessage: 10119
+    printmessage: 3100
 }
 
 // from runestar cs2-rs3

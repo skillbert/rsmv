@@ -7,15 +7,15 @@ import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstruction
 
 const looseOps = [
     //TODO most of these have known types depending on literal args
-    dependencyGroup("opin", 10867) | dependencyIndex("int", 2),//ENUM_HASOUTPUT
-    dependencyGroup("opout", 10777) | dependencyIndex("int", 0),//ENUM_GETREVERSEINDEX
-    dependencyGroup("opin", 10777) | dependencyIndex("int", 3),//ENUM_GETREVERSEINDEX
-    dependencyGroup("opin", 10863) | dependencyIndex("int", 2),//ENUM_GETREVERSECOUNT
-    dependencyGroup("opin", 10670) | dependencyIndex("int", 1),//ENUM_STRING
-    dependencyGroup("opin", 10627) | dependencyIndex("int", 0),//POP_INT_DISCARD
-    dependencyGroup("opout", 11421) | dependencyIndex("int", 0),//LC_PARAM
-    dependencyGroup("opin", 10721) | dependencyIndex("int", 1),//CC_SETPARAM
-    dependencyGroup("opin", 10723) | dependencyIndex("int", 1),//DB_FIND_WITH_COUNT
+    dependencyGroup("opin", namedClientScriptOps.enum_hasoutput) | dependencyIndex("int", 2),
+    dependencyGroup("opout", namedClientScriptOps.enum_getreverseindex) | dependencyIndex("int", 0),
+    dependencyGroup("opin", namedClientScriptOps.enum_getreverseindex) | dependencyIndex("int", 3),
+    dependencyGroup("opin", namedClientScriptOps.enum_getreversecount) | dependencyIndex("int", 2),
+    dependencyGroup("opin", namedClientScriptOps.enum_getstring) | dependencyIndex("int", 1),
+    dependencyGroup("opin", namedClientScriptOps.popdiscardint) | dependencyIndex("int", 0),
+    dependencyGroup("opout", namedClientScriptOps.lc_getparam) | dependencyIndex("int", 0),
+    dependencyGroup("opin", namedClientScriptOps.cc_setparam) | dependencyIndex("int", 1),
+    dependencyGroup("opin", namedClientScriptOps.db_find_with_count) | dependencyIndex("int", 1),
 
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
@@ -249,9 +249,6 @@ export function detectSubtypes(calli: ClientscriptObfuscation) {
 export function assignKnownTypes(calli: ClientscriptObfuscation, knowntypes: Map<number, number>) {
     for (let op of calli.mappings.values()) {
         if (!op.stackinfo.initializedthrough) { continue; }
-        if (op.id == namedClientScriptOps.push_array) {
-            debugger;
-        }
         let exactin = new ExactStack();
         let diffin = op.stackinfo.in.getStackdiff();
         for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }

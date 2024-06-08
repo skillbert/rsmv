@@ -1026,6 +1026,9 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
         let script = calli.scriptargs.get(node.op.imm);
         if (script) {
             node.knownStackDiff = script.stack;
+        } else {
+            //this can happen when callibration is incomplete
+            node.knownStackDiff = new StackInOut();
         }
     } else if (node.opinfo.id == namedClientScriptOps.joinstring) {
         node.knownStackDiff = new StackInOut(
