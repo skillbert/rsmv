@@ -188,10 +188,11 @@ class CombinedExactStack {
             depfunc = getPositionalDep;
         }
 
-        if (stackinout.exactin) {
-            for (let i = stackinout.exactin.int.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(stackinout.exactin.int[i]), this.intstack.pop()); }
-            for (let i = stackinout.exactin.long.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(stackinout.exactin.long[i]), this.longstack.pop()); }
-            for (let i = stackinout.exactin.string.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(stackinout.exactin.string[i]), this.stringstack.pop()); }
+        if (node.knownStackDiff?.exactin) {
+            let exact = node.knownStackDiff.exactin;
+            for (let i = exact.int.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(exact.int[i]), this.intstack.pop()); }
+            for (let i = exact.long.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(exact.long[i]), this.longstack.pop()); }
+            for (let i = exact.string.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(exact.string[i]), this.stringstack.pop()); }
         } else {
             let stackin = stackinout.in;
             //need to do inputs in correct order because of vararg
@@ -218,10 +219,11 @@ class CombinedExactStack {
             }
         }
 
-        if (stackinout.exactout) {
-            for (let i = 0; i < stackinout.exactout.int.length; i++) { this.intstack.push(knownDependency(stackinout.exactout.int[i])); }
-            for (let i = 0; i < stackinout.exactout.long.length; i++) { this.longstack.push(knownDependency(stackinout.exactout.long[i])); }
-            for (let i = 0; i < stackinout.exactout.string.length; i++) { this.stringstack.push(knownDependency(stackinout.exactout.string[i])); }
+        if (node.knownStackDiff?.exactout) {
+            let exact = node.knownStackDiff.exactout;
+            for (let i = 0; i < exact.int.length; i++) { this.intstack.push(knownDependency(exact.int[i])); }
+            for (let i = 0; i < exact.long.length; i++) { this.longstack.push(knownDependency(exact.long[i])); }
+            for (let i = 0; i < exact.string.length; i++) { this.stringstack.push(knownDependency(exact.string[i])); }
         } else {
             //only ensure order per primitive type
             let totalout = stackinout.out.getStackdiff();

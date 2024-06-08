@@ -301,6 +301,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         let gettypecast = (subt: PrimitiveType) => {
             if (exacttype == -1) { return ""; }
             if (exacttype == subtypes.int || exacttype == subtypes.string || exacttype == subtypes.long) { return ""; }
+            if (exacttype == subtypes.unknown_int || exacttype == subtypes.unknown_string || exacttype == subtypes.unknown_long) { return ""; }
             return ` as ${subtypeToTs(exacttype)}`;
         }
         if (typeof node.op.imm_obj == "string") {

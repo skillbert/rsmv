@@ -974,7 +974,15 @@ export function varArgtype(stringconst: string | unknown, lastintconst: number |
 }
 
 export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: ClientscriptObfuscation, node: RawOpcodeNode) {
-    if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
+    if (branchInstructionsInt.includes(node.opinfo.id)) {
+        //make sure that left and right side are same type
+        let uuid = typeuuids.int++;
+        node.knownStackDiff = StackInOut.fromExact([uuid, uuid], []);
+    } else if (branchInstructionsLong.includes(node.opinfo.id)) {
+        //make sure that left and right side are same type
+        let uuid = typeuuids.long++;
+        node.knownStackDiff = StackInOut.fromExact([uuid, uuid], []);
+    } else if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
         //args are rowid,tablefield,subrow
         let tablefield = consts?.values.at(-2);
         if (typeof tablefield == "number") {
