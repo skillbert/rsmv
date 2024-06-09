@@ -874,7 +874,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
     res += "declare function comp(interf: number, element: number): component;\n";
     res += "declare function comprel(interf: number, elementrel: number): component;\n"
-    res += "declare function coord(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
+    res += "declare function pos(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
     res += "declare function stack(...args: any[]): any;\n";
     res += "\n";
     res += `// Compiler intrinsics\n`;
