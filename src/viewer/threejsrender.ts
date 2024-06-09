@@ -463,9 +463,10 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				vrcam.render(this.renderer);
 				vrcam.cubeCamera.removeFromParent();
 			}
+			let pixels = this.getFrameBufferPixels();
 			this.renderer.setRenderTarget(oldtarget);
 			this.resizeViewToRendererSize();
-			return this.getFrameBufferPixels();
+			return pixels;
 		});
 	}
 
