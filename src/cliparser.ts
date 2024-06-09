@@ -5,7 +5,7 @@ import { CacheFileSource, CallbackCacheLoader } from "./cache";
 import { CacheDownloader } from "./cache/downloader";
 import { GameCacheLoader } from "./cache/sqlite";
 import { RawFileLoader } from "./cache/rawfiles";
-import { Openrs2CacheSource } from "./cache/openrs2loader";
+import { Openrs2CacheSource, validOpenrs2Caches } from "./cache/openrs2loader";
 import type { MapRect } from "./3d/mapsquare";
 import { FileRange, stringToFileRange, stringToMapArea } from "./utils";
 import { selectFsCache } from "./cache/autocache";
@@ -33,6 +33,13 @@ function cacheSourceFromString(str: string) {
 			case "openrs":
 			case "openrs2":
 				return Openrs2CacheSource.fromId(+arg);
+			case "openrslast":
+			case "openrs2last":
+				let caches = await validOpenrs2Caches();
+				let target = caches[+(arg ?? "0")];
+				if (!target) { throw new Error(`cache index ${arg} not found`); }
+				console.log(`opening openrs2:${target.id}`);
+				return Openrs2CacheSource.fromId(target.id);
 			case "extracted":
 				return new RawFileLoader(arg, 0);
 			case "global":
@@ -50,7 +57,7 @@ function cacheSourceFromString(str: string) {
 export const ReadCacheSource: cmdts.Type<string, (opts?: { writable?: boolean }) => Promise<CacheFileSource>> = {
 	async from(str) { return cacheSourceFromString(str); },
 	defaultValue: () => cacheSourceFromString("cache"),
-	description: "Where to get game files from, can be 'live', 'cache[:rscachedir]' or openrs2[:ors2cacheid]"
+	description: "Where to get game files from, can be 'live', 'cache[:rscachedir]', openrs2[:ors2cacheid] or openrs2last[:skipcount]"
 };
 
 const FileRange: cmdts.Type<string, FileRange[]> = {
