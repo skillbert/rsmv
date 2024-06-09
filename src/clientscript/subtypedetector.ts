@@ -3,7 +3,7 @@ import { ClientscriptObfuscation } from "./callibrator";
 import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps, subtypes } from "./definitions";
 
 //to test
-//await cli("extract --mode clientscripttext -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
+//await cli("extract --mode clientscript -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
 
 const looseOps = [
     //TODO most of these have known types depending on literal args

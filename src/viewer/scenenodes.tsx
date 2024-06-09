@@ -9,7 +9,7 @@ import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/avatar";
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode, ThreeJsRenderer } from "./threejsrender";
-import { cacheFileJsonModes, cacheFileDecodeModes, cacheFileDecodeGroups } from "../scripts/filetypes";
+import { cacheFileJsonModes, cacheFileDecodeModes, cacheFileDecodeGroups, DecodeMode } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap, UIScriptConsole } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
@@ -2128,15 +2128,6 @@ function PreviewFilesScript(p: UiScriptProps) {
 }
 
 function ModeDropDownOptions() {
-	let jsonmodes: JSX.Element[] = [];
-	let binmodes: JSX.Element[] = [];
-	for (let mode of Object.keys(cacheFileDecodeModes)) {
-		if (Object.hasOwn(cacheFileJsonModes, mode)) { continue; }
-		binmodes.push(<option key={mode} value={mode}>{mode}</option>);
-	}
-	for (let jsonmode of Object.keys(cacheFileJsonModes)) {
-		jsonmodes.push(<option key={jsonmode} value={jsonmode}>{jsonmode}</option>);
-	}
 	return (
 		<React.Fragment>
 			{Object.entries(cacheFileDecodeGroups).map(([k, v]) => (
@@ -2149,21 +2140,27 @@ function ModeDropDownOptions() {
 }
 
 function ExtractFilesScript(p: UiScriptProps) {
-	let [initmode, initbatched, initkeepbuffs, initfilestext] = p.initialArgs.split(":");
+	let [initmode, initbatched, initdecoder, initfilestext] = p.initialArgs.split(":");
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
 	let [mode, setMode] = React.useState<string>(initmode || "items");
 	let [batched, setbatched] = React.useState(initbatched == "true");
-	let [keepbuffers, setkepbuffers] = React.useState(initkeepbuffs == "true");
+	let [decoderflags, setdecodersflags] = React.useState(Object.fromEntries(initdecoder.split(",").map(q => [q.split("=")[0], q.split("=")[1] ?? ""])));
 
 	let run = () => {
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
-		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, keepbuffers, skipread: false });
-		p.onRun(output, `${mode}:${batched}:${keepbuffers}:${filestext}`);
+		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, skipread: false }, decoderflags);
+		p.onRun(output, `${mode}:${batched}:${Object.entries(decoderflags).map(([k, v]) => `${k}=${v}`).join(",")}:${filestext}`);
 	}
 
-	let descr = React.useMemo(() => cacheFileDecodeModes[mode]?.({}).description ?? "", [mode]);
+	let modemeta = React.useMemo<DecodeMode | undefined>(() => cacheFileDecodeModes[mode]?.({}), [mode]);
+	let setFlag = (flag: string, v: boolean) => {
+		let newflags = { ...decoderflags };
+		if (v) { newflags[flag] = "true"; }
+		else { delete newflags[flag]; }
+		setdecodersflags(newflags);
+	}
 
 	return (
 		<React.Fragment>
@@ -2177,9 +2174,11 @@ function ExtractFilesScript(p: UiScriptProps) {
 			<LabeledInput label="File ranges">
 				<InputCommitted type="text" onChange={e => setFilestext(e.currentTarget.value)} value={filestext} />
 			</LabeledInput>
-			<div>{descr}</div>
+			<div>{modemeta?.description ?? ""}</div>
 			<div><label><input type="checkbox" checked={batched} onChange={e => setbatched(e.currentTarget.checked)} />Concatenate group files</label></div>
-			<div><label><input type="checkbox" checked={keepbuffers} onChange={e => setkepbuffers(e.currentTarget.checked)} />Keep binary buffers (can be very large)</label></div>
+			{Object.entries(modemeta?.flagtemplate ?? {}).map(([k, v]) => (
+				<div key={k}><label><input type="checkbox" checked={decoderflags[k] == "true"} onChange={e => setFlag(k, e.currentTarget.checked)} />{v.text}</label></div>
+			))}
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)

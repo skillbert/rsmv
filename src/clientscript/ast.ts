@@ -483,7 +483,7 @@ export class RawOpcodeNode extends AstNode {
     }
 }
 
-class RewriteCursor {
+export class RewriteCursor {
     rootnode: AstNode;
     cursorStack: AstNode[] = [];
     stalled = true;

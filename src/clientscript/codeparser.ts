@@ -346,6 +346,9 @@ function scriptContext(ctx: ParseContext) {
             }
             return res;
         }
+        if (funcname == "comprel") {
+            throw new Error("cannot compile code that contains 'comprel' function, run decompiler withour comprel flag to get the correct code.")
+        }
         if (funcname == "comp") {
             if (args.length != 2 || !isNamedOp(args[0], namedClientScriptOps.pushconst) || !isNamedOp(args[1], namedClientScriptOps.pushconst)) { throw new Error("raw opcode expected"); }
             if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
@@ -800,7 +803,7 @@ export function parseClientscriptTs(deob: ClientscriptObfuscation, code: string)
 //TODO remove
 globalThis.testy = async () => {
     const fs = require("fs") as typeof import("fs");
-    let codefs = await globalThis.cli("extract -m clientscripttext -i 0-1999");
+    let codefs = await globalThis.cli("extract -m clientscript -i 0-1999");
     let codefiles = [...codefs.extract.filesMap.entries()]
         .filter(q => q[0].startsWith("clientscript"))
         .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
@@ -869,7 +872,8 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "declare class BoundFunction { }\n";
     res += "declare function callback(): BoundFunction;\n";
     res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
-    res += "declare function co*mp(interf: number, element: number): component;\n";
+    res += "declare function comp(interf: number, element: number): component;\n";
+    res += "declare function comprel(interf: number, elementrel: number): component;\n"
     res += "declare function coord(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
     res += "declare function stack(...args: any[]): any;\n";
     res += "\n";

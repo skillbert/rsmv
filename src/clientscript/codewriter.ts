@@ -1,8 +1,9 @@
 import { boundMethod } from "autobind-decorator";
-import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType } from "./ast";
+import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType, isNamedOp, RewriteCursor } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
+import { getOrInsert } from "../utils";
 
 /**
  * known compiler differences
@@ -33,9 +34,29 @@ export class TsWriterContext {
     typectx: ClientScriptSubtypeSolver;
     indents: boolean[] = [];
     declaredVars: Set<string>[] = [];
+    compoffsets = new Map<number, number>();
+    usecompoffset = false;
     constructor(calli: ClientscriptObfuscation, typectx: ClientScriptSubtypeSolver) {
         this.calli = calli;
         this.typectx = typectx;
+    }
+    setCompOffsets(rootnode: AstNode) {
+        let cursor = new RewriteCursor(rootnode);
+        for (let node = cursor.goToStart(); node; node = cursor.next()) {
+            if (!isNamedOp(node, namedClientScriptOps.pushconst)) { continue; }
+            if (!node.knownStackDiff?.exactout) { continue; }
+            let all = node.knownStackDiff.exactout.all();
+            if (all.length != 1) { throw new Error("unexpected"); }
+            let type = this.typectx.knowntypes.get(all[0]);
+            if (typeof type != "number") { continue; }
+            if (typeof node.op.imm_obj != "number") { continue; }
+            let intf = node.op.imm_obj >> 16;
+            let sub = node.op.imm_obj & 0xffff;
+
+            let least = getOrInsert(this.compoffsets, intf, () => sub);
+            if (sub < least) { this.compoffsets.set(intf, sub); }
+        }
+        this.usecompoffset = true;
     }
     codeIndent(linenr = -1, hasquestionmark = false) {
         // return (linenr == -1 ? "" : linenr + ":").padEnd(5 + amount * 4, " ") + (hasquestionmark ? "?? " : "   ");
@@ -310,7 +331,13 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             return `${longJsonToBigInt(node.op.imm_obj)}n${gettypecast("long")}`;
         } else if (typeof node.op.imm_obj == "number") {
             if (exacttype == subtypes.component) {
-                return `comp(${node.op.imm_obj >> 16}, ${node.op.imm_obj & 0xffff})`;
+                let intf = node.op.imm_obj >> 16;
+                let sub = node.op.imm_obj & 0xffff;
+                if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
+                    return `comprel(${intf},${sub - ctx.compoffsets.get(intf)!})`;
+                } else {
+                    return `comp(${intf}, ${sub})`;
+                }
             }
             if (exacttype == subtypes.coordgrid && node.op.imm_obj != -1) {
                 let v = node.op.imm_obj;

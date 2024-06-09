@@ -320,9 +320,13 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 			combineSubs(b) {
 				return `{"$schema":"${batchschemaurl}","files":[\n\n${b.join("\n,\n\n")}]}`;
 			},
-			description: "View the JSON representation of a file"
+			description: "View the JSON representation of a file",
+			flagtemplate: {
+				keepbuffers: { text: "Keep binary buffers (can be very large)", type: "boolean" }
+			}
 		}
 	}
+
 	return constr;
 }
 
@@ -348,7 +352,8 @@ export type DecodeMode<T = Buffer | string> = {
 	prepareWrite(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
 	write(file: Buffer, fileid: LogicalIndex, source: CacheFileSource): Buffer | Promise<Buffer>,
 	combineSubs(files: T[]): T,
-	description: string
+	description: string,
+	flagtemplate?: Record<string, { text: string, type: "boolean" }>
 } & DecodeLookup;
 
 const decodeBinary: DecodeModeFactory = () => {
@@ -457,7 +462,7 @@ const decodeInterface2: DecodeModeFactory = () => {
 	}
 }
 
-const decodeClientScriptText: DecodeModeFactory = () => {
+const decodeClientScript: DecodeModeFactory = (ops) => {
 	return {
 		ext: "ts",
 		...noArchiveIndex(cacheMajors.clientscript),
@@ -469,7 +474,7 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
 		},
 		read(buf, fileid, source) {
-			return renderClientScript(source, buf, fileid[0]);
+			return renderClientScript(source, buf, fileid[0], ops.relativecs2comps == "true");
 		},
 		async write(file, fileid, source) {
 			let obj = await compileClientScript(source, file.toString("utf8"));
@@ -477,9 +482,13 @@ const decodeClientScriptText: DecodeModeFactory = () => {
 			// throw new Error("exit dryrun");
 			return res;
 		},
-		description: "Extracts clientscript VM code (cs2) and converts it to something that is typescript-compatible."
+		description: "Extracts clientscript VM code (cs2) and converts it to something that is typescript-compatible.",
+		flagtemplate: {
+			relativecs2comps: { text: "Hide subcomponent ids (can't be compiled, but offers stable diffing)", type: "boolean" }
+		}
 	}
 }
+
 const decodeClientScriptViewer: DecodeModeFactory = () => {
 	return {
 		ext: "cs2.json",
@@ -655,7 +664,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 
 	test: { parser: FileParser.fromJson(`["struct",\n  \n]`), lookup: anyFileIndex() },
 
-	clientscript: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareParser: source => prepareClientScript(source).then(() => undefined) },
+	clientscriptops: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareParser: source => prepareClientScript(source).then(() => undefined) },
 });
 
 const npcmodels: DecodeModeFactory = function () {
@@ -712,7 +721,7 @@ const cacheFileDecodersInteractive = constrainedMap<DecodeModeFactory>()({
 	cutscenehtml: decodeCutscene,
 	interfacehtml: decodeInterface,
 	interfaceviewer: decodeInterface2,
-	clientscripttext: decodeClientScriptText,
+	clientscript: decodeClientScript,
 	clientscriptviewer: decodeClientScriptViewer,
 })
 const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({

@@ -19,7 +19,7 @@ export async function compileClientScript(source: CacheFileSource, code: string)
     return astToImJson(calli, parseresult.result);
 }
 
-export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number) {
+export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number, relativeComps: boolean) {
     let calli = await prepareClientScript(source);
     let script = parse.clientscript.read(buf, source);
     let full = true;//TODO remove
@@ -27,6 +27,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     // globalThis[`cs${fileid}`] = rootfunc;//TODO remove
 
     let writer = new TsWriterContext(calli, typectx);
+    if (relativeComps) { writer.setCompOffsets(rootfunc); }
 
     let res = "";
     if (full) {

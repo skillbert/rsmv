@@ -116,12 +116,17 @@ export function cliApi(ctx: CliApiContext) {
 			fixhash: flag({ long: "fixhash", short: "h" }),
 			batched: flag({ long: "batched", short: "b" }),
 			batchlimit: option({ long: "batchsize", type: cmdts.number, defaultValue: () => -1 }),
-			keepbuffers: flag({ long: "keepbuffers" })
+			keepbuffers: flag({ long: "keepbuffers" }),
+			relativecs2comps: flag({ long: "relativecs2comps" })
 		},
 		async handler(args) {
 			let output = ctx.getConsole();
 			let source = await args.source({ writable: args.edit });
-			await output.run(extractCacheFiles, args.save, source, args);
+			let decoderflags: Record<string, string> = {};
+			//decoder-specific flags, might want to make them into a value instead of a flag at some point
+			if (args.keepbuffers) { decoderflags.keepbuffers = "true"; }
+			if (args.relativecs2comps) { decoderflags.relativecs2comps = "true"; }
+			await output.run(extractCacheFiles, args.save, source, args, decoderflags);
 		}
 	});
 

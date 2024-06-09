@@ -4,12 +4,11 @@ import { FileRange, getOrInsert } from "../utils";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { cacheFileDecodeModes, DecodeMode, DecodeModeFactory } from "./filetypes";
 
-export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange[], edit: boolean, skipread: boolean, keepbuffers: boolean }) {
+export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange[], edit: boolean, skipread: boolean }, decoderflags: Record<string, string>) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];
 	if (!modeconstr) { throw new Error("unknown mode"); }
-	let flags: Record<string, string> = {};
+	let flags = { ...decoderflags };
 	if (args.batched || args.batchlimit != -1) { flags.batched = "true"; }
-	if (args.keepbuffers) { flags.keepbuffers = "true"; }
 	let mode = modeconstr(flags);
 	await mode.prepareDump(outdir, source);
 
