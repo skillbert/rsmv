@@ -312,6 +312,11 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             if (exacttype == subtypes.component) {
                 return `comp(${node.op.imm_obj >> 16}, ${node.op.imm_obj & 0xffff})`;
             }
+            if (exacttype == subtypes.coordgrid && node.op.imm_obj != -1) {
+                let v = node.op.imm_obj;
+                //plane,chunkx,chunkz,subx,subz
+                return `pos(${(v >> 28) & 3},${(v >> 20) & 0xff},${(v >> 6) & 0xff},${(v >> 12) & 0x3f},${v & 0x3f})`;
+            }
             if (exacttype == subtypes.boolean) {
                 return (node.op.imm_obj == 1 ? "true" : "false");
             }

@@ -351,6 +351,16 @@ function scriptContext(ctx: ParseContext) {
             if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
             return makeIntConst((args[0].op.imm_obj << 16) | args[1].op.imm_obj, "component");
         }
+        if (funcname == "pos") {
+            if (args.length != 5) { throw new Error("5 raw opcodes expected"); }
+            if (!isNamedOp(args[0], namedClientScriptOps.pushconst) || typeof args[0].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
+            if (!isNamedOp(args[1], namedClientScriptOps.pushconst) || typeof args[1].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
+            if (!isNamedOp(args[2], namedClientScriptOps.pushconst) || typeof args[2].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
+            if (!isNamedOp(args[3], namedClientScriptOps.pushconst) || typeof args[3].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
+            if (!isNamedOp(args[4], namedClientScriptOps.pushconst) || typeof args[4].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
+            //level,chunkx,chunkz,subx,subz
+            return makeIntConst((args[0].op.imm_obj << 28) | (args[1].op.imm_obj << 20) | (args[2].op.imm_obj << 6) | (args[3].op.imm_obj << 12) | (args[2].op.imm_obj << 0), "coordgrid");
+        }
         if (funcname == "stack") {
             let op = new ComposedOp(-1, "stack");
             op.pushList(args);
@@ -859,7 +869,8 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "declare class BoundFunction { }\n";
     res += "declare function callback(): BoundFunction;\n";
     res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
-    res += "declare function comp(interf: number, element: number): component;\n";
+    res += "declare function co*mp(interf: number, element: number): component;\n";
+    res += "declare function coord(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
     res += "declare function stack(...args: any[]): any;\n";
     res += "\n";
     res += `// Compiler intrinsics\n`;
