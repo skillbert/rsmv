@@ -496,17 +496,18 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	}
 
 	addToScene(scene: ThreeJsRenderer) {
-		this.renderscene = scene;
-		scene.addSceneElement(this);
-
-		for (let i = 0; i < 10; i++) {
-			let name = `chunk_${this.chunkx}_${this.chunkz}${i == 0 ? "" : `_${i}`}`;
-			if (!globalThis[name]) {
-				globalThis[name] = this;
-				this.globalname = name;
-				break;
+		if (this.renderscene == null) {
+			for (let i = 0; i < 10; i++) {
+				let name = `chunk_${this.chunkx}_${this.chunkz}${i == 0 ? "" : `_${i}`}`;
+				if (!globalThis[name]) {
+					globalThis[name] = this;
+					this.globalname = name;
+					break;
+				}
 			}
 		}
+		this.renderscene = scene;
+		scene.addSceneElement(this);
 	}
 
 	onModelLoaded() {
