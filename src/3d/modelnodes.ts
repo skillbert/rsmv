@@ -496,7 +496,8 @@ export class RSMapChunk extends TypedEmitter<{ loaded: RSMapChunkData, changed: 
 	}
 
 	addToScene(scene: ThreeJsRenderer) {
-		if (this.renderscene == null) {
+		//still leaks memory when using multiple renderers
+		if (this.renderscene == null && globalThis.debugchunks) {
 			for (let i = 0; i < 10; i++) {
 				let name = `chunk_${this.chunkx}_${this.chunkz}${i == 0 ? "" : `_${i}`}`;
 				if (!globalThis[name]) {
