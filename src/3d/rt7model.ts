@@ -277,14 +277,25 @@ export function parseOb3Model(modelfile: Buffer, source: CacheFileSource) {
 		for (let render of mesh.renders) {
 			if (render.isHidden) { continue; }
 			if (render.buf.length == 0) { continue; }
-			let minindex = render.buf[0];
-			let maxindex = render.buf[0];
-			for (let i = 0; i < render.buf.length; i++) {
-				let v = render.buf[i];
+			let buf = render.buf;
+			if (buf.BYTES_PER_ELEMENT == 4) {
+				//flip endianness, only u32 variant of the index buffer is BE...
+				//need to copy because the original file is still cached
+				let newbuf = new Uint32Array(buf.length);
+				for (let i = 0; i < buf.length; i++) {
+					let v = buf[i];
+					newbuf[i] = ((v >> 24) & 0xff) | ((v >> 8) & 0xff00) | ((v << 8) & 0xff0000) | ((v << 24) & 0xff000000);
+				}
+				buf = newbuf;
+			}
+			let minindex = buf[0];
+			let maxindex = buf[0];
+			for (let i = 0; i < buf.length; i++) {
+				let v = buf[i];
 				if (v < minindex) { minindex = v; }
 				if (v > maxindex) { maxindex = v; }
 			}
-			let index = new THREE.BufferAttribute(render.buf, 1);
+			let index = new THREE.BufferAttribute(buf, 1);
 			meshes.push({
 				indices: index,
 				vertexstart: minindex,

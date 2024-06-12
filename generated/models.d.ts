@@ -69,7 +69,7 @@ export type models = {
 			unkint: number,
 			materialArgument: number,
 			unkbyte2: number,
-			buf: Uint16Array,
+			buf: (Uint16Array|Uint32Array),
 		}[],
 	} | null,
 	unk1Buffer: Uint8Array[],

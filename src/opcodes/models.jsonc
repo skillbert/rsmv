@@ -92,7 +92,11 @@
 			["unkint","uint"],
 			["materialArgument","ushort le"],
 			["unkbyte2","ubyte"],
-			["buf",["buffer","ushort le","ushort"]]
+			//this might be groupflags&0x80 for uint indexbuffer
+			["buf",["match",{
+				"vertexCount<=0xffff":["buffer","ushort le","ushort"],//u16 little endian
+				"other":["buffer","ushort le","uint"]//u32 big endian?????
+			}]]
 		]]]
 	]]],
 
