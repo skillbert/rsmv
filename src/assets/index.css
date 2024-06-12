@@ -302,11 +302,18 @@
 	white-space: pre;
 	user-select: text;
 	font-family: monospace;
+	line-height: 1.25;/*forces all lines to be same height*/
 }
 
 .mv-hexlabel {
 	position: fixed;
 	top: 180px;
+}
+
+.mv-hexstickylabel {
+	position: sticky;
+	top: 50px;
+	bottom: 50px;
 }
 
 .mv-hex--select {

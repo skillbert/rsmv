@@ -678,3 +678,11 @@ export class WeakRefMap<K, V extends WeakKey> {
 		}
 	}
 }
+
+export function findParentElement(el: HTMLElement | null, cond: (el: HTMLElement) => boolean, fallback: HTMLElement | null = null) {
+	while (el) {
+		if (cond(el)) { return el; }
+		el = el.parentElement;
+	}
+	return fallback;
+}

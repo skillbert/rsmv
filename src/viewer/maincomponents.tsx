@@ -11,7 +11,7 @@ import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cac
 import { DomWrap, UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
-import { delay, TypedEmitter } from "../utils";
+import { delay, findParentElement, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/textures";
 import { CacheDownloader } from "../cache/downloader";
 import { parse } from "../opdecoder";
@@ -611,6 +611,18 @@ function FileDecodeErrorViewer(p: { file: string }) {
 		let buffer = Buffer.from(err.originalFile, "hex");
 		return [err, buffer];
 	}, [p.file]);
+
+	let clickstickylabel = (e: React.MouseEvent<HTMLElement>) => {
+		let target = findParentElement(e.currentTarget, el => el.tagName == "TR");
+		let scrollparent = findParentElement(e.currentTarget, el => ["auto", "scroll"].includes(window.getComputedStyle(el).overflowY));
+		if (!target || !scrollparent) { return; }
+		let scrollbounds = scrollparent.getBoundingClientRect();
+		let bounds = target.getBoundingClientRect();
+		let isbelow = (bounds.top + bounds.bottom) / 2 > (scrollbounds.top + scrollbounds.bottom) / 2;
+		let margin = scrollbounds.height / 4
+		scrollparent.scrollTop += (isbelow ? bounds.bottom - margin : bounds.top - scrollbounds.height + margin);
+	}
+
 	return (
 		<div className="mv-hexrow">
 			<div>
@@ -634,7 +646,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
 									<tr key={q.offset + "-" + i}>
 										<td>{hexview.resulthex}</td>
 										<td>{hexview.resultchrs}</td>
-										<td>{q.label}</td>
+										<td>{q.len > 16 * 20 ? <span className="mv-hexstickylabel" onClick={clickstickylabel}>{q.label}</span> : q.label}</td>
 									</tr>
 								);
 							})}
