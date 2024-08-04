@@ -90,36 +90,37 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 
 	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
-	let frames = Object.fromEntries(framearch.map(q => [q.fileid, parse.frames.read(q.buffer, loader.engine.rawsource)]));
+	//not actually using file ids, but index into the archive instead, seems to fix anim on npc 182
+	let frames = Object.fromEntries(framearch.map((q, i) => [i, parse.frames.read(q.buffer, loader.engine.rawsource)]));
 
 	//three.js doesn't interpolate from end frame to start, so insert the start frame at the end
 	const insertLoopFrame = true;
 
 	//calculate frame times
 	let endtime = 0;
-	let keyframetimes = new Float32Array(sequenceframes.length + (insertLoopFrame ? 1 : 0));
+	let keyframetimeslist: number[] = [];
 	let orderedframes: frames[] = [];
 	for (let i = 0; i < sequenceframes.length; i++) {
 		let seqframe = sequenceframes[i];
-		keyframetimes[i] = endtime;
-		endtime += sequenceframes[i].framelength * 0.020;
-		if (frames[seqframe.frameidlow]) {
-			orderedframes.push(frames[seqframe.frameidlow]);
+		let fileid = seqframe.frameidlow - 1;
+		if (frames[fileid]) {
+			keyframetimeslist.push(endtime);
+			endtime += seqframe.framelength * 0.020;
+			orderedframes.push(frames[fileid]);
 		} else {
-			console.log(`missing animation frame ${seqframe.frameidlow} in sequence ${seqframe.frameidhi}`)
+			console.log(`missing animation frame ${fileid} in sequence ${seqframe.frameidhi}`)
 		}
 	}
 
 	if (insertLoopFrame) {
 		orderedframes.push(orderedframes[0]);
-		keyframetimes[keyframetimes.length - 1] = endtime;
+		keyframetimeslist.push(endtime);
 	}
-
 	let framebase = parse.framemaps.read(await loader.engine.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
 
 	// let { bones } = buildFramebaseSkeleton(framebase);
+	let keyframetimes = new Float32Array(keyframetimeslist);
 	let clips = getFrameClips(framebase, orderedframes);
-
 
 	return (model: ModelData) => {
 		let centers = getBoneCenters(model);
