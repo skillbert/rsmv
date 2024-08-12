@@ -90,8 +90,9 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 
 	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
 
-	//not actually using file ids, but index into the archive instead, seems to fix anim on npc 182
-	let frames = Object.fromEntries(framearch.map((q, i) => [i, parse.frames.read(q.buffer, loader.engine.rawsource)]));
+	//some animations seem to use index instead of id, this seems to fix anim on npc 182
+	// let frames = Object.fromEntries(framearch.map((q, i) => [i + 1, parse.frames.read(q.buffer, loader.engine.rawsource)]));
+	let frames = Object.fromEntries(framearch.map((q, i) => [q.fileid, parse.frames.read(q.buffer, loader.engine.rawsource)]));
 
 	//three.js doesn't interpolate from end frame to start, so insert the start frame at the end
 	const insertLoopFrame = true;
@@ -102,13 +103,12 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 	let orderedframes: frames[] = [];
 	for (let i = 0; i < sequenceframes.length; i++) {
 		let seqframe = sequenceframes[i];
-		let fileid = seqframe.frameidlow - 1;
-		if (frames[fileid]) {
+		if (frames[seqframe.frameidlow]) {
 			keyframetimeslist.push(endtime);
 			endtime += seqframe.framelength * 0.020;
-			orderedframes.push(frames[fileid]);
+			orderedframes.push(frames[seqframe.frameidlow]);
 		} else {
-			console.log(`missing animation frame ${fileid} in sequence ${seqframe.frameidhi}`)
+			console.log(`missing animation frame ${seqframe.frameidlow} in sequence ${seqframe.frameidhi}`)
 		}
 	}
 
@@ -322,6 +322,7 @@ function bakeAnimation(base: framemaps, clips: ReturnType<typeof getFrameClips>,
 
 export function getFrameClips(framebase: framemaps, framesparsed: frames[]) {
 	let frames = framesparsed.map(framedata => {
+		//for some reason when using live/openrs2 source this file has internal chunking into header/flags/animdata
 		return {
 			flags: framedata.flags,
 			animdata: framedata.animdata,
