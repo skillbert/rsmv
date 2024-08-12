@@ -99,12 +99,13 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 		gridTemplateColumns: (nparts <= 0 ? "1fr min-content" : `${nparts}fr repeat(${nparts},1fr) min-content`),
 		alignItems: "baseline"
 	} as React.CSSProperties);
+	let spanstyle: React.CSSProperties = { minWidth: "0", overflow: "hidden", whiteSpace: "nowrap" };
 
 	switch (action.type) {
 		case "anim": {
 			return (
 				<div style={gridstyle(1)}>
-					<span>{p.action.type} {targetname}</span>
+					<span style={spanstyle}>{p.action.type} {targetname}</span>
 					<InputCommitted type="number" value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })} />
 					{remove}
 				</div>
@@ -113,7 +114,7 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 		case "animset": {
 			return (
 				<div style={gridstyle(1)}>
-					<span>{p.action.type} {targetname}</span>
+					<span style={spanstyle}>{p.action.type} {targetname}</span>
 					<select value={action.animid} onChange={e => p.onChange({ ...action, animid: +e.currentTarget.value })}>
 						{Object.entries(action.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
 					</select>
@@ -124,7 +125,7 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 		case "delay": {
 			return (
 				<div style={gridstyle(1)}>
-					<span >{p.action.type} (ms)</span>
+					<span style={spanstyle}>{p.action.type} (ms)</span>
 					<InputCommitted type="number" value={action.duration} onChange={e => p.onChange({ ...action, duration: +e.currentTarget.value })} />
 					{remove}
 				</div>
@@ -134,7 +135,7 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 			return (
 				<React.Fragment>
 					<div style={gridstyle(0)}>
-						<span>{p.action.type} {targetname}</span>
+						<span style={spanstyle}>{p.action.type} {targetname}</span>
 						{remove}
 					</div>
 					<div style={{ ...gridstyle(0), gridTemplateColumns: "1em 2fr repeat(2,minmax(0,1fr))" }}>
@@ -151,7 +152,7 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 		case "visibility": {
 			return (
 				<div style={gridstyle(1)}>
-					<span>{p.action.type} {targetname}</span>
+					<span style={spanstyle}>{p.action.type} {targetname}</span>
 					<label><input type="checkbox" checked={action.visible} onChange={e => p.onChange({ ...action, visible: e.currentTarget.checked })} /></label>
 					{remove}
 				</div>
@@ -239,7 +240,7 @@ function RematerialList(p: { mats: NumPair[], onChange: (v: NumPair[]) => void, 
 				return [
 					<div key={`${i}a`}>{col[0]}</div>,
 					<InputCommitted key={`${i}b`} type="number" value={col[1]} onChange={e => editmaterial(i, +e.currentTarget.value)} />,
-					<input type="button" className="sub-btn" value="x" onClick={e => editmaterial(i, null)} />
+					<input key={`${i}c`} type="button" className="sub-btn" value="x" onClick={e => editmaterial(i, null)} />
 				]
 			})}
 			<input type="number" value={addid} onChange={e => setAddid(+e.currentTarget.value)} />
@@ -462,7 +463,7 @@ async function modelInitToModel(cache: ThreejsSceneCache, init: string): Promise
 	else { throw new Error("unknown modelinit type"); }
 }
 
-export class SceneScenario extends React.Component<LookupModeProps, ScenarioInterfaceState>{
+export class SceneScenario extends React.Component<LookupModeProps, ScenarioInterfaceState> {
 	models = new Map<ScenarioComponent, RSModel | RSMapChunk | RSMapChunkGroup>();
 	idcounter = 0;
 	mapoffset: { x: number, z: number } | null = null;
@@ -2110,7 +2111,7 @@ export class Map2dView extends React.Component<{ addArea?: (x: number, z: number
 }
 
 function PreviewFilesScript(p: UiScriptProps) {
-	let [] = p.initialArgs.split(":");
+	let [] = p.initialArgs.split(":") as (string | undefined)[];
 
 	let run = () => {
 		let output = new UIScriptOutput();
@@ -2140,11 +2141,11 @@ function ModeDropDownOptions() {
 }
 
 function ExtractFilesScript(p: UiScriptProps) {
-	let [initmode, initbatched, initdecoder, initfilestext] = p.initialArgs.split(":");
+	let [initmode, initbatched, initdecoder, initfilestext] = p.initialArgs.split(":") as (string | undefined)[];
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
 	let [mode, setMode] = React.useState<string>(initmode || "items");
 	let [batched, setbatched] = React.useState(initbatched == "true");
-	let [decoderflags, setdecodersflags] = React.useState(Object.fromEntries(initdecoder.split(",").map(q => [q.split("=")[0], q.split("=")[1] ?? ""])));
+	let [decoderflags, setdecodersflags] = React.useState((initdecoder ? Object.fromEntries(initdecoder.split(",").map(q => [q.split("=")[0], q.split("=")[1] ?? ""])) : {}));
 
 	let run = () => {
 		let output = new UIScriptOutput();
@@ -2184,7 +2185,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 	)
 }
 function ExtractHistoricScript(p: UiScriptProps) {
-	let [initmode, initfilestext, initcacheids] = p.initialArgs.split(":");
+	let [initmode, initfilestext, initcacheids] = p.initialArgs.split(":") as (string | undefined)[];
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
 	let [buildnrs, setbuildnrs] = React.useState(initcacheids ?? "");
 	let [mode, setMode] = React.useState<keyof typeof cacheFileDecodeModes>(initmode as any || "items");
@@ -2367,7 +2368,7 @@ function CacheDiffScript(p: UiScriptProps) {
 }
 
 function TestFilesScript(p: UiScriptProps) {
-	let [initmode, initrange, initdumpall, initordersize] = p.initialArgs.split(":");
+	let [initmode, initrange, initdumpall, initordersize] = p.initialArgs.split(":") as (string | undefined)[];
 	let [mode, setMode] = React.useState(initmode || "");
 	let [range, setRange] = React.useState(initrange || "");
 	let [dumpall, setDumpall] = React.useState(initdumpall != "false");

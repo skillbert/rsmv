@@ -162,6 +162,7 @@ export function unpackBufferArchive(buffer: Buffer, subids: number[], namehashes
 			let oldchunk = subbufs[fileindex];
 			if (oldchunk) {
 				oldchunk.buffer = Buffer.concat([oldchunk.buffer, recordBuffer]);
+				oldchunk.size += size;
 			} else {
 				subbufs[fileindex] = {
 					buffer: recordBuffer,
