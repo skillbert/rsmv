@@ -145,8 +145,22 @@ function ScenarioActionControl(p: { action: ScenarioAction, comp: ScenarioCompon
 						<span style={{ gridColumn: "2" }}>Position x,z</span>
 						<InputCommitted type="number" value={action.x} onChange={e => p.onChange({ ...action, x: +e.currentTarget.value })} />
 						<InputCommitted type="number" value={action.z} onChange={e => p.onChange({ ...action, z: +e.currentTarget.value })} />
+						<span style={{ gridColumn: "2" }}>Rotation</span>
+						<InputCommitted type="number" style={{ gridColumn: "span 2" }} value={action.rotation} onChange={e => p.onChange({ ...action, rotation: +e.currentTarget.value })} />
 					</div>
 				</React.Fragment>
+			);
+		}
+		case "scale": {
+			return (
+				<div style={gridstyle(3)}>
+					<span style={spanstyle}>{p.action.type} {targetname}</span>
+					{/* xzy, put y last as that makes more sense for users */}
+					<InputCommitted type="number" value={action.scalex} onChange={e => p.onChange({ ...action, scalex: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.scalez} onChange={e => p.onChange({ ...action, scalez: +e.currentTarget.value })} />
+					<InputCommitted type="number" value={action.scaley} onChange={e => p.onChange({ ...action, scaley: +e.currentTarget.value })} />
+					{remove}
+				</div>
 			);
 		}
 		case "visibility": {
@@ -400,6 +414,13 @@ type ScenarioAction = {
 	z: number,
 	level: number,
 	dy: number,
+	rotation?: number
+} | {
+	type: "scale",
+	target: number,
+	scalex: number,
+	scaley: number,
+	scalez: number
 } | {
 	type: "anim",
 	target: number,
@@ -544,10 +565,13 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 				action = { type: "delay", target: -1, duration: 0 };
 				break;
 			case "location":
-				action = { type: "location", target: this.state.addActionTarget, level: 0, x: 0, z: 0, dy: 0 }
+				action = { type: "location", target: this.state.addActionTarget, level: 0, x: 0, z: 0, dy: 0, rotation: 0 };
 				break;
 			case "visibility":
 				action = { type: "visibility", target: this.state.addActionTarget, visible: true };
+				break;
+			case "scale":
+				action = { type: "scale", target: this.state.addActionTarget, scalex: 1, scaley: 1, scalez: 1 };
 				break;
 			default:
 				throw new Error("unknown action " + this.state.addActionType);
@@ -706,6 +730,12 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 					let model = this.modelIdToModel(action.target);
 					let groundy = getTileHeight(this.mapgrid, action.x + (this.mapoffset?.x ?? 0), action.z + (this.mapoffset?.z ?? 0), action.level);
 					model?.rootnode.position.set(action.x * tiledimensions, groundy + action.dy * tiledimensions, action.z * tiledimensions);
+					model?.rootnode.rotation.set(0, ((action.rotation ?? 0) * Math.PI) / 4, 0);
+					break;
+				}
+				case "scale": {
+					let model = this.modelIdToModel(action.target);
+					model?.rootnode.scale.set(action.scalex, action.scaley, action.scalez);
 					break;
 				}
 				case "delay": {
@@ -778,6 +808,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 					<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr min-content" }}>
 						<select value={this.state.addActionType} onChange={e => this.setState({ addActionType: e.currentTarget.value as any })}>
 							<option value="location">Location</option>
+							<option value="scale">Scale</option>
 							<option value="anim">Anim</option>
 							<option value="delay">Delay</option>
 							<option value="visibility">Visibility</option>

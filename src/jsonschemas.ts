@@ -90,13 +90,25 @@ const scenarioActionSchema: JSONSchema6 = {
         {
             properties: {
                 type: { const: "location" },
-                target: { type: "number" },
-                x: int,
-                z: int,
+                target: int,
+                x: number,
+                z: number,
                 level: int,
-                dy: int
+                dy: number,
+                rotation: number,
             },
             required: ["type", "target", "x", "z", "level", "dy"]
+        },
+        {
+            properties: {
+                type: { const: "transform" },
+                target: int,
+                flip: boolean,
+                scalex: number,
+                scaley: number,
+                scalez: number
+            },
+            required: ["type", "target", "flip", "scalex", "scaley", "scalez"]
         },
         {
             properties: {
@@ -133,6 +145,16 @@ const scenarioActionSchema: JSONSchema6 = {
                 visibility: boolean
             },
             required: ["type", "target", "visibility"]
+        },
+        {
+            properties: {
+                type: { const: "scale" },
+                target: int,
+                scalex: number,
+                scaley: number,
+                scalez: number
+            },
+            required: ["type", "target", "scalex", "scaley", "scalez"]
         }
     ]
 }
