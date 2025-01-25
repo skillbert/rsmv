@@ -33,9 +33,38 @@ export function RsUIViewer(p: { data: string }) {
 		}
 	}, [ctx, p.data, refreshcount, ctx.runOnloadScripts]);
 
+	let scrollfix = React.useCallback((el: HTMLElement | null) => {
+		if (!el || !ui) { return; }
+
+		let expandbounds = (el: Element, bounds: { x1: number, x2: number, y1: number, y2: number }) => {
+			let box = el.getBoundingClientRect();
+			bounds.x1 = Math.min(bounds.x1, box.left);
+			bounds.x2 = Math.max(bounds.x2, box.right);
+			bounds.y1 = Math.min(bounds.y1, box.top);
+			bounds.y2 = Math.max(bounds.y2, box.bottom);
+			for (let child of Array.from(el.children)) {
+				expandbounds(child, bounds);
+			}
+		}
+
+		let bounds = { x1: 0, x2: 0, y1: 0, y2: 0 };
+		expandbounds(ui.el, bounds);
+		let ownbounds = el.getBoundingClientRect();
+		let negx = Math.round(ownbounds.left - bounds.x1);
+		let negy = Math.round(ownbounds.top - bounds.y1);
+
+		ui.container.style.left = `${negx}px`;
+		ui.container.style.top = `${negy}px`;
+
+		el.scrollLeft = negx;
+		el.scrollTop = negy;
+	}, [ui])
+
 	return (
 		<div style={{ position: "absolute", inset: "0px", display: "grid", gridTemplate: '"a" 1fr "b" auto "c" 1fr / 1fr' }}>
-			<DomWrap style={{ position: "relative" }} el={ui?.el} />
+			<div style={{ position: "relative", overflow: "auto" }} ref={scrollfix}>
+				<DomWrap el={ui?.el} />
+			</div>
 			<div>
 				<label><input type="checkbox" checked={ctx.runOnloadScripts} onChange={e => { ctx.runOnloadScripts = e.currentTarget.checked; refresh(); }} />Run load scripts</label>
 				<input type="button" className="sub-btn" onClick={refresh} value="reload" />
@@ -76,7 +105,7 @@ function CallbackDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent,
 				if (typeof v[0] != "number") { throw new Error("unexpected") }
 				let callbackid = v[0];
 				return (
-					<div key={key} className="rs-comonentcallback" onClick={e => p.ctx.runClientScriptCallback(p.comp.compid, v)}>
+					<div key={key} className="rs-componentcallback" onClick={e => p.ctx.runClientScriptCallback(p.comp.compid, v)}>
 						{key} {callbackid}({v.slice(1).map(q => typeof q == "string" ? `"${q}"` : q).join(",")})
 					</div>
 				)

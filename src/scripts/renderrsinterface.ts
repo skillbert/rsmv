@@ -15,6 +15,7 @@ import { ThreeJsRenderer } from "../viewer/threejsrender";
 type HTMLResult = string;
 export type RsInterfaceDomTree = {
     el: HTMLDivElement;
+    container: HTMLDivElement;
     rootcomps: RsInterfaceComponent[];
     interfaceid: number;
     loadprom: Promise<void>;
@@ -198,7 +199,7 @@ export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnT
         loadprom = Promise.resolve();
     }
 
-    return { el: root, rootcomps: data.rootcomps, interfaceid: data.id, dispose, loadprom };
+    return { el: root, container: container, rootcomps: data.rootcomps, interfaceid: data.id, dispose, loadprom };
 }
 
 function cssColor(col: number) {
