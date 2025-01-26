@@ -8,9 +8,16 @@ import { ClientScriptInterpreter } from "../clientscript/interpreter";
 import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 import { parse } from "../opdecoder";
-import { escapeHTML, rsmarkupToSafeHtml } from "../utils";
+import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
 import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
+
+export const MAGIC_UNK01 = 0x80000001 | 0;
+export const MAGIC_UNK02 = 0x80000001 | 0;
+export const MAGIC_CONST_CURRENTCOMP = 0x80000003 | 0;
+export const MAGIC_CONST_OPNR = 0x80000004 | 0;
+export const MAGIC_CONST_IF_AS_CC = 0x80000005 | 0;
+export const MAGIC_UNK06 = 0x80000006 | 0;
 
 type HTMLResult = string;
 export type RsInterfaceDomTree = {
@@ -22,7 +29,7 @@ export type RsInterfaceDomTree = {
     dispose: () => void;
 }
 
-export class UiRenderContext {
+export class UiRenderContext extends TypedEmitter<{ hover: RsInterfaceComponent | null, select: RsInterfaceComponent | null }> {
     source: CacheFileSource;
     sceneCache: ThreejsSceneCache | null = null;
     renderer: ThreeJsRenderer | null = null;
@@ -32,6 +39,7 @@ export class UiRenderContext {
     touchedComps = new Set<RsInterfaceComponent>();
     runOnloadScripts = false;
     constructor(source: CacheFileSource) {
+        super();
         this.source = source;
     }
     toggleHighLightComp(subid: number, highlight: boolean) {
@@ -84,6 +92,7 @@ function rsInterfaceStyleSheet() {
     css += ".rs-interface-container-sub{position:relative;outline:1px solid green;}";
     css += ".rs-model{position:absolute;top:0px;left:0px;width:100%;height:100%;}";
     css += ".rs-componentmeta{}";
+    css += ".rs-componentmeta--active{outline:1px solid red;}";
     css += ".rs-componentmeta-children{padding-left:15px;}";
     return css;
 }
@@ -443,6 +452,7 @@ export class RsInterfaceComponent {
         this.clientChildren.forEach(child => { this.element!.appendChild(child.initDom()); });
         this.element.classList.add("rs-component");
         (this.element as any).ui = this.data;
+        (this.element as any).compid = this.compid;
         return this.element;
     }
 
@@ -560,6 +570,7 @@ export class CS2Api {
     }
 
     findChild(ccid: number) {
+        if (ccid == MAGIC_CONST_IF_AS_CC) { return this; }
         return this.comp?.clientChildren.find(q => q.compid == ccid)?.api;
     }
 

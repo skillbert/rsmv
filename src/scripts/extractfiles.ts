@@ -133,6 +133,8 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	let getmode = async (str: string) => {
 		let mode = cachedmodes[str]
 		if (!mode) {
+			let modecontr = cacheFileDecodeModes[str as keyof typeof cacheFileDecodeModes];
+			if (!modecontr) { throw new Error(`cache decode mode "${str}" not recognized`); }
 			mode = cacheFileDecodeModes[str as keyof typeof cacheFileDecodeModes]({});
 			cachedmodes[str] = mode;
 			await mode.prepareWrite(diffdir, source);
@@ -140,9 +142,9 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		return mode;
 	}
 
-	let getarch = (major: number, minor: number, mode: DecodeMode) => {
+	let getarch = (major: number, minor: number, mode: DecodeMode, fetchsiblings = mode.usesArchieves) => {
 		let majormap = getOrInsert(incompletearchs, major, () => new Map());
-		let group = getOrInsert(majormap, minor, () => ({ fetchsiblings: mode.usesArchieves, files: [] }));
+		let group = getOrInsert(majormap, minor, () => ({ fetchsiblings, files: [] }));
 		return group;
 	}
 
@@ -168,7 +170,16 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 
 		let batchjson = file.name.match(/^(\w+)-([\d_]+)\.batch\.json$/);
 		if (batchjson) {
-			output.log("batch edit not implemented");
+			let mode = await getmode(batchjson[1]);
+			let raw: { files: any[] } = JSON.parse(await diffdir.readFileText(file.name));
+
+			if (!mode.parser) { throw new Error(`batch files only supported for json based modes, mode ${batchjson[1]} does not have a json parser`); }
+			for (let file of raw.files) {
+				let archid = mode.logicalToFile(source, file.$fileid);
+				let arch = getarch(archid.major, archid.minor, mode);
+				let buf = mode.parser!.write(file, source.getDecodeArgs());
+				arch.files.push({ subid: archid.subid, file: buf });
+			}
 			continue;
 		}
 

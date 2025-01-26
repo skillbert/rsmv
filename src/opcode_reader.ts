@@ -1165,6 +1165,9 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 	},
 	buildnr: function (args, typedef) {
 		return {
+			readConst(state) {
+				return getClientVersion(state.args);
+			},
 			read(state) {
 				return getClientVersion(state.args);
 			},
@@ -1212,7 +1215,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				return "(" + optionvalues.map(opt => opt.getTypescriptType(indent + "\t")).join("|") + ")";
 			},
 			getJsonSchema() {
-				return { oneOf: optionvalues.map(opt => opt.getJsonSchema()) };
+				return { anyOf: optionvalues.map(opt => opt.getJsonSchema()) };
 			}
 		}
 

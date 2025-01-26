@@ -173,23 +173,26 @@ function partialVarIntrinsic(iswrite: boolean, dottarget: number, sectionindex: 
         let jumptable: SwitchJumpTable = [];
 
         let keys: number[] = [];
-        function addgroup(key: number) {
+        function addgroup(key: number, start: number, maxcount: number) {
             let maxid = ctx.calli.varmeta.get(key)?.maxid ?? 0;
             maxid = Math.ceil((maxid + 200) / 100) * 100;//add 200 and round up to next 100
-            for (let i = 0; i < maxid; i++) {
+            maxid = Math.min(maxid, start + maxcount);
+            for (let i = start; i < maxid; i++) {
                 keys.push((key << 24) | (i << 8) | dottarget);
             }
         }
         if (sectionindex == 0) {
-            addgroup(variableSources.player.key);
+            addgroup(variableSources.player.key, 0, 10000);
         } else if (sectionindex == 1) {
-            addgroup(variableSources.client.key);
+            addgroup(variableSources.client.key, 0, 10000);
         } else if (sectionindex == 2) {
             for (let group of Object.values(variableSources)) {
                 if (group == variableSources.player) { continue; }
                 if (group == variableSources.client) { continue; }
-                addgroup(group.key);
+                addgroup(group.key, 0, 10000);
             }
+            // need to slice the end off player group because its too large to fit in one group
+            addgroup(variableSources.player.key, 10000, 10000);
         } else {
             throw new Error("unexpected");
         }

@@ -13,6 +13,7 @@ import { fileHistory } from "./scripts/filehistory";
 import { openrs2Ids } from "./scripts/openrs2ids";
 import { extractCluecoords } from "./scripts/cluecoords";
 import { getSequenceGroups } from "./scripts/groupskeletons";
+import { getGameInterfaces } from "./scripts/gameinterfaces";
 import { CacheFileSource } from "./cache";
 
 
@@ -248,10 +249,22 @@ export function cliApi(ctx: CliApiContext) {
 			await output.run(getSequenceGroups, args.save, source);
 		}
 	});
+	const gameinterfacees = command({
+		name: "gameinterfacees",
+		args: {
+			...filesource,
+			...saveArg("extract")
+		},
+		async handler(args) {
+			let output = ctx.getConsole();
+			let source = await args.source();
+			await output.run(getGameInterfaces, args.save, source);
+		}
+	})
 
 	let subcommands = cmdts.subcommands({
 		name: "",
-		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups }
+		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups, gameinterfacees }
 	});
 
 	return {

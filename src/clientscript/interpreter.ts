@@ -2,12 +2,10 @@ import { clientscript } from "../../generated/clientscript"
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
-import { CS2Api, RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
+import { CS2Api, MAGIC_CONST_CURRENTCOMP, MAGIC_UNK01, MAGIC_UNK06, RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { CacheFileSource } from "../cache";
-
-const MAGIC_CONST_CURRENTCOMP = 0x80000003 | 0;
 
 
 type ScriptScope = {
@@ -446,6 +444,8 @@ namedimplementations.set("ENUM_GETOUTPUTCOUNT", async inter => {
     inter.pushint((json.intArrayValue1 ?? json.intArrayValue2?.values ?? json.stringArrayValue1 ?? json.stringArrayValue2?.values)?.length ?? 0);
 });
 
+// this is wrong, not sure what it does
+// namedimplementations.set("IF_FIND", (inter, op) => inter.pushint(+!!inter.getComponent(inter.popint()).comp));
 namedimplementations.set("CC_CREATE", (inter, op) => { inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(2)).createChild(inter.popint(), inter.popint()); });
 namedimplementations.set("CC_FIND", (inter, op) => inter.pushint(+!!(inter.clientcomps[op.imm] = inter.getComponent(inter.popdeep(1)).findChild(inter.popint()))));
 namedimplementations.set("IF_GETLAYER", inter => { inter.popint(); inter.pushint(-1) });//mocked to be -1

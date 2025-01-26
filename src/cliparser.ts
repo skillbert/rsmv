@@ -27,7 +27,7 @@ function cacheSourceFromString(str: string) {
 				return selectFsCache(fs, opts);
 			case "nxt":
 			case "cache":
-				return new GameCacheLoader(arg, false);
+				return new GameCacheLoader(arg, opts?.writable ?? false);
 			case "cache-write":
 				return new GameCacheLoader(arg, true);
 			case "openrs":

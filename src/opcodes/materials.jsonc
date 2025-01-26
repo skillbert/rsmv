@@ -94,7 +94,7 @@
 			["texture","uint"]
 		]]],
 		["flag13value",["opt",["flag13",1],"float"]],
-		["flag14value",["opt",["flag14",1],"uint"]],//0,8520 or 13083 only, referencing other material?
+		["flag14value",["opt",["flag14",1],["tuple","ushort","ushort"]]],//0,8520 or 13083 only, referencing other material?
 		["flag15value",["opt",["flag15",1],"float"]],
 		["flag18value",["opt",["flag18",1],"float"]],//not sure about location
 		["flag16value",["opt",["flag16",1],"float"]],

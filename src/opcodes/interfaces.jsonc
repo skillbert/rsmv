@@ -139,12 +139,12 @@
         ["unk3","uivalues"],
         ["unk4","uivalues"],
         ["unk5","uivalues"],
-        ["unk6","uivalues"],
+        ["unk6","uivalues"],//triggerop
         ["unk7",["opt","version>=0","uivalues"]],
         ["hovertext","uivalues"],
-        ["unk8","uivalues"],
+        ["unk8","uivalues"],//mousedown
         ["unk9","uivalues"],
-        ["unk10","uivalues"],
+        ["unk10","uivalues"],//mouseup
         ["unk11","uivalues"],
         ["unk12","uivalues"],
         ["unk13","uivalues"],
