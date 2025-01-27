@@ -249,8 +249,8 @@ export function cliApi(ctx: CliApiContext) {
 			await output.run(getSequenceGroups, args.save, source);
 		}
 	});
-	const gameinterfacees = command({
-		name: "gameinterfacees",
+	const gameinterfaces = command({
+		name: "gameinterfaces",
 		args: {
 			...filesource,
 			...saveArg("extract")
@@ -264,7 +264,7 @@ export function cliApi(ctx: CliApiContext) {
 
 	let subcommands = cmdts.subcommands({
 		name: "",
-		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups, gameinterfacees }
+		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups, gameinterfaces }
 	});
 
 	return {
