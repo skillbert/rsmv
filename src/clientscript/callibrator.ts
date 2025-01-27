@@ -15,6 +15,7 @@ import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst, parseClientScriptIm } from "./ast";
 import { detectSubtypes as callibrateSubtypes } from "./subtypedetector";
 import * as datastore from "idb-keyval";
+import { loadParams } from "./util";
 
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
@@ -413,11 +414,7 @@ export class ClientscriptObfuscation {
             let varbitarchieve = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.varbits);
             this.varbitmeta = new Map(varbitarchieve.map(q => [q.fileid, varbitInfoParser.read(q.buffer, this.source)]));
 
-            this.parammeta.clear();
-            let paramindex = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.params);
-            for (let file of paramindex) {
-                this.parammeta.set(file.fileid, parse.params.read(file.buffer, this.source));
-            }
+            this.parammeta = await loadParams(this.source);
         }
     }
     async loadCandidates() {

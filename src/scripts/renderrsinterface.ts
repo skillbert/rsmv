@@ -357,8 +357,8 @@ function spriteCss(spritedata: interfaces["spritedata"] & {}) {
 
 async function spritePromise(ctx: UiRenderContext, spriteid: number) {
     let imgcss = "none";
-    if (spriteid != -1) {
-        let actualid = spriteid & 0xffffff;
+    let actualid = spriteid & 0xffffff;
+    if (actualid != 0xffffff) {
         let flags = spriteid >> 24;
         if (flags != 0) { console.log("sprite flags", flags); }
         let spritebuf = await ctx.source.getFileById(cacheMajors.sprites, actualid);

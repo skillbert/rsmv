@@ -150,8 +150,8 @@ export class UIScriptFS extends TypedEmitter<{ writefile: string, unlink: string
 		this.emit("mkdir", name);
 	}
 	async writeFile(name: string, data: Buffer | string) {
-		this.totalfiles++;
 		if (this.backingfs) {
+			this.totalfiles++;
 			this.totalbacksaved++;
 			await this.backingfs.writeFile(name, data);
 		} else {
@@ -161,6 +161,8 @@ export class UIScriptFS extends TypedEmitter<{ writefile: string, unlink: string
 			let fileentry: UIScriptFile = { name: filename, kind: "file", data };
 			if (parent.files.has(filename)) {
 				this.output?.log(`overwriting file "${name}"`);
+			} else {
+				this.totalfiles++;
 			}
 			parent.files.set(filename, fileentry);
 		}

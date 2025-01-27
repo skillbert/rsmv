@@ -5,7 +5,7 @@ import { rs3opnames } from "./opnames";
 import { CS2Api, MAGIC_CONST_CURRENTCOMP, MAGIC_UNK01, MAGIC_UNK06, RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
-import { CacheFileSource } from "../cache";
+import { getEnumInt, getStructInt, loadEnum, loadStruct } from "./util";
 
 
 type ScriptScope = {
@@ -271,9 +271,6 @@ function getParamOp(inter: ClientScriptInterpreter, op: ClientScriptOp) {
         if (outprim == "string") { inter.pushstring(""); }
     }
 }
-async function loadEnum(source: CacheFileSource, id: number) {
-    return parse.enums.read(await source.getFileById(cacheMajors.enums, id), source);
-}
 
 const implementedops = new Map<number, OpImplementation>();
 branchInstructions.forEach(id => implementedops.set(id, branchOp));
@@ -307,25 +304,17 @@ implementedops.set(namedClientScriptOps.enum_getvalue, async inter => {
     let enumjson = await loadEnum(inter.calli.source, enumid);
 
     if (outprim != "int") { throw new Error("enum_getvalue can only look up int values"); }
-    //TODO probably should default to 0 if the type is a simple int
-    let res = (enumjson.intArrayValue1 ?? enumjson.intArrayValue2?.values)?.find(q => q[0] == key)?.[1] ?? enumjson.intValue ?? -1;
+
+    let res = getEnumInt(enumjson, key);
     inter.pushint(res);
 });
 implementedops.set(namedClientScriptOps.struct_getparam, async inter => {
     let param = inter.popint();
     let structid = inter.popint();
-    let parammeta = inter.calli.parammeta.get(param);
-    if (!parammeta) { throw new Error(`unkown param ${param}`); }
 
-    let file: Buffer | null = null;
-    try {
-        file = await inter.calli.source.getFileById(cacheMajors.structs, structid);
-    } catch (e) { }
-    let json = file && parse.structs.read(file, inter.calli.source);
-    let match = json?.extra?.find(q => q.prop == param);
-    if (!match) { inter.pushint(parammeta.type?.defaultint ?? -1); }
-    else if (match.intvalue == undefined) { throw new Error("param is not of type int"); }
-    else { inter.pushint(match.intvalue); }
+    let json = await loadStruct(inter.calli.source, structid).catch(q => null);
+    let res = getStructInt(inter.calli.parammeta, json, param);
+    inter.pushint(res);
 });
 
 implementedops.set(namedClientScriptOps.dbrow_getfield, inter => {
