@@ -584,7 +584,7 @@ function scriptContext(ctx: ParseContext) {
             yield whitespace;
             falsebranch = yield [ifStatement, codeBlock];
             if (falsebranch instanceof IfStatementNode) {
-                falsebranch = new CodeBlockNode(-1, -1, [falsebranch]);
+                falsebranch = new CodeBlockNode(-1, -1, -1, [falsebranch]);
             }
         }
         let node = new IfStatementNode(-1);
@@ -744,7 +744,7 @@ function scriptContext(ctx: ParseContext) {
         let statements = yield statementlist;
         let closed = yield ["}", ""];
         if (!closed) { throw new Error("closing bracket expected"); }
-        return new CodeBlockNode(-1, -1, statements);
+        return new CodeBlockNode(-1, -1, -1, statements);
     }
 
     function* functionStatement() {

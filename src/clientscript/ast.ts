@@ -119,6 +119,7 @@ export class VarAssignNode extends AstNode {
 
 export class CodeBlockNode extends AstNode {
     scriptid: number;
+    subfuncid: number;
     possibleSuccessors: CodeBlockNode[] = [];
     firstPointer: CodeBlockNode | null = null;
     lastPointer: CodeBlockNode | null = null;
@@ -126,9 +127,10 @@ export class CodeBlockNode extends AstNode {
     maxEndIndex = -1;
 
     knownStackDiff = new StackInOut(new StackList(), new StackList());
-    constructor(scriptid: number, startindex: number, children?: AstNode[]) {
+    constructor(scriptid: number, subfuncid: number, startindex: number, children?: AstNode[]) {
         super(startindex);
         this.scriptid = scriptid;
+        this.subfuncid = subfuncid;
         if (children) {
             this.pushList(children);
         }
@@ -803,20 +805,20 @@ function fixControlFlow(ast: AstNode, scriptjson: clientscript) {
             }
             if (trueblock == parent.branchEndNode) {
                 //empty true branch
-                trueblock = new CodeBlockNode(trueblock.scriptid, trueblock.originalindex);
+                trueblock = new CodeBlockNode(trueblock.scriptid, trueblock.subfuncid, trueblock.originalindex);
             }
             if (!(trueblock instanceof CodeBlockNode)) { throw new Error("true branch isn't a codeblock"); }
             if (falseblock && !(falseblock instanceof CodeBlockNode)) { throw new Error("false branch exists but is not a codeblock"); }
 
             //wrap loopable block with another codeblock
             if (trueblock.lastPointer) {
-                let newblock = new CodeBlockNode(trueblock.scriptid, trueblock.originalindex);
+                let newblock = new CodeBlockNode(trueblock.scriptid, trueblock.subfuncid, trueblock.originalindex);
                 newblock.mergeBlock(trueblock, false);
                 newblock.maxEndIndex = trueblock.maxEndIndex;
                 trueblock = newblock;
             }
             if (falseblock && falseblock.lastPointer) {
-                let newblock = new CodeBlockNode(falseblock.scriptid, falseblock.originalindex);
+                let newblock = new CodeBlockNode(falseblock.scriptid, trueblock.subfuncid, falseblock.originalindex);
                 newblock.mergeBlock(falseblock, false);
                 newblock.maxEndIndex = falseblock.maxEndIndex;
                 falseblock = newblock;
@@ -1123,18 +1125,18 @@ function addKnownStackDiff(children: AstNode[], calli: ClientscriptObfuscation) 
 }
 
 export function generateAst(calli: ClientscriptObfuscation, script: clientscriptdata | clientscript, ops: ClientScriptOp[], scriptid: number) {
-    let getorMakeSection = (index: number) => {
+    let getorMakeSection = (index: number, subfuncid: number) => {
         if (index >= ops.length) { throw new Error("tried to jump outside script"); }
         let section = sections.find(q => q.originalindex == index);
         if (!section) {
-            section = new CodeBlockNode(scriptid, index);
+            section = new CodeBlockNode(scriptid, subfuncid, index);
             sections.push(section);
         }
         return section;
     }
 
-    let parseSlice = (start: number, end: number, func: ClientScriptFunction) => {
-        let currentsection = getorMakeSection(start);
+    let parseSlice = (start: number, end: number, func: ClientScriptFunction, subfuncid: number) => {
+        let currentsection = getorMakeSection(start, subfuncid);
 
         let localcounts = func.localCounts;
         subfuncs.push(func);
@@ -1148,8 +1150,8 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                 let nextindex = index + 1;
                 let jumpindex = nextindex + op.imm;
                 if (op.imm != 0 && jumpindex >= start && jumpindex < end) {
-                    getorMakeSection(nextindex);
-                    getorMakeSection(jumpindex);
+                    getorMakeSection(nextindex, subfuncid);
+                    getorMakeSection(jumpindex, subfuncid);
                 }
             }
         }
@@ -1172,7 +1174,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                     opnode.knownStackDiff = new StackInOut(func.returntype, new StackList());
                     currentsection.push(opnode);
                     if (index != ops.length - 1) {
-                        currentsection = getorMakeSection(nextindex);
+                        currentsection = getorMakeSection(nextindex, subfuncid);
                     }
                     continue;
                 } else if (target < start || target > end) {
@@ -1208,8 +1210,8 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                 if (op.opcode == namedClientScriptOps.jump && jumpindex == index + 1) {
                     //ignore a 0 jump instruction (used as noop in custom compiler)
                 } else {
-                    let nextblock = getorMakeSection(nextindex);
-                    let jumpblock = getorMakeSection(jumpindex);
+                    let nextblock = getorMakeSection(nextindex, subfuncid);
+                    let jumpblock = getorMakeSection(jumpindex, subfuncid);
                     if (info.id != namedClientScriptOps.jump) {
                         currentsection.addSuccessor(nextblock);
                     }
@@ -1219,19 +1221,19 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
             } else if (opnode.opinfo.id == namedClientScriptOps.return) {
                 if (index != ops.length - 1) {
                     //dead code will be handled elsewhere
-                    currentsection = getorMakeSection(nextindex);
+                    currentsection = getorMakeSection(nextindex, subfuncid);
                 }
             } else if (opnode.opinfo.id == namedClientScriptOps.switch) {
                 let cases = script.switches[opnode.op.imm];
                 if (!cases) { throw new Error("no matching cases in script"); }
 
                 for (let cond of cases) {
-                    let jumpblock = getorMakeSection(nextindex + cond.jump);
+                    let jumpblock = getorMakeSection(nextindex + cond.jump, subfuncid);
                     if (!currentsection.possibleSuccessors.includes(jumpblock)) {
                         currentsection.addSuccessor(jumpblock);
                     }
                 }
-                let nextblock = getorMakeSection(nextindex);
+                let nextblock = getorMakeSection(nextindex, subfuncid);
                 currentsection.addSuccessor(nextblock);
                 currentsection = nextblock;
             }
@@ -1239,7 +1241,7 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     }
 
     let rootfunc = new ClientScriptFunction(`script${scriptid == -1 ? "_unk" : scriptid}`, new StackList([getArgType(script)]), getReturnType(calli, ops), new StackDiff());
-    let headersection = new CodeBlockNode(scriptid, 0);
+    let headersection = new CodeBlockNode(scriptid, -1, 0);
 
     let sections: CodeBlockNode[] = [];
     let subfuncs: ClientScriptFunction[] = [];
@@ -1281,14 +1283,15 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
                 if (isNaN(end) || isNaN(body) || isNaN(foot) || isNaN(entry)) { throw new Error("invalid subfunc header"); }
                 let returntype = getReturnType(calli, ops, currentindex + foot);
                 if (!returns.equals(returntype.getStackdiff())) { throw new Error("detected subfunc return type not the same as declared return type"); }
-                let subfunc = new ClientScriptFunction(`subfunc_${namecounter++}`, new StackList([args]), returntype, new StackDiff());
+                let subfuncid = namecounter++;
+                let subfunc = new ClientScriptFunction(`subfunc_${subfuncid}`, new StackList([args]), returntype, new StackDiff());
                 subfunc.isRawStack = israwstack;
                 subfunc.originalindex = currentindex + entry;
                 subcalltargets.push({ name: subfunc.scriptname, index: subfunc.originalindex, in: subfunc.argtype, out: subfunc.returntype });
-                parseQueue.push([currentindex + body, currentindex + foot, subfunc]);
+                parseQueue.push([currentindex + body, currentindex + foot, subfunc, subfuncid]);
                 //set the function body as empty code block with the actual body as successor, needed for control flow later on
-                let entrynode = new CodeBlockNode(scriptid, currentindex + entry);
-                entrynode.addSuccessor(getorMakeSection(currentindex + body));
+                let entrynode = new CodeBlockNode(scriptid, subfuncid, currentindex + entry);
+                entrynode.addSuccessor(getorMakeSection(currentindex + body, subfuncid));
                 subfunc.push(entrynode);
             } else if (values.type == "intrinsic") {
                 let name = values.name;
@@ -1308,10 +1311,10 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
         headersection.pushList(subfuncs);
         headersection.push(new RawOpcodeNode(0, ops[0], calli.getNamedOp(ops[0].opcode)!));
     }
-    headersection.addSuccessor(getorMakeSection(headerend));
+    headersection.addSuccessor(getorMakeSection(headerend, -1));
     rootfunc.push(headersection);
     subfuncs.push(rootfunc);
-    parseSlice(headerend, ops.length, rootfunc);
+    parseSlice(headerend, ops.length, rootfunc, -1);
 
     sections.sort((a, b) => a.originalindex - b.originalindex);
     sections.forEach(q => addKnownStackDiff(q.children, calli));

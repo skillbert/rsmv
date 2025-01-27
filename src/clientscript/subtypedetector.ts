@@ -72,9 +72,10 @@ export class ClientScriptSubtypeSolver {
 
     parseSections(sections: CodeBlockNode[]) {
         for (let section of sections) {
+            //TODO the solver currently doesn't support subfunc scope
+            if (section.subfuncid != -1) { continue; }
             let stack = new CombinedExactStack(this);
             for (let op of section.children) {
-                //TODO this currently doesn't separate subfunc locals from func locals and mixes up the types
                 if (op instanceof RawOpcodeNode) {
                     if (!stack.pushopcode(op, section.scriptid)) {
                         break;
