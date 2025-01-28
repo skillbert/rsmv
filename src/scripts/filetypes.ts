@@ -474,7 +474,7 @@ const decodeClientScript: DecodeModeFactory = (ops) => {
 			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
 		},
 		read(buf, fileid, source) {
-			return renderClientScript(source, buf, fileid[0], ops.relativecs2comps == "true");
+			return renderClientScript(source, buf, fileid[0], ops.cs2relativecomps == "true", ops.cs2notypes == "true", ops.cs2intcasts == "true");
 		},
 		async write(file, fileid, source) {
 			let obj = await compileClientScript(source, file.toString("utf8"));
@@ -484,7 +484,9 @@ const decodeClientScript: DecodeModeFactory = (ops) => {
 		},
 		description: "Extracts clientscript VM code (cs2) and converts it to something that is typescript-compatible.",
 		flagtemplate: {
-			relativecs2comps: { text: "Hide subcomponent ids (can't be compiled, but offers stable diffing)", type: "boolean" }
+			cs2relativecomps: { text: "Hide subcomponent ids (can't be compiled, but offers stable diffing)", type: "boolean" },
+			cs2notypes: { text: "Don't output TS types (can't be compiled)", type: "boolean" },
+			cs2intcasts: { text: "Explicit JS int32 casts during math (can't be compiled)", type: "boolean" }
 		}
 	}
 }

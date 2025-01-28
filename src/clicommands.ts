@@ -118,7 +118,9 @@ export function cliApi(ctx: CliApiContext) {
 			batched: flag({ long: "batched", short: "b" }),
 			batchlimit: option({ long: "batchsize", type: cmdts.number, defaultValue: () => -1 }),
 			keepbuffers: flag({ long: "keepbuffers" }),
-			relativecs2comps: flag({ long: "relativecs2comps" })
+			cs2relativecomps: flag({ long: "cs2relativecomps" }),
+			cs2notypes: flag({ long: "cs2notypes" }),
+			cs2intcasts: flag({ long: "cs2intcasts" })
 		},
 		async handler(args) {
 			let output = ctx.getConsole();
@@ -126,7 +128,9 @@ export function cliApi(ctx: CliApiContext) {
 			let decoderflags: Record<string, string> = {};
 			//decoder-specific flags, might want to make them into a value instead of a flag at some point
 			if (args.keepbuffers) { decoderflags.keepbuffers = "true"; }
-			if (args.relativecs2comps) { decoderflags.relativecs2comps = "true"; }
+			if (args.cs2relativecomps) { decoderflags.cs2relativecomps = "true"; }
+			if (args.cs2notypes) { decoderflags.cs2notypes = "true"; }
+			if (args.cs2intcasts) { decoderflags.cs2intcasts = "true"; }
 			await output.run(extractCacheFiles, args.save, source, args, decoderflags);
 		}
 	});

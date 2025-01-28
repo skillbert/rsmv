@@ -879,7 +879,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "\n";
     res += `// Compiler intrinsics\n`;
     for (let [name, intr] of intrinsics) {
-        res += `declare function ${name}(${intr.in.toTypeScriptVarlist(true)}): ${intr.out.toTypeScriptReturnType()};\n`;
+        res += `declare function ${name}(${intr.in.toTypeScriptVarlist(true, true)}): ${intr.out.toTypeScriptReturnType()};\n`;
     }
     res += "\n";
     res += `// Clientscript types\n`;
@@ -900,7 +900,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
         } else if (op.id == namedClientScriptOps.dbrow_getfield) {
             res += `declare function ${opname}(int0: number, int1: number, int2: number): any;\n`;
         } else if (!dynamicOps.includes(op.id) && op.stackinfo.initializedthrough) {
-            let args = op.stackinfo.in.toTypeScriptVarlist(true, op.stackinfo.exactin);
+            let args = op.stackinfo.in.toTypeScriptVarlist(true, true, op.stackinfo.exactin);
             let returns = op.stackinfo.out.toTypeScriptReturnType(op.stackinfo.exactout);
             res += `declare function ${opname}(${args}): ${returns};\n`;
         } else {

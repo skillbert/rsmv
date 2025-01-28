@@ -21,7 +21,7 @@ export async function compileClientScript(source: CacheFileSource, code: string)
     return astToImJson(calli, parseresult.result);
 }
 
-export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number, relativeComps: boolean) {
+export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number, relativeComps = false, notypes = false, int32casts = false) {
     let calli = await prepareClientScript(source);
     let script = parse.clientscript.read(buf, source);
     let full = true;//TODO remove
@@ -30,6 +30,8 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
     let writer = new TsWriterContext(calli, typectx);
     if (relativeComps) { writer.setCompOffsets(rootfunc); }
+    writer.typescript = !notypes;
+    writer.int32casts = int32casts;
 
     let res = "";
     if (full) {

@@ -472,6 +472,13 @@ export const binaryOpSymbols = new Map([
     [namedClientScriptOps.intmul, "*"],
 ]);
 
+export const int32MathOps = new Set([
+    namedClientScriptOps.plus,
+    namedClientScriptOps.minus,
+    namedClientScriptOps.intdiv,
+    namedClientScriptOps.intmul
+]);
+
 export const binaryOpIds = new Map([...binaryOpSymbols].map(q => [q[1], q[0]]));
 
 export const branchInstructionsOrJump = [
@@ -709,23 +716,38 @@ export class StackList {
         }
         return res;
     }
-    toTypeScriptVarlist(withnames: boolean, exacttype?: ExactStack | null) {
+    toTypeScriptVarlist(withnames: boolean, withtypes: boolean, exacttype?: ExactStack | null) {
         let res = "";
         let counts = new StackDiff();
         for (let i = 0; i < this.values.length; i++) {
             let part = this.values[i];
-            if (part == "int" && i + 1 < this.values.length && this.values[i + 1] == "vararg") {
+            if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, withnames, withtypes, exacttype); }
+            else if (part == "int" && i + 1 < this.values.length && this.values[i + 1] == "vararg") {
                 //combine int+vararg arguments into a single boundfunction argument
-                res += "vararg: BoundFunction, ";
+                if (withnames) { res += `vararg${withtypes ? ": " : ""}`; }
+                if (withtypes) { res += "BoundFunction"; }
+                counts.vararg++;
                 i++;
-            } else if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, withnames, exacttype); }
-            else if (part == "int") { res += `${withnames ? `int${counts.int}: ` : ""}${exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"}, `; counts.int++; }
-            else if (part == "long") { res += `${withnames ? `long${counts.long}: ` : ""}${exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"}, `; counts.long++; }
-            else if (part == "string") { res += `${withnames ? `string${counts.string}: ` : ""}${exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"}, `; counts.string++; }
-            else if (part == "vararg") { res += `${withnames ? "vararg: " : ""}BoundFunction, `; }
+            }
+            else if (part == "int") {
+                if (withnames) { res += `int${counts.int}${withtypes ? ": " : ""}`; }
+                if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"); }
+                counts.int++;
+            }
+            else if (part == "long") {
+                if (withnames) { res += `long${counts.long}${withtypes ? ": " : ""}`; }
+                if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"); }
+                counts.long++;
+            }
+            else if (part == "string") {
+                if (withnames) { res += `string${counts.string}${withtypes ? ": " : ""}`; }
+                if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"); }
+                counts.string++;
+            }
             else throw new Error("unsupported stack type");
+            if (i != this.values.length - 1) { res += ", "; }
         }
-        res = res.replace(/,\s?$/, "");
+        // res = res.replace(/,\s?$/, "");
         return res;
     }
     toTypeScriptReturnType(exacttype?: ExactStack | null) {
@@ -733,9 +755,9 @@ export class StackList {
             return "void";
         }
         if (this.values.length == 1) {
-            return this.toTypeScriptVarlist(false, exacttype);
+            return this.toTypeScriptVarlist(false, true, exacttype);
         }
-        return `[${this.toTypeScriptVarlist(false, exacttype)}]`;
+        return `[${this.toTypeScriptVarlist(false, true, exacttype)}]`;
     }
     toJson() { return this.values.map(q => typeof q == "string" ? q : q.toJson()); }
     static fromJson(v: ReturnType<StackList["toJson"]>) {
@@ -987,21 +1009,33 @@ export class StackDiff {
         if (this.vararg != 0) { throw new Error("vararg not supported"); }
         return res;
     }
-    toTypeScriptVarlist(nameoffset: StackDiff, withnames: boolean, exacttype?: ExactStack | null) {
+    toTypeScriptVarlist(nameoffset: StackDiff, withnames: boolean, withtypes: boolean, exacttype?: ExactStack | null) {
         let res = "";
         for (let i = 0; i < this.int; i++) {
-            res += `${withnames ? `int${nameoffset.int}: ` : ""}${exacttype ? subtypeToTs(exacttype.int[nameoffset.int]) : "number"}, `;
+            if (withnames) { res += `int${nameoffset.int}${withtypes ? ": " : ""}`; }
+            if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.int[nameoffset.int]) : "number"); }
+            res += ", ";
             nameoffset.int++;
         }
         for (let i = 0; i < this.long; i++) {
-            res += `${withnames ? `long${nameoffset.long}: ` : ""}${exacttype ? subtypeToTs(exacttype.long[nameoffset.long]) : "BigInt"}, `;
+            if (withnames) { res += `long${nameoffset.long}${withtypes ? ": " : ""}`; }
+            if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.long[nameoffset.long]) : "BigInt"); }
+            res += ", ";
             nameoffset.long++;
         }
         for (let i = 0; i < this.string; i++) {
-            res += `${withnames ? `string${nameoffset.string}: ` : ""}${exacttype ? subtypeToTs(exacttype.string[nameoffset.string]) : "string"}, `;
+            if (withnames) { res += `string${nameoffset.string}${withtypes ? ": " : ""}`; }
+            if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.string[nameoffset.string]) : "string"); }
+            res += ", ";
             nameoffset.string++;
         }
-        for (let i = 0; i < this.vararg; i++) { res += `vararg${nameoffset.string++}:any, `; }
+        for (let i = 0; i < this.vararg; i++) {
+            if (withnames) { res += `vararg${nameoffset.vararg}${withtypes ? ": " : ""}`; }
+            if (withtypes) { res += "BoundFunction"; }
+            res += ", ";
+            nameoffset.vararg++;
+        }
+        res = res.replace(/, $/, "");
         return res;
     }
 }

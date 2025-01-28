@@ -2,7 +2,7 @@ import { boundMethod } from "autobind-decorator";
 import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType, isNamedOp, RewriteCursor } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
-import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
+import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, int32MathOps, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
 import { getOrInsert } from "../utils";
 
 /**
@@ -36,6 +36,8 @@ export class TsWriterContext {
     declaredVars: Set<string>[] = [];
     compoffsets = new Map<number, number>();
     usecompoffset = false;
+    int32casts = false;
+    typescript = true;
     constructor(calli: ClientscriptObfuscation, typectx: ClientScriptSubtypeSolver) {
         this.calli = calli;
         this.typectx = typectx;
@@ -153,7 +155,12 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
     let binarysymbol = binaryOpSymbols.get(op.opcode);
     if (binarysymbol) {
         if (children.length == 2) {
-            return `(${ctx.getCode(children[0])} ${binarysymbol} ${ctx.getCode(children[1])})`;
+            if (ctx.int32casts && int32MathOps.has(op.opcode)) {
+                // js in32 cast
+                return `(${ctx.getCode(children[0])} ${binarysymbol} ${ctx.getCode(children[1])} | 0)`
+            } else {
+                return `(${ctx.getCode(children[0])} ${binarysymbol} ${ctx.getCode(children[1])})`;
+            }
         } else {
             return `(${binarysymbol} ${children.map(ctx.getCode).join(" ")})`;
         }
@@ -186,10 +193,17 @@ addWriter(ComposedOp, (node, ctx) => {
     if ((["++x", "--x", "x++", "x--"] as ComposedopType[]).includes(node.type)) {
         if (node.children.length != 0) { throw new Error("no children expected on composednode"); }
         let varname = getOpcodeName(ctx.calli, (node.internalOps[0] as RawOpcodeNode).op);
-        if (node.type == "++x") { return `++${varname}`; }
-        if (node.type == "--x") { return `--${varname}`; }
-        if (node.type == "x++") { return `${varname}++`; }
-        if (node.type == "x--") { return `${varname}--`; }
+        if (ctx.int32casts) {
+            if (node.type == "++x") { return `(${varname} = ${varname} + 1 | 0)`; }
+            if (node.type == "--x") { return `(${varname} = ${varname} - 1 | 0)`; }
+            if (node.type == "x++") { return `(${varname} = ${varname} + 1 | 0, ${varname} - 1 | 0)`; }
+            if (node.type == "x--") { return `(${varname} = ${varname} - 1 | 0, ${varname} + 1 | 0)`; }
+        } else {
+            if (node.type == "++x") { return `++${varname}`; }
+            if (node.type == "--x") { return `--${varname}`; }
+            if (node.type == "x++") { return `${varname}++`; }
+            if (node.type == "x--") { return `${varname}--`; }
+        }
     }
     if (node.type == "stack") {
         return writeCall(ctx, "stack", node.children);
@@ -232,7 +246,7 @@ addWriter(VarAssignNode, (node, ctx) => {
                 //we need a "var" expression, but can't add var to the entire destructor operation, add seperate var declarations
                 for (let [index, name] of varnames.entries()) {
                     if (vardeclared[index]) { continue; }
-                    res += `var ${name}:${subtypeToTs(exacttypes[index])};`;
+                    res += `var ${name}${ctx.typescript ? ":" + subtypeToTs(exacttypes[index]) : ""};`;
                     res += ctx.codeIndent();
                 }
             } else {
@@ -281,13 +295,21 @@ addWriter(SwitchStatementNode, (node, ctx) => {
             res += `\n`;
         } else {
             res += " " + ctx.getCode(branch.block);
-            res += `\n`;
+            res += "\n";
+            if (branch.block.possibleSuccessors.length != 0) {
+                res += `${ctx.codeIndent()}break;`;
+                res += "\n"
+            }
         }
     }
     if (node.defaultbranch) {
         res += `${ctx.codeIndent()}default: `;
         res += ctx.getCode(node.defaultbranch);
         res += `\n`;
+        if (node.defaultbranch.possibleSuccessors.length != 0) {
+            res += `${ctx.codeIndent()}break;`
+            res += "\n"
+        }
     }
     ctx.popIndent();
     res += `${ctx.codeIndent()}}`;
@@ -319,16 +341,17 @@ addWriter(RawOpcodeNode, (node, ctx) => {
                 exacttype = type;
             }
         }
-        let gettypecast = (subt: PrimitiveType) => {
+        let gettypecast = () => {
+            if (!ctx.typescript) { return ""; }
             if (exacttype == -1) { return ""; }
             if (exacttype == subtypes.int || exacttype == subtypes.string || exacttype == subtypes.long) { return ""; }
             if (exacttype == subtypes.unknown_int || exacttype == subtypes.unknown_string || exacttype == subtypes.unknown_long) { return ""; }
             return ` as ${subtypeToTs(exacttype)}`;
         }
         if (typeof node.op.imm_obj == "string") {
-            return `"${escapeStringLiteral(node.op.imm_obj, "double")}"${gettypecast("string")}`;
+            return `"${escapeStringLiteral(node.op.imm_obj, "double")}"${gettypecast()}`;
         } else if (Array.isArray(node.op.imm_obj)) {
-            return `${longJsonToBigInt(node.op.imm_obj)}n${gettypecast("long")}`;
+            return `${longJsonToBigInt(node.op.imm_obj)}n${gettypecast()}`;
         } else if (typeof node.op.imm_obj == "number") {
             if (exacttype == subtypes.component) {
                 let intf = node.op.imm_obj >> 16;
@@ -347,7 +370,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             if (exacttype == subtypes.boolean) {
                 return (node.op.imm_obj == 1 ? "true" : "false");
             }
-            return `${node.op.imm_obj}${gettypecast("int")}`;
+            return `${node.op.imm_obj}${gettypecast()}`;
         } else {
             throw new Error("unexpected");
         }
@@ -378,7 +401,8 @@ addWriter(ClientScriptFunction, (node, ctx) => {
     let meta = (scriptidmatch ? ctx.calli.scriptargs.get(+scriptidmatch[1]) : null);
     let res = "";
     res += `//${meta?.scriptname ?? "unknown name"}\n`;
-    res += `${ctx.codeIndent()}function ${node.scriptname}(${node.argtype.toTypeScriptVarlist(true, meta?.stack.exactin)}): ${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `;
+    res += `${ctx.codeIndent()}function ${node.scriptname}(${node.argtype.toTypeScriptVarlist(true, ctx.typescript, meta?.stack.exactin)})`;
+    if (ctx.typescript) { res += `: ${node.returntype.toTypeScriptReturnType(meta?.stack.exactout)} `; }
     res += ctx.getCode(node.children[0]);
     return res;
 });
