@@ -1,5 +1,5 @@
 import { ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "./ast";
-import { ClientscriptObfuscation } from "./callibrator";
+import { ClientscriptObfuscation, ScriptCandidate } from "./callibrator";
 import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps, subtypes } from "./definitions";
 
 //to test
@@ -238,9 +238,9 @@ class CombinedExactStack {
     }
 }
 
-export function detectSubtypes(calli: ClientscriptObfuscation) {
+export function detectSubtypes(calli: ClientscriptObfuscation, candidates: Map<number, ScriptCandidate>) {
     let ctx = new ClientScriptSubtypeSolver();
-    for (let cand of calli.candidates.values()) {
+    for (let cand of candidates.values()) {
         if (!cand.scriptcontents) { continue; }
         let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         ctx.parseSections(sections);

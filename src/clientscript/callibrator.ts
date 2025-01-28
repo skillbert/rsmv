@@ -300,7 +300,7 @@ export class ClientscriptObfuscation {
         } else {
             await r.loadCandidates();
             r.parseCandidateContents();
-            callibrateSubtypes(r);//TODO is this needed?
+            callibrateSubtypes(r, r.candidates);//TODO is this needed?
         }
         return r;
     }
@@ -417,13 +417,14 @@ export class ClientscriptObfuscation {
             this.parammeta = await loadParams(this.source);
         }
     }
-    async loadCandidates() {
+    async loadCandidates(idstart = 0, idend = 0xffffff) {
         let index = await this.source.getCacheIndex(cacheMajors.clientscript);
         this.candidates.clear();
         let source = this.source;
         await trickleTasksTwoStep(10, function* () {
             for (let entry of index) {
                 if (!entry) { continue; }
+                if (entry.minor < idstart || entry.minor > idend) { continue; }
                 yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
                     id: entry.minor,
                     scriptname: reverseHashes.get(index[entry.minor].name!) ?? "",
@@ -494,13 +495,17 @@ export class ClientscriptObfuscation {
         copyOpcodesFrom(this, refscript);
         findOpcodeImmidiates(this);
         this.parseCandidateContents();
-        callibrateOperants(this);
+        callibrateOperants(this, this.candidates);
         try {
-            callibrateSubtypes(this);
+            callibrateSubtypes(this, this.candidates);
         } catch (e) {
             console.log("subtype callibration failed, types info might not be accurate");
         }
     }
+    // don't want them to be methods, use this to expose them to console
+    findOpcodeImmidiates = findOpcodeImmidiates;
+    callibrateOperants = callibrateOperants;
+    callibrateSubtypes = callibrateSubtypes;
     setNonObbedMappings() {
         this.foundEncodings = true;
         this.isNonObbedCache = true;
@@ -884,10 +889,10 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation) {
     }
 }
 
-function callibrateOperants(calli: ClientscriptObfuscation) {
+function callibrateOperants(calli: ClientscriptObfuscation, candidates: Map<number, ScriptCandidate>) {
     //TODO merge with previous loop?
     let allsections: CodeBlockNode[] = [];
-    for (let cand of calli.candidates.values()) {
+    for (let cand of candidates.values()) {
         if (!cand.scriptcontents) { continue }
         let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         allsections.push(...sections);
