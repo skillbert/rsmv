@@ -148,10 +148,6 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 	}
 
 	let processfile = async (filename: string) => {
-
-		//ignore dotfiles
-		if (filename.match(/(^|\/)\.[^\/]*$/)) { return; }
-
 		let singlematch = filename.match(/(^|\/)(\w+)-([\d_]+)\.(\w+)$/);
 		if (singlematch) {
 			let logicalid = singlematch[3].split(/_/g).map(q => +q);
@@ -189,6 +185,9 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		let files = await diffdir.readDir(node);
 		let base = (node == "." ? "" : node + "/")
 		for (let file of files) {
+			//ignore dotfiles
+			if (file.name.match(/(^|\/)\.[^\/]*$/)) { continue; }
+			
 			if (file.kind == "file") { await processfile(base + file.name); }
 			if (file.kind == "directory") { await processdir(base + file.name); }
 		}

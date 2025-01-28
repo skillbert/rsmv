@@ -496,6 +496,10 @@ export class ClientscriptObfuscation {
         findOpcodeImmidiates(this);
         this.parseCandidateContents();
         callibrateOperants(this, this.candidates);
+        // todo, somehow a extra runs still finds new types, these should have been caught in the first run
+        callibrateOperants(this, this.candidates);
+        callibrateOperants(this, this.candidates);
+        callibrateOperants(this, this.candidates);
         try {
             callibrateSubtypes(this, this.candidates);
         } catch (e) {

@@ -118,12 +118,9 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 
 	let enterCacheId = async (idstring: string) => {
 		let id = +idstring;
-		if (id > 0) {
-			p.onSelect(id);
-		} else {
-			let relevantcaches = await validOpenrs2Caches();
-			p.onSelect(relevantcaches[-id].id);
-		}
+		// negative id means latest-x cache
+		if (id <= 0) { id = (await Openrs2CacheSource.getRecentCache(-id)).id; }
+		p.onSelect(id);
 	}
 
 	return (
@@ -179,7 +176,7 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 	)
 }
 
-export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSource) => void, noReopen?: boolean }, { lastFolderOpen: FileSystemDirectoryHandle | null }>{
+export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSource) => void, noReopen?: boolean }, { lastFolderOpen: FileSystemDirectoryHandle | null }> {
 	constructor(p) {
 		super(p);
 		this.state = {
@@ -351,7 +348,7 @@ export type UIContextReady = UIContext & { source: CacheFileSource, sceneCache: 
 export type UIOpenedFile = { fs: ScriptFS, name: string, data: string | Buffer };
 
 //i should figure out this redux thing...
-export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, statechange: undefined }>{
+export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, statechange: undefined }> {
 	source: CacheFileSource | null = null;
 	sceneCache: ThreejsSceneCache | null = null;
 	renderer: ThreeJsRenderer | null = null;

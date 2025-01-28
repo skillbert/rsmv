@@ -69,14 +69,14 @@ export function validOpenrs2Caches() {
 
 				1455,//weird clientscript
 
-				312,286,1420,1421,1530,//missing clientscripts
+				312, 286, 1420, 1421, 1530,//missing clientscripts
 
 
 				//TODO fix these or figure out whats wrong with them
 				1480,
 
-				644,257,//incomplete textures
-				1456,1665,//missing materials
+				644, 257,//incomplete textures
+				1456, 1665,//missing materials
 				1479,//missing items could probably be worked around
 			];
 			let allcaches: Openrs2CacheMeta[] = await fetch(`${endpoint}/caches.json`).then(q => q.json());
@@ -131,7 +131,7 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	getBuildNr() {
 		return this.buildnr;
 	}
-	async getCacheIndex(major) {
+	async getCacheIndex(major: number) {
 		if (this.buildnr <= 700 && !this.xteaKeysLoaded && major == cacheMajors.mapsquares) {
 			this.xteakeysPromise ??= (async () => {
 				this.xteakeys ??= new Map();
@@ -147,6 +147,11 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 			await this.xteakeysPromise;
 		}
 		return super.getCacheIndex(major);
+	}
+
+	static async getRecentCache(count = 0) {
+		let relevantcaches = await validOpenrs2Caches();
+		return relevantcaches[count];
 	}
 
 	static async downloadCacheMeta(cacheid: number) {

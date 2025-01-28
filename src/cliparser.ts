@@ -35,11 +35,10 @@ function cacheSourceFromString(str: string) {
 				return Openrs2CacheSource.fromId(+arg);
 			case "openrslast":
 			case "openrs2last":
-				let caches = await validOpenrs2Caches();
-				let target = caches[+(arg ?? "0")];
+				let target = await Openrs2CacheSource.getRecentCache(+(arg ?? "0"));
 				if (!target) { throw new Error(`cache index ${arg} not found`); }
 				console.log(`opening openrs2:${target.id}`);
-				return Openrs2CacheSource.fromId(target.id);
+				return new Openrs2CacheSource(target);
 			case "extracted":
 				return new RawFileLoader(arg, 0);
 			case "global":

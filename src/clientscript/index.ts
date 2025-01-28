@@ -7,6 +7,8 @@ import { parse } from "../opdecoder";
 import { astToImJson } from "./jsonwriter";
 import { clientscript } from "../../generated/clientscript";
 import { crc32, crc32addInt } from "../libs/crc32util";
+// import { Openrs2CacheSource } from "../cache/openrs2loader";
+// import { GameCacheLoader } from "../cache/sqlite";
 
 export { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser";
 
@@ -40,10 +42,16 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
 
 export async function prepareClientScript(source: CacheFileSource) {
     if (!source.decodeArgs.clientScriptDeob) {
-        let deob = await ClientscriptObfuscation.create(source);
+        let deobsource = source;
+        // use equivelant openrs2 cache instead to prevent problems with edits begin invalid
+        // if (source instanceof GameCacheLoader) {
+        //     deobsource = new Openrs2CacheSource(await Openrs2CacheSource.getRecentCache());
+        // }
+        let deob = await ClientscriptObfuscation.create(deobsource);
         source.decodeArgs.clientScriptDeob = deob;
         await deob.runAutoCallibrate(source);
         await deob.save();
+
         globalThis.deob = deob;//TODO remove
     }
     return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation;
