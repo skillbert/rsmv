@@ -126,7 +126,6 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 }
 
 export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSource, diffdir: ScriptFS) {
-	let files = await diffdir.readDir(".");
 	let cachedmodes: Record<string, DecodeMode> = {};
 	let incompletearchs: Map<number, Map<number, { fetchsiblings: boolean, files: { subid: number, file: Buffer }[] }>> = new Map();
 
@@ -148,43 +147,53 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		return group;
 	}
 
-	for (let file of files) {
-		if (file.kind != "file") { continue; }
-		//ignore dotfiles
-		if (file.name.match(/^\./)) { continue; }
+	let processfile = async (filename: string) => {
 
-		let singlematch = file.name.match(/^(\w+)-([\d_]+)\.(\w+)$/);
+		//ignore dotfiles
+		if (filename.match(/(^|\/)\.[^\/]*$/)) { return; }
+
+		let singlematch = filename.match(/(^|\/)(\w+)-([\d_]+)\.(\w+)$/);
 		if (singlematch) {
-			let logicalid = singlematch[2].split(/_/g).map(q => +q);
-			let mode = await getmode(singlematch[1]);
+			let logicalid = singlematch[3].split(/_/g).map(q => +q);
+			let mode = await getmode(singlematch[2]);
 
 			let archid = mode.logicalToFile(source, logicalid);
 			let arch = getarch(archid.major, archid.minor, mode);
 
-			let raw = await diffdir.readFileBuffer(file.name);
+			let raw = await diffdir.readFileBuffer(filename);
 			let buf = await mode.write(raw, logicalid, source);
 			arch.files.push({ subid: archid.subid, file: buf });
 
-			continue;
+			return;
 		}
 
-		let batchjson = file.name.match(/^(\w+)-([\d_]+)\.batch\.json$/);
+		let batchjson = filename.match(/(^|\/)(\w+)-([\d_]+)\.batch\.json$/);
 		if (batchjson) {
-			let mode = await getmode(batchjson[1]);
-			let raw: { files: any[] } = JSON.parse(await diffdir.readFileText(file.name));
+			let mode = await getmode(batchjson[2]);
+			let raw: { files: any[] } = JSON.parse(await diffdir.readFileText(filename));
 
-			if (!mode.parser) { throw new Error(`batch files only supported for json based modes, mode ${batchjson[1]} does not have a json parser`); }
+			if (!mode.parser) { throw new Error(`batch files only supported for json based modes, mode ${batchjson[2]} does not have a json parser`); }
 			for (let file of raw.files) {
 				let archid = mode.logicalToFile(source, file.$fileid);
 				let arch = getarch(archid.major, archid.minor, mode);
 				let buf = mode.parser!.write(file, source.getDecodeArgs());
 				arch.files.push({ subid: archid.subid, file: buf });
 			}
-			continue;
+			return;
 		}
 
-		output.log("can't interpret file: " + file);
+		output.log("can't interpret file: " + filename);
 	}
+
+	let processdir = async (node: string) => {
+		let files = await diffdir.readDir(node);
+		let base = (node == "." ? "" : node + "/")
+		for (let file of files) {
+			if (file.kind == "file") { await processfile(base + file.name); }
+			if (file.kind == "directory") { await processdir(base + file.name); }
+		}
+	}
+	await processdir(".");
 
 	for (let [major, majormap] of incompletearchs) {
 		let indexfile = await source.getCacheIndex(major);
