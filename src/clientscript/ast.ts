@@ -286,6 +286,19 @@ export class WhileLoopStatementNode extends AstNode {
     }
 }
 
+type ControlStatementType = "break" | "continue";
+export class ControlStatementNode extends AstNode {
+    type: ControlStatementType;
+    constructor(originalindex: number, type: ControlStatementType) {
+        super(originalindex);
+        this.type = type;
+    }
+    getOpcodes(ctx: OpcodeWriterContext): never {
+        throw new Error("break/continue statements failed to process. only break at end of switch case supported");
+    }
+
+}
+
 export class SwitchStatementNode extends AstNode {
     branches: { value: number, block: CodeBlockNode }[] = [];
     valueop: AstNode | null;

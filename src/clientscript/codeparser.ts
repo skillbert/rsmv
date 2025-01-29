@@ -1,5 +1,5 @@
 import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff } from "./ast";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff, ControlStatementNode } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "./definitions";
@@ -545,7 +545,7 @@ function scriptContext(ctx: ParseContext) {
         yield "{";
         yield whitespace;
         let cases: { value: number, block: CodeBlockNode }[] = [];
-        let defaultcase = null;
+        let defaultcase: CodeBlockNode | null = null;
         while (!(yield has("}"))) {
             let entries: { type: "case" | "default", value: number }[] = [];
             while (true) {
@@ -554,7 +554,11 @@ function scriptContext(ctx: ParseContext) {
                 yield whitespace;
                 entries.push(entry);
             }
-            let block = yield [codeBlock];
+            let block: CodeBlockNode = yield [codeBlock];
+            let lastchild = block.children.at(-1);
+            if (lastchild instanceof ControlStatementNode && lastchild.type == "break") {
+                block.remove(lastchild);
+            }
             yield whitespace;
             for (let { type, value } of entries) {
                 if (type == "case") {
@@ -566,6 +570,12 @@ function scriptContext(ctx: ParseContext) {
         }
         let node = new SwitchStatementNode(-1, switchvalue, defaultcase, cases);
         return node;
+    }
+
+    function* controlStatement() {
+        let type = yield ["break", "continue"];
+        yield whitespace;
+        return new ControlStatementNode(-1, type);
     }
 
     function* ifStatement() {
@@ -711,7 +721,7 @@ function scriptContext(ctx: ParseContext) {
     }
 
     function* statement() {
-        return yield [functionStatement, ifStatement, whileStatement, switchStatement, returnStatement, assignStatement, valueStatement];
+        return yield [functionStatement, ifStatement, whileStatement, switchStatement, returnStatement, controlStatement, assignStatement, valueStatement];
     }
 
     function* statementlist() {
