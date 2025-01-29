@@ -272,6 +272,9 @@ addWriter(CodeBlockNode, (node, ctx) => {
         code += `${ctx.codeIndent(child.originalindex)}${ctx.getCode(child)};\n`;
     }
     if (node.parent) {
+        if (node.parent instanceof SwitchStatementNode && node.branchEndNode != null) {
+            code += `${ctx.codeIndent()}break;\n`;
+        }
         ctx.popIndent();
         code += `${ctx.codeIndent()}}`;
     }
@@ -296,20 +299,12 @@ addWriter(SwitchStatementNode, (node, ctx) => {
         } else {
             res += " " + ctx.getCode(branch.block);
             res += "\n";
-            if (branch.block.possibleSuccessors.length != 0) {
-                res += `${ctx.codeIndent()}break;`;
-                res += "\n"
-            }
         }
     }
     if (node.defaultbranch) {
         res += `${ctx.codeIndent()}default: `;
         res += ctx.getCode(node.defaultbranch);
         res += `\n`;
-        if (node.defaultbranch.possibleSuccessors.length != 0) {
-            res += `${ctx.codeIndent()}break;`
-            res += "\n"
-        }
     }
     ctx.popIndent();
     res += `${ctx.codeIndent()}}`;
