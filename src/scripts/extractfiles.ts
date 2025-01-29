@@ -125,7 +125,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 	output.log("done");
 }
 
-export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSource, diffdir: ScriptFS) {
+export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSource, inputdir: ScriptFS | undefined, inputfiles: { name: string, file: Buffer }[]) {
 	let cachedmodes: Record<string, DecodeMode> = {};
 	let incompletearchs: Map<number, Map<number, { fetchsiblings: boolean, files: { subid: number, file: Buffer }[] }>> = new Map();
 
@@ -136,7 +136,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 			if (!modecontr) { throw new Error(`cache decode mode "${str}" not recognized`); }
 			mode = cacheFileDecodeModes[str as keyof typeof cacheFileDecodeModes]({});
 			cachedmodes[str] = mode;
-			await mode.prepareWrite(diffdir, source);
+			await mode.prepareWrite(source);
 		}
 		return mode;
 	}
@@ -147,7 +147,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		return group;
 	}
 
-	let processfile = async (filename: string) => {
+	let processfile = async (filename: string, file: Buffer) => {
 		let singlematch = filename.match(/(^|\/)(\w+)-([\d_]+)\.(\w+)$/);
 		if (singlematch) {
 			let logicalid = singlematch[3].split(/_/g).map(q => +q);
@@ -156,8 +156,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 			let archid = mode.logicalToFile(source, logicalid);
 			let arch = getarch(archid.major, archid.minor, mode);
 
-			let raw = await diffdir.readFileBuffer(filename);
-			let buf = await mode.write(raw, logicalid, source);
+			let buf = await mode.write(file, logicalid, source);
 			arch.files.push({ subid: archid.subid, file: buf });
 
 			return;
@@ -166,7 +165,7 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		let batchjson = filename.match(/(^|\/)(\w+)-([\d_]+)\.batch\.json$/);
 		if (batchjson) {
 			let mode = await getmode(batchjson[2]);
-			let raw: { files: any[] } = JSON.parse(await diffdir.readFileText(filename));
+			let raw: { files: any[] } = JSON.parse(file.toString("utf-8"));
 
 			if (!mode.parser) { throw new Error(`batch files only supported for json based modes, mode ${batchjson[2]} does not have a json parser`); }
 			for (let file of raw.files) {
@@ -181,18 +180,22 @@ export async function writeCacheFiles(output: ScriptOutput, source: CacheFileSou
 		output.log("can't interpret file: " + filename);
 	}
 
-	let processdir = async (node: string) => {
-		let files = await diffdir.readDir(node);
+	let processdir = async (inputdir: ScriptFS, node: string) => {
+		let files = await inputdir.readDir(node);
 		let base = (node == "." ? "" : node + "/")
 		for (let file of files) {
 			//ignore dotfiles
 			if (file.name.match(/(^|\/)\.[^\/]*$/)) { continue; }
-			
-			if (file.kind == "file") { await processfile(base + file.name); }
-			if (file.kind == "directory") { await processdir(base + file.name); }
+
+			let filename = base + file.name;
+			if (file.kind == "file") { await processfile(filename, await inputdir.readFileBuffer(filename)); }
+			if (file.kind == "directory") { await processdir(inputdir, filename); }
 		}
 	}
-	await processdir(".");
+	if (inputdir) { await processdir(inputdir, "."); }
+	for (let file of inputfiles) {
+		await processfile(file.name, file.file);
+	}
 
 	for (let [major, majormap] of incompletearchs) {
 		let indexfile = await source.getCacheIndex(major);

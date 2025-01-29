@@ -12,7 +12,7 @@ import { ClientScriptInterpreter } from "./interpreter";
 
 function* whitespace() {
     while (true) {
-        let match = yield [/^\/\/.*$/m, /^\/\*[\s\S]*?\*\//, /^\s+/, ""];
+        let match = yield [/^\/\/.*\n/, /^\/\*[\s\S]*?\*\//, /^\s+/, ""];
         if (match === "") { break; }
     }
 }

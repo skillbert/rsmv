@@ -48,7 +48,7 @@ function cacheSourceFromString(str: string) {
 				}
 				return new CallbackCacheLoader(fn, false);
 			default:
-				throw new Error("unknown mode");
+				throw new Error("unknown cache mode");
 		}
 	}
 }

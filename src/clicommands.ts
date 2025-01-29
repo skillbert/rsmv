@@ -15,6 +15,7 @@ import { extractCluecoords } from "./scripts/cluecoords";
 import { getSequenceGroups } from "./scripts/groupskeletons";
 import { getGameInterfaces } from "./scripts/gameinterfaces";
 import { CacheFileSource } from "./cache";
+import fs from "fs/promises";
 
 
 export type CliApiContext = {
@@ -31,6 +32,13 @@ export function cliFsOutputType(ctx: CliApiContext, fsname: string): cmdts.Type<
 	};
 }
 
+export function cliFsInputType(): cmdts.Type<string, ScriptFS | undefined> {
+	return {
+		async from(str) { return new CLIScriptFS(str); },
+		defaultValue() { return undefined; },
+		description: `Where to load files from`
+	};
+}
 
 export function cliApi(ctx: CliApiContext) {
 	const filesource = {
@@ -47,6 +55,15 @@ export function cliApi(ctx: CliApiContext) {
 				long: "save",
 				short: "s",
 				type: cliFsOutputType(ctx, name)
+			})
+		} as const;
+	}
+	function loadArg() {
+		return {
+			save: option({
+				long: "load",
+				short: "s",
+				type: cliFsInputType()
 			})
 		} as const;
 	}
@@ -157,12 +174,22 @@ export function cliApi(ctx: CliApiContext) {
 		name: "edit",
 		args: {
 			...filesource,
-			...saveArg("extract"),
+			...loadArg(),
+			files: option({
+				long: "files",
+				type: cmdts.string,
+				defaultValue: () => ""
+			})
 		},
 		async handler(args) {
 			let output = ctx.getConsole();
 			let source = await args.source({ writable: true });
-			await output.run(writeCacheFiles, source, args.save);
+
+			let files = await Promise.all(args.files.split(",").filter(q => q).flatMap(async q => {
+				return { name: q, file: await fs.readFile(q) };
+			}));
+
+			await output.run(writeCacheFiles, source, args.save, files);
 		}
 	})
 

@@ -301,7 +301,7 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 					singleschemaurl = relurl;
 				}
 			},
-			prepareWrite(output, source) {
+			prepareWrite(source) {
 				return prepareParser?.(source);
 			},
 			read(b, id, source) {
@@ -349,7 +349,7 @@ export type DecodeMode<T = Buffer | string> = {
 	parser?: FileParser<any>,
 	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource): T | Promise<T>,
 	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
-	prepareWrite(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
+	prepareWrite(source: CacheFileSource): Promise<void> | void,
 	write(file: Buffer, fileid: LogicalIndex, source: CacheFileSource): Buffer | Promise<Buffer>,
 	combineSubs(files: T[]): T,
 	description: string,
