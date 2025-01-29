@@ -34,7 +34,7 @@ export const glTypeIds: { [id in typeids]: { gltype: vartypeEnum, constr: ArrayB
 
 //in js typedarrays must be aligned in memory according to their elements size
 export function alignedRefOrCopy<T>(constr: ArrayBufferConstructor<T>, source: Uint8Array, offset: number, length: number) {
-	let srcbuffer: ArrayBuffer;
+	let srcbuffer: ArrayBufferLike;
 	let disalignment = (source.byteOffset + offset) % constr.BYTES_PER_ELEMENT;
 	if (disalignment != 0) {
 		//use prototype slice here since nodejs Buffer creates a new view instead of a copy

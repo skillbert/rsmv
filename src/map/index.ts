@@ -752,7 +752,7 @@ const rendermodeInteractions: RenderMode<"interactions"> = function (engine, con
 				};
 			}
 			let textual = prettyJson({ locs, locdatas, rect, hashimgs, pxpertile: thiscnf.pxpersquare, dxdy: thiscnf.dxdy, dzdy: thiscnf.dzdy }, { indent: "\t" });
-			let buf = Buffer.from(textual, "utf8");
+			let buf: Buffer = Buffer.from(textual, "utf8");
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);
 			}
@@ -996,7 +996,7 @@ const rendermodeLocs: RenderMode<"height"> = function (engine, config, cnf, deps
 			let rect = { x: singlerect.x * chunkSize, z: singlerect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
 			let { locdatas, locs } = chunkSummary(grid, modeldata, rect);
 			let textual = prettyJson({ locdatas, locs, rect }, { indent: "\t" });
-			let buf = Buffer.from(textual, "utf8");
+			let buf: Buffer = Buffer.from(textual, "utf8");
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);
 			}
@@ -1019,7 +1019,7 @@ const rendermodeMaplabels: RenderMode<"height"> = function (engine, config, cnf,
 			let locs = chunks.flatMap(ch => ch.chunk?.locs ?? []);
 			let iconjson = await jsonIcons(engine, locs, rawarea, thiscnf.level);
 			let textual = prettyJson(iconjson, { indent: "\t" });
-			let buf = Buffer.from(textual, "utf8");
+			let buf: Buffer = Buffer.from(textual, "utf8");
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);
 			}
@@ -1040,7 +1040,7 @@ const rendermodeRenderMeta: RenderMode<"rendermeta"> = function (engine, config,
 			let obj = chunks[0].loaded.rendermeta;
 			let file = Buffer.from(JSON.stringify(obj), "utf8");
 			if (thiscnf.usegzip) {
-				file = zlib.gzipSync(file);
+				file = zlib.gzipSync(file) as any;
 			}
 			return { file: () => Promise.resolve(file) };
 		}
