@@ -633,7 +633,11 @@ function scriptContext(ctx: ParseContext) {
             if (preop) { combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop)); }
             return combined;
         } else {
-            return new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop);
+            let node = new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop);
+            if (readop.id == namedClientScriptOps.pushvar) {
+                node.knownStackDiff = StackInOut.fromExact([], [vartype]);
+            }
+            return node;
         }
     }
 
