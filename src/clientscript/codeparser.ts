@@ -337,6 +337,15 @@ function scriptContext(ctx: ParseContext) {
             yield ")";
         }
 
+        if (funcname == "operator") {
+            if (!isNamedOp(args[0], namedClientScriptOps.pushconst) || typeof args[0].op.imm_obj != "string") { throw new Error("string literal expected as 1st argument on operator() call"); }
+            let op = binaryOpIds.get(args[0].op.imm_obj);
+            if (!op) { throw new Error(`unknown binary op '${args[0].op.imm_obj}'`); }
+            let opinfo = getopinfo(op);
+            let res = new RawOpcodeNode(-1, { opcode: op, imm: 0, imm_obj: null }, opinfo);
+            res.pushList(args.slice(1));
+            return res;
+        }
         if (funcname == "callback") {
             let res = new FunctionBindNode(-1, new StackList());//TODO need this list in order to compile
             if (args.length == 0) {
@@ -664,7 +673,7 @@ function scriptContext(ctx: ParseContext) {
     }
 
     function* valueStatement() {
-        let left = yield [incorrectBinaryOp, bracketedValue, call, readVariable, stringInterpolation, literal];
+        let left = yield [bracketedValue, call, readVariable, stringInterpolation, literal];
         yield whitespace;
         //TODO doesn't currently account for operator precedence
         let op = yield binaryopsoremtpy;
@@ -696,28 +705,6 @@ function scriptContext(ctx: ParseContext) {
         } else {
             return [];//TODO error?
         }
-    }
-
-    function* incorrectBinaryOp() {
-        yield "(";
-        yield whitespace;
-        let op = yield binaryops;
-        //need at least one whitespace to prevent matching x=(-5)
-        if ((yield whitespace) == "") {
-            yield unmatchable;
-        }
-        let statements = yield statementlist;
-        yield ")";
-        let opid = binaryOpIds.get(op);
-        if (!opid) { throw new Error("unexpected"); }
-        let node: AstNode;
-        if (binaryconditionals.includes(op)) {
-            node = new BranchingStatement({ opcode: opid, imm: 0, imm_obj: null }, -1);
-        } else {
-            node = new RawOpcodeNode(-1, { opcode: opid, imm: 0, imm_obj: null }, ctx.deob.getNamedOp(opid));
-        }
-        node.pushList(statements);
-        return node;
     }
 
     function* literal() {
@@ -815,15 +802,15 @@ export function parseClientscriptTs(deob: ClientscriptObfuscation, code: string)
 }
 
 //TODO remove
-globalThis.testy = async () => {
+globalThis.testy = async (range = "0-1999") => {
     const fs = require("fs") as typeof import("fs");
-    let codefs = await globalThis.cli("extract -m clientscript -i 0-1999");
-    let codefiles = [...codefs.extract.filesMap.entries()]
+    let codefs = await globalThis.cli(`extract -m clientscript -i ${range}`);
+    let codefiles = [...codefs.extract.rootmemfsnode.files.entries()]
         .filter(q => q[0].startsWith("clientscript"))
-        .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length))); 1;
-    let jsonfs = await globalThis.cli("extract -m clientscript -i 0-1999");
-    jsonfs.extract.filesMap.delete(".schema-clientscript.json");
-    let jsonfiles = [...jsonfs.extract.filesMap.values()];
+        .map(q => q[1].data.replace(/^\d+:/gm, m => " ".repeat(m.length)));
+    let jsonfs = await globalThis.cli(`extract -m clientscriptops -i ${range}`);
+    let jsonfiles = [...jsonfs.extract.rootmemfsnode.files.values()]
+        .filter(q => !q.name.startsWith("."));
     let testknown = () => {
         let tsfile = fs.readFileSync("C:/Users/wilbe/tmp/clinetscript/input.ts", "utf8");
         let jsonfile = JSON.stringify({ opcodedata: [] });
@@ -837,9 +824,9 @@ globalThis.testy = async () => {
         let parseresult = parseClientscriptTs(deob, originalts);
         if (!parseresult.success) { return parseresult; }
         let roundtripped = astToImJson(deob, parseresult.result);
-        let inter = new ClientScriptInterpreter(deob);;
-        inter.callscript(roundtripped, fileid);
-        globalThis.inter = inter;
+        // let inter = new ClientScriptInterpreter(deob);;
+        // inter.callscript(roundtripped, fileid);
+        // globalThis.inter = inter;
 
         let jsondata = JSON.parse(originaljson);
         delete jsondata.$schema;
@@ -851,9 +838,6 @@ globalThis.testy = async () => {
 
         let rawinput = prettyJson(jsondata);
         let rawroundtrip = prettyJson(roundtripped);
-        let { rootfunc: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
-        let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
-        globalThis.cstest = roundtrippedAst;
 
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/binary.dat", binaryrountripped);
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/raw1.json", rawinput);
@@ -861,6 +845,9 @@ globalThis.testy = async () => {
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json1.json", prettyJson(jsondata.opcodedata));
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", prettyJson(roundtripped.opcodedata));
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js1.ts", originalts);
+        let { rootfunc: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
+        let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
+        globalThis.cstest = roundtrippedAst;
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.ts", roundtripts);
         return { exact: rawinput == rawroundtrip, exactts: originalts == roundtripts, roundtripped, original };
     }
@@ -884,6 +871,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "\n";
     res += `// Language constructs\n`;
     res += "declare class BoundFunction { }\n";
+    res += "declare function operator(op: string, ...values:any[]): any;\n";
     res += "declare function callback(): BoundFunction;\n";
     res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
     res += "declare function comp(interf: number, element: number): component;\n";

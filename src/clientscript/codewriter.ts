@@ -162,7 +162,7 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
                 return `(${ctx.getCode(children[0])} ${binarysymbol} ${ctx.getCode(children[1])})`;
             }
         } else {
-            return `(${binarysymbol} ${children.map(ctx.getCode).join(" ")})`;
+            return `operator("${binarysymbol}", ${children.map(ctx.getCode).join(", ")})`;
         }
     }
     if (op.opcode == namedClientScriptOps.return) {
