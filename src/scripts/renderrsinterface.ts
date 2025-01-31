@@ -12,8 +12,8 @@ import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
 import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 
-export const MAGIC_UNK01 = 0x80000001 | 0;
-export const MAGIC_UNK02 = 0x80000001 | 0;
+export const MAGIC_CONST_MOUSE_X = 0x80000001 | 0;
+export const MAGIC_CONST_MOUSE_Y = 0x80000002 | 0;
 export const MAGIC_CONST_CURRENTCOMP = 0x80000003 | 0;
 export const MAGIC_CONST_OPNR = 0x80000004 | 0;
 export const MAGIC_CONST_IF_AS_CC = 0x80000005 | 0;

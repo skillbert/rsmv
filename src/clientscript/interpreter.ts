@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript"
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
-import { CS2Api, MAGIC_CONST_CURRENTCOMP, MAGIC_UNK01, MAGIC_UNK06, RsInterFaceTypes, RsInterfaceComponent, RsInterfaceDomTree, TypedRsInterFaceComponent, UiRenderContext } from "../scripts/renderrsinterface";
+import { CS2Api, MAGIC_CONST_CURRENTCOMP, UiRenderContext } from "../scripts/renderrsinterface";
 import { cacheMajors } from "../constants";
 import { parse } from "../opdecoder";
 import { getEnumInt, getStructInt, loadEnum, loadStruct } from "./util";
