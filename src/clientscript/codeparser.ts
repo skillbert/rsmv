@@ -238,7 +238,21 @@ function scriptContext(ctx: ParseContext) {
                 if (str != "") { parts.push(makeStringConst(str, "")); }
                 str = "";
                 yield whitespace;
-                parts.push(yield valueStatement);
+                let interpolant: AstNode = yield valueStatement;
+                let out = getNodeStackOut(interpolant).getStackdiff();
+                if (out.total() != 1) { throw new Error("string interpolation with more than on value at interpolant"); }
+                if (out.string == 1) {
+                    parts.push(interpolant);
+                } else if (out.int == 1) {
+                    // convert int to string
+                    let tostring = new RawOpcodeNode(-1, makeop(namedClientScriptOps.inttostring), getopinfo(namedClientScriptOps.inttostring));
+                    let base10 = new RawOpcodeNode(-1, makeop(namedClientScriptOps.pushconst, 0, 10), getopinfo(namedClientScriptOps.pushconst));
+                    tostring.push(interpolant);
+                    tostring.push(base10);
+                    parts.push(tostring);
+                } else {
+                    throw new Error(`string interpolation only supports strings or ints`);
+                }
                 yield whitespace;
                 yield "}";
             } else if (next == "`") {
