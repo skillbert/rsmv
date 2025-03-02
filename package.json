@@ -16,7 +16,7 @@
 		"build": "webpack",
 		"watch": "webpack --watch",
 		"hot": "webpack serve --config webpack.config.web.js",
-		"web": "webpack --config webpack.config.web.js",
+		"web": "webpack --config webpack.config.web.js --watch",
 		"webrelease": "webpack --config webpack.config.web.js --mode production",
 		"clean": "rimraf dist",
 		"nodegl": "electron dist/runbrowser"

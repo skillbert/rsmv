@@ -65,7 +65,7 @@ export async function downloadBlob(name: string, blob: Blob) {
 
 /**@deprecated requires a service worker and is pretty sketchy, also no actual streaming output file sources atm */
 export async function downloadStream(name: string, stream: ReadableStream) {
-	if (!electron) {
+	if (!electron && navigator.serviceWorker) {
 		let url = new URL(`download_${Math.random() * 10000 | 0}_${name}`, document.location.href).href;
 		let sw = await navigator.serviceWorker.ready;
 		if (!sw.active) { throw new Error("no service worker"); }
@@ -364,7 +364,7 @@ export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, sta
 		if (useServiceWorker) {
 			//this service worker holds a reference to the cache fs handle which will keep the handles valid 
 			//across tab reloads
-			navigator.serviceWorker.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
+			navigator.serviceWorker?.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
 		}
 	}
 
@@ -406,7 +406,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 				// await fs.setSaveDirHandle(source.handle);
 				// cache = await selectFsCache(fs);
 				await wasmcache.giveFsDirectory(source.handle);
-				navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: source.handle }));
+				navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: source.handle }));
 				cache = wasmcache;
 			}
 		} else {

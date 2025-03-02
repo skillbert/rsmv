@@ -109,7 +109,7 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIOpenedFile
 	closeCache() {
 		datastore.del("openedcache");
 		localStorage.rsmv_openedcache = "";
-		navigator.serviceWorker.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
+		navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
 		this.props.ctx.source?.close();
 		this.props.ctx.setCacheSource(null);
 		this.props.ctx.setSceneCache(null);
