@@ -36,59 +36,64 @@ type Openrs2XteaKey = {
 	key: [number, number, number, number]
 }
 
+var validcachelist: Promise<Openrs2CacheMeta[]> | null = null;
 var cachelist: Promise<Openrs2CacheMeta[]> | null = null;
-export function validOpenrs2Caches() {
-	if (!cachelist) {
-		cachelist = (async () => {
-			const openrs2Blacklist: number[] = [
-				//some of these might actually be fine
-				423,//osrs cache wrongly labeled as rs3?
-				623,//seems to have different builds in it
-				693,//wrong timestamp?
-				621, 619, 618, 620, 617,//wrong timestamp/osrs?
-				840,//multiple builds
-				734, 736, 733, 732, 731,//don't have items index
-				20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
 
-				2,//missing basically everything
-				1255,//missing files and invalid compression?
-
-				905,//missing textures
-				1256,//missing materials
-				1003,//missing materials
-				638,//missing materials
-
-				542,//missing models
-
-				463,//wrong build number?
-
-				//large gaps in files according to openrs2ids command
-				621, 623, 620, 617, 618, 619,
-				734, 733, 20, 10, 9, 8, 7, 2,
-				666, 729, 730, 728,
-
-				1455,//weird clientscript
-
-				312, 286, 1420, 1421, 1530,//missing clientscripts
-
-
-				//TODO fix these or figure out whats wrong with them
-				1480,
-
-				644, 257,//incomplete textures
-				1456, 1665,//missing materials
-				1479,//missing items could probably be worked around
-			];
-			let allcaches: Openrs2CacheMeta[] = await fetch(`${endpoint}/caches.json`).then(q => q.json());
-			let checkedcaches = allcaches.filter(q =>
-				q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
-				&& q.game == "runescape" && q.timestamp && q.builds.length != 0
-			).sort((a, b) => b.builds[0].major - a.builds[0].major || (b.builds[0].minor ?? 0) - (a.builds[0].minor ?? 0) || +new Date(b.timestamp!) - +new Date(a.timestamp!));
-
-			return checkedcaches;
-		})();
-	}
+export function loadOpenrsCachelist() {
+	cachelist ??= fetch(`${endpoint}/caches.json`).then(q => q.json());
 	return cachelist;
+}
+
+export function validOpenrs2Caches() {
+	validcachelist ??= (async () => {
+		const openrs2Blacklist: number[] = [
+			//some of these might actually be fine
+			423,//osrs cache wrongly labeled as rs3?
+			623,//seems to have different builds in it
+			693,//wrong timestamp?
+			621, 619, 618, 620, 617,//wrong timestamp/osrs?
+			840,//multiple builds
+			734, 736, 733, 732, 731,//don't have items index
+			20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
+
+			2,//missing basically everything
+			1255,//missing files and invalid compression?
+
+			905,//missing textures
+			1256,//missing materials
+			1003,//missing materials
+			638,//missing materials
+
+			542,//missing models
+
+			463,//wrong build number?
+
+			//large gaps in files according to openrs2ids command
+			621, 623, 620, 617, 618, 619,
+			734, 733, 20, 10, 9, 8, 7, 2,
+			666, 729, 730, 728,
+
+			1455,//weird clientscript
+
+			312, 286, 1420, 1421, 1530,//missing clientscripts
+
+
+			//TODO fix these or figure out whats wrong with them
+			1480,
+
+			644, 257,//incomplete textures
+			1456, 1665,//missing materials
+			1479,//missing items could probably be worked around
+		];
+		let allcaches = await loadOpenrsCachelist();
+		let checkedcaches = allcaches.filter(q =>
+			q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
+			&& q.game == "runescape" && q.timestamp && q.builds.length != 0
+		).sort((a, b) => b.builds[0].major - a.builds[0].major || (b.builds[0].minor ?? 0) - (a.builds[0].minor ?? 0) || +new Date(b.timestamp!) - +new Date(a.timestamp!));
+
+		return checkedcaches;
+	})();
+	return validcachelist;
 }
 
 export function openrs2GetEffectiveBuildnr(cachemeta: Openrs2CacheMeta) {
@@ -104,7 +109,9 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 	fscache: FileSourceFsCache | null;
 
 	static async fromId(cacheid: number) {
-		let meta = await Openrs2CacheSource.downloadCacheMeta(cacheid);
+		let caches = await loadOpenrsCachelist();
+		let meta = caches.find(q => q.id == cacheid);
+		if (!meta) { throw new Error(`cache ${cacheid} not found on openrs`); }
 		return new Openrs2CacheSource(meta);
 	}
 	constructor(meta: Openrs2CacheMeta) {
@@ -154,75 +161,27 @@ export class Openrs2CacheSource extends cache.DirectCacheFileSource {
 		return relevantcaches[count];
 	}
 
-	static async downloadCacheMeta(cacheid: number) {
-		//yep, i used regex on html, sue me
-		let rootindexhtml = await fetch(`${endpoint}/caches/runescape/${cacheid}`).then(q => q.text());
-
-		let sourcetextmatch = rootindexhtml.match(/<h2>Sources[\s\S]*?<table([\s\S]*?)<\/table>/i);
-		if (!sourcetextmatch) { throw new Error("failed to parse source table"); }
-		let metatextmatch = rootindexhtml.match(/<h1>Cache[\s\S]*?<table([\s\S]*?)<\/table>/i);
-		if (!metatextmatch) { throw new Error("failed to parse meta table"); }
-
-		let sourcerows = [...sourcetextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].map(rowmatch => [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)]).slice(1);
-		let metarows = [...metatextmatch[1].matchAll(/<tr>[\s\S]+?<\/tr>/gi)].map(rowmatch => [...rowmatch[0].matchAll(/<td.*?>([\s\S]*?)<\/td>/gi)]);
-
-		let getmetarow = (rownr: number) => {
-			let match = metarows[rownr][0][1].match(/([\d,\s]+)\/([\d,\s]+)/);
-			if (!match) { throw new Error("failed to parse cache meta html"); }
-			return {
-				min: +match[1].replace(/[,\s]/g, ""),
-				max: +match[2].replace(/[,\s]/g, "")
-			}
-		}
-
-		let cachesize = parseFloat(metarows[4][0][1]);
-		if (metarows[4][0][1].endsWith("MiB")) { cachesize *= 1024 * 1024; }
-		else if (metarows[4][0][1].endsWith("GiB")) { cachesize *= 1024 * 1024 * 1024; }
-		else { throw new Error("failed to parse cache size"); }
-
-		//find first row with non-emtpy date
-		sourcerows.sort((a, b) => +(b[4][1].length != 0) - +(a[4][1].length != 0));
-
-		let meta: Openrs2CacheMeta = {
-			id: cacheid,
-			scope: "runescape",
-			game: sourcerows[0][0][1].trim(),
-			environment: sourcerows[0][1][1].trim(),
-			language: sourcerows[0][2][1].trim(),
-			builds: sourcerows.map(row => {
-				let parts = row[3][1].split(".");
-				return {
-					major: +parts[0],
-					minor: (parts[1] == undefined ? null : +parts[1])
-				}
-			}),
-			timestamp: sourcerows[0][4][1],
-			sources: sourcerows.map(row => row[5][1].trim()),
-			valid_indexes: getmetarow(1).min,
-			valid_groups: getmetarow(2).min,
-			valid_keys: getmetarow(3).min,
-			indexes: getmetarow(1).min,
-			groups: getmetarow(2).max,
-			keys: getmetarow(3).max,
-			disk_store_valid: true,
-			size: cachesize,
-			blocks: Math.round(cachesize / 512)//very bad estimate, seems to have different meaning
-		};
-
-		return meta;
-	}
-
 	async downloadFile(major: number, minor: number) {
-		let url = `${endpoint}/caches/runescape/${this.meta.id}/archives/${major}/groups/${minor}.dat`;
+		// we don't have metadata for the root index file 255.255, and legacy caches don't use version/crc
+		let url: string;
+		if ((major == cacheMajors.index && minor == cacheMajors.index) || this.getBuildNr() <= lastLegacyBuildnr) {
+			// slower endpoint that doesn't require crc/version
+			url = `${endpoint}/caches/runescape/${this.meta.id}/archives/${major}/groups/${minor}.dat`;
+		} else {
+			// fast endpoint that uses crc and version
+			let index = await this.getIndexEntryById(major, minor);
+			url = `${endpoint}/caches/runescape/archives/${major}/groups/${minor}/versions/${index.version}/checksums/${index.crc | 0}.dat`;
+		}
 		const req = await fetch(url);
 		if (!req.ok) { throw new Error(`failed to download cache file ${major}.${minor} from openrs2 ${this.meta.id}, http code: ${req.status}`); }
 		const buf = await req.arrayBuffer();
+		let res = Buffer.from(buf);
 		//at least make sure we are aware if we're ddossing someone....
 		if (Math.floor(downloadedBytes / 10_000_000) != Math.floor((downloadedBytes + buf.byteLength) / 10_000_000)) {
-			console.info(`loaded ${(downloadedBytes + buf.byteLength) / 1000_000 | 0} mb from openrs2`);
+			console.info(`loaded ${(downloadedBytes + res.byteLength) / 1000_000 | 0} mb from openrs2`);
 		}
-		downloadedBytes += buf.byteLength;
-		return Buffer.from(buf);
+		downloadedBytes += res.byteLength;
+		return res;
 	}
 
 	async getFile(major: number, minor: number, crc?: number) {
