@@ -285,7 +285,7 @@ export abstract class CacheFileSource {
 		throw new Error("not implemented");
 	}
 
-	async getArchiveById(major: number, minor: number) {
+	async getIndexEntryById(major: number, minor: number) {
 		let index: CacheIndex;
 		if (this.getBuildNr() <= lastLegacyBuildnr) {
 			index = { major, minor, crc: 0, name: null, subindexcount: 1, subindices: [0], subnames: null, version: 0 };
@@ -294,6 +294,11 @@ export abstract class CacheFileSource {
 			index = indexfile[minor];
 		}
 		if (!index) { throw new Error(`minor id ${minor} does not exist in major ${major}.`); }
+		return index;
+	}
+
+	async getArchiveById(major: number, minor: number) {
+		let index = await this.getIndexEntryById(major, minor);
 		return this.getFileArchive(index);
 	}
 
