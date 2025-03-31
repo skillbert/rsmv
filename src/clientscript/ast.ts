@@ -1339,20 +1339,14 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     return { sections, rootfunc, subfuncs };
 }
 
-export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1, full = true) {
+export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1) {
     let { sections, rootfunc } = generateAst(calli, script, script.opcodedata, fileid);
     let typectx = new ClientScriptSubtypeSolver();
     typectx.parseSections(sections);
     typectx.addKnownFromCalli(calli);
     typectx.solve();
-    if (full) {
-        sections.forEach(translateAst);
-        fixControlFlow(rootfunc.children[0], script);
-    } else {
-        //TODO fix or remove
-        // program.pushList(sections);
-    }
-
+    sections.forEach(translateAst);
+    fixControlFlow(rootfunc.children[0], script);
     return { rootfunc, sections, typectx };
 }
 globalThis.parseClientScriptIm = parseClientScriptIm;

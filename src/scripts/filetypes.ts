@@ -574,10 +574,12 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 		...noArchiveIndex(cacheMajors.sprites),
 		...throwOnNonSimple,
 		async read(b, id) {
-			//TODO support subimgs
 			let images = parseSprite(b);
 			let str = "";
 			for (let [sub, img] of images.entries()) {
+				const data = img.img.data;
+				// for some reason 0 blue isn't possible in-game
+				for (let i = 0; i < data.length; i += 4) { if (data[i + 2] == 0) { data[i + 2] = 1; } }
 				let hash = crc32(img.img.data);
 				str += (str == "" ? "" : ",") + `{"id":${id[0]},"sub":${sub},"hash":${hash}}`;
 			}

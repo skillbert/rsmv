@@ -24,21 +24,14 @@ export async function compileClientScript(source: CacheFileSource, code: string)
 export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number, relativeComps = false, notypes = false, int32casts = false) {
     let calli = await prepareClientScript(source);
     let script = parse.clientscript.read(buf, source);
-    let full = true;//TODO remove
-    let { rootfunc, sections, typectx } = parseClientScriptIm(calli, script, fileid, full);
+    let { rootfunc, sections, typectx } = parseClientScriptIm(calli, script, fileid);
     // globalThis[`cs${fileid}`] = rootfunc;//TODO remove
 
     let writer = new TsWriterContext(calli, typectx);
     if (relativeComps) { writer.setCompOffsets(rootfunc); }
     writer.typescript = !notypes;
     writer.int32casts = int32casts;
-
-    let res = "";
-    if (full) {
-        res += writer.getCode(rootfunc);
-    } else {
-        sections.forEach(q => res += writer.getCode(q));
-    }
+    let res = writer.getCode(rootfunc);
     return res;
 }
 

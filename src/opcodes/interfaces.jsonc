@@ -89,6 +89,9 @@
         ["str","string"],
         ["data2",["buffer",10,"hex"]]
     ]]],
+    ["unk13data",["opt","type=13",["struct",
+        ["data",["buffer",125,"hex"]]
+    ]]],
     ["unk15data",["opt","type=15",["struct",
         ["data",["buffer",10,"hex"]]
     ]]],

@@ -16,6 +16,7 @@ import { getSequenceGroups } from "./scripts/groupskeletons";
 import { getGameInterfaces } from "./scripts/gameinterfaces";
 import { CacheFileSource } from "./cache";
 import fs from "fs/promises";
+import { extractClientModuleCode, IsolatedCS2Module } from "./clientscript/extractmodule";
 
 
 export type CliApiContext = {
@@ -291,11 +292,25 @@ export function cliApi(ctx: CliApiContext) {
 			let source = await args.source();
 			await output.run(getGameInterfaces, args.save, source);
 		}
-	})
+	});
+
+	const clientscriptmodule = command({
+		name: "clientscriptmodule",
+		args: {
+			...filesource,
+			...saveArg("module"),
+			entry: cmdts.multioption({ short: "i", long: "entry", type: cmdts.array(cmdts.number) })
+		},
+		async handler(args) {
+			let output = ctx.getConsole();
+			let source = await args.source();
+			await output.run(extractClientModuleCode, args.save, source, args.entry);
+		}
+	});
 
 	let subcommands = cmdts.subcommands({
 		name: "",
-		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups, gameinterfaces }
+		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups, gameinterfaces, clientscriptmodule }
 	});
 
 	return {

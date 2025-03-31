@@ -3,7 +3,7 @@
 	"0x65": { "name":              "type", "read": ["struct",
 		["vartype","varushort"],
 		["$primitive","ubyte"],
-		["defaultint",["opt",["$primitive",2],"uint"]],
+		["defaultint",["opt",["$primitive",2],"int"]],
 		["defaultstring",["opt",["$primitive",5],"string"]]
 	] }
 }
