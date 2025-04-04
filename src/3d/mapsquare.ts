@@ -2388,45 +2388,57 @@ function mapsquarePathMesh(grid: TileGrid, chunk: ChunkData, level: number): Flo
 		return vertexindex++;
 	}
 
-	let polyprops: TileVertex[] = [{
+	let polypropswalkable: TileVertex[] = [{
 		material: -1,
 		materialTiling: 128,
 		materialBleedpriority: 0,
 		color: [0, 0, 0]
 	}];
+	let polypropsblocked: TileVertex[] = [{
+		material: -1,
+		materialTiling: 128,
+		materialBleedpriority: 0,
+		color: [255, 0, 255]
+	}];
 
-	for (let z = 0; z < chunk.tilerect.zsize; z++) {
-		for (let x = 0; x < chunk.tilerect.xsize; x++) {
-			let tile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, level);
-			let effectivetile = tile;
-			// find the highest tiledata that renders on our level
-			for (let tilelevel = level + 1; tilelevel < chunk.levelcount; tilelevel++) {
-				let leveltile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, tilelevel);
-				if (leveltile && leveltile.effectiveLevel == level) { effectivetile = leveltile; }
+	// run 2 seperate passes to make nonblocked lines show on top
+	for (let blockedpass of [true, false]) {
+		for (let z = 0; z < chunk.tilerect.zsize; z++) {
+			for (let x = 0; x < chunk.tilerect.xsize; x++) {
+				let tile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, level);
+				let effectivetile = tile;
+				// find the highest tiledata that renders on our level
+				for (let tilelevel = level + 1; tilelevel < chunk.levelcount; tilelevel++) {
+					let leveltile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, tilelevel);
+					if (leveltile && leveltile.effectiveLevel == level) { effectivetile = leveltile; }
+				}
+				if (!tile || !effectivetile) { continue; }
+				// let isblocked = !!(effectivetile.settings & 1);//map itself is blocked, ignore locs
+				let isblocked = !!tile.effectiveCollision?.walk[0];
+				let polyprops = (isblocked ? polypropsblocked : polypropswalkable);
+				if (isblocked != blockedpass) { continue; }
+				// if (isblocked) { continue; }
+
+				indexbuffer[indexpointer++] = writeVertex(tile, 0, 0, polyprops, 0);
+				indexbuffer[indexpointer++] = writeVertex(tile, 0, 1, polyprops, 0);
+				indexbuffer[indexpointer++] = writeVertex(tile, 1, 1, polyprops, 0);
+				indexbuffer[indexpointer++] = writeVertex(tile, 0, 0, polyprops, 0);
+				indexbuffer[indexpointer++] = writeVertex(tile, 1, 1, polyprops, 0);
+				indexbuffer[indexpointer++] = writeVertex(tile, 1, 0, polyprops, 0);
+
+				// can't use indexed mesh since the renderer expects non-indexed here
+				// let v00 = writeVertex(tile, 0, 0, polyprops, 0);
+				// let v01 = writeVertex(tile, 0, 1, polyprops, 0);
+				// let v10 = writeVertex(tile, 1, 0, polyprops, 0);
+				// let v11 = writeVertex(tile, 1, 1, polyprops, 0);
+
+				// indexbuffer[indexpointer++] = v00;
+				// indexbuffer[indexpointer++] = v01;
+				// indexbuffer[indexpointer++] = v11;
+				// indexbuffer[indexpointer++] = v00;
+				// indexbuffer[indexpointer++] = v11;
+				// indexbuffer[indexpointer++] = v10;
 			}
-			if (!tile || !effectivetile) { continue; }
-			// tile is blocked on map level (ignoring loc blocking)
-			if (effectivetile.settings & 1) { continue; }
-
-			indexbuffer[indexpointer++] = writeVertex(tile, 0, 0, polyprops, 0);
-			indexbuffer[indexpointer++] = writeVertex(tile, 0, 1, polyprops, 0);
-			indexbuffer[indexpointer++] = writeVertex(tile, 1, 1, polyprops, 0);
-			indexbuffer[indexpointer++] = writeVertex(tile, 0, 0, polyprops, 0);
-			indexbuffer[indexpointer++] = writeVertex(tile, 1, 1, polyprops, 0);
-			indexbuffer[indexpointer++] = writeVertex(tile, 1, 0, polyprops, 0);
-
-			// can't use indexed mesh since the renderer expects non-indexed here
-			// let v00 = writeVertex(tile, 0, 0, polyprops, 0);
-			// let v01 = writeVertex(tile, 0, 1, polyprops, 0);
-			// let v10 = writeVertex(tile, 1, 0, polyprops, 0);
-			// let v11 = writeVertex(tile, 1, 1, polyprops, 0);
-
-			// indexbuffer[indexpointer++] = v00;
-			// indexbuffer[indexpointer++] = v01;
-			// indexbuffer[indexpointer++] = v11;
-			// indexbuffer[indexpointer++] = v00;
-			// indexbuffer[indexpointer++] = v11;
-			// indexbuffer[indexpointer++] = v10;
 		}
 	}
 
