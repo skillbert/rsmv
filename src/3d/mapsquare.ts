@@ -7,7 +7,7 @@ import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { ModelMeshData, ModelData } from "./rt7model";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
-import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, applyMaterial, ParsedMaterial } from "./modeltothree";
+import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, applyMaterial, ParsedMaterial, augmentZOffsetMaterial } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./jmat";
 import { objects } from "../../generated/objects";
@@ -697,6 +697,12 @@ export class TileGrid implements TileGridSource {
 					currenttile.playery01 = tile_e?.y ?? currenttile.y01;
 					currenttile.playery10 = tile_n?.y ?? currenttile.y10;
 					currenttile.playery11 = tile_ne?.y ?? currenttile.y11;
+					if (currenttile.waterProps) {
+						currenttile.playery00 = Math.max(currenttile.playery00, currenttile.waterProps.y00);
+						currenttile.playery01 = Math.max(currenttile.playery01, currenttile.waterProps.y01);
+						currenttile.playery10 = Math.max(currenttile.playery10, currenttile.waterProps.y10);
+						currenttile.playery11 = Math.max(currenttile.playery11, currenttile.waterProps.y11);
+					}
 
 					currenttile.next01 = tile_e;
 					currenttile.next10 = tile_n;
@@ -1141,9 +1147,11 @@ export async function mapsquareFloors(scene: ThreejsSceneCache, grid: TileGrid, 
 		floors.push(mapsquareMesh(grid, chunk, level, atlas, true, "default", true));
 		if (opts?.map2d) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "worldmap"));
+			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "worldmap", true));
 		}
 		if (opts?.invisibleLayers) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "wireframe"));
+			floors.push(mapsquarePathMesh(grid, chunk, level));
 		}
 		if (opts?.minimap) {
 			floors.push(mapsquareMesh(grid, chunk, level, atlas, false, "minimap"));
@@ -1983,6 +1991,7 @@ function mapsquareCollisionToThree(grid: TileGrid, chunk: ChunkData, level: numb
 	geo.index = new THREE.BufferAttribute(indices, 1, false);
 	let mat = new THREE.MeshPhongMaterial({ shininess: 0 });
 	mat.flatShading = true;
+	augmentZOffsetMaterial(mat, 1);
 	// mat.wireframe = true;
 	mat.vertexColors = true;
 	let model = new THREE.Mesh(geo, mat);
@@ -2301,6 +2310,177 @@ export function meshgroupsToThree(grid: TileGrid, meshgroup: PlacedModel, rootx:
 }
 
 
+function mapsquarePathMesh(grid: TileGrid, chunk: ChunkData, level: number): FloorMeshData {
+	const maxtiles = chunk.tilerect.xsize * chunk.tilerect.zsize * grid.levels;
+	const maxVerticesPerTile = 6;
+	//TODO compact all this of refactor to threejs buffers
+	const posoffset = 0;// 0/4
+	const normaloffset = 3;// 12/4
+	const coloroffset = 24;// 24/1
+	const texusescoloroffset = 28;// 28/1
+	const texweightoffset = 32;// 32/1
+	const texuvoffset = 18;// 36/2
+	const vertexstride = 52;
+	//write to oversized static buffer, then copy out what we actually used
+	let [vertexbuffer, slicebuffer] = borrowScratchbuffer(maxtiles * vertexstride * maxVerticesPerTile);
+	let [indexbufferdata, sliceindexbuffer] = borrowScratchbuffer(maxtiles * maxVerticesPerTile * 4, "index");
+	//TODO get rid of indexbuffer since we're not actually using it and it doesn't fit in uint16 anyway
+	let indexbuffer = new Uint32Array(indexbufferdata);
+	let posbuffer = new Float32Array(vertexbuffer);//size 12 bytes
+	let normalbuffer = new Float32Array(vertexbuffer);//size 12 bytes
+	let colorbuffer = new Uint8Array(vertexbuffer);//4 bytes
+	let texusescolorbuffer = new Uint8Array(vertexbuffer);//4 bytes
+	let texweightbuffer = new Uint8Array(vertexbuffer);//4 bytes
+	let texuvbuffer = new Uint16Array(vertexbuffer);//16 bytes [u,v][4]
+	const posstride = vertexstride / 4 | 0;//position indices to skip per vertex (cast to int32)
+	const normalstride = vertexstride / 4 | 0;//normal indices to skip per vertex (cast to int32)
+	const colorstride = vertexstride | 0;//color indices to skip per vertex (cast to int32)
+	const texusescolorstride = vertexstride | 0;//wether each texture uses vertex colors or not
+	const texweightstride = vertexstride | 0;
+	const texuvstride = vertexstride / 2 | 0;
+
+	let vertexindex = 0;
+	let indexpointer = 0;
+
+	const modelx = chunk.tilerect.x * tiledimensions;
+	const modelz = chunk.tilerect.z * tiledimensions;
+	let tileinfos: MeshTileInfo[] = [];
+	let tileindices: number[] = [];
+
+	let minx = Infinity, miny = Infinity, minz = Infinity;
+	let maxx = -Infinity, maxy = -Infinity, maxz = -Infinity;
+	const writeVertex = (tile: TileProps, subx: number, subz: number, polyprops: TileVertex[], currentmat: number) => {
+		const pospointer = vertexindex * posstride + posoffset;
+		const normalpointer = vertexindex * normalstride + normaloffset;
+		const colpointer = vertexindex * colorstride + coloroffset;
+		const texweightpointer = vertexindex * texweightstride + texweightoffset;
+		const texusescolorpointer = vertexindex * texusescolorstride + texusescoloroffset;
+		const texuvpointer = vertexindex * texuvstride + texuvoffset;
+
+		const w00 = (1 - subx) * (1 - subz);
+		const w01 = subx * (1 - subz);
+		const w10 = (1 - subx) * subz
+		const w11 = subx * subz;
+
+		const x = tile.x + subx * tiledimensions - modelx;
+		const z = tile.z + subz * tiledimensions - modelz;
+
+		// const y = (tile.waterProps
+		// 	? tile.waterProps!.y00 * w00 + tile.waterProps!.y01 * w01 + tile.waterProps!.y10 * w10 + tile.waterProps!.y11 * w11
+		// 	: tile.y * w00 + tile.y01 * w01 + tile.y10 * w10 + tile.y11 * w11
+		// );
+		const y = tile.playery00 * w00 + tile.playery01 * w01 + tile.playery10 * w10 + tile.playery11 * w11;
+		minx = Math.min(minx, x); miny = Math.min(miny, y); minz = Math.min(minz, z);
+		maxx = Math.max(maxx, x); maxy = Math.max(maxy, y); maxz = Math.max(maxz, z);
+		posbuffer[pospointer + 0] = x;
+		posbuffer[pospointer + 1] = y;
+		posbuffer[pospointer + 2] = z;
+
+		let r = polyprops[currentmat].color[0];
+		let g = polyprops[currentmat].color[1];
+		let b = polyprops[currentmat].color[2];
+
+		colorbuffer[colpointer + 0] = r;
+		colorbuffer[colpointer + 1] = g;
+		colorbuffer[colpointer + 2] = b;
+		colorbuffer[colpointer + 3] = 255;//4 alpha channel because of gltf
+
+		return vertexindex++;
+	}
+
+	let polyprops: TileVertex[] = [{
+		material: -1,
+		materialTiling: 128,
+		materialBleedpriority: 0,
+		color: [0, 0, 0]
+	}];
+
+	for (let z = 0; z < chunk.tilerect.zsize; z++) {
+		for (let x = 0; x < chunk.tilerect.xsize; x++) {
+			let tile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, level);
+			let effectivetile = tile;
+			// find the highest tiledata that renders on our level
+			for (let tilelevel = level + 1; tilelevel < chunk.levelcount; tilelevel++) {
+				let leveltile = grid.getTile(chunk.tilerect.x + x, chunk.tilerect.z + z, tilelevel);
+				if (leveltile && leveltile.effectiveLevel == level) { effectivetile = leveltile; }
+			}
+			if (!tile || !effectivetile) { continue; }
+			// tile is blocked on map level (ignoring loc blocking)
+			if (effectivetile.settings & 1) { continue; }
+
+			indexbuffer[indexpointer++] = writeVertex(tile, 0, 0, polyprops, 0);
+			indexbuffer[indexpointer++] = writeVertex(tile, 0, 1, polyprops, 0);
+			indexbuffer[indexpointer++] = writeVertex(tile, 1, 1, polyprops, 0);
+			indexbuffer[indexpointer++] = writeVertex(tile, 0, 0, polyprops, 0);
+			indexbuffer[indexpointer++] = writeVertex(tile, 1, 1, polyprops, 0);
+			indexbuffer[indexpointer++] = writeVertex(tile, 1, 0, polyprops, 0);
+
+			// can't use indexed mesh since the renderer expects non-indexed here
+			// let v00 = writeVertex(tile, 0, 0, polyprops, 0);
+			// let v01 = writeVertex(tile, 0, 1, polyprops, 0);
+			// let v10 = writeVertex(tile, 1, 0, polyprops, 0);
+			// let v11 = writeVertex(tile, 1, 1, polyprops, 0);
+
+			// indexbuffer[indexpointer++] = v00;
+			// indexbuffer[indexpointer++] = v01;
+			// indexbuffer[indexpointer++] = v11;
+			// indexbuffer[indexpointer++] = v00;
+			// indexbuffer[indexpointer++] = v11;
+			// indexbuffer[indexpointer++] = v10;
+		}
+	}
+
+	let extra: ModelExtras = {
+		modelgroup: "walkmesh" + level,
+		modeltype: "floorhidden",
+		mapsquarex: chunk.mapsquarex,
+		mapsquarez: chunk.mapsquarez,
+		level: level,
+		isclickable: true,
+		searchPeers: false,
+		subobjects: tileinfos,
+		subranges: tileindices
+	};
+
+	// console.log(`using ${vertexindex * vertexstride}/${vertexbuffer.byteLength} bytes of floor buffer`);
+
+	//copy the part of the buffer that we actually used
+	let vertexslice = slicebuffer(vertexindex * vertexstride);
+	let indexslice = sliceindexbuffer(indexpointer * 4);
+
+	let vertexfloat = new Float32Array(vertexslice);
+	let vertexubyte = new Uint8Array(vertexslice);
+	let vertexushort = new Uint16Array(vertexslice);
+
+	return {
+		chunk,
+		level,
+		tileinfos,
+		mode: "walkmesh",
+		iswater: false,
+
+		vertexstride: vertexstride,
+		//TODO i'm not actually using these, can get rid of it again
+		indices: new Uint32Array(indexslice),
+		nvertices: vertexindex,
+		atlas: null,
+
+		pos: { src: vertexfloat as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
+		normal: { src: vertexfloat, offset: normaloffset, vecsize: 3, normalized: false },
+		color: { src: vertexubyte, offset: coloroffset, vecsize: 4, normalized: true },
+		_RA_FLOORTEX_UV0: { src: vertexushort, offset: texuvoffset + 0, vecsize: 2, normalized: true },
+		_RA_FLOORTEX_UV1: { src: vertexushort, offset: texuvoffset + 2, vecsize: 2, normalized: true },
+		_RA_FLOORTEX_UV2: { src: vertexushort, offset: texuvoffset + 4, vecsize: 2, normalized: true },
+		_RA_FLOORTEX_WEIGHTS: { src: vertexubyte, offset: texweightoffset, vecsize: 3, normalized: true },
+		_RA_FLOORTEX_USESCOLOR: { src: vertexubyte, offset: texusescoloroffset, vecsize: 3, normalized: true },
+
+		posmax: [maxx, maxy, maxz],
+		posmin: [minx, miny, minz],
+
+		extra
+	}
+}
+
 //TODO just turn this monster into a class
 function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: SimpleTexturePacker, keeptileinfo = false, mode: "default" | "wireframe" | "minimap" | "worldmap" = "default", drawWater = false) {
 	const showhidden = mode == "wireframe";
@@ -2606,14 +2786,14 @@ function mapsquareMesh(grid: TileGrid, chunk: ChunkData, level: number, atlas: S
 		chunk,
 		level,
 		tileinfos,
-		mode,
+		mode: mode as typeof mode | "walkmesh",
 		iswater: drawWater,
 
 		vertexstride: vertexstride,
 		//TODO i'm not actually using these, can get rid of it again
 		indices: new Uint32Array(indexslice),
 		nvertices: vertexindex,
-		atlas,
+		atlas: (mode != "worldmap" ? atlas : null),
 
 		pos: { src: vertexfloat as ArrayBufferView, offset: posoffset, vecsize: 3, normalized: false },
 		normal: { src: vertexfloat, offset: normaloffset, vecsize: 3, normalized: false },
@@ -2654,11 +2834,14 @@ function floorToThree(scene: ThreejsSceneCache, floor: FloorMeshData) {
 	geo.setAttribute("color_2", makeAttribute(floor._RA_FLOORTEX_USESCOLOR));
 	let mat = (floor.mode != "worldmap" ? new THREE.MeshPhongMaterial({ shininess: 0 }) : new THREE.MeshBasicMaterial());
 	mat.vertexColors = true;
+	if (floor.mode == "walkmesh") {
+		augmentZOffsetMaterial(mat, 1);
+	}
 	if (floor.mode == "wireframe") {
 		mat.wireframe = true;
-	} else if (floor.mode != "worldmap") {
+	}
+	if (floor.atlas) {
 		let map = floor.atlas.convertToThreeTexture();
-
 		if (floor.mode == "minimap") {
 			if (floor.iswater) {
 				mat = minimapWaterMaterial(map) as any;

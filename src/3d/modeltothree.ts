@@ -96,6 +96,18 @@ export function augmentThreeJsMinimapLocMaterial(mat: THREE.Material) {
 	}
 }
 
+export function augmentZOffsetMaterial(mat: THREE.Material, zoffset: number) {
+	mat.customProgramCacheKey = () => "zoffset" + zoffset;
+	mat.onBeforeCompile = (shader) => {
+		shader.vertexShader = shader.vertexShader.replace(/#include <(\w+)>/g, (m, n) => `// == ${n} ==\n${m}`);
+		shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `
+			#include <project_vertex>
+			mvPosition.xyz -= normalize(mvPosition.xyz) * ${zoffset.toExponential()};
+			gl_Position = projectionMatrix * mvPosition;
+		`);
+	};
+}
+
 export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: boolean) {
 	mat.customProgramCacheKey = () => (isminimap ? "minimaptex" : "floortex");
 	mat.onBeforeCompile = (shader, renderer) => {
