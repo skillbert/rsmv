@@ -532,6 +532,7 @@ function setChunkRenderToggles(chunks: MaprenderSquare[], floornr: number, ismin
 		toggles["objects" + i] = !hidelocs && !isminimap && i <= floornr;
 		toggles["mini_floor" + i] = isminimap && i <= floornr;
 		toggles["mini_objects" + i] = !hidelocs && isminimap && i <= floornr;
+		toggles["walkmesh" + i] = false;
 		toggles["map" + i] = false;
 		toggles["mapscenes" + i] = false;
 		toggles["walls" + i] = false;
