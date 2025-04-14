@@ -4,13 +4,33 @@ import { ScriptFS, naiveDirname } from "../scriptrunner";
 import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
 import * as commentjson from "comment-json";
 
-export type VersionFilter = { from?: number, to?: number };
+export type VersionFilter = {
+	from?: number,
+	to?: number
+};
 
-export type UniqueMapFile = { name: string, hash: number };
+export type UniqueMapFile = {
+	name: string,
+	hash: number
+};
 
-export type KnownMapFile = { hash: number, fshash: number, file: string, time: number, buildnr: number, firstbuildnr: number };
+export type KnownMapFile = {
+	hash: number,//hash of dependencies of rendered map chunks
+	fshash: number,//hash of the dependencies of the original render. This can be different from hash if the original render had source files with different hashes, but with identical visuals. this needs to be tracked in order to dedupe mipmapping
+	file: string,
+	time: number,
+	buildnr: number,
+	firstbuildnr: number
+};
 
-export type SymlinkCommand = { file: string, buildnr: number, hash: number, symlink: string, symlinkbuildnr: number, symlinkfirstbuildnr: number };
+export type SymlinkCommand = {
+	file: string,
+	buildnr: number,
+	hash: number,
+	symlink: string,
+	symlinkbuildnr: number,
+	symlinkfirstbuildnr: number
+};
 
 export function parseMapConfig(configfile: string) {
 	let layerconfig = commentjson.parse(configfile) as any;
@@ -209,6 +229,10 @@ export const examplemapconfig = `
 	"area": "test",//"45.45-55.55", //"50.45-51.46",
 	//the size of the output images, usually 256 or 512
 	"tileimgsize": 512,
+	//set to true to keep the output y origin at the bottom left, equal to the game z origin
+	"noyflip": false,
+	//set to true to keep output chunks aligned with in-game chunks. Incurs performance penalty as more neighbouring chunks have to be loaded
+	"nochunkoffset": false,
 	//list of layers to render
 	"layers": [
 		{

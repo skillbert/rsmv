@@ -30,6 +30,7 @@ export class MipScheduler {
 		}));
 		let isright = (x % 2) != 0;
 		let isbot = (y % 2) != 0;
+		if (this.render.config.noyflip) { isbot = !isbot; }
 		let subindex = (isright ? 1 : 0) + (isbot ? 2 : 0);
 		incomp.files[subindex] = { name: srcfile, hash, fshash };
 	}

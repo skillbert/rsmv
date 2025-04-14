@@ -21,6 +21,10 @@ npm run nodegl -- dist/maprender -o openrs2:1720 -c extract_map/mapconfig.jsonc
     "area": "test",
     //the size of the output images, usually 256 or 512
     "tileimgsize": 512,
+    //set to true to keep the output y origin at the bottom left, equal to the game z origin
+    "noyflip": false,
+    //set to true to keep output chunks aligned with in-game chunks. Incurs performance penalty as more neighbouring chunks have to be loaded
+    "nochunkoffset": false,
     //list of layers to render
     "layers": [
         {

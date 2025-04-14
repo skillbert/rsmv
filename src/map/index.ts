@@ -49,9 +49,11 @@ export type RenderedMapMeta = {
 export type Mapconfig = {
 	layers: LayerConfig[],
 	tileimgsize: number,
-	mapsizex: number,//used to determine lowest scaling mip level
+	mapsizex: number,//used to determine lowest scaling mip level and flipped y origin
 	mapsizez: number,
-	area: string
+	area: string,
+	noyflip: boolean | undefined,
+	nochunkoffset: boolean | undefined
 }
 
 export type LayerConfig = {
@@ -581,24 +583,27 @@ class SimpleHasher {
 	}
 }
 
-function chunkrectToOffetWorldRect(engine: EngineCache, rect: MapRect) {
+function chunkrectToOffetWorldRect(engine: EngineCache, config: MapRender, rect: MapRect) {
 	const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
-	const offset = Math.round(chunksize / 4);
+	const offset = (config.config.nochunkoffset ? 0 : Math.round(chunksize / 4));
 	let worldrect: MapRect = {
 		x: rect.x * chunksize - offset,
 		z: rect.z * chunksize - offset,
 		xsize: chunksize * rect.xsize,
 		zsize: chunksize * rect.zsize
 	};
-	return {
-		worldrect,
-		loadedchunksrect: { x: rect.x - 1, z: rect.z - 1, xsize: rect.xsize + 1, zsize: rect.zsize + 1 }
-	}
+	let loadedchunksrect: MapRect = {
+		x: rect.x - 1,
+		z: rect.z - 1,
+		xsize: rect.xsize + (config.config.nochunkoffset ? 2 : 1),
+		zsize: rect.zsize + (config.config.nochunkoffset ? 2 : 1)
+	};
+	return { worldrect, loadedchunksrect };
 }
 
 export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
 	let baseoutputx = chunkx;
-	let baseoutputy = config.config.mapsizez - 1 - chunkz;
+	let baseoutputy = (config.config.noyflip ? chunkz : config.config.mapsizez - 1 - chunkz);
 	let filebasecoord = { x: baseoutputx, y: baseoutputy };
 
 	progress.update(chunkx, chunkz, "imaging");
@@ -764,7 +769,7 @@ const rendermodeInteractions: RenderMode<"interactions"> = function (engine, con
 
 const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf, hasher, baseoutput, maprect) {
 	let zooms = getLayerZooms(config.config, cnf);
-	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
+	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
 	let thiscnf = cnf;
 	let tasks: RenderTask[] = [];
 	for (let zoom = zooms.base; zoom <= zooms.max; zoom++) {
@@ -773,7 +778,7 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 		let tiles = worldrect.xsize / subslices;
 		for (let subx = 0; subx < subslices; subx++) {
 			for (let subz = 0; subz < subslices; subz++) {
-				let suby = subslices - 1 - subz;
+				let suby = (config.config.noyflip ? subz : subslices - 1 - subz);
 				let filename = config.makeFileName(thiscnf.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, cnf.format ?? "webp");
 
 				let parentCandidates: { name: string, level: number }[] = [
@@ -914,7 +919,7 @@ const rendermode3d: RenderMode<"3d" | "minimap"> = function (engine, config, cnf
 
 const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, baseoutput, maprect) {
 	let zooms = getLayerZooms(config.config, cnf);
-	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
+	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
 	let thiscnf = cnf;
 	let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutput.x, baseoutput.y, "svg");
 	let depcrc = deps.recthash(loadedchunksrect);
@@ -945,7 +950,7 @@ const rendermodeMap: RenderMode<"map"> = function (engine, config, cnf, deps, ba
 
 const rendermodeCollision: RenderMode<"collision"> = function (engine, config, cnf, deps, baseoutput, maprect) {
 	let zooms = getLayerZooms(config.config, cnf);
-	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, maprect);
+	let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
 	let thiscnf = cnf;
 	let filename = config.makeFileName(thiscnf.name, zooms.base, baseoutput.x, baseoutput.y, cnf.format ?? "webp");
 	let depcrc = deps.recthash(loadedchunksrect);
