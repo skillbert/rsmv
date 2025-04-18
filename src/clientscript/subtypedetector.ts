@@ -25,6 +25,7 @@ const looseOps = [
     knownDependency(subtypes.unknown_string),
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
+    412857857,
 ];
 
 export class ClientScriptSubtypeSolver {
@@ -245,6 +246,7 @@ export function detectSubtypes(calli: ClientscriptObfuscation, candidates: Map<n
         let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         ctx.parseSections(sections);
     }
+    ctx.knowntypes.set(412857857, subtypes.int);
     ctx.solve();
     assignKnownTypes(calli, ctx.knowntypes);
     calli.foundSubtypes = true;
