@@ -41,17 +41,14 @@ export async function pixelsToImageFile(imgdata: ImageData, format: "png" | "web
 
 
 let warnedstripalpha = false;
-declare global {
-	const ImageDecoder: any;
-	interface ImageDecoder { }
-}
 export async function fileToImageData(file: Uint8Array, mimetype: "image/png" | "image/jpg", stripAlpha: boolean) {
 	if (typeof ImageDecoder != "undefined") {
-		let decoder = new ImageDecoder({ data: file, type: mimetype, premultiplyAlpha: (stripAlpha ? "none" : "default"), colorSpaceConversion: "none" });
+		//typescript claims premultiplyAlpha option doesn't exist
+		let decoder = new ImageDecoder({ data: file, type: mimetype, premultiplyAlpha: (stripAlpha ? "none" : "default"), colorSpaceConversion: "none" } as any);
 		let frame = await decoder.decode();
 		let pixels = new Uint8Array(frame.image.allocationSize());
 		frame.image.copyTo(pixels);
-		let pixelcount = frame.image.visibleRect.width * frame.image.visibleRect.height;
+		let pixelcount = frame.image.visibleRect!.width * frame.image.visibleRect!.height;
 		if (frame.image.format == "BGRX" || frame.image.format == "RGBX") {
 			stripAlpha = true;
 		}
@@ -72,7 +69,7 @@ export async function fileToImageData(file: Uint8Array, mimetype: "image/png" | 
 		} else {
 			throw new Error("unexpected image format");
 		}
-		return makeImageData(pixels, frame.image.visibleRect.width, frame.image.visibleRect.height);
+		return makeImageData(pixels, frame.image.visibleRect!.width, frame.image.visibleRect!.height);
 	} else if (typeof HTMLCanvasElement != "undefined") {
 		if (stripAlpha && !warnedstripalpha) {
 			console.warn("can not strip alpha in browser context that does not support ImageDecoder");

@@ -995,7 +995,7 @@ const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, de
 		async run2d(chunks) {
 			//TODO what to do with classic 48x48 chunks?
 			let file = chunks[0].grid.getHeightCollisionFile(singlerect.x * 64, singlerect.z * 64, thiscnf.level, 64, 64);
-			let buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
+			let buf: Buffer = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);
 			}
