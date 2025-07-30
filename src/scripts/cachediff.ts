@@ -8,6 +8,7 @@ import { parseSprite } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
 import { FileRange } from "../utils";
 import { UiRenderContext, renderRsInterfaceHTML } from "./renderrsinterface";
+import { parseMusic } from "./musictrack";
 
 
 type FileAction = {
@@ -17,7 +18,7 @@ type FileAction = {
 	outputType: string,
 	getFileName: (major: number, minor: number, subfile: number) => string
 } & ({
-	outputType: "rstex" | "png" | "bin" | "html",//TODO better system for non-json files
+	outputType: "rstex" | "png" | "bin" | "html" | "ogg",//TODO better system for non-json files
 } | {
 	outputType: "json",
 	parser: FileParser<any>
@@ -43,13 +44,15 @@ function subfileFilename(major: number, minor: number, subfile: number) {
 let configmap: Record<number, FileAction> = {
 	[cacheConfigPages.mapoverlays]: { name: "overlays", comparesubfiles: true, parser: parse.mapsquareOverlays, outputType: "json", getFileName: subfileFilename },
 	[cacheConfigPages.mapunderlays]: { name: "underlays", comparesubfiles: true, parser: parse.mapsquareUnderlays, outputType: "json", getFileName: subfileFilename },
-	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parse.mapscenes, outputType: "json", getFileName: subfileFilename }
+	[cacheConfigPages.mapscenes]: { name: "mapsscenes", comparesubfiles: true, parser: parse.mapscenes, outputType: "json", getFileName: subfileFilename },
+	[cacheConfigPages.params]: { name: "params", comparesubfiles: true, parser: parse.params, outputType: "json", getFileName: subfileFilename }
 }
 
 let majormap: Record<number, FileAction | ((major: number, minor: number) => FileAction)> = {
 	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parse.object, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parse.item, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parse.npc, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.structs]: { name: "structs", comparesubfiles: true, parser: parse.structs, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.models]: { name: "model", comparesubfiles: false, parser: parse.models, outputType: "json", getFileName: standardName },
 	[cacheMajors.oldmodels]: { name: "oldmodel", comparesubfiles: false, parser: parse.oldmodels, outputType: "json", getFileName: standardName },
 	[cacheMajors.mapsquares]: { name: "mapsquare", comparesubfiles: false, parser: null, outputType: "bin", getFileName: worldmapFilename },
@@ -65,6 +68,8 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.sprites]: { name: "sprites", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.cutscenes]: { name: "cutscenes", comparesubfiles: false, parser: parse.cutscenes, outputType: "json", getFileName: standardName },
 	[cacheMajors.interfaces]: { name: "interfaces", comparesubfiles: false, parser: null, outputType: "html", getFileName: standardName },
+	[cacheMajors.sounds]: { name: "sounds", comparesubfiles: false, parser: null, outputType: "ogg", getFileName: standardName },
+	[cacheMajors.music]: { name: "music", comparesubfiles: false, parser: null, outputType: "ogg", getFileName: standardName },
 	//need to first run deob first before this works
 	// [cacheMajors.clientscript]: { name: "clientscript", comparesubfiles: false, parser: parse.clientscript, outputType: "json", getFileName: standardName },
 	[cacheMajors.config]: (major, minor) => configmap[minor]
@@ -278,6 +283,15 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 				if (after) {
 					let iface = await renderRsInterfaceHTML(new UiRenderContext(sourceb), change.minor);
 					await addfile("html", true, iface);
+				}
+			} else if (change.action.outputType == "ogg") { 
+				if (before) { 
+					let sound = await parseMusic(sourcea, change.major, change.minor, null, false);
+					await addfile("ogg", false, sound);
+				}
+				if (after) { 
+					let sound = await parseMusic(sourceb, change.major, change.minor, null, false);
+					await addfile("ogg", true, sound);
 				}
 			}
 		}
