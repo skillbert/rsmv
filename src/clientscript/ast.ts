@@ -124,6 +124,7 @@ export class CodeBlockNode extends AstNode {
     firstPointer: CodeBlockNode | null = null;
     lastPointer: CodeBlockNode | null = null;
     branchEndNode: CodeBlockNode | null = null;
+    deadcodeSuccessor: CodeBlockNode | null = null;
     maxEndIndex = -1;
 
     knownStackDiff = new StackInOut(new StackList(), new StackList());
@@ -157,6 +158,7 @@ export class CodeBlockNode extends AstNode {
         }
         this.possibleSuccessors = block.possibleSuccessors;
         this.branchEndNode = block.branchEndNode;
+        this.deadcodeSuccessor = block.deadcodeSuccessor;
     }
     findNext() {
         if (!this.branchEndNode) {
@@ -1339,8 +1341,26 @@ export function generateAst(calli: ClientscriptObfuscation, script: clientscript
     return { sections, rootfunc, subfuncs };
 }
 
+function reattachDeadcode(sections: CodeBlockNode[]) {
+    let reached = new Set<CodeBlockNode>([sections[0]]);
+    for (let item of reached) {
+        for (let suc of item.possibleSuccessors) {
+            if (!reached.has(suc)) {
+                reached.add(suc);
+            }
+        }
+    }
+    for (let i = 1; i < sections.length; i++) {
+        let sec = sections[i];
+        if (!reached.has(sec)) {
+            sections[i - 1].deadcodeSuccessor = sec;
+        }
+    }
+}
+
 export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1) {
     let { sections, rootfunc } = generateAst(calli, script, script.opcodedata, fileid);
+    // reattachDeadcode(sections);
     let typectx = new ClientScriptSubtypeSolver();
     typectx.parseSections(sections);
     typectx.addKnownFromCalli(calli);

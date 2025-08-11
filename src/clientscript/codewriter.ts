@@ -275,6 +275,9 @@ addWriter(CodeBlockNode, (node, ctx) => {
         if (node.parent instanceof SwitchStatementNode && node.branchEndNode != null) {
             code += `${ctx.codeIndent()}break;\n`;
         }
+        if (node.deadcodeSuccessor) { 
+            code += ctx.getCode(node.deadcodeSuccessor);
+        }
         ctx.popIndent();
         code += `${ctx.codeIndent()}}`;
     }
