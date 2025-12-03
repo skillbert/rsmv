@@ -1,0 +1,31 @@
+["struct",
+    ["type","ubyte"],
+    ["sprite",["opt","type!=2",["struct",
+        ["complexkerning","ubyte"],
+        ["sourceid",["match",["ref","type"],{"1":"int","other":-1}]],
+        ["chars",["chunkedarray",256,[
+            ["width","ubyte"]
+        ],[
+            ["height","ubyte"]
+        ],[
+            ["bearingy","ubyte"]
+        ]]],
+        ["sheetwidth","ushort"],
+        ["sheetheight","ushort"],
+        ["positions",["chunkedarray",256,[
+            ["x","ushort"]
+        ],[
+            ["y","ushort"]
+        ]]],
+        ["baseline",["match",["ref","complexkerning"],{"1":0,"other":"byte"}]],
+        ["uppercaseascent","ubyte"],
+        ["median","ubyte"],
+        ["maxascent","ubyte"],
+        ["maxdescent","ubyte"],
+        ["scale","ubyte"]
+    ]]],
+    ["vector",["opt","type==2",["struct",
+        ["sourceid","uint"],
+        ["size","ubyte"]
+    ]]]
+]

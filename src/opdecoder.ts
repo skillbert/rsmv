@@ -114,6 +114,7 @@ function allParsers() {
 		mapsquareEnvironment: FileParser.fromJson<import("../generated/mapsquare_envs").mapsquare_envs>(require("./opcodes/mapsquare_envs.jsonc")),
 		mapZones: FileParser.fromJson<import("../generated/mapzones").mapzones>(require("./opcodes/mapzones.json")),
 		enums: FileParser.fromJson<import("../generated/enums").enums>(require("./opcodes/enums.json")),
+		fontmetrics: FileParser.fromJson<import("../generated/fontmetrics").fontmetrics>(require("./opcodes/fontmetrics.jsonc")),
 		mapscenes: FileParser.fromJson<import("../generated/mapscenes").mapscenes>(require("./opcodes/mapscenes.json")),
 		sequences: FileParser.fromJson<import("../generated/sequences").sequences>(require("./opcodes/sequences.json")),
 		framemaps: FileParser.fromJson<import("../generated/framemaps").framemaps>(require("./opcodes/framemaps.jsonc")),

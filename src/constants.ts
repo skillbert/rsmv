@@ -7,6 +7,7 @@ export const cacheMajors = {
 	oldmodels: 7,
 	sprites: 8,
 	clientscript: 12,
+	fontmetricsOld: 13,
 	sounds: 14,
 	objects: 16,
 	enums: 17,
@@ -41,6 +42,7 @@ export const cacheMajors = {
 	skeletalAnims: 56,
 
 	achievements: 57,
+	fontmetrics: 58,
 	cutscenes: 66,
 
 	index: 255

@@ -1,4 +1,5 @@
 import { makeImageData } from "../imgutils";
+import { crc32 } from "../libs/crc32util";
 import { Stream } from "../utils";
 
 export type SubImageData = {
@@ -231,4 +232,14 @@ export function parseTgaSprite(file: Buffer) {
 		img: makeImageData(imgdata, width, height)
 	};
 	return r;
+}
+
+export function spriteHash(img: ImageData) {
+	// copy since we need to modify it
+	const data = img.data.slice();
+	// for some reason 0 blue isn't possible in-game
+	for (let i = 0; i < data.length; i += 4) {
+		if (data[i + 2] == 0) { data[i + 2] = 1; }
+	}
+	return crc32(img.data);
 }

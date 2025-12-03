@@ -7,11 +7,15 @@ import { cacheFileJsonModes } from "scripts/filetypes";
 import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 
 
-export function CanvasView(p: { canvas: HTMLCanvasElement, fillHeight?: boolean }) {
+export function CanvasView(p: { canvas: HTMLCanvasElement | null, fillHeight?: boolean }) {
 	let ref = React.useCallback((el: HTMLDivElement | null) => {
-		p.canvas.classList.add("mv-image-preview-canvas");
-		if (el) { el.appendChild(p.canvas); }
-		else { p.canvas.remove(); }
+		if (el && p.canvas) {
+			p.canvas.classList.add("mv-image-preview-canvas");
+			el.appendChild(p.canvas);
+		}
+		else {
+			p.canvas?.remove();
+		}
 	}, [p.canvas]);
 
 	return (
@@ -164,11 +168,18 @@ export function LabeledInput(p: { label: string, children: React.ReactNode }) {
 	);
 }
 
-export function CopyButton(p: ({ text: string } | { getText: () => string }) & { onCopy?: () => void }) {
+export function CopyButton(p: { text?: string, canvas?: HTMLCanvasElement, getText?: () => string, onCopy?: () => void }) {
 	let [didcopy, setdidcopy] = React.useState(false);
 
 	let copy = async () => {
-		await navigator.clipboard.writeText("text" in p ? p.text : p.getText());
+		if (p.text != undefined) {
+			await navigator.clipboard.writeText(p.text);
+		} else if (p.getText) {
+			await navigator.clipboard.writeText(p.getText());
+		} else if (p.canvas) {
+			let item = new ClipboardItem({ 'image/png': new Promise<Blob>(d => p.canvas!.toBlob(d as any)) })
+			await navigator.clipboard.write([item]);
+		}
 		setdidcopy(true);
 		setTimeout(() => setdidcopy(false), 2000);
 	}
@@ -193,7 +204,7 @@ export function PasteButton(p: { onPaste: (str: string) => void }) {
 	);
 }
 
-export class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>>{
+export class InputCommitted extends React.Component<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>> {
 	el: HTMLInputElement | null = null;
 	stale = false;
 

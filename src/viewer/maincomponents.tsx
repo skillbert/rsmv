@@ -22,6 +22,7 @@ import { CLIScriptFS, ScriptFS } from "../scriptrunner";
 import { drawTexture } from "../imgutils";
 import { RsUIViewer } from "./rsuiviewer";
 import { ClientScriptViewer } from "./cs2viewer";
+import { RsFontViewer } from "./fontviewer";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -680,6 +681,8 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
 		el = <FileDecodeErrorViewer file={fileText()} />;
 	} else if (ext == "ui.json") {
 		el = <RsUIViewer data={fileText()} />
+	} else if (ext == "font.json") { 
+		el = <RsFontViewer data={JSON.parse(fileText())} />
 	} else if (ext == "cs2.json") {
 		el = <ClientScriptViewer data={fileText()} />
 	} else if (ext == "html") {

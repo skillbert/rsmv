@@ -6,9 +6,8 @@ import { cacheFilenameHash, constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { JSONSchema6Definition } from "json-schema";
-import { parseLegacySprite, parseSprite, parseTgaSprite } from "../3d/sprite";
+import { parseLegacySprite, parseSprite, parseTgaSprite, spriteHash } from "../3d/sprite";
 import { pixelsToImageFile } from "../imgutils";
-import { crc32, CrcBuilder } from "../libs/crc32util";
 import { getModelHashes, EngineCache } from "../3d/modeltothree";
 import { ParsedTexture } from "../3d/textures";
 import { parseMusic } from "./musictrack";
@@ -17,6 +16,7 @@ import { classicGroups } from "../cache/classicloader";
 import { renderCutscene } from "./rendercutscene";
 import { UiRenderContext, renderRsInterfaceHTML } from "./renderrsinterface";
 import { compileClientScript, prepareClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
+import { loadFontMetrics } from "./fontmetrics";
 
 
 type CacheFileId = {
@@ -462,6 +462,27 @@ const decodeInterface2: DecodeModeFactory = () => {
 	}
 }
 
+const fontViewer: DecodeModeFactory = () => {
+	return {
+		ext: "font.json",
+		major: cacheMajors.fontmetrics,
+		minor: undefined,
+		logicalDimensions: 1,
+		usesArchieves: false,
+		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
+		logicalToFile(source, id) { return { major: cacheMajors.fontmetrics, minor: id[0], subid: 0 }; },
+		async logicalRangeToFiles(source, start, end) {
+			let indexfile = await source.getCacheIndex(cacheMajors.fontmetrics);
+			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
+		},
+		...throwOnNonSimple,
+		async read(buf, fileid, source) {
+			return JSON.stringify(await loadFontMetrics(source, buf));
+		},
+		description: "Opens the built-in font viewer. Does not support newer vector fonts"
+	}
+}
+
 const decodeClientScript: DecodeModeFactory = (ops) => {
 	return {
 		ext: "ts",
@@ -577,16 +598,26 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 			let images = parseSprite(b);
 			let str = "";
 			for (let [sub, img] of images.entries()) {
-				const data = img.img.data;
-				// for some reason 0 blue isn't possible in-game
-				for (let i = 0; i < data.length; i += 4) { if (data[i + 2] == 0) { data[i + 2] = 1; } }
-				let hash = crc32(img.img.data);
+				let hash = spriteHash(img.img);
 				str += (str == "" ? "" : ",") + `{"id":${id[0]},"sub":${sub},"hash":${hash}}`;
 			}
 			return str;
 		},
 		combineSubs(b: string[]) { return "[" + b.join(",\n") + "]"; },
 		description: "Used to efficiently compare images."
+	}
+}
+
+const decodeFontHash: DecodeModeFactory = () => {
+	return {
+		ext: "json",
+		...noArchiveIndex(cacheMajors.sprites),
+		...throwOnNonSimple,
+		async read(buf, id, source) {
+			let font = await loadFontMetrics(source, buf);
+			return JSON.stringify(font.characters.filter(q => q));
+		},
+		description: "Used to efficiently compare fonts."
 	}
 }
 
@@ -660,6 +691,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
 	oldproctextures: { parser: parse.oldproctexture, lookup: singleMinorIndex(cacheMajors.texturesOldPng, 0) },
 	interfaces: { parser: parse.interfaces, lookup: standardIndex(cacheMajors.interfaces) },
+	fontmetrics: { parser: parse.fontmetrics, lookup: standardIndex(cacheMajors.fontmetrics) },
 
 	classicmodels: { parser: parse.classicmodels, lookup: singleMinorIndex(0, classicGroups.models) },
 
@@ -725,12 +757,14 @@ const cacheFileDecodersInteractive = constrainedMap<DecodeModeFactory>()({
 	cutscenehtml: decodeCutscene,
 	interfacehtml: decodeInterface,
 	interfaceviewer: decodeInterface2,
+	fontviewer: fontViewer,
 	clientscript: decodeClientScript,
 	clientscriptviewer: decodeClientScriptViewer,
 })
 const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({
 	bin: decodeBinary,
 	spritehash: decodeSpriteHash,
+	fonthash: decodeFontHash,
 	modelhash: decodeMeshHash,
 	npcmodels: npcmodels,
 });
