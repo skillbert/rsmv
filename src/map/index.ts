@@ -1004,7 +1004,7 @@ const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, de
 	}] satisfies RenderTask[]
 }
 
-const rendermodeLocs: RenderMode<"height"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
+const rendermodeLocs: RenderMode<"locs"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
 	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
 	return [{
@@ -1026,7 +1026,7 @@ const rendermodeLocs: RenderMode<"height"> = function (engine, config, cnf, deps
 	}] satisfies RenderTask[];
 }
 
-const rendermodeMaplabels: RenderMode<"height"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
+const rendermodeMaplabels: RenderMode<"maplabels"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
 	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
 	return [{

@@ -107,7 +107,7 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
                     }
 
                     let positionstyle = `position:absolute; top:0px; left:0px; transform-origin:center;margin-left:${-img.width / 2}px; margin-top:${-img.height / 2}px;`;
-                    html += `<img src="${pngfile}" width="${img.width}" height="${img.height}" style="${positionstyle} animation:${anims.join()};">\n`;
+                    html += `<img data-spriteid="${img.spriteid}" src="${pngfile}" width="${img.width}" height="${img.height}" style="${positionstyle} animation:${anims.join()};">\n`;
                 }
             }
             html += "</div>";

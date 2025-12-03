@@ -8,6 +8,7 @@ import { getOrInsert } from "../utils";
 
 export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource) {
     let frametoframemap = new Map<number, number>();
+    output.log(`starting frames`)
     let framesindex = await source.getCacheIndex(cacheMajors.frames);
     for (let frameid of framesindex) {
         if (!frameid) { continue; }
@@ -20,16 +21,24 @@ export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, 
     }
     output.log(`completed frames`);
 
+    output.log(`starting skeletals`)
     let skeletaltoframemap = new Map<number, number>();
     let skeletalindex = await source.getCacheIndex(cacheMajors.skeletalAnims);
     for (let skeletalid of skeletalindex) {
         if (!skeletalid) { continue; }
-        let animfile = await source.getFileById(cacheMajors.skeletalAnims, skeletalid.minor);
-        let anim = parse.skeletalAnim.read(animfile, source);
-        skeletaltoframemap.set(skeletalid.minor, anim.framebase);
+        try {
+            let animfile = await source.getFileById(cacheMajors.skeletalAnims, skeletalid.minor);
+            let anim = parse.skeletalAnim.read(animfile, source);
+            skeletaltoframemap.set(skeletalid.minor, anim.framebase);
+        } catch (e) {
+            // currently known error in the bzip2 decompression on file 56.2242
+            // seems like an error in the js bzip2 implementation
+            output.log(`failed to parse skeletal ${skeletalid.minor}`);
+        }
     }
     output.log(`completed skeletals`);
 
+    output.log(`starting sequences`);
     let seqperframemap = new Map<number, number[]>();
     let sequenceindex = await source.getCacheIndex(cacheMajors.sequences);
     for (let seqid of sequenceindex) {
