@@ -9,16 +9,6 @@
 		"mapsizez": {
 			"type": "number"
 		},
-		"noyflip": {
-			"type": "boolean",
-			"default": false,
-			"description": "Set to true to keep the output y origin at the bottom left, equal to the game z origin."
-		},
-		"nochunkoffset": {
-			"type": "boolean",
-			"default": false,
-			"description": "Set to true to keep output chunks aligned with in-game chunks. Incurs performance penalty as more neighbouring chunks have to be loaded."
-		},
 		"area": {
 			"default": "full",
 			"description": "A string representing the the map area to render. Either one of the named presets (main, full, test ...), or one or more chunk ranges. eg: 50.50,20.20-70.70",
@@ -40,6 +30,16 @@
 					"pattern": "^\\w+$"
 				}
 			]
+		},
+		"noyflip": {
+			"type": "boolean",
+			"default": false,
+			"description": "Set to true to keep the output y origin at the bottom left, equal to the game z origin."
+		},
+		"nochunkoffset": {
+			"type": "boolean",
+			"default": false,
+			"description": "Set to true to keep output chunks aligned with in-game chunks. Incurs performance penalty as more neighbouring chunks have to be loaded."
 		},
 		"layers": {
 			"items": {

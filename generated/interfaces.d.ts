@@ -92,6 +92,9 @@ export type interfaces = {
 		str: string,
 		data2: Uint8Array,
 	} | null,
+	unk13data: {
+		data: Uint8Array,
+	} | null,
 	unk15data: {
 		data: Uint8Array,
 	} | null,

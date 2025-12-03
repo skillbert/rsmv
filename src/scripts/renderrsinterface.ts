@@ -627,6 +627,7 @@ export class CS2Api {
             unkprepre3: null,
             unkstring1: null,
             unkstuff123: "",
+            unk13data: null,
             version: 7
         }
         if (type == 0) {

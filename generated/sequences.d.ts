@@ -41,6 +41,7 @@ export type sequences = {
 		number,
 		number,
 	] | null
+	unknown_1B?: number | null
 	unknown_70?: {
 		intlow: number,
 		maybe_file: number,

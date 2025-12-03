@@ -11,6 +11,7 @@ export type models = {
 	unkCount1: number,
 	unkCount2: number,
 	unkCount3: number,
+	unkCount4: (number|0),
 	meshes: {
 		unkint: number,
 		materialArgument: number,
@@ -75,4 +76,5 @@ export type models = {
 	unk1Buffer: Uint8Array[],
 	unk2Buffer: Uint8Array[],
 	unk3Buffer: Uint8Array[],
+	unk4Buffer: Buffer[],
 };

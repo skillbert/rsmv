@@ -187,6 +187,16 @@ export const maprenderConfigSchema: JSONSchema6 = {
                 { type: "string", pattern: /^\w+$/.source },
             ]
         },
+        noyflip: {
+            type: "boolean",
+            default: false,
+            description: "Set to true to keep the output y origin at the bottom left, equal to the game z origin."
+        },
+        nochunkoffset: {
+            type: "boolean",
+            default: false,
+            description: "Set to true to keep output chunks aligned with in-game chunks. Incurs performance penalty as more neighbouring chunks have to be loaded."
+        },
         layers: {
             items: {
                 properties: {

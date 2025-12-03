@@ -86,7 +86,10 @@ export type materials = {
 			texture: number,
 		} | null,
 		flag13value: number | null,
-		flag14value: number | null,
+		flag14value: [
+			number,
+			number,
+		] | null,
 		flag15value: number | null,
 		flag18value: number | null,
 		flag16value: number | null,

@@ -144,7 +144,7 @@ export type npcs = {
 	unknown_B6?: true | null
 	unknown_B7?: number | null
 	unknown_B8?: number | null
-	unknown_B9?: number | null
+	unknown_B9?: true | null
 	unknown_DB?: number | null
 	extra?: {
 		prop: number,
