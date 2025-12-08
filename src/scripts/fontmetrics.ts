@@ -4,8 +4,21 @@ import { cacheMajors } from "../constants";
 import { pixelsToDataUrl, sliceImage } from "../imgutils";
 import { parse } from "../opdecoder";
 
+export type FontCharacterJson = {
+    chr: string,
+    charcode: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    bearingy: number,
+    hash: number
+}
+
 export type ParsedFontJson = {
-    characters: (FontCharacter | null)[],
+    fontid: number,
+    spriteid: number,
+    characters: (FontCharacterJson | null)[],
     median: number,
     baseline: number,
     maxascent: number,
@@ -17,17 +30,7 @@ export type ParsedFontJson = {
     sheet: string
 }
 
-export type FontCharacter = {
-    name: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    bearingy: number,
-    hash: number
-}
-
-export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer) {
+export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer, fontid: number) {
     let fontdata = parse.fontmetrics.read(buf, cache);
 
     if (!fontdata.sprite) {
@@ -44,6 +47,8 @@ export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer) {
     }
 
     let font: ParsedFontJson = {
+        fontid: fontid,
+        spriteid: fontdata.sprite.sourceid,
         characters: [],
         median: fontdata.sprite.median,
         baseline: fontdata.sprite.baseline,
@@ -53,7 +58,8 @@ export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer) {
         sheethash: spriteHash(img.img),
         sheetwidth: fontdata.sprite.sheetwidth,
         sheetheight: fontdata.sprite.sheetheight,
-        sheet: await pixelsToDataUrl(img.img)
+        // sheet: await pixelsToDataUrl(img.img)
+        sheet: ""
     };
     for (let i = 0; i < fontdata.sprite.positions.length; i++) {
         let pos = fontdata.sprite.positions[i];
@@ -64,7 +70,8 @@ export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer) {
         }
         let subimg = sliceImage(img.img, { x: pos.x, y: pos.y, width: size.width, height: size.height });
         font.characters.push({
-            name: String.fromCharCode(i),
+            chr: String.fromCharCode(i),
+            charcode: i,
             x: pos.x,
             y: pos.y,
             width: size.width,

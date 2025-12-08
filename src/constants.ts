@@ -43,6 +43,7 @@ export const cacheMajors = {
 
 	achievements: 57,
 	fontmetrics: 58,
+	vectorfonts: 59,
 	cutscenes: 66,
 
 	index: 255

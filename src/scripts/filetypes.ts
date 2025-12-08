@@ -82,7 +82,7 @@ const throwOnNonSimple = {
 	prepareDump() { },
 	prepareWrite() { },
 	write(b) { throw new Error("write not supported"); },
-	combineSubs(b: Buffer[]) { throw new Error("not supported"); }
+	combineSubs(b: Buffer[]) { throw new Error("batch output mode not supported"); }
 }
 
 function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
@@ -477,7 +477,7 @@ const fontViewer: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			return JSON.stringify(await loadFontMetrics(source, buf));
+			return JSON.stringify(await loadFontMetrics(source, buf, fileid[0]));
 		},
 		description: "Opens the built-in font viewer. Does not support newer vector fonts"
 	}
@@ -582,7 +582,7 @@ const decodeTexture = (major: number): DecodeModeFactory => () => {
 		},
 		write(b) { throw new Error("write not supported"); },
 		combineSubs(b: Buffer[]) {
-			if (b.length != 1) { throw new Error("not supported"); }
+			if (b.length != 1) { throw new Error("texture batching not supported"); }
 			return b[0];
 		},
 		description: "Textures are images that are wrapped around models to display colors are fine details."
@@ -611,12 +611,12 @@ const decodeSpriteHash: DecodeModeFactory = () => {
 const decodeFontHash: DecodeModeFactory = () => {
 	return {
 		ext: "json",
-		...noArchiveIndex(cacheMajors.sprites),
+		...noArchiveIndex(cacheMajors.fontmetrics),
 		...throwOnNonSimple,
 		async read(buf, id, source) {
-			let font = await loadFontMetrics(source, buf);
-			return JSON.stringify(font.characters.filter(q => q));
+			return JSON.stringify(await loadFontMetrics(source, buf, id[0]));
 		},
+		combineSubs(b: string[]) { return "[" + b.join(",\n") + "]"; },
 		description: "Used to efficiently compare fonts."
 	}
 }

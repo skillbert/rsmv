@@ -241,5 +241,5 @@ export function spriteHash(img: ImageData) {
 	for (let i = 0; i < data.length; i += 4) {
 		if (data[i + 2] == 0) { data[i + 2] = 1; }
 	}
-	return crc32(img.data);
+	return crc32(data);
 }
