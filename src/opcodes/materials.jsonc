@@ -112,5 +112,67 @@
 		["alphacutoff",["opt",["alphamode",1],"ubyte"]],//127 most of the time
 		["unkFFFF",["buffer",2,"hex"]],
 		["endbyte","ubyte"]//usually equal to max texture size always 0-4
+	]]],
+	// seems to be the same as v1 so far
+	["v2",["opt",["version",2],["struct",
+		["flags","uint"],
+		//0,1 unused
+		["opaque_2",["ref","flags",[2,1]]],//3061/3250
+		["flag3",["ref","flags",[3,1]]],//3095 most mats without are never used in a model
+		//4unused
+		["hasDiffuse",["ref","flags",[5,1]]],//3250, always true
+		["hasNormal",["ref","flags",[6,1]]],//2878
+		["hasCompound",["ref","flags",[7,1]]],//2223
+
+		["hasUVanimU",["ref","flags",[8,1]]],//44 uv anim u?
+		["hasUVanimV",["ref","flags",[9,1]]],//49 uv anim v?
+		["flag10",["ref","flags",[10,1]]],//282 possibly bloom
+		["flag11",["ref","flags",[11,1]]],//41 metalic?
+
+		["flag12",["ref","flags",[12,1]]],//1 use
+		["flag13",["ref","flags",[13,1]]],//73 glasslike diffraction/lensing? https://runescape.wiki/w/Altar_of_War
+		["flag14",["ref","flags",[14,1]]],//3179
+		["flag15",["ref","flags",[15,1]]],//2 use, skybox and https://runescape.wiki/w/Oathbreaker_Outfit
+
+		["flag16",["ref","flags",[16,1]]],//3069
+		["ignore_vertexcol_17",["ref","flags",[17,1]]],//338
+		["flag18",["ref","flags",[18,1]]],//24 uses different skybox? ghostlike stuff https://runescape.wiki/w/Closure%27s_robes
+		["flag19",["ref","flags",[19,1]]],//5 use gives aurora effect https://runescape.wiki/w/Bohr
+
+		["flag20",["ref","flags",[20,1]]],//40 seems to be used on flants/leafs
+		["flag21",["ref","flags",[21,1]]],//3250 all materials
+		//22+ unused
+		
+		["diffuse",["opt",["hasDiffuse",1],["struct",
+			["size","ubyte"],//actual size (some times) equal to 2^(6+size)
+			["texture","uint"]
+		]]],
+		["normal",["opt",["hasNormal",1],["struct",
+			["size","ubyte"],//actual size (some times) equal to 2^(6+size)
+			["texture","uint"]
+		]]],
+		["compound",["opt",["hasCompound",1],["struct",
+			["size","ubyte"],//actual size (some times) equal to 2^(6+size)
+			["texture","uint"]
+		]]],
+		["flag13value",["opt",["flag13",1],"float"]],
+		["flag14value",["opt",["flag14",1],["tuple","ushort","ushort"]]],//0,8520 or 13083 only, referencing other material?
+		["flag15value",["opt",["flag15",1],"float"]],
+		["flag18value",["opt",["flag18",1],"float"]],//not sure about location
+		["flag16value",["opt",["flag16",1],"float"]],
+		["flag12value",["opt",["flag12",1],"float"]],//not sure about location
+		["flag11value",["opt",["flag11",1],["tuple","float","float","float"]]],
+		["flag19value",["opt",["flag19",1],["tuple","float","float","float","float","float"]]],//location unknown
+		["normalScale",["opt",["hasNormal",1],"float"]],
+		["flag17value",["opt",["ignore_vertexcol_17",1],"float"]],
+		["uvanim_u",["opt",["hasUVanimU",1],"short"]],
+		["uvanim_v",["opt",["hasUVanimV",1],"short"]],
+
+		["always_0x0901",["buffer",2,"hex"]],//only a couple with 0001
+		["unknownbyte0","ubyte"],//always 0
+		["alphamode","ubyte"],//0,1,2
+		["alphacutoff",["opt",["alphamode",1],"ubyte"]],//127 most of the time
+		["unkFFFF",["buffer",2,"hex"]],
+		["endbyte","ubyte"]//usually equal to max texture size always 0-4
 	]]]
 ]

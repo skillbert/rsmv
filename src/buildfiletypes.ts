@@ -32,7 +32,7 @@ async function buildFileTypes() {
 			typesfile += "// " + e.toString().replace(/\n/g, "\n//");
 		}
 		//I'm sorry, git made me do this
-		typesfile = typesfile.replace(/(?<!\r)\n/g, "\r\n");
+		// typesfile = typesfile.replace(/(?<!\r)\n/g, "\r\n");
 		let outfile = path.resolve(outdir, objname + ".d.ts");
 		fs.writeFileSync(outfile, typesfile);
 	}
