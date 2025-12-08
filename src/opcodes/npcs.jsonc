@@ -89,6 +89,7 @@
 	"0xB7": { "name":                          "unknown_B7", "read": "unsigned byte" },//might be wrong and part of other op
 	"0xB8": { "name":                          "unknown_B8", "read": "unsigned byte" },
 	"0xB9": { "name":                          "unknown_B9", "read": "true" },
+	"0xBA": { "name":                          "unknown_BA", "read": "modelmorphs"},
 	"0xDB": { "name":                          "unknown_DB", "read": "ubyte" },//might be wrong and part of other op
 	"0xF9": { "name":                               "extra", "read": "extrasmap" },
 	"0xFD": { "name":                          "unknown_FD", "read": "ubyte" }//probably render priority

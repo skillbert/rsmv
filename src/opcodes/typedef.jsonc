@@ -36,6 +36,59 @@
 			["materials",["array",["itemvar","matcount"],"ushort"]]
 		]]]
 	],
+	"modelmorphs":      ["struct",
+		["unk0","ushort"],
+		["varbit","ushort"],
+		["varp","ushort"],
+		["flags","ubyte"],
+		["multimodel",["opt","flags&1",["array","ubyte",["struct",
+			["value","ubyte"],
+			["models",["array","ubyte",["struct",
+				["unk1","ushort"],
+				["unk2","ushort"],
+				["unk3","varuint"],
+				["extracount","ubyte"],
+				["extra1",["opt","extracount>=1","ubyte"]],
+				["extra2",["opt","extracount>=2","ubyte"]],
+				["extra3",["opt","extracount>=3","ubyte"]]
+			]]]
+		]]]],
+		["multiheadmodel",["opt","flags&2",["array","ubyte",["struct",
+			["value","ubyte"],
+			["models",["array","ubyte",["struct",
+				["unk1","ushort"],
+				["unk2","ushort"],
+				["unk3","varuint"]
+			]]]
+		]]]],
+		["multiretex",["opt","flags&4",["array","ubyte",["struct",
+			["value","ubyte"],
+			["models",["array","ubyte",["struct",
+				["unk1","ushort"],
+				["unk2","ushort"],
+				["unk3","ushort"],
+				["unk4","ushort"]
+			]]]
+		]]]],
+		["multirecol",["opt","flags&8",["array","ubyte",["struct",
+			["value","ubyte"],
+			["models",["array","ubyte",["struct",
+				["unk1","ushort"],
+				["unk2","ushort"],
+				["unk3","ushort"],
+				["unk4","ushort"]
+			]]]
+		]]]],
+		["multiretint",["opt","flags&16",["array","ubyte",["struct",
+			["value","ubyte"],
+			["models",["array","ubyte",["struct",
+				["unk1","ushort"],
+				["unk2","ushort"],
+				["unk3","uint"]
+			]]]
+		]]]],
+		["default","ushort"]
+	],
 
 	"ubyte":            "unsigned byte",
 	"ushort":           "unsigned short",

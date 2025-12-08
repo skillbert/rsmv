@@ -137,5 +137,6 @@
 	"0xCA": { "name":						 "singleuse_CA", "read": "unsigned byte" },
 	"0xCB": { "name":						   "unknown_CB", "read": "true" },
 	"0xCC": { "name":						   "unknown_CC", "read": ["array","ubyte",["buffer",27,"hex"]] },
+	"0xCD": { "name":						   "unknown_CD", "read": "modelmorphs" },
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

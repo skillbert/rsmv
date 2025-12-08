@@ -145,6 +145,59 @@ export type npcs = {
 	unknown_B7?: number | null
 	unknown_B8?: number | null
 	unknown_B9?: true | null
+	unknown_BA?: {
+		unk0: number,
+		varbit: number,
+		varp: number,
+		flags: number,
+		multimodel: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				extracount: number,
+				extra1: number | null,
+				extra2: number | null,
+				extra3: number | null,
+			}[],
+		}[] | null,
+		multiheadmodel: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+			}[],
+		}[] | null,
+		multiretex: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				unk4: number,
+			}[],
+		}[] | null,
+		multirecol: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				unk4: number,
+			}[],
+		}[] | null,
+		multiretint: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+			}[],
+		}[] | null,
+		default: number,
+	} | null
 	unknown_DB?: number | null
 	extra?: {
 		prop: number,
