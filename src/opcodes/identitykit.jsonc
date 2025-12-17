@@ -6,5 +6,7 @@
 	"0x02": { "name":    "models", "read": ["array","ubyte","varuint"]},
 	"0x03": { "name":    "iscopy", "read": "true" },
 	"0x28": { "name":   "recolor", "read": ["array","ubyte",["tuple","ushort","ushort"]] },
-	"0x3c": { "name": "headmodel", "read": "varuint" }
+	"0x3c": { "name": "headmodel", "read": "varuint" },
+	// seems to be hair style related
+	"0x3d": { "name":   "unknown", "read": "varuint" }
 }
