@@ -59,6 +59,7 @@ export async function extractCluecoords(output: ScriptOutput, fs: ScriptFS, file
 		27,//heart of geilinor
 		26,//torle islands
 		50,//eastern lands compass
+		28,//lost grove
 	];
 	let indexedcoords = allcoords.flatMap((q, i) => {
 		let clueid = idmapping[i];
