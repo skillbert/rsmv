@@ -477,7 +477,7 @@ const fontViewer: DecodeModeFactory = () => {
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			return JSON.stringify(await loadFontMetrics(source, buf, fileid[0]));
+			return JSON.stringify(await loadFontMetrics(source, buf, fileid[0], true));
 		},
 		description: "Opens the built-in font viewer. Does not support newer vector fonts"
 	}

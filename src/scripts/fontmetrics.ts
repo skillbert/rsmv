@@ -30,7 +30,7 @@ export type ParsedFontJson = {
     sheet: string
 }
 
-export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer, fontid: number) {
+export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer, fontid: number, withimage = false) {
     let fontdata = parse.fontmetrics.read(buf, cache);
 
     if (!fontdata.sprite) {
@@ -58,8 +58,7 @@ export async function loadFontMetrics(cache: CacheFileSource, buf: Buffer, fonti
         sheethash: spriteHash(img.img),
         sheetwidth: fontdata.sprite.sheetwidth,
         sheetheight: fontdata.sprite.sheetheight,
-        // sheet: await pixelsToDataUrl(img.img)
-        sheet: ""
+        sheet: (withimage ? await pixelsToDataUrl(img.img) : "")
     };
     for (let i = 0; i < fontdata.sprite.positions.length; i++) {
         let pos = fontdata.sprite.positions[i];
