@@ -79,6 +79,7 @@ export type LayerConfig = {
 	thicklines?: boolean
 } | {
 	mode: "height"
+	allcorners?: boolean
 } | {
 	mode: "collision"
 } | {
@@ -994,7 +995,7 @@ const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, de
 		datarect: singlerect,
 		async run2d(chunks) {
 			//TODO what to do with classic 48x48 chunks?
-			let file = chunks[0].grid.getHeightCollisionFile(singlerect.x * 64, singlerect.z * 64, thiscnf.level, 64, 64);
+			let file = chunks[0].grid.getHeightCollisionFile(singlerect.x * 64, singlerect.z * 64, thiscnf.level, 64, 64, cnf.allcorners ?? false);
 			let buf: Buffer = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
 			if (thiscnf.usegzip) {
 				buf = zlib.gzipSync(buf);

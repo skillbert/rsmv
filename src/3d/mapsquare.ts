@@ -605,54 +605,40 @@ export class TileGrid implements TileGridSource {
 		this.tiles = new Array(this.levelstep * this.levels).fill(undefined);
 	}
 
-	getHeightCollisionFile(x: number, z: number, level: number, xsize: number, zsize: number) {
-		let file = new Uint16Array(xsize * zsize * 2);
+	// new version that includes each tile corner, not just center
+	getHeightCollisionFile(x: number, z: number, level: number, xsize: number, zsize: number, allcorners: boolean) {
+		let entriespertile = (allcorners ? 5 : 2);
+		let file = new Uint16Array(xsize * zsize * entriespertile);
 		for (let dz = 0; dz < zsize; dz++) {
 			for (let dx = 0; dx < xsize; dx++) {
 				let tile = this.getTile(x + dx, z + dz, level);
 				if (tile) {
-					let index = (dx + dz * xsize) * 2;
-					let y = (tile.playery00 + tile.playery01 + tile.playery10 + tile.playery11) / 4;
-					file[index + 0] = y / 16;
+					let index = (dx + dz * xsize) * entriespertile;
+					// base 3 representation of collision
 					let colint = 0;
 					let col = tile.effectiveCollision!;
 					for (let i = 0; i < 9; i++) {
 						let v = (col.walk[i] ? col.sight[i] ? 2 : 1 : 0);
 						colint += Math.pow(3, i) * v;
 					}
-					file[index + 1] = colint;
+					if (allcorners) {
+						// negative height can happen along some coastlines apparently
+						file[index + 0] = Math.max(0, tile.playery00 / 16);
+						file[index + 1] = Math.max(0, tile.playery01 / 16);
+						file[index + 2] = Math.max(0, tile.playery10 / 16);
+						file[index + 3] = Math.max(0, tile.playery11 / 16);
+
+						file[index + 4] = colint;
+					} else {
+						let centery = (tile.playery00 + tile.playery01 + tile.playery10 + tile.playery11) / 4;
+						file[index + 0] = Math.max(0, centery / 16);
+						file[index + 1] = colint;
+					}
 				}
 			}
 		}
 		return file;
 	}
-
-	// new version that includes each tile corner, not just center
-	// getHeightCollisionFile(x: number, z: number, level: number, xsize: number, zsize: number) {
-	// 	let file = new Uint16Array(xsize * zsize * 5);
-	// 	for (let dz = 0; dz < zsize; dz++) {
-	// 		for (let dx = 0; dx < xsize; dx++) {
-	// 			let tile = this.getTile(x + dx, z + dz, level);
-	// 			if (tile) {
-	// 				let index = (dx + dz * xsize) * 5;
-	// 				// base 3 representation of collision
-	// 				let colint = 0;
-	// 				let col = tile.effectiveCollision!;
-	// 				for (let i = 0; i < 9; i++) {
-	// 					let v = (col.walk[i] ? col.sight[i] ? 2 : 1 : 0);
-	// 					colint += Math.pow(3, i) * v;
-	// 				}
-	// 				// negative height can happen along some coastlines apparently
-	// 				file[index + 0] = Math.max(0, tile.playery00 / 16);
-	// 				file[index + 1] = Math.max(0, tile.playery01 / 16);
-	// 				file[index + 2] = Math.max(0, tile.playery10 / 16);
-	// 				file[index + 3] = Math.max(0, tile.playery11 / 16);
-	// 				file[index + 4] = colint;
-	// 			}
-	// 		}
-	// 	}
-	// 	return file;
-	// }
 	getTile(x: number, z: number, level: number) {
 		x -= this.xoffset;
 		z -= this.zoffset;
