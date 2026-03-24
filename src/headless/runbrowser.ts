@@ -30,6 +30,7 @@ const id = powerSaveBlocker.start("prevent-app-suspension");
 
 let hidden = false;
 let exitonend = false;
+let watchdoglimit = 0;//ms, 0 to disable
 
 
 let args: string[] = [];
@@ -47,6 +48,7 @@ for (let i = 0; i < process.argv.length; i++) {
 		if (arg.startsWith("-")) {
 			if (arg == "--hidden") { hidden = true; }
 			if (arg == "--exit") { exitonend = true; }
+			if (arg == "--watchdog") { watchdoglimit = 10 * 60 * 1000; }
 		} else {
 			entry = arg;
 		}
@@ -92,6 +94,9 @@ window.onunhandledrejection=e=>console.error(e);
 window.onCliCompleted=(code)=>{
 	require("electron/renderer").ipcRenderer.send("exit",code);
 }
+window.onWatchdogProgress=()=>{
+	require("electron/renderer").ipcRenderer.send("watchdog");
+}
 
 require(${JSON.stringify(path.resolve(process.cwd(), entry))});
 `;
@@ -100,6 +105,7 @@ console.log(path.resolve(process.cwd(), entry));
 
 (async () => {
 	await app.whenReady();
+	let lastprogress = Date.now();
 
 	ipcMain.on("toggledevtools", () => index.webContents.toggleDevTools());
 	ipcMain.on("console", (e, type: string, args: any[]) => {
@@ -111,6 +117,9 @@ console.log(path.resolve(process.cwd(), entry));
 		if (exitonend) {
 			process.exit(exitcode);
 		}
+	});
+	ipcMain.on("watchdog", (e) => {
+		lastprogress = Date.now();
 	});
 
 	var index = new BrowserWindow({
@@ -134,4 +143,17 @@ console.log(path.resolve(process.cwd(), entry));
 		console.log("render-process-gone", data);
 		index.reload();
 	});
+
+	// watchdog to reload if no progress for a specified limit
+	if (watchdoglimit > 0) {
+		setInterval(() => {
+			if (Date.now() - lastprogress > watchdoglimit * 0.8) {
+				console.warn(`watchdog warning: no progress for ${(Date.now() - lastprogress) / 1000} seconds`);
+			}
+			if (Date.now() - lastprogress > watchdoglimit) {
+				console.warn(`no progress for ${watchdoglimit / 1000 / 60} minutes, reloading`);
+				index.reload();
+			}
+		}, 10000);
+	}
 })();

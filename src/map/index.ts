@@ -249,6 +249,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	}
 
 	let engine = await EngineCache.create(filesource);
+	globalThis.onWatchdogProgress?.();
 
 	let progress = new ProgressUI();
 	progress.updateProp("source", filesource.getCacheMeta().name + "\n" + filesource.getCacheMeta().descr);
@@ -266,7 +267,9 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 			deparea = { x: areas[0].x - 2, z: areas[0].z - 2, xsize: areas[0].xsize + 2, zsize: areas[0].zsize + 2 };
 		}
 		var deps = await engine.getDependencyGraph();
+		globalThis.onWatchdogProgress?.();
 		await deps.preloadChunkDependencies({ area: deparea });
+		globalThis.onWatchdogProgress?.();
 	} catch (e) {
 		console.error(e);
 		progress.updateProp("deps", "starting dependency graph");
@@ -288,6 +291,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 	}
 	await downloadMap(output, getRenderer, engine, deps, areas, config, progress);
 	output.log("done");
+	globalThis.onWatchdogProgress?.();
 
 	return cleanup;
 }
@@ -692,6 +696,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		progress.update(chunkx, chunkz, (savetasks.length == 0 ? "skipped" : "done"));
 		let localsymlinkcount = symlinkcommands.filter(q => q.symlinkbuildnr == config.version && q.file != q.symlink).length;
 		console.log("imaged", chunkx, chunkz, "files", savetasks.length, "symlinks", localsymlinkcount, "(unchanged)", symlinkcommands.length - localsymlinkcount);
+		globalThis.onWatchdogProgress?.();
 	}
 
 	//TODO returning a promise just gets flattened with our currnet async execution
@@ -987,7 +992,7 @@ const rendermodeCollision: RenderMode<"collision"> = function (engine, config, c
 
 const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
-	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "bin.gz" : "bin"}`;
+	let filename = config.makeFileName(thiscnf.name, null, singlerect.x, singlerect.z, cnf.usegzip ? "bin.gz" : "bin");
 	return [{
 		layer: thiscnf,
 		name: filename,
@@ -1007,7 +1012,7 @@ const rendermodeHeight: RenderMode<"height"> = function (engine, config, cnf, de
 
 const rendermodeLocs: RenderMode<"locs"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
-	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
+	let filename = config.makeFileName(thiscnf.name, null, singlerect.x, singlerect.z, cnf.usegzip ? "json.gz" : "json");
 	return [{
 		layer: thiscnf,
 		name: filename,
@@ -1029,7 +1034,7 @@ const rendermodeLocs: RenderMode<"locs"> = function (engine, config, cnf, deps, 
 
 const rendermodeMaplabels: RenderMode<"maplabels"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
-	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
+	let filename = config.makeFileName(thiscnf.name, null, singlerect.x, singlerect.z, cnf.usegzip ? "json.gz" : "json");
 	return [{
 		layer: thiscnf,
 		name: filename,
@@ -1052,7 +1057,7 @@ const rendermodeMaplabels: RenderMode<"maplabels"> = function (engine, config, c
 
 const rendermodeRenderMeta: RenderMode<"rendermeta"> = function (engine, config, cnf, deps, baseoutput, singlerect) {
 	let thiscnf = cnf;
-	let filename = `${thiscnf.name}/${singlerect.x}-${singlerect.z}.${cnf.usegzip ? "json.gz" : "json"}`;
+	let filename = config.makeFileName(thiscnf.name, null, singlerect.x, singlerect.z, cnf.usegzip ? "json.gz" : "json");
 	return [{
 		layer: thiscnf,
 		name: filename,

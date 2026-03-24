@@ -96,8 +96,10 @@ let cmd = cmdts.command({
 
 			for await (let source of cacheiterator(args.ascending)) {
 				output.log(`Starting '${source.getCacheMeta().name}', build: ${source.getBuildNr()}`);
+				globalThis.onWatchdogProgress?.();
 				let cleanup = await runMapRender(output, source, config, args.force);
 				cleanup();
+				globalThis.onWatchdogProgress?.();
 			}
 		}
 	}
@@ -112,7 +114,5 @@ let cmd = cmdts.command({
 	} else {
 		console.log("cmd completed", res.value);
 	}
-	if (globalThis.onCliCompleted) {
-		globalThis.onCliCompleted(code);
-	}
+	globalThis.onCliCompleted?.(code);
 })();
