@@ -193,7 +193,7 @@ export function flipImage(img: ImageData) {
 	for (let y = 0; y < img.height / 2; y++) {
 		let itop = y * stride;
 		let ibot = (img.height - 1 - y) * stride;
-		tmp.set(img.data.slice(itop, itop + stride), 0);
+		tmp.set(img.data.subarray(itop, itop + stride), 0);
 		img.data.copyWithin(itop, ibot, ibot + stride);
 		img.data.set(tmp, ibot);
 	}
@@ -205,7 +205,7 @@ export function sliceImage(img: ImageData, bounds: { x: number, y: number, width
 	let oldstride = img.width * 4;
 	let oldoffset = oldstride * bounds.y + bounds.x * 4;
 	for (let y = 0; y < bounds.height; y++) {
-		newdata.set(img.data.slice(oldoffset + y * oldstride, oldoffset + y * oldstride + newstride), newstride * y);
+		newdata.set(img.data.subarray(oldoffset + y * oldstride, oldoffset + y * oldstride + newstride), newstride * y);
 	}
 	return new ImageData(newdata, bounds.width, bounds.height);
 }
