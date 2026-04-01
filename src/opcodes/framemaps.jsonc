@@ -1,5 +1,7 @@
 ["struct",
-	["data",["chunkedarray","ushort",
+	["datalen","ushort"],
+	["unkheader",["match",{"datalen=0xffff":"ubyte","other":0}]],
+	["data",["chunkedarray",["match",{"datalen=0xffff":"ushort","other":["ref","datalen"]}],
 		[["type","ubyte"]],
 		[["unknown","bool"]],
 		[["unknown_always_FFFF","ushort"]],
