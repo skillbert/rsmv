@@ -1,0 +1,220 @@
+import { LayerConfig, Mapconfig, MapRenderer, SimpleHasher } from "..";
+import { classicChunkSize, CombinedTileGrid, getTileHeight, MapRect, parseMapsquare, rs2ChunkSize, RSMapChunkData, tiledimensions, TileGrid } from "../../3d/mapsquare";
+import { RSMapChunk } from "../../3d/modelnodes";
+import { EngineCache } from "../../3d/modeltothree";
+import { AsyncReturnType } from "../../utils";
+import { KnownMapFile, MapRender } from "../backends";
+import { ChunkRenderMeta, chunkSummary, RenderDepsVersionInstance } from "../chunksummary";
+import { drawCollision } from "../collisionimage";
+import * as zlib from "zlib";
+import prettyJson from "json-stringify-pretty-compact";
+import { jsonIcons, svgfloor } from "../svgrender";
+import { rendermode3d, rendermodeInteractions } from "./3d";
+
+
+type MaprenderSquareData = {
+    grid: TileGrid,
+    chunkdata: RSMapChunkData,
+    rendermeta: ChunkRenderMeta
+};
+
+export type MaprenderSquare = {
+    parseprom: ReturnType<typeof parseMapsquare>,
+    x: number,
+    z: number,
+    id: number,
+    model: RSMapChunk | null,
+    loaded: MaprenderSquareData | null,
+    loadprom: Promise<MaprenderSquareData> | null,
+};
+
+export type MaprenderSquareLoaded = MaprenderSquare & { model: RSMapChunk, loaded: MaprenderSquareData };
+
+export type RenderResult = {
+    file?: () => Promise<Buffer>,
+    symlink?: undefined | KnownMapFile
+}
+
+export type RenderTask = {
+    layer: LayerConfig,
+    name: string,
+    hash: number,
+    datarect: MapRect,
+    dedupeDependencies?: string[],
+    mippable?: null | { zoom: number, outputx: number, outputy: number },
+    //first callback depends on state and should be series, 2nd is deferred and can be parallel
+    run2d?: (chunks: AsyncReturnType<typeof parseMapsquare>[]) => Promise<RenderResult>,
+    run?: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<RenderResult>,
+}
+
+export type ChunkrenderContext<MODE extends LayerConfig["mode"]> = {
+    engine: EngineCache,
+    config: MapRender,
+    layer: LayerConfig & { mode: MODE },
+    deps: SimpleHasher,
+    baseoutput: { x: number, y: number },
+    maprect: MapRect
+}
+
+export type RenderMode<MODE extends LayerConfig["mode"]> = (context: ChunkrenderContext<MODE>) => RenderTask[];
+
+export function chunkrectToOffetWorldRect(engine: EngineCache, config: MapRender, rect: MapRect) {
+    const chunksize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
+    const offset = (config.config.nochunkoffset ? 0 : Math.round(chunksize / 4));
+    let worldrect: MapRect = {
+        x: rect.x * chunksize - offset,
+        z: rect.z * chunksize - offset,
+        xsize: chunksize * rect.xsize,
+        zsize: chunksize * rect.zsize
+    };
+    let loadedchunksrect: MapRect = {
+        x: rect.x - 1,
+        z: rect.z - 1,
+        xsize: rect.xsize + (config.config.nochunkoffset ? 2 : 1),
+        zsize: rect.zsize + (config.config.nochunkoffset ? 2 : 1)
+    };
+    return { worldrect, loadedchunksrect };
+}
+
+const rendermodeCollision: RenderMode<"collision"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let zooms = config.getLayerZooms(layer);
+    let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
+    let filename = config.makeFileName(layer.name, zooms.base, baseoutput.x, baseoutput.y, layer.format ?? "webp");
+    let depcrc = deps.recthash(loadedchunksrect);
+    return [{
+        layer: layer,
+        name: filename,
+        hash: depcrc,
+        datarect: loadedchunksrect,
+        mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base },
+        async run2d(chunks) {
+            //TODO try enable 2d map render without loading all the 3d stuff
+            let grids = chunks.map(q => q.grid);
+            let file = drawCollision(grids, worldrect, layer.level, layer.pxpersquare, 1);
+            return { file: () => file };
+        }
+    }];
+}
+
+const rendermodeHeight: RenderMode<"height"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "bin.gz" : "bin");
+    return [{
+        layer: layer,
+        name: filename,
+        hash: deps.recthash(maprect),
+        datarect: maprect,
+        async run2d(chunks) {
+            //TODO what to do with classic 48x48 chunks?
+            let file = chunks[0].grid.getHeightCollisionFile(maprect.x * 64, maprect.z * 64, layer.level, 64, 64, layer.allcorners ?? false);
+            let buf: Buffer = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
+            if (layer.usegzip) {
+                buf = zlib.gzipSync(buf);
+            }
+            return { file: () => Promise.resolve(buf) };
+        }
+    }];
+}
+
+const rendermodeLocs: RenderMode<"locs"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
+    return [{
+        layer: layer,
+        name: filename,
+        hash: deps.recthash(maprect),
+        datarect: maprect,
+        async run(chunks) {
+            let { grid, modeldata, chunkSize } = chunks[0].loaded.chunkdata;
+            let rect = { x: maprect.x * chunkSize, z: maprect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
+            let { locdatas, locs } = chunkSummary(grid, modeldata, rect);
+            let textual = prettyJson({ locdatas, locs, rect }, { indent: "\t" });
+            let buf: Buffer = Buffer.from(textual, "utf8");
+            if (layer.usegzip) {
+                buf = zlib.gzipSync(buf);
+            }
+            return { file: () => Promise.resolve(buf) };
+        }
+    }];
+}
+
+const rendermodeMaplabels: RenderMode<"maplabels"> = function ({ engine, config, layer, deps, maprect }) {
+    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
+    return [{
+        layer: layer,
+        name: filename,
+        hash: deps.recthash(maprect),
+        datarect: maprect,
+        async run2d(chunks) {
+            let chunkSize = chunks[0].chunkSize;
+            let rawarea = { x: maprect.x * chunkSize, z: maprect.z * chunkSize, xsize: chunkSize, zsize: chunkSize };
+            let locs = chunks.flatMap(ch => ch.chunk?.locs ?? []);
+            let iconjson = await jsonIcons(engine, locs, rawarea, layer.level);
+            let textual = prettyJson(iconjson, { indent: "\t" });
+            let buf: Buffer = Buffer.from(textual, "utf8");
+            if (layer.usegzip) {
+                buf = zlib.gzipSync(buf);
+            }
+            return { file: () => Promise.resolve(buf) };
+        }
+    }];
+}
+
+const rendermodeRenderMeta: RenderMode<"rendermeta"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
+    return [{
+        layer: layer,
+        name: filename,
+        hash: deps.recthash(maprect),
+        datarect: maprect,
+        async run(chunks) {
+            let obj = chunks[0].loaded.rendermeta;
+            let file = Buffer.from(JSON.stringify(obj), "utf8");
+            if (layer.usegzip) {
+                file = zlib.gzipSync(file) as any;
+            }
+            return { file: () => Promise.resolve(file) };
+        }
+    }];
+}
+
+const rendermodeMap: RenderMode<"map"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let zooms = config.getLayerZooms(layer);
+    let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
+    let filename = config.makeFileName(layer.name, zooms.base, baseoutput.x, baseoutput.y, "svg");
+    let depcrc = deps.recthash(loadedchunksrect);
+    return [{
+        layer: layer,
+        name: filename,
+        hash: depcrc,
+        datarect: loadedchunksrect,
+        mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base },
+        async run2d(parsedata) {
+            let grid = new CombinedTileGrid(parsedata.map(pp => ({
+                src: pp.grid,
+                rect: {
+                    x: pp.chunkx * pp.chunkSize,
+                    z: pp.chunkz * pp.chunkSize,
+                    xsize: pp.chunkSize,
+                    zsize: pp.chunkSize,
+                }
+            })));
+            let locs = parsedata.flatMap(ch => ch.chunk?.locs ?? []);
+            let svg = await svgfloor(engine, grid, locs, worldrect, layer.level, layer.pxpersquare, !!layer.wallsonly, !!layer.mapicons, !!layer.thicklines);
+            return {
+                file: () => Promise.resolve(Buffer.from(svg, "utf8"))
+            };
+        }
+    }];
+}
+
+
+export const rendermodes: Record<LayerConfig["mode"], RenderMode<any>> = {
+    "3d": rendermode3d,
+    minimap: rendermode3d,
+    interactions: rendermodeInteractions,
+    collision: rendermodeCollision,
+    map: rendermodeMap,
+    height: rendermodeHeight,
+    locs: rendermodeLocs,
+    maplabels: rendermodeMaplabels,
+    rendermeta: rendermodeRenderMeta
+}

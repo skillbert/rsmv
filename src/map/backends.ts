@@ -50,6 +50,13 @@ export abstract class MapRender {
 	abstract saveFile(name: string, hash: number, data: Buffer, version?: number): Promise<void>;
 	abstract symlink(name: string, hash: number, symlinktarget: string, symlinkversion?: number): Promise<void>;
 
+	getLayerZooms(layercnf: LayerConfig) {
+		const min = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
+		const max = Math.log2(layercnf.pxpersquare);
+		const base = Math.log2(this.config.tileimgsize / 64);
+		return { min, max, base };
+	}
+
 	makeFileName(layer: string, zoom: number | null, x: number, y: number, ext: string, extra = "") {
 		return `${layer}${zoom != null ? "/" + zoom : ""}/${extra}${x}-${y}.${ext}`;
 	}

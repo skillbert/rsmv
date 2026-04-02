@@ -7,9 +7,8 @@ import { boundMethod } from 'autobind-decorator';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
 import { ModelExtras, MeshTileInfo, ClickableMesh } from '../3d/mapsquare';
-import { AnimationClip, AnimationMixer, BufferGeometry, Camera, Clock, Color, CubeCamera, Group, Material, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
+import { AnimationClip, AnimationMixer, BufferGeometry, Camera, Clock, Color, CubeCamera, Group, Material, Matrix4, Mesh, MeshLambertMaterial, MeshPhongMaterial, Object3D, OrthographicCamera, PerspectiveCamera, SkinnedMesh, Texture, Vector3 } from "three";
 import { VR360Render } from "./vr360camera";
-import { SkewOrthographicCamera } from "../map";
 import { UiCameraParams, updateItemCamera } from "./scenenodes";
 
 //TODO remove
@@ -859,4 +858,35 @@ export function highlightModelGroup(vertexgroups: { start: number, end: number, 
 		if (usecolor) { usecolor.needsUpdate = true; }
 	}
 	return undos;
+}
+
+export class SkewOrthographicCamera extends OrthographicCamera {
+	skewMatrix = new Matrix4();
+	constructor(ntiles: number, dxdy: number, dzdy: number) {
+		super(-ntiles / 2, ntiles / 2, ntiles / 2, -ntiles / 2, -500, 500);
+		this.setSkew(dxdy, dzdy);
+	}
+
+	pointDown() {
+		this.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(0, 1, 0));
+	}
+
+	setSkew(dxdz: number, dydz: number) {
+		this.skewMatrix.set(
+			1, 0, dxdz, 0,
+			0, 1, dydz, 0,
+			0, 0, 1, 0,
+			0, 0, 0, 1
+		);
+		this.updateProjectionMatrix();
+	}
+
+	updateProjectionMatrix() {
+		//null during super constructor...
+		if (this.skewMatrix) {
+			super.updateProjectionMatrix();
+			this.projectionMatrix.multiply(this.skewMatrix);
+			this.projectionMatrixInverse.copy(this.projectionMatrix).invert();
+		}
+	}
 }

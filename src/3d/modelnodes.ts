@@ -17,8 +17,6 @@ import fetch from "node-fetch";
 import { MaterialData } from "./jmat";
 import { legacyMajors } from "../cache/legacycache";
 import { classicGroups } from "../cache/classicloader";
-import { mapImageCamera } from "../map";
-import { findImageBounds, pixelsToImageFile, sliceImage } from "../imgutils";
 
 
 export type SimpleModelDef = {
