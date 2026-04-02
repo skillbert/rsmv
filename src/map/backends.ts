@@ -47,9 +47,12 @@ export abstract class MapRender {
 		this.config = config;
 	}
 	abstract getFileResponse(name: string, version?: number): Promise<Response>;
-	abstract makeFileName(layer: string, zoom: number, x: number, y: number, ext: string): string;
 	abstract saveFile(name: string, hash: number, data: Buffer, version?: number): Promise<void>;
 	abstract symlink(name: string, hash: number, symlinktarget: string, symlinkversion?: number): Promise<void>;
+
+	makeFileName(layer: string, zoom: number | null, x: number, y: number, ext: string, extra = "") {
+		return `${layer}${zoom != null ? "/" + zoom : ""}/${extra}${x}-${y}.${ext}`;
+	}
 
 	async symlinkBatch(files: SymlinkCommand[]) {
 		await Promise.all(files.map(f => this.symlink(f.file, f.hash, f.symlink, f.symlinkbuildnr)));
@@ -74,10 +77,7 @@ export class MapRenderFsBacked extends MapRender {
 		super(config);
 		this.fs = fs;
 	}
-	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
-		return `${layer}/${zoom}/${x}-${y}.${ext}`;
-	}
-	assertVersion(version = this.version) {
+	assertVersion(version: number) {
 		if (version != 0 && version != this.version) { throw new Error("versions not supported"); }
 	}
 	async saveFile(name: string, hash: number, data: Buffer, version: number) {
@@ -85,7 +85,7 @@ export class MapRenderFsBacked extends MapRender {
 		await this.fs.mkDir(naiveDirname(name));
 		await this.fs.writeFile(name, data);
 	}
-	async getFileResponse(name: string, version?: number) {
+	async getFileResponse(name: string, version = this.version) {
 		this.assertVersion(version);
 		try {
 			let ext = name.match(/\.(\w+)$/);
@@ -139,9 +139,6 @@ export class MapRenderDatabaseBacked extends MapRender {
 		localStorage.map_workerid ??= workerid;
 
 		return new MapRenderDatabaseBacked(endpoint, auth, workerid, uploadmapid, config, rendermetaname, overwrite, ignorebefore);
-	}
-	makeFileName(layer: string, zoom: number, x: number, y: number, ext: string) {
-		return `${layer}/${zoom}/${x}-${y}.${ext}`;
 	}
 	async beginMapVersion(version: number) {
 		this.version = version;
