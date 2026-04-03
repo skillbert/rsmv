@@ -2100,7 +2100,7 @@ export class Map2dView extends React.Component<{ addArea?: (x: number, z: number
 					gridRow: "" + (zmin + zsize - z),
 					border: "1px solid rgba(255,255,255,0.2)"
 				}
-				addgrid.push(<div key={`${x}-${z}`} onClick={() => this.props.addArea?.(x, z)} style={style}></div>);
+				addgrid.push(<div key={`${x}-${z}`} className="map-grid-placeholder" onClick={() => this.props.addArea?.(x, z)} style={style}></div>);
 			}
 		}
 

@@ -193,6 +193,14 @@
 	margin: 0px auto;
 }
 
+.map-grid-placeholder {
+}
+
+.map-grid-placeholder:hover {
+	background-color: #5555;
+}
+
+
 .map-grid-area {
 	text-align: center;
 	border: 1px solid;
@@ -302,7 +310,8 @@
 	white-space: pre;
 	user-select: text;
 	font-family: monospace;
-	line-height: 1.25;/*forces all lines to be same height*/
+	line-height: 1.25;
+	/*forces all lines to be same height*/
 }
 
 .mv-hexlabel {
