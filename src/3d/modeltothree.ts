@@ -199,6 +199,7 @@ export function augmentThreeJsFloorMaterial(mat: THREE.Material, isminimap: bool
 	}
 }
 
+export type DependencyGraphObject = Awaited<ReturnType<typeof EngineCache.prototype.getDependencyGraph>>;
 
 //basically stores all the config of the game engine
 export class EngineCache extends CachingFileSource {

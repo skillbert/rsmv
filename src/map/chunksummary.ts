@@ -1,7 +1,7 @@
-import { Box2, BufferAttribute, Group, Matrix4, Vector2, Vector3 } from "three";
+import { Box2, BufferAttribute, Camera, Group, Matrix4, Vector2, Vector3 } from "three";
 import { objects } from "../../generated/objects";
-import { ChunkData, getTileHeight, MapRect, ModelExtras, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, PlacedModel, rs2ChunkSize, tiledimensions, TileGrid, tileshapes, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
-import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
+import { ChunkData, getTileHeight, MapRect, ModelExtras, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, PlacedModel, rs2ChunkSize, RSMapChunkData, tiledimensions, TileGrid, tileshapes, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
+import { DependencyGraphObject, EngineCache, ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBuilder } from "../3d/modelutils";
 import { DependencyGraph } from "../scripts/dependencies";
 import { KnownMapFile, MapRender } from "./backends";
@@ -11,6 +11,7 @@ import { crc32addInt } from "../libs/crc32util";
 import type { RSMapChunk } from "../3d/modelnodes";
 import { getOrInsert } from "../utils";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
+import { MaprenderSquareLoaded } from "./layers";
 
 export function getLocImageHash(grid: TileGrid, info: WorldLocation) {
 	let loc = info.location;
@@ -273,7 +274,35 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 	return outlocgroups;
 }
 
-function tileSetVertices(tile: ChunkTileDependencies) {
+export function visibleChunkHash(deps: DependencyGraphObject, chunk: RSMapChunkData, chunktoscreen: Matrix4, floor: number) {
+	let floordeps = mapsquareFloorDependencies(chunk.grid, deps, chunk.chunk!);
+	let locdeps = mapsquareLocDependencies(chunk.grid, deps, chunk.modeldata, chunk.chunkx, chunk.chunkz);
+
+	let hash = 0;
+	for (let tile of floordeps) {
+		let verts = tileSetVertices(tile);
+		if (pointsIntersectProjection(chunktoscreen, [verts])) {
+			hash = crc32addInt(tile.dephash, hash);
+			for (let level = 0; level < floor; level++) {
+				hash = crc32addInt(tile.tilehashes[level], hash);
+			}
+		}
+	}
+
+	for (let loc of locdeps) {
+		for (let inst of loc.instances) {
+			let verts = inst.bounds;
+			if (pointsIntersectProjection(chunktoscreen, [verts])) {
+				hash = crc32addInt(loc.dependencyhash, hash);
+				hash = crc32addInt(inst.placementhash, hash);
+			}
+		}
+	}
+
+	return hash;
+}
+
+export function tileSetVertices(tile: ChunkTileDependencies) {
 	let x0 = tile.x * tiledimensions;
 	let x1 = x0 + tile.xzsize * tiledimensions;
 	let z0 = tile.z * tiledimensions;
@@ -467,7 +496,6 @@ export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: Til
 }
 
 export function pointsIntersectProjection(projection: Matrix4, points: number[][]) {
-	//make them local vars to prevent writing into old space
 	const min = new Vector3();
 	const max = new Vector3();
 	const tmp = new Vector3();
@@ -483,7 +511,7 @@ export function pointsIntersectProjection(projection: Matrix4, points: number[][
 				max.max(tmp);
 			}
 		}
-		if (min.x < 1 && max.x > -1 && min.y < 1 && max.y > -1) {
+		if (min.x < 1 && max.x > -1 && min.y < 1 && max.y > -1 && min.z < 1 && max.z > -1) {
 			return true;
 		}
 	}
@@ -896,9 +924,46 @@ export class RenderDepsTracker {
 			return matches;
 		}
 
+		let checkMatches = async (name: string, datarect: MapRect, chunks: MaprenderSquareLoaded[], cam: Camera, level: number, parentlevel: number) => {
+			for (let versionMatch of await findMatches(datarect, name)) {
+				let isdirty = false;
+				for (let chunk of chunks) {
+					let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
+					if (!other) { throw new Error("unexpected"); }
+
+					chunk.model.rootnode.updateWorldMatrix(true, false);
+					let modelmatrix = new Matrix4()
+						.makeTranslation(
+							chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
+							0,
+							chunk.model.chunkz * tiledimensions * chunk.model.loaded!.chunkSize)
+						.premultiply(chunk.model.rootnode.matrixWorld);
+
+					let proj = cam.projectionMatrix.clone()
+						.multiply(cam.matrixWorldInverse)
+						.multiply(modelmatrix);
+
+					let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, level, parentlevel);
+					let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, level, parentlevel);
+
+					isdirty ||= pointsIntersectProjection(proj, locs);
+					isdirty ||= pointsIntersectProjection(proj, floor);
+					if (isdirty) {
+						break;
+					}
+				}
+
+				if (!isdirty) {
+					return versionMatch.file;
+				}
+			}
+			return null;
+		}
+
 		return {
 			allFiles,
 			findMatches,
+			checkMatches,
 			addLocalFile,
 			addLocalSquare
 		};

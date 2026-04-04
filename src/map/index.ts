@@ -453,7 +453,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 				for (let retry = 0; retry <= maxretries; retry++) {
 					try {
 						let renderprom = lastrender.then(() => maprender ??= getRenderer());
-						let res = await task.runTasks(renderprom);
+						await task.runTasks(renderprom);
 						break;
 					} catch (e) {
 						console.warn(e.toString());

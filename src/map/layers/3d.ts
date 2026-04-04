@@ -1,12 +1,12 @@
-import { Camera, Matrix4, Object3D } from "three";
+import { Camera, Object3D } from "three";
 import { chunkrectToOffetWorldRect, MaprenderSquare, RenderMode, RenderTask } from ".";
 import { CombinedTileGrid, getTileHeight, tiledimensions } from "../../3d/mapsquare";
 import { canvasToImageFile, findImageBounds, pixelsToImageFile, sliceImage } from "../../imgutils";
 import prettyJson from "json-stringify-pretty-compact";
-import { chunkSummary, compareFloorDependencies, compareLocDependencies, pointsIntersectProjection } from "../chunksummary";
+import { chunkSummary, visibleChunkHash } from "../chunksummary";
 import { svgfloor } from "../svgrender";
-import { KnownMapFile } from "../backends";
 import * as zlib from "zlib";
+import { crc32addInt } from "../../libs/crc32util";
 
 
 function setChunkRenderToggles(chunks: MaprenderSquare[], floornr: number, isminimap: boolean, hidelocs: boolean) {
@@ -93,7 +93,29 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                     async run(chunks, renderer, parentinfo) {
                         setChunkRenderToggles(chunks, layer.level, layer.mode == "minimap", !!layer.hidelocs);
                         let cam = mapImageCamera(worldrect.x + tiles * subx, worldrect.z + tiles * subz, tiles, layer.dxdy, layer.dzdy);
-                        let parentFile: undefined | KnownMapFile = undefined;
+
+                        // check if any other layer has the same render already
+                        for (let parentoption of parentCandidates) {
+                            let parentfile = await parentinfo.checkMatches(parentoption.name, this.datarect, chunks, cam, layer.level, parentoption.level);
+                            if (parentfile) {
+                                return {
+                                    file: undefined,
+                                    symlink: parentfile
+                                };
+                            }
+                        }
+
+                        // calculate exact hash of visible meshes
+                        let depgraph = await engine.getDependencyGraph();
+                        chunks.sort((a, b) => a.x - b.x || a.z - b.z);
+                        let exacthash = 0;
+                        for (let chunk of chunks) {
+                            let chunktoscreen = cam.projectionMatrix.clone()
+                                .multiply(cam.matrixWorldInverse)
+                                .multiply(chunk.model.rootnode.matrixWorld);
+                            let visiblehash = visibleChunkHash(depgraph, chunk.loaded.chunkdata, chunktoscreen, layer.level);
+                            exacthash = crc32addInt(visiblehash, exacthash);
+                        }
 
                         // svg overlay to draw walls/icons need to be rendered for this chunk
                         if (!overlayimg && (layer.overlayicons || layer.overlaywalls)) {
@@ -117,61 +139,8 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                             await overlayimg.decode();
                         }
 
-                        findparent: for (let parentoption of parentCandidates) {
-                            for (let versionMatch of await parentinfo.findMatches(this.datarect, parentoption.name)) {
-                                let isdirty = false;
-                                for (let chunk of chunks) {
-                                    let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
-                                    if (!other) { throw new Error("unexpected"); }
-
-                                    chunk.model.rootnode.updateWorldMatrix(true, false);
-                                    let modelmatrix = new Matrix4().makeTranslation(
-                                        chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
-                                        0,
-                                        chunk.model.chunkz * tiledimensions * chunk.model.loaded!.chunkSize,
-                                    ).premultiply(chunk.model.rootnode.matrixWorld);
-
-                                    let proj = cam.projectionMatrix.clone()
-                                        .multiply(cam.matrixWorldInverse)
-                                        .multiply(modelmatrix);
-
-                                    let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, layer.level, parentoption.level);
-                                    let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, layer.level, parentoption.level);
-
-                                    // if (locs.length + floor.length > 400) {
-                                    // 	continue optloop;
-                                    // }
-                                    isdirty ||= pointsIntersectProjection(proj, locs);
-                                    isdirty ||= pointsIntersectProjection(proj, floor);
-                                    if (isdirty) {
-                                        break;
-                                    }
-                                }
-
-                                // let area = diff.coverage();
-                                if (!isdirty) {
-                                    parentFile = versionMatch.file;
-                                    break findparent;
-                                }
-                                // if (area < 0.2) {
-                                // 	if (area > 0) {
-                                // 		let { rects } = diff.calculateDiffArea(img.width, img.height);
-                                // 		maskImage(img, rects);
-                                // 	}
-                                // 	break;
-                                // }
-                            }
-                        }
-
-                        if (parentFile) {
-                            return {
-                                file: undefined,
-                                symlink: parentFile
-                            }
-                        }
-
+                        // the actual render
                         let img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, layer.mode == "minimap");
-                        // isImageEmpty(img, "black");
 
                         //keep reference to dedupe similar renders
                         chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
@@ -200,12 +169,12 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                             );
                             return {
                                 file: (() => canvasToImageFile(mergecnv, layer.format ?? "webp", 0.9)),
-                                symlink: parentFile
+                                symlink: undefined
                             };
                         } else {
                             return {
                                 file: (() => pixelsToImageFile(img, layer.format ?? "webp", 0.9)),
-                                symlink: parentFile
+                                symlink: undefined
                             };
                         }
                     }

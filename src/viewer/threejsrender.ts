@@ -40,6 +40,7 @@ export type ThreeJsSceneElement = {
 	modelnode?: Object3D,
 	sky?: { skybox: THREE.Object3D | null, fogColor: number[] } | null,
 	updateAnimation?: (delta: number, epochtime: number) => void,
+	projectionChanged?: (projection: Matrix4) => void,
 	options?: {
 		hideFloor?: boolean,
 		hideFog?: boolean,
@@ -54,7 +55,7 @@ type CameraControlMode = "free" | "world";
 type AutoFrameMode = "forced" | "continuous" | "never";
 export type RenderCameraMode = "standard" | "vr360" | "item" | "topdown";
 
-export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
+export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents> {
 	private renderer: THREE.WebGLRenderer;
 	private canvas: HTMLCanvasElement;
 	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
@@ -69,6 +70,8 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 
 	private sceneElements = new Set<ThreeJsSceneElementSource>();
 	private animationCallbacks = new Set<NonNullable<ThreeJsSceneElement["updateAnimation"]>>();
+	private lastProjectionMatrix = new Matrix4();
+	private projectionChangedCallbacks = new Set<NonNullable<ThreeJsSceneElement["projectionChanged"]>>();
 	private vr360cam: VR360Render | null = null;
 	private forceAspectRatio: number | null = null;
 
@@ -221,6 +224,7 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		let autoframes: AutoFrameMode | "auto" = "auto";
 		let nodeDeleteList = new Set(this.modelnode.children);
 		this.animationCallbacks.clear();
+		this.projectionChangedCallbacks.clear();
 		for (let source of this.sceneElements) {
 			let elgroup = source.getSceneElements();
 			if (!Array.isArray(elgroup)) { elgroup = [elgroup]; }
@@ -228,6 +232,9 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 				if (el.sky) { sky = el.sky; }
 				if (el.updateAnimation) {
 					this.animationCallbacks.add(el.updateAnimation);
+				}
+				if (el.projectionChanged) {
+					this.projectionChangedCallbacks.add(el.projectionChanged);
 				}
 				if (el.options?.hideFog) { hideFog = true; }
 				if (el.options?.hideFloor) { showfloor = false; }
@@ -365,21 +372,30 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents>{
 		compatCancelAnimationFrame(this.queuedFrameId);
 		this.queuedFrameId = 0;
 
+		// update animations
 		let delta = this.clock.getDelta();
 		delta *= (globalThis.speed ?? 100) / 100;//TODO remove
 		this.animationCallbacks.forEach(q => q(delta, this.clock.elapsedTime));
 
-		this.resizeRendererToDisplaySize();
+		this.resizeRendererToDisplaySize();		
+		let cam2d = (cam ?? this.getCurrent2dCamera());
+		if (cam2d) {
+			this.renderScene(cam2d);
 
-		if (cam) {
-			this.renderScene(cam);
+			// check and notify projection changes
+			// do this after rendering to make sure matrices are correct
+			let worldtoscreen = new Matrix4().multiplyMatrices(cam2d.projectionMatrix, cam2d.matrixWorldInverse);
+			if (!worldtoscreen.equals(this.lastProjectionMatrix)) {
+				this.projectionChangedCallbacks.forEach(q => q(worldtoscreen));
+				this.lastProjectionMatrix.copy(worldtoscreen);
+			}
 		} else if (this.camMode == "vr360") {
 			let cam = this.getVr360Camera();
 			this.renderCube(cam);
 			this.renderer.clearColor();
 			cam.render(this.renderer);
 		} else {
-			this.renderScene(this.getCurrent2dCamera()!);
+			console.log("unknown camera config");
 		}
 		if (this.autoFrameMode == "continuous") {
 			this.forceFrame();

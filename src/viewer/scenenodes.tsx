@@ -32,11 +32,11 @@ import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked, MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../map/backends';
-import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies } from '../map/chunksummary';
+import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies, pointsIntersectProjection, tileSetVertices } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
 import { CliApiContext, cliApi } from '../clicommands';
 import * as cmdts from "cmd-ts";
-import * as commentjson from "comment-json";
+import { crc32addInt } from '../libs/crc32util';
 
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
@@ -1692,27 +1692,17 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		showModal({ title: "Map view" }, <Map2dView chunks={this.state.chunkgroups.map(q => q.models.get(this.props.ctx!.sceneCache)!).filter(q => q)} gridsize={512} mapscenes={true} />);
 	}
 
-	async diffCaches(floora = 3, floorb = 3) {
+	async diffCaches(cachea: ThreejsSceneCache, cacheb: ThreejsSceneCache, floora = 3, floorb = 3) {
 		let group = this.state.chunkgroups[0];
 		if (!this.props.ctx || !group) {
 			return;
 		}
-		let arr = [...group.models.entries()];
-		if (arr.length != 1 && arr.length != 2) {
-			console.log("//TODO can currenly only diff with 1 or 2 caches loaded");
-			return;
-		}
-		let [entrya, entryb] = (arr.length == 1 ? [arr[0], arr[0]] : arr);
-		let chunka = await entrya[1].chunkdata;
-		let chunkb = await entryb[1].chunkdata;
-		let cachea = entrya[0];
-		let cacheb = entryb[0];
+		let chunka = await group.models.get(cachea)?.chunkdata;
+		let chunkb = await group.models.get(cacheb)?.chunkdata;
+		if (!chunka?.chunk || !chunkb?.chunk) { throw new Error("unexpected"); }
 
-		if (!chunka.chunk || !chunkb.chunk) { throw new Error("unexpected"); }
 		let depsa = await cachea.engine.getDependencyGraph();
-		depsa.insertMapChunk(chunka.chunk);
 		let depsb = await cacheb.engine.getDependencyGraph();
-		depsb.insertMapChunk(chunkb.chunk);
 
 		let floordepsa = mapsquareFloorDependencies(chunka.grid, depsa, chunka.chunk);
 		let locdepsa = mapsquareLocDependencies(chunka.grid, depsa, chunka.modeldata, chunka.chunk.mapsquarex, chunka.chunk.mapsquarez);
@@ -1722,8 +1712,20 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
 		let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
 
-		let floordifmesh = await mapdiffmesh(globalThis.sceneCache, floordifs, [255, 0, 0]);
-		let locdifmesh = await mapdiffmesh(globalThis.sceneCache, locdifs, [0, 255, 0]);
+		let floordifmesh = await mapdiffmesh(cachea, floordifs, [255, 0, 0]);
+		let locdifmesh = await mapdiffmesh(cachea, locdifs, [0, 255, 0]);
+
+		// position the meshes
+		let offsetx = group.chunkx * tiledimensions * chunka.chunkSize - this.state.center.x;
+		let offsetz = group.chunkz * tiledimensions * chunka.chunkSize - this.state.center.z;
+		floordifmesh.position.x = offsetx;
+		floordifmesh.position.z = offsetz;
+		locdifmesh.position.x = offsetx;
+		locdifmesh.position.z = offsetz;
+		floordifmesh.updateMatrix();
+		locdifmesh.updateMatrix();
+
+		globalThis.locdifmesh = locdifmesh;
 
 		let diffgroup: DiffMesh = {
 			a: cachea,
@@ -1738,10 +1740,46 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			floorb,
 			visible: true,
 			floormesh: {
-				getSceneElements() { return { modelnode: (!diffgroup.visible ? undefined : floordifmesh) } }
+				getSceneElements() {
+					return {
+						modelnode: (!diffgroup.visible ? undefined : floordifmesh),
+						projectionChanged(proj) {
+							let chunktoscreen = proj.clone().multiply(floordifmesh.matrixWorld);
+							let hash = 0;
+							for (let tile of floordepsb) {
+								let verts = tileSetVertices(tile);
+								if (pointsIntersectProjection(chunktoscreen, [verts])) {
+									hash = crc32addInt(tile.dephash, hash);
+									for (let floor = 0; floor < floorb; floor++) {
+										hash = crc32addInt(tile.tilehashes[floor], hash);
+									}
+								}
+							}
+							console.log("floordepsb", hash);
+						}
+					}
+				}
 			},
 			locsmesh: {
-				getSceneElements() { return { modelnode: (!diffgroup.visible ? undefined : locdifmesh) } }
+				getSceneElements() {
+					return {
+						modelnode: (!diffgroup.visible ? undefined : locdifmesh),
+						projectionChanged(proj) {
+							let chunktoscreen = proj.clone().multiply(floordifmesh.matrixWorld);
+							let hash = 0;
+							for (let loc of locdepsb) {
+								for (let inst of loc.instances) {
+									let verts = inst.bounds;
+									if (pointsIntersectProjection(chunktoscreen, [verts])) {
+										hash = crc32addInt(loc.dependencyhash, hash);
+										hash = crc32addInt(inst.placementhash, hash);
+									}
+								}
+							}
+							console.log("locshashb", hash);
+						}
+					}
+				}
 			},
 			remove: () => {
 				group.diffs = group.diffs.filter(q => q != diffgroup);
@@ -2045,6 +2083,8 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 							</div>
 						))}
 						{this.state.versions.length > 1 && <input type="button" className="sub-btn" value="Toggle" onClick={this.toggleCache} />}
+						{this.state.versions.length == 1 && <input type="button" className="sub-btn" value="Diff roofs" onClick={() => this.diffCaches(this.state.versions[0].cache, this.state.versions[0].cache, 0, 3)} />}
+						{this.state.versions.length == 2 && <input type="button" className="sub-btn" value="Diff" onClick={() => this.diffCaches(this.state.versions[0].cache, this.state.versions[1].cache, 3, 3)} />}
 						{this.state.chunkgroups.flatMap((group, groupi) => group.diffs.map((diff, i) => {
 							let metaa = diff.a.engine.getCacheMeta();
 							let metab = diff.a == diff.b ? metaa : diff.b.engine.getCacheMeta();
@@ -2053,7 +2093,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 									<label title={diff.a == diff.b ? metaa.descr : `cache a:${metaa.descr}\n\n${metab.descr}`}>
 										<input type="checkbox" checked={diff.visible} onChange={e => { diff.visible = e.currentTarget.checked; this.props.ctx?.renderer.sceneElementsChanged(); this.forceUpdate(); }} />
 										{diff.a.engine.getBuildNr()}, floor: {diff.floora}
-										-
+										{" - "}
 										{diff.b.engine.getBuildNr()}, floor: {diff.floorb}
 									</label>
 									<input type="button" className="sub-btn" onClick={diff.remove} style={{ float: "right" }} value="x" />
