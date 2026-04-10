@@ -147,168 +147,149 @@ export type ChunkTileDependencies = {
 	dephash: number
 }
 
-export function mapsquareFloorDependencies(grid: TileGrid, deps: DependencyGraph, chunk: ChunkData) {
-	let groups: ChunkTileDependencies[] = [];
+export type VisualHash = {
+	// hash of model and placement
+	hash: number,
+	level: number,
+	// corners of bounding box
+	bounds: number[]
+}
+
+export function mapsquareFloorVisuals(grid: TileGrid, deps: DependencyGraph, chunk: ChunkData) {
+	let groups: VisualHash[] = [];
 	const groupsize = 2;
 	for (let x = 0; x < chunk.tilerect.xsize; x += groupsize) {
 		for (let z = 0; z < chunk.tilerect.zsize; z += groupsize) {
-			let tilehashes = new Array<number>(grid.levels).fill(0);
-			let maxy = 0;
-			//can't use Set here since we need determinisitic order
-			let overlays: number[] = [];
-			let underlays: number[] = [];
-			for (let level = 0; level < grid.levels; level++) {
-				let minlevel = level;
-				for (let dx = 0; dx < groupsize; dx++) {
-					for (let dz = 0; dz < groupsize; dz++) {
-						let tilehash = 0;
-						let tile = grid.getTile(chunk.tilerect.x + x + dx, chunk.tilerect.z + z + dz, level);
-						if (!tile || (!tile.underlayVisible && !tile.overlayVisible)) { continue; }
-						minlevel = Math.min(minlevel, tile.effectiveVisualLevel);
+			for (let iterlevel = 0; iterlevel < grid.levels; iterlevel++) {
+				let maxy = 0;
+				let miny = Infinity;
+				let grouphash = 0;
+				for (let level = 0; level < grid.levels; level++) {
+					for (let dx = 0; dx < groupsize; dx++) {
+						for (let dz = 0; dz < groupsize; dz++) {
+							let tile = grid.getTile(chunk.tilerect.x + x + dx, chunk.tilerect.z + z + dz, level);
+							if (!tile || (!tile.underlayVisible && !tile.overlayVisible)) { continue; }
+							if (tile.effectiveVisualLevel != iterlevel) { continue; }
 
-						let rawtile = tile.debug_raw;
-						//TODO make a nxt branch here
-						if (!rawtile) { throw new Error("can't calculate chunkhash since rawtile isn't set"); }
-						tilehash = crc32addInt(rawtile.height ?? -1, tilehash);
-						tilehash = crc32addInt(rawtile.overlay ?? -1, tilehash);
-						tilehash = crc32addInt(rawtile.settings ?? -1, tilehash);
-						tilehash = crc32addInt(rawtile.shape ?? -1, tilehash);
-						tilehash = crc32addInt(rawtile.underlay ?? -1, tilehash);
+							let rawtile = tile.debug_raw;
+							//TODO make a nxt branch here
+							if (!rawtile) { throw new Error("can't calculate chunkhash since rawtile isn't set"); }
+							grouphash = crc32addInt(rawtile.height ?? -1, grouphash);
+							grouphash = crc32addInt(rawtile.overlay ?? -1, grouphash);
+							grouphash = crc32addInt(rawtile.settings ?? -1, grouphash);
+							grouphash = crc32addInt(rawtile.shape ?? -1, grouphash);
+							grouphash = crc32addInt(rawtile.underlay ?? -1, grouphash);
 
-						tilehash = crc32addInt(tile.effectiveVisualLevel, tilehash);
+							grouphash = crc32addInt(tile.effectiveVisualLevel, grouphash);
 
-						if (rawtile.overlay != null && overlays.indexOf(rawtile.overlay) == -1) { overlays.push(rawtile.overlay); }
-						if (rawtile.underlay != null && underlays.indexOf(rawtile.underlay) == -1) { underlays.push(rawtile.underlay); }
+							// TODO use lookup table here since there are only ~500 overlayers/underlays
+							grouphash = crc32addInt(grouphash, deps.hashDependencies(deps.makeDeptName("overlay", rawtile.overlay ?? -1)));
+							grouphash = crc32addInt(grouphash, deps.hashDependencies(deps.makeDeptName("underlay", rawtile.underlay ?? -1)));
 
-						maxy = Math.max(maxy, tile.y, tile.y01, tile.y10, tile.y11);
-
-						for (let i = tile.effectiveVisualLevel; i < grid.levels; i++) {
-							tilehashes[i] = crc32addInt(tilehash, tilehashes[i]);
+							maxy = Math.max(maxy, tile.y, tile.y01, tile.y10, tile.y11);
+							miny = Math.min(miny, tile.y, tile.y01, tile.y10, tile.y11);
 						}
 					}
 				}
-			}
 
-			let dephash = 0;
-			overlays.forEach(id => dephash = deps.hashDependencies(deps.makeDeptName("overlay", id), dephash));
-			underlays.forEach(id => dephash = deps.hashDependencies(deps.makeDeptName("underlay", id), dephash));
-			groups.push({
-				x, z,
-				xzsize: groupsize,
-				maxy,
-				dephash,
-				tilehashes
-			});
+				let bounds = tileSetVertices(chunk.tilerect.x + x, chunk.tilerect.z + z, groupsize, miny, maxy);
+				groups.push({ bounds, level: iterlevel, hash: grouphash });
+			}
 		}
 	}
 	return groups;
 }
 
-function compareChunkLoc(a: ChunkLocDependencies["instances"][number], b: ChunkLocDependencies["instances"][number]) {
-	return a.plane - b.plane || a.x - b.x || a.z - b.z || a.rotation - b.rotation || a.type - b.type;
-}
-
-export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, locs: Map<WorldLocation, PlacedMesh[]>, chunkx: number, chunkz: number) {
+export function mapsquareLocVisuals(grid: TileGrid, deps: DependencyGraph, locs: Map<WorldLocation, PlacedMesh[]>, chunkx: number, chunkz: number) {
 	const boxAttribute = new BufferAttribute(new Float32Array(3 * 8), 3);
 	const v0 = new Vector3();
 	const v1 = new Vector3();
 	const v2 = new Vector3();
 
-	let locgroups = new Map<number, WorldLocation[]>();
+	let cachedlochashes = new Map<number, number>();
 	for (let loc of locs.keys()) {
-		let group = getOrInsert(locgroups, loc.locid, () => []);
-		group.push(loc);
+		getOrInsert(cachedlochashes, loc.locid, () => deps.hashDependencies(deps.makeDeptName("loc", loc.locid)));
 	}
 
-	let outlocgroups: ChunkLocDependencies[] = [];
-
-	for (let [locid, group] of locgroups) {
-		let lochash = deps.hashDependencies(deps.makeDeptName("loc", locid));
-		let outgroup: ChunkLocDependencies = {
-			id: locid,
-			dependencyhash: lochash,
-			instances: []
-		}
-		outlocgroups.push(outgroup);
-		for (let loc of group) {
-			let models = locs.get(loc)!;
-			v0.set(0, 0, 0);
-			v1.set(0, 0, 0);
-			for (let mesh of models) {
-				let posattr = mesh.model.attributes.pos;
-				for (let i = 0; i < posattr.count; i++) {
-					v2.set(posattr.getX(i), posattr.getY(i), posattr.getZ(i));
-					v0.min(v2);
-					v1.max(v2);
-				}
+	let visuals: VisualHash[] = [];
+	for (let [loc, models] of locs) {
+		let lochash = cachedlochashes.get(loc.locid)!;
+		v0.set(0, 0, 0);
+		v1.set(0, 0, 0);
+		for (let mesh of models) {
+			let posattr = mesh.model.attributes.pos;
+			for (let i = 0; i < posattr.count; i++) {
+				v2.set(posattr.getX(i), posattr.getY(i), posattr.getZ(i));
+				v0.min(v2);
+				v1.max(v2);
 			}
-
-			//8 vertices, one for each bounding box corner
-			boxAttribute.setXYZ(0, v0.x, v0.y, v0.z);
-			boxAttribute.setXYZ(1, v0.x, v0.y, v1.z);
-			boxAttribute.setXYZ(2, v0.x, v1.y, v0.z);
-			boxAttribute.setXYZ(3, v0.x, v1.y, v1.z);
-			boxAttribute.setXYZ(4, v1.x, v0.y, v0.z);
-			boxAttribute.setXYZ(5, v1.x, v0.y, v1.z);
-			boxAttribute.setXYZ(6, v1.x, v1.y, v0.z);
-			boxAttribute.setXYZ(7, v1.x, v1.y, v1.z);
-
-			let first = models[0];
-			let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, chunkx * rs2ChunkSize * tiledimensions, chunkz * rs2ChunkSize * tiledimensions);
-			let bounds = [...trans.array as Float32Array].map(v => v | 0);
-			outgroup.instances.push({
-				plane: loc.plane,
-				x: loc.x,
-				z: loc.z,
-				rotation: loc.rotation,
-				type: loc.type,
-
-				visualLevel: loc.visualLevel,
-				placementhash: modelPlacementHash(loc),
-				bounds: bounds
-			});
 		}
-		outgroup.instances.sort(compareChunkLoc);
+
+		//8 vertices, one for each bounding box corner
+		boxAttribute.setXYZ(0, v0.x, v0.y, v0.z);
+		boxAttribute.setXYZ(1, v0.x, v0.y, v1.z);
+		boxAttribute.setXYZ(2, v0.x, v1.y, v0.z);
+		boxAttribute.setXYZ(3, v0.x, v1.y, v1.z);
+		boxAttribute.setXYZ(4, v1.x, v0.y, v0.z);
+		boxAttribute.setXYZ(5, v1.x, v0.y, v1.z);
+		boxAttribute.setXYZ(6, v1.x, v1.y, v0.z);
+		boxAttribute.setXYZ(7, v1.x, v1.y, v1.z);
+
+		let first = models[0];
+		let trans = transformVertexPositions(boxAttribute, first.morph, grid, first.maxy, chunkx * rs2ChunkSize * tiledimensions, chunkz * rs2ChunkSize * tiledimensions);
+		let bounds = [...trans.array as Float32Array].map(v => v | 0);
+		visuals.push({
+			hash: crc32addInt(modelPlacementHash(loc), lochash),
+			bounds,
+			level: loc.visualLevel
+		});
 	}
-	outlocgroups.sort((a, b) => a.id - b.id);
-	return outlocgroups;
+
+	return visuals;
 }
 
-export function visibleChunkHash(deps: DependencyGraphObject, chunk: RSMapChunkData, chunktoscreen: Matrix4, floor: number) {
-	let floordeps = mapsquareFloorDependencies(chunk.grid, deps, chunk.chunk!);
-	let locdeps = mapsquareLocDependencies(chunk.grid, deps, chunk.modeldata, chunk.chunkx, chunk.chunkz);
+export function mapsquareVisuals(deps: DependencyGraphObject, chunk: RSMapChunkData) {
+	let visuals = [
+		...mapsquareFloorVisuals(chunk.grid, deps, chunk.chunk!),
+		...mapsquareLocVisuals(chunk.grid, deps, chunk.modeldata, chunk.chunkx, chunk.chunkz)
+	];
+
+	// sort by hash to make sure we get the same result regardless of order of processing
+	visuals.sort((a, b) => a.hash - b.hash);
+	return visuals;
+}
+
+export function compareChunkHashes(deps1: DependencyGraphObject, chunk1: RSMapChunkData, deps2: DependencyGraphObject, chunk2: RSMapChunkData, chunktoscreen: Matrix4, level: number) {
+	let visuals1 = mapsquareVisuals(deps1, chunk1);
+	let visuals2 = mapsquareVisuals(deps2, chunk2);
+	
+
+}
+
+export function visibleChunkHash(deps: DependencyGraphObject, chunk: RSMapChunkData, chunktoscreen: Matrix4, level: number) {
+	let visuals = [
+		...mapsquareFloorVisuals(chunk.grid, deps, chunk.chunk!),
+		...mapsquareLocVisuals(chunk.grid, deps, chunk.modeldata, chunk.chunkx, chunk.chunkz)
+	];
+
 
 	let hash = 0;
-	for (let tile of floordeps) {
-		let verts = tileSetVertices(tile);
-		if (pointsIntersectProjection(chunktoscreen, [verts])) {
-			hash = crc32addInt(tile.dephash, hash);
-			for (let level = 0; level < floor; level++) {
-				hash = crc32addInt(tile.tilehashes[level], hash);
-			}
-		}
-	}
-
-	for (let loc of locdeps) {
-		for (let inst of loc.instances) {
-			let verts = inst.bounds;
-			if (pointsIntersectProjection(chunktoscreen, [verts])) {
-				hash = crc32addInt(loc.dependencyhash, hash);
-				hash = crc32addInt(inst.placementhash, hash);
-			}
+	for (let visual of visuals) {
+		if (visual.level <= level && pointsIntersectProjection(chunktoscreen, [visual.bounds])) {
+			hash = crc32addInt(visual.hash, hash);
 		}
 	}
 
 	return hash;
 }
 
-export function tileSetVertices(tile: ChunkTileDependencies) {
-	let x0 = tile.x * tiledimensions;
-	let x1 = x0 + tile.xzsize * tiledimensions;
-	let z0 = tile.z * tiledimensions;
-	let z1 = z0 + tile.xzsize * tiledimensions;
-	let y0 = 0;
-	let y1 = tile.maxy;
+export function tileSetVertices(tilex: number, tilez: number, groupsize: number, miny: number, maxy: number) {
+	let x0 = tilex * tiledimensions;
+	let x1 = x0 + groupsize * tiledimensions;
+	let z0 = tilez * tiledimensions;
+	let z1 = z0 + groupsize * tiledimensions;
+	let y0 = miny;
+	let y1 = maxy;
 	return [
 		x0, y0, z0,
 		x0, y0, z1,
@@ -319,92 +300,6 @@ export function tileSetVertices(tile: ChunkTileDependencies) {
 		x1, y1, z0,
 		x1, y1, z1,
 	];
-}
-
-export function compareFloorDependencies(tilesa: ChunkTileDependencies[], tilesb: ChunkTileDependencies[], levela: number, levelb: number) {
-	let vertsets: number[][] = [];
-	for (let i = 0; i < tilesa.length; i++) {
-		let tilea = tilesa[i];
-		let tileb = tilesb[i];
-		let maxfloor = Math.max(levela, levelb);
-		let mismatch = false;
-		if (tilea.dephash != tileb.dephash) {
-			mismatch = true;
-		} else if (tilea.tilehashes.length <= maxfloor || tileb.tilehashes.length <= maxfloor) {
-			mismatch = true;
-		} else if (tilea.tilehashes[levela] != tileb.tilehashes[levelb]) {
-			mismatch = true
-		}
-		if (mismatch) {
-			vertsets.push(tileSetVertices(tilea));
-			vertsets.push(tileSetVertices(tileb));
-		}
-	}
-	return vertsets;
-}
-
-export function compareLocDependencies(chunka: ChunkLocDependencies[], chunkb: ChunkLocDependencies[], levela: number, levelb: number) {
-	let vertsets: number[][] = [];
-	let iloca = 0, ilocb = 0;
-	while (true) {
-		//explicit bounds check because reading past end is really bad for performance apparently
-		let loca = (iloca < chunka.length ? chunka[iloca] : undefined);
-		let locb = (ilocb < chunkb.length ? chunkb[ilocb] : undefined);
-
-		if (!loca && !locb) { break }
-		else if (loca && locb && loca.id == locb.id) {
-			if (loca.dependencyhash == locb.dependencyhash) {
-				for (let ia = 0, ib = 0; ;) {
-					let insta = loca.instances.at(ia);
-					let instb = locb.instances.at(ib);
-					//ignore locs that are above current level filter
-					if (insta && insta.visualLevel > levela) { insta = undefined; }
-					if (instb && instb.visualLevel > levelb) { instb = undefined; }
-
-					if (!insta && !instb) {
-						if (ia >= loca.instances.length && ib >= locb.instances.length) {
-							break;
-						} else {
-							ia++;
-							ib++;
-							continue;
-						}
-					}
-
-					let cmp = !insta ? -1 : !instb ? 1 : compareChunkLoc(insta, instb);
-					if (cmp == 0) {
-						if (insta!.placementhash != instb!.placementhash) {
-							vertsets.push(insta!.bounds);
-							vertsets.push(instb!.bounds);
-						}
-						ia++;
-						ib++;
-					} else if (cmp < 0) {
-						vertsets.push(instb!.bounds);
-						ib++;
-					} else {
-						vertsets.push(insta!.bounds);
-						ia++;
-					}
-				}
-			} else {
-				//invalidate all
-				vertsets.push(...loca.instances.map(q => q.bounds));
-				vertsets.push(...locb.instances.map(q => q.bounds));
-			}
-			iloca++;
-			ilocb++;
-		} else if (!loca || locb && locb.id < loca.id) {
-			//locb inserted
-			vertsets.push(...locb!.instances.map(q => q.bounds));
-			ilocb++;
-		} else if (!locb || loca && loca.id < locb.id) {
-			//locb inserted
-			vertsets.push(...loca.instances.map(q => q.bounds));
-			iloca++;
-		}
-	}
-	return vertsets;
 }
 
 export async function mapdiffmesh(scene: ThreejsSceneCache, points: number[][], col: [number, number, number] = [255, 0, 0]) {
@@ -452,16 +347,13 @@ type KMeansBucket = {
 export async function generateLocationHashBoxes(scene: ThreejsSceneCache, locs: Map<WorldLocation, PlacedMesh[]>, grid: TileGrid, chunkx: number, chunkz: number, level: number) {
 	let deps = await scene.engine.getDependencyGraph();
 	await deps.preloadChunkDependencies({ area: { x: chunkx, z: chunkz, xsize: 1, zsize: 1 } });
-	let locdeps = mapsquareLocDependencies(grid, deps, locs, chunkx, chunkz);
+	let visuals = mapsquareLocVisuals(grid, deps, locs, chunkx, chunkz);
 
 	let group = new Group();
-	for (let loc of locdeps) {
-		for (let inst of loc.instances) {
-			if (inst.visualLevel != level) { continue; }
-			let totalhash = loc.dependencyhash ^ inst.placementhash;
-			let color = [(totalhash >> 16) & 0xff, (totalhash >> 8) & 0xff, (totalhash >> 0) & 0xff] as [number, number, number];
-			group.add(await mapdiffmesh(scene, [inst.bounds], color));
-		}
+	for (let visual of visuals) {
+		if (visual.level != level) { continue; }
+		let color = [(visual.hash >> 16) & 0xff, (visual.hash >> 8) & 0xff, (visual.hash >> 0) & 0xff] as [number, number, number];
+		group.add(await mapdiffmesh(scene, [visual.bounds], color));
 	}
 	group.userData = {
 		modeltype: "overlay",
@@ -476,22 +368,20 @@ export async function generateLocationHashBoxes(scene: ThreejsSceneCache, locs: 
 export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, level: number) {
 	let deps = await scene.engine.getDependencyGraph();
 	await deps.preloadChunkDependencies({ area: { x: chunk.mapsquarex, z: chunk.mapsquarez, xsize: 1, zsize: 1 } });
-	let floordeps = mapsquareFloorDependencies(grid, deps, chunk);
+	let visuals = mapsquareFloorVisuals(grid, deps, chunk);
+
 	let group = new Group();
-	for (let dep of floordeps) {
-		let totalhash = 0;
-		totalhash = crc32addInt(dep.dephash, totalhash);
-		totalhash = crc32addInt(dep.tilehashes[level], totalhash);
-		let color = [(totalhash >> 16) & 0xff, (totalhash >> 8) & 0xff, (totalhash >> 0) & 0xff] as [number, number, number];
-		let verts = tileSetVertices(dep);
-		group.add(await mapdiffmesh(scene, [verts], color));
+	for (let visual of visuals) {
+		let color = [(visual.hash >> 16) & 0xff, (visual.hash >> 8) & 0xff, (visual.hash >> 0) & 0xff] as [number, number, number];
+		group.add(await mapdiffmesh(scene, [visual.bounds], color));
 	}
 	group.userData = {
 		modeltype: "overlay",
 		isclickable: false,
 		modelgroup: "hashbox_floor" + level,
 		level
-	} satisfies ModelExtras
+	} satisfies ModelExtras;
+
 	return group;
 }
 
@@ -718,56 +608,6 @@ function rendermeans(rects: Box2[], buckets: KMeansBucket[]) {
 	}
 }
 
-globalThis.test = async (chunka: RSMapChunk, levela: number, levelb = 0, chunkb = chunka) => {
-	let depsa = await chunka.cache.engine.getDependencyGraph();
-	let depsb = await chunkb.cache.engine.getDependencyGraph();
-	await depsa.preloadChunkDependencies({ area: { x: chunka.chunkx, z: chunka.chunkz, xsize: 1, zsize: 1 } });
-	await depsb.preloadChunkDependencies({ area: { x: chunkb.chunkx, z: chunkb.chunkz, xsize: 1, zsize: 1 } });
-	await chunka.chunkdata;
-	await chunkb.chunkdata;
-	if (!chunka.loaded || !chunkb.loaded) { return; }
-
-	let locsa = mapsquareLocDependencies(chunka.loaded.grid, depsa, chunka.loaded.modeldata, chunka.chunkx, chunka.chunkz);
-	let locsb = mapsquareLocDependencies(chunkb.loaded.grid, depsb, chunkb.loaded.modeldata, chunkb.chunkx, chunkb.chunkz);
-
-	let cmplocs = compareLocDependencies(locsa, locsb, levela, levelb);
-	let cmplocsmesh = await mapdiffmesh(chunka.cache, cmplocs);
-	chunka.rootnode.children[0].add(cmplocsmesh);
-	cmplocsmesh.userData = { modeltype: "overlay", isclickable: false, modelgroup: `cmplocs_${levela}_${levelb}`, level: levela } satisfies ModelExtras;
-
-	let floora = mapsquareFloorDependencies(chunka.loaded.grid, depsa, chunka.loaded.chunk!);
-	let floorb = mapsquareFloorDependencies(chunkb.loaded.grid, depsb, chunkb.loaded.chunk!);
-
-	let cmpfloor = compareFloorDependencies(floora, floorb, levela, levelb);
-	let cmpfloormesh = await mapdiffmesh(chunka.cache, cmpfloor);
-	chunka.rootnode.children[0].add(cmpfloormesh);
-	cmpfloormesh.userData = { modeltype: "overlay", isclickable: false, modelgroup: `cmpfloor_${levela}_${levelb}`, level: levela } satisfies ModelExtras;
-
-	chunka.emit("changed", undefined);
-
-
-	return () => {
-		let render = globalThis.render as ThreeJsRenderer;
-		let cam = render.getCurrent2dCamera();
-		if (!cam) { return; }
-
-		chunka.rootnode.updateWorldMatrix(true, false);
-		let modelmatrix = new Matrix4().makeTranslation(
-			chunka.chunkx * tiledimensions * chunka.loaded!.chunkSize,
-			0,
-			chunka.chunkz * tiledimensions * chunka.loaded!.chunkSize,
-		).premultiply(chunka.rootnode.matrixWorld);
-
-		let proj = cam.projectionMatrix.clone()
-			.multiply(cam.matrixWorldInverse)
-			.multiply(modelmatrix);
-
-		let locschanged = pointsIntersectProjection(proj, cmplocs);
-		let floorchanged = pointsIntersectProjection(proj, cmpfloor);
-		let anychanged = locschanged || floorchanged;
-		return { locschanged, floorchanged, anychanged };
-	}
-}
 
 function modelPlacementHash(loc: WorldLocation) {
 	let hash = 0;
@@ -924,40 +764,43 @@ export class RenderDepsTracker {
 			return matches;
 		}
 
+		//TODO remove this entirely
 		let checkMatches = async (name: string, datarect: MapRect, chunks: MaprenderSquareLoaded[], cam: Camera, level: number, parentlevel: number) => {
-			for (let versionMatch of await findMatches(datarect, name)) {
-				let isdirty = false;
-				for (let chunk of chunks) {
-					let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
-					if (!other) { throw new Error("unexpected"); }
+			console.warn("calling obsolete diff API, returning false");
+			return false;
+			// for (let versionMatch of await findMatches(datarect, name)) {
+			// 	let isdirty = false;
+			// 	for (let chunk of chunks) {
+			// 		let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
+			// 		if (!other) { throw new Error("unexpected"); }
 
-					chunk.model.rootnode.updateWorldMatrix(true, false);
-					let modelmatrix = new Matrix4()
-						.makeTranslation(
-							chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
-							0,
-							chunk.model.chunkz * tiledimensions * chunk.model.loaded!.chunkSize)
-						.premultiply(chunk.model.rootnode.matrixWorld);
+			// 		chunk.model.rootnode.updateWorldMatrix(true, false);
+			// 		let modelmatrix = new Matrix4()
+			// 			.makeTranslation(
+			// 				chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
+			// 				0,
+			// 				chunk.model.chunkz * tiledimensions * chunk.model.loaded!.chunkSize)
+			// 			.premultiply(chunk.model.rootnode.matrixWorld);
 
-					let proj = cam.projectionMatrix.clone()
-						.multiply(cam.matrixWorldInverse)
-						.multiply(modelmatrix);
+			// 		let proj = cam.projectionMatrix.clone()
+			// 			.multiply(cam.matrixWorldInverse)
+			// 			.multiply(modelmatrix);
 
-					let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, level, parentlevel);
-					let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, level, parentlevel);
+			// 		let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, level, parentlevel);
+			// 		let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, level, parentlevel);
 
-					isdirty ||= pointsIntersectProjection(proj, locs);
-					isdirty ||= pointsIntersectProjection(proj, floor);
-					if (isdirty) {
-						break;
-					}
-				}
+			// 		isdirty ||= pointsIntersectProjection(proj, locs);
+			// 		isdirty ||= pointsIntersectProjection(proj, floor);
+			// 		if (isdirty) {
+			// 			break;
+			// 		}
+			// 	}
 
-				if (!isdirty) {
-					return versionMatch.file;
-				}
-			}
-			return null;
+			// 	if (!isdirty) {
+			// 		return versionMatch.file;
+			// 	}
+			// }
+			// return null;
 		}
 
 		return {
