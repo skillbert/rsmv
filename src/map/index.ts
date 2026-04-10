@@ -15,6 +15,7 @@ import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";
 import { crc32addInt } from "../libs/crc32util";
 import { ChunkrenderContext, MaprenderSquare, MaprenderSquareLoaded, rendermodes, RenderResult, RenderTask } from "./layers";
+import { VariantResolver } from "./varianttracker";
 
 type RenderedMapVersionMeta = {
 	buildnr: number,
@@ -437,7 +438,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 
 	let mipper = new MipScheduler(config, progress);
 	let depstracker = new RenderDepsTracker(engine, config, deps, versionsFile);
-
+	let varianttracker = new VariantResolver(config);
 	let maprender: MapRenderer | null = null;
 	let activerender = Promise.resolve();
 
@@ -452,8 +453,10 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 				if (output.state != "running") { return; }
 				for (let retry = 0; retry <= maxretries; retry++) {
 					try {
-						let renderprom = lastrender.then(() => maprender ??= getRenderer());
-						await task.runTasks(renderprom);
+						await lastrender;
+						maprender ??= await getRenderer();
+						await task.runTasks(maprender);
+						await varianttracker.finishChunk(chunk.x, chunk.z);
 						break;
 					} catch (e) {
 						console.warn(e.toString());
@@ -468,6 +471,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 				}
 			})();
 			//chain onto previous to retain order on the renderer
+			//TODO consider not making fn an iife and just let .then call it
 			activerender = activerender.then(() => fn);
 			yield fn;
 			completed++;
@@ -522,18 +526,18 @@ export class SimpleHasher {
 }
 
 export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
-	let baseoutputx = chunkx;
-	let baseoutputy = (config.config.noyflip ? chunkz : config.config.mapsizez - 1 - chunkz);
-	let filebasecoord = { x: baseoutputx, y: baseoutputy };
-
 	progress.update(chunkx, chunkz, "imaging");
 
+	let filebasecoord = {
+		x: chunkx,
+		y: (config.config.noyflip ? chunkz : config.config.mapsizez - 1 - chunkz)
+	};
 	let deps = new SimpleHasher(depstracker);
 
 	let chunktasks: RenderTask[] = [];
 	let miptasks: (() => void)[] = [];
 	for (let layer of config.config.layers) {
-		let squares = 1;//cnf.mapsquares ?? 1;//TODO remove or reimplement
+		let squares = 1;//layer.mapsquares ?? 1;//TODO remove or reimplement
 		if (chunkx % squares != 0 || chunkz % squares != 0) { continue; }
 
 		let maprect: MapRect = { x: chunkx, z: chunkz, xsize: squares, zsize: squares };
@@ -544,7 +548,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		chunktasks.push(...modefunc(ctx));
 	}
 
-	let runTasks = async (renderpromise: Promise<MapRenderer>) => {
+	let runTasks = async (renderer: MapRenderer) => {
 		let savetasks: Promise<any>[] = [];
 		let symlinkcommands: SymlinkCommand[] = [];
 
@@ -561,15 +565,11 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		}
 		let parentinfo = await depstracker.forkDeps([...allparentcandidates]);
 
-		let renderer: MapRenderer | null = null;
 		for (let task of nonemptytasks) {
 			let existingfile = metas.find(q => q.file == task.name && q.hash == task.hash);
 			if (!existingfile) {
-				if (!renderer) {
-					renderer = await renderpromise;
-				}
-				let skipmodels = !task.run;
-				let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, !skipmodels);
+				let load3dmodels = !!task.run;
+				let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, load3dmodels);
 				let parsedchunks = await Promise.all(chunks.map(q => q.parseprom));
 
 				//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before

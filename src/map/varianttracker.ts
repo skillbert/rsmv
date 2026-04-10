@@ -1,3 +1,4 @@
+import { LayerConfig } from ".";
 import { MapRender } from "./backends";
 
 
@@ -19,10 +20,6 @@ type FileMeta = {
     exacthash: number,
     savedLayerName: string,
     savedLayerVersion: number
-}
-
-function layerkey(layerversion: number, layername: string) {
-    return `${layerversion}/${layername}`;
 }
 
 export class VariantChunk {
@@ -182,17 +179,20 @@ class VariantLayer {
 }
 
 export class VariantLayerResolver {
-    private trackers: Map<string, VariantLayer>;
+    private trackers: Map<string, VariantLayer> = new Map();
     private currentlayer: VariantLayer;
 
     constructor(mainlayer: VariantLayer) {
-        this.trackers = new Map();
         this.currentlayer = mainlayer;
         this.addLayer(mainlayer);
     }
 
+    layerkey(layerversion: number, layername: string) {
+        return `${layerversion}/${layername}`;
+    }
+
     addLayer(layer: VariantLayer) {
-        let key = layerkey(layer.version, layer.layername);
+        let key = this.layerkey(layer.version, layer.layername);
         this.trackers.set(key, layer);
     }
 
@@ -227,5 +227,41 @@ export class VariantLayerResolver {
                 return variant;
             }
         }
+    }
+}
+
+export class VariantResolver {
+    private layers: Map<string, VariantLayerResolver> = new Map();
+    private render: MapRender;
+
+    constructor(render: MapRender) {
+        this.render = render;
+        for (let layer of render.config.layers) {
+            this.initLayer(layer);
+        }
+    }
+
+    layerkey(layername: string, zoom: number | null) {
+        return `${layername}/${zoom}`;
+    }
+
+    initLayer(layer: LayerConfig) {
+        let zooms = this.render.getLayerZooms(layer);
+        for (let zoom = zooms.min; zoom <= zooms.max; zoom++) {
+            let newlayer = new VariantLayer(layer.name, zoom, this.render.version);
+            let resolver = new VariantLayerResolver(newlayer);
+            this.layers.set(this.layerkey(layer.name, zoom), resolver);
+        }
+    }
+
+    async finishChunk(chunkx: number, chunkz: number) {
+        // TODO purge caches for obsolete chunks and write completed current chunks to backend
+    }
+
+    getLayerLevel(layername: string, zoom: number | null) {
+        let key = this.layerkey(layername, zoom);
+        let res = this.layers.get(key);
+        if (!res) { throw new Error(`Layer ${layername} zoom ${zoom} not found in variant resolver`); }
+        return res;
     }
 }

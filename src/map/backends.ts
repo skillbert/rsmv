@@ -87,7 +87,7 @@ export class MapRenderFsBacked extends MapRender {
 	assertVersion(version: number) {
 		if (version != 0 && version != this.version) { throw new Error("versions not supported"); }
 	}
-	async saveFile(name: string, hash: number, data: Buffer, version: number) {
+	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
 		this.assertVersion(version);
 		await this.fs.mkDir(naiveDirname(name));
 		await this.fs.writeFile(name, data);
