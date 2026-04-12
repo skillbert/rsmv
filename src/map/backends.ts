@@ -244,7 +244,7 @@ export const examplemapconfig = `
 			"mode": "3d", //3d world render
 			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested
 			"level": 0, //floor level of the render, 0 means ground floor and all roofs are hidden, highest level is 3 which makes all roofs visible
-			"pxpersquare": 64, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
+			"pxpersquare": 16, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
 			"dxdy": 0.15, //dxdy and dzdy to determine the view angle, 0,0 for straight down, something like 0.15,0.25 for birds eye
 			"dzdy": 0.25
 		},
@@ -254,7 +254,7 @@ export const examplemapconfig = `
 			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested
 			"level": 1, //floor level of the render, 0 means ground floor and all roofs are hidden, highest level is 3 which makes all roofs visible
 			"subtractlayers": ["level-0"], //list of other layers that will be checked for identical content and symlinked if identical. In this example it will result in a symlink when floor 1 is empty.
-			"pxpersquare": 64, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
+			"pxpersquare": 16, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
 			"dxdy": 0.15, //dxdy and dzdy to determine the view angle, 0,0 for straight down, something like 0.15,0.25 for birds eye
 			"dzdy": 0.25
 		},
@@ -263,7 +263,7 @@ export const examplemapconfig = `
 			"mode": "3d", //3d world render
 			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested
 			"level": 0, //floor level of the render, 0 means ground floor and all roofs are hidden, highest level is 3 which makes all roofs visible
-			"pxpersquare": 64, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
+			"pxpersquare": 16, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
 			"dxdy": 0, //dxdy and dzdy to determine the view angle, 0,0 for straight down, something like 0.15,0.25 for birds eye
 			"dzdy": 0
 		},
@@ -272,7 +272,7 @@ export const examplemapconfig = `
 			"mode": "map", //old style 2d map render
 			"format": "png",
 			"level": 0,
-			"pxpersquare": 64,
+			"pxpersquare": 16,
 			"mapicons": true,
 			"wallsonly": false //can be turned on to create a walls overlay layer to use on top of an existing 3d layer
 		},
@@ -281,7 +281,7 @@ export const examplemapconfig = `
 			"mode": "minimap", //minimap style render, similar to 3d but uses different shaders and emulates several rs bugs.
 			"format": "webp",
 			"level": 0,
-			"pxpersquare": 64,
+			"pxpersquare": 16,
 			"hidelocs": false, //can be turned on to emulate partially loaded minimap
 			"mipmode": "avg", //results in every pixel of a mip image being exactly the mean of 4 zoomed pixels without any other filtering steps, required for minimap localization
 			"dxdy": 0,
@@ -292,7 +292,7 @@ export const examplemapconfig = `
 			"mode": "collision", //pathing/line of sight as overlay image layer to use on "map" or "3d"
 			"format": "png",
 			"level": 0,
-			"pxpersquare": 64
+			"pxpersquare": 16
 		},
 		{
 			"name": "height",
@@ -324,7 +324,7 @@ export const examplemapconfig = `
 		{
 			"name": "interactions",
 			"mode": "interactions",
-			"pxpersquare": 64, //same arguments as mode="3d"
+			"pxpersquare": 16, //same arguments as mode="3d"
 			"dxdy": 0.15,
 			"dzdy": 0.25,
 			"format": "webp",

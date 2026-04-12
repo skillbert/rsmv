@@ -211,8 +211,13 @@ export class VariantLayerResolver {
         });
     }
 
-    async findCandidate(backend: MapRender, tilex: number, tiley: number, dependencyhash: number, exacthash: number) {
+    async findCandidate(backend: MapRender, tilex: number, tiley: number, hashvalue: number, isexacthash: boolean) {
         for (let layer of this.trackers.values()) {
+            if (!isexacthash && layer.layername != this.currentlayer.layername) {
+                // only allow dependencyhash matching for historic layers with the same name
+                // dependencyhash does not include render settings and thus gives false positives
+                continue;
+            }
             let { chunkx, chunky } = layer.getChunkCoords(tilex, tiley);
             let chunk = layer.getOrLoad(backend, chunkx, chunky);
             // chunk loading is in progress
@@ -220,11 +225,13 @@ export class VariantLayerResolver {
             // explicitly empty - doesn't exist
             if (chunk === null) { continue; }
             let variant = chunk.get(tilex, tiley);
-            if (variant && variant.dependencyhash == dependencyhash) {
-                return variant;
-            }
-            if (variant && exacthash != 0 && variant.exacthash == exacthash) {
-                return variant;
+            if (variant) {
+                if (isexacthash && variant.exacthash == hashvalue) {
+                    return variant;
+                }
+                if (!isexacthash && variant.dependencyhash == hashvalue) {
+                    return variant;
+                }
             }
         }
     }

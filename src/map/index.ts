@@ -582,13 +582,16 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, load3dmodels);
 		let parsedchunks = await Promise.all(chunks.map(q => q.parseprom));
 
+		let exacthash: number | undefined = undefined;
 		// try find match
-		let exacthash = task.getExactHash?.(chunks as MaprenderSquareLoaded[]) ?? task.dependencyhash;
-		let exacthashmatch = await resolver.findCandidate(config, task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash);
-		if (exacthashmatch) {
-			return {
-				exacthash: exacthashmatch.exacthash,
-				storedvariant: exacthashmatch
+		if (task.getExactHash) {
+			exacthash = task.getExactHash(chunks as MaprenderSquareLoaded[]) ?? task.dependencyhash;
+			let exacthashmatch = await resolver.findCandidate(config, task.nameinfo.x, task.nameinfo.y, exacthash, true);
+			if (exacthashmatch) {
+				return {
+					exacthash: exacthashmatch.exacthash,
+					storedvariant: exacthashmatch
+				}
 			}
 		}
 
@@ -620,7 +623,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		// dedupe using varianttracker
 		let candidatesprom = chunktasks.map(q => {
 			let resolver = varianttracker.getOrCreateResolver(q.layer, q.nameinfo.zoom ?? null);
-			return resolver.findCandidate(config, q.nameinfo.x, q.nameinfo.y, q.dependencyhash, 0)
+			return resolver.findCandidate(config, q.nameinfo.x, q.nameinfo.y, q.dependencyhash, false);
 		});
 
 		// dedupe using old rendermeta system
