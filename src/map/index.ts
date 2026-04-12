@@ -362,7 +362,7 @@ export class MapRenderer {
 							version: this.config.version,
 							floor: floordeps,
 							locs: locdeps,
-							visuals: mapsquareVisuals(floordeps, locdeps, chunkdata.chunkx, chunkdata.chunkz)
+							visuals: mapsquareVisuals(floordeps, locdeps)
 						},
 						grid: chunkdata.grid,
 						chunkdata: chunkdata

@@ -275,6 +275,92 @@ export function mapsquareLocDependencies(grid: TileGrid, deps: DependencyGraph, 
 	return outlocgroups;
 }
 
+export function compareFloorDependencies(tilesa: ChunkTileDependencies[], tilesb: ChunkTileDependencies[], levela: number, levelb: number) {
+	let vertsets: number[][] = [];
+	for (let i = 0; i < tilesa.length; i++) {
+		let tilea = tilesa[i];
+		let tileb = tilesb[i];
+		let maxfloor = Math.max(levela, levelb);
+		let mismatch = false;
+		if (tilea.dephash != tileb.dephash) {
+			mismatch = true;
+		} else if (tilea.tilehashes.length <= maxfloor || tileb.tilehashes.length <= maxfloor) {
+			mismatch = true;
+		} else if (tilea.tilehashes[levela] != tileb.tilehashes[levelb]) {
+			mismatch = true
+		}
+		if (mismatch) {
+			vertsets.push(tileSetVertices(tilea.x, tilea.z, tilea.xzsize, 0, tilea.maxy));
+			vertsets.push(tileSetVertices(tileb.x, tileb.z, tileb.xzsize, 0, tileb.maxy));
+		}
+	}
+	return vertsets;
+}
+
+export function compareLocDependencies(chunka: ChunkLocDependencies[], chunkb: ChunkLocDependencies[], levela: number, levelb: number) {
+	let vertsets: number[][] = [];
+	let iloca = 0, ilocb = 0;
+	while (true) {
+		//explicit bounds check because reading past end is really bad for performance apparently
+		let loca = (iloca < chunka.length ? chunka[iloca] : undefined);
+		let locb = (ilocb < chunkb.length ? chunkb[ilocb] : undefined);
+
+		if (!loca && !locb) { break }
+		else if (loca && locb && loca.id == locb.id) {
+			if (loca.dependencyhash == locb.dependencyhash) {
+				for (let ia = 0, ib = 0; ;) {
+					let insta = loca.instances.at(ia);
+					let instb = locb.instances.at(ib);
+					//ignore locs that are above current level filter
+					if (insta && insta.visualLevel > levela) { insta = undefined; }
+					if (instb && instb.visualLevel > levelb) { instb = undefined; }
+
+					if (!insta && !instb) {
+						if (ia >= loca.instances.length && ib >= locb.instances.length) {
+							break;
+						} else {
+							ia++;
+							ib++;
+							continue;
+						}
+					}
+
+					let cmp = !insta ? -1 : !instb ? 1 : compareChunkLoc(insta, instb);
+					if (cmp == 0) {
+						if (insta!.placementhash != instb!.placementhash) {
+							vertsets.push(insta!.bounds);
+							vertsets.push(instb!.bounds);
+						}
+						ia++;
+						ib++;
+					} else if (cmp < 0) {
+						vertsets.push(instb!.bounds);
+						ib++;
+					} else {
+						vertsets.push(insta!.bounds);
+						ia++;
+					}
+				}
+			} else {
+				//invalidate all
+				vertsets.push(...loca.instances.map(q => q.bounds));
+				vertsets.push(...locb.instances.map(q => q.bounds));
+			}
+			iloca++;
+			ilocb++;
+		} else if (!loca || locb && locb.id < loca.id) {
+			//locb inserted
+			vertsets.push(...locb!.instances.map(q => q.bounds));
+			ilocb++;
+		} else if (!locb || loca && loca.id < locb.id) {
+			//locb inserted
+			vertsets.push(...loca.instances.map(q => q.bounds));
+			iloca++;
+		}
+	}
+	return vertsets;
+}
+
 export type VisualHash = {
 	// hash of model and placement
 	hash: number,
@@ -304,21 +390,23 @@ export function mapsquareLocVisuals(locs: ChunkLocDependencies[]) {
 export function mapsquareFloorVisuals(tiles: ChunkTileDependencies[]) {
 	let visuals: VisualHash[] = [];
 	for (let tile of tiles) {
+		let lastlevelhash = 0;
 		for (let level = 0; level < tile.tilehashes.length; level++) {
 			let levelhash = tile.tilehashes[level];
-			if (levelhash != 0) {
+			if (levelhash != lastlevelhash) {
 				visuals.push({
 					hash: crc32addInt(levelhash, tile.dephash),
 					level,
 					bounds: tileSetVertices(tile.x, tile.z, tile.xzsize, tile.maxy, tile.maxy)
 				});
+				lastlevelhash = levelhash;
 			}
 		}
 	}
 	return visuals;
 }
 
-export function mapsquareVisuals(floordeps: ChunkTileDependencies[], locdeps: ChunkLocDependencies[], chunkx: number, chunkz: number) {
+export function mapsquareVisuals(floordeps: ChunkTileDependencies[], locdeps: ChunkLocDependencies[]) {
 	let visuals = [
 		...mapsquareFloorVisuals(floordeps),
 		...mapsquareLocVisuals(locdeps)

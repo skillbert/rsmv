@@ -3,7 +3,7 @@ import { delay, packedHSL2HSL, HSL2RGB, RGB2HSL, HSL2packHSL, ModelModifications
 import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize, RSMapChunkData } from '../3d/mapsquare';
-import { Euler, PerspectiveCamera, Quaternion, Vector3 } from "three";
+import { Euler, Group, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { cacheMajors } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
@@ -32,7 +32,7 @@ import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked, MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../map/backends';
-import { mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies, pointsIntersectProjection, tileSetVertices, visibleChunkHash } from '../map/chunksummary';
+import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals, pointsIntersectProjection, tileSetVertices, visibleChunkHash } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
 import { CliApiContext, cliApi } from '../clicommands';
 import * as cmdts from "cmd-ts";
@@ -1708,23 +1708,22 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		let floordepsb = mapsquareFloorDependencies(chunkb.grid, depsb, chunkb.chunk);
 		let locdepsb = mapsquareLocDependencies(chunkb.grid, depsb, chunkb.modeldata, chunkb.chunk.mapsquarex, chunkb.chunk.mapsquarez);
 
-		// let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
-		// let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
+		let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
+		let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
 
-		// let floordifmesh = await mapdiffmesh(cachea, floordifs, [255, 0, 0]);
-		// let locdifmesh = await mapdiffmesh(cachea, locdifs, [0, 255, 0]);
+		let difmesh = new Group();
+		difmesh.add(await mapdiffmesh(cachea, floordifs, [255, 0, 0]));
+		difmesh.add(await mapdiffmesh(cachea, locdifs, [0, 255, 0]));
+		// position the mesh
+		let offsetx = group.chunkx * tiledimensions * chunka.chunkSize - this.state.center.x;
+		let offsetz = group.chunkz * tiledimensions * chunka.chunkSize - this.state.center.z;
+		difmesh.position.x = offsetx;
+		difmesh.position.z = offsetz;
+		difmesh.updateMatrix();
+		globalThis.difmesh = difmesh;// TODO remove
 
-		// // position the meshes
-		// let offsetx = group.chunkx * tiledimensions * chunka.chunkSize - this.state.center.x;
-		// let offsetz = group.chunkz * tiledimensions * chunka.chunkSize - this.state.center.z;
-		// floordifmesh.position.x = offsetx;
-		// floordifmesh.position.z = offsetz;
-		// locdifmesh.position.x = offsetx;
-		// locdifmesh.position.z = offsetz;
-		// floordifmesh.updateMatrix();
-		// locdifmesh.updateMatrix();
-
-		// globalThis.locdifmesh = locdifmesh;
+		let visualsa = mapsquareVisuals(floordepsa, locdepsa);
+		let visualsb = mapsquareVisuals(floordepsb, locdepsb);
 
 		let diffgroup: DiffMesh = {
 			a: cachea,
@@ -1741,22 +1740,13 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			mesh: {
 				getSceneElements() {
 					return {
-						// modelnode: (!diffgroup.visible ? undefined : floordifmesh),
-						// projectionChanged(proj) {
-						// 	let chunktoscreen = proj.clone().multiply(floordifmesh.matrixWorld);
-						// 	visibleChunkHash([])
-						// 	let hash = 0;
-						// 	for (let tile of floordepsb) {
-						// 		let verts = tileSetVertices(tile);
-						// 		if (pointsIntersectProjection(chunktoscreen, [verts])) {
-						// 			hash = crc32addInt(tile.dephash, hash);
-						// 			for (let floor = 0; floor < floorb; floor++) {
-						// 				hash = crc32addInt(tile.tilehashes[floor], hash);
-						// 			}
-						// 		}
-						// 	}
-						// 	console.log("floordepsb", hash);
-						// }
+						modelnode: (!diffgroup.visible ? undefined : difmesh),
+						projectionChanged(proj) {
+							let chunktoscreen = proj.clone().multiply(difmesh.matrixWorld);
+							let hasha = visibleChunkHash(visualsa, chunktoscreen, floora);
+							let hashb = visibleChunkHash(visualsb, chunktoscreen, floorb);
+							console.log("visualhash", hasha == hashb, hasha, hashb);
+						}
 					}
 				}
 			},
