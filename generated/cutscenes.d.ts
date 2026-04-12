@@ -11,7 +11,7 @@ export type cutscenes = {
 		name: string,
 		start: number,
 		end: number,
-		flag0: number,
+		numgraphics: number,
 		graphics: {
 			spritename: string,
 			height: number,
@@ -39,12 +39,12 @@ export type cutscenes = {
 		}[],
 		flag1: number,
 		sound: string | null,
-		flag2: number,
+		hassubtitle: number,
 		subtitle: string | null,
 		unkbyte: number | null,
 		soundid: number | null,
-		extraflags: (number|0),
-		extra_01: {
+		subtitleid: (number|0),
+		subtitletimes: {
 			start: number,
 			end: number,
 		} | null,

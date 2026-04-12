@@ -15,8 +15,6 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
     root.style.height = `${obj.height}px`;
     console.log(obj);
 
-    // let uuid = "";
-    // for (let i = 0; i < 8; i++) { uuid += String.fromCharCode("A".charCodeAt(0) + Math.random() * 26 | 0); }
     let uuid = `cutscene-${crc32(file) >>> 0}`;
 
     let css = "";
@@ -66,7 +64,8 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
         css += `}\n`;
         html += `<div style="animation:${endtime}s step-end infinite ${visibilityanim}">\n`;
         if (el.subtitle) {
-            html += `<div class="subtitle"><div>${escapeHTML(el.subtitle)}</div></div>\n`;
+            // el.subtitle seems to refer to .name for the subtitle content, even though some cutscenes have the subtitle text in both these fields
+            html += `<div class="subtitle"><div>${escapeHTML(el.name)}</div></div>\n`;
         }
         if (el.soundid) {
             try {
@@ -206,7 +205,6 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
     doc += `var controls=(${embeddedModule})(${endtime});\n`;
     doc += `controls.play()\n`;
     doc += `</script>\n`
-    // doc += `<script>initAudio();</script>\n`;
     doc += `</body>\n`
     doc += `</html>\n`
 

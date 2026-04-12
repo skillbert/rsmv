@@ -3,6 +3,8 @@
 // run `npm run filetypes` to rebuild
 
 export type framemaps = {
+	datalen: number,
+	unkheader: (number|0),
 	data: {
 		type: number,
 		unknown: boolean,
