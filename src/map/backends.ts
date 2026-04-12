@@ -249,6 +249,16 @@ export const examplemapconfig = `
 			"dzdy": 0.25
 		},
 		{
+			"name": "level-1", //name of the layer, this will be the folder name
+			"mode": "3d", //3d world render
+			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested
+			"level": 1, //floor level of the render, 0 means ground floor and all roofs are hidden, highest level is 3 which makes all roofs visible
+			"subtractlayers": ["level-0"], //list of other layers that will be checked for identical content and symlinked if identical. In this example it will result in a symlink when floor 1 is empty.
+			"pxpersquare": 64, //the level of detail for highest zoom level measured in pixels per map tile (1x1 meter). Subject to pxpersquare*64>tileimgsize, because it is currently not possible to render less than one image per mapchunk
+			"dxdy": 0.15, //dxdy and dzdy to determine the view angle, 0,0 for straight down, something like 0.15,0.25 for birds eye
+			"dzdy": 0.25
+		},
+		{
 			"name": "topdown-0", //name of the layer, this will be the folder name
 			"mode": "3d", //3d world render
 			"format": "webp", //currently only png and webp. jpeg in theory supported but not implemented or tested

@@ -32,7 +32,7 @@ import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
 import { MapRenderDatabaseBacked, MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../map/backends';
-import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies, pointsIntersectProjection, tileSetVertices } from '../map/chunksummary';
+import { mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies, pointsIntersectProjection, tileSetVertices, visibleChunkHash } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
 import { CliApiContext, cliApi } from '../clicommands';
 import * as cmdts from "cmd-ts";
@@ -1653,8 +1653,7 @@ type DiffMesh = {
 	floora: number,
 	floorb: number,
 	visible: boolean,
-	floormesh: ThreeJsSceneElementSource,
-	locsmesh: ThreeJsSceneElementSource,
+	mesh: ThreeJsSceneElementSource,
 	remove: () => void
 }
 
@@ -1709,23 +1708,23 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		let floordepsb = mapsquareFloorDependencies(chunkb.grid, depsb, chunkb.chunk);
 		let locdepsb = mapsquareLocDependencies(chunkb.grid, depsb, chunkb.modeldata, chunkb.chunk.mapsquarex, chunkb.chunk.mapsquarez);
 
-		let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
-		let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
+		// let floordifs = compareFloorDependencies(floordepsa, floordepsb, floora, floorb);
+		// let locdifs = compareLocDependencies(locdepsa, locdepsb, floora, floorb);
 
-		let floordifmesh = await mapdiffmesh(cachea, floordifs, [255, 0, 0]);
-		let locdifmesh = await mapdiffmesh(cachea, locdifs, [0, 255, 0]);
+		// let floordifmesh = await mapdiffmesh(cachea, floordifs, [255, 0, 0]);
+		// let locdifmesh = await mapdiffmesh(cachea, locdifs, [0, 255, 0]);
 
-		// position the meshes
-		let offsetx = group.chunkx * tiledimensions * chunka.chunkSize - this.state.center.x;
-		let offsetz = group.chunkz * tiledimensions * chunka.chunkSize - this.state.center.z;
-		floordifmesh.position.x = offsetx;
-		floordifmesh.position.z = offsetz;
-		locdifmesh.position.x = offsetx;
-		locdifmesh.position.z = offsetz;
-		floordifmesh.updateMatrix();
-		locdifmesh.updateMatrix();
+		// // position the meshes
+		// let offsetx = group.chunkx * tiledimensions * chunka.chunkSize - this.state.center.x;
+		// let offsetz = group.chunkz * tiledimensions * chunka.chunkSize - this.state.center.z;
+		// floordifmesh.position.x = offsetx;
+		// floordifmesh.position.z = offsetz;
+		// locdifmesh.position.x = offsetx;
+		// locdifmesh.position.z = offsetz;
+		// floordifmesh.updateMatrix();
+		// locdifmesh.updateMatrix();
 
-		globalThis.locdifmesh = locdifmesh;
+		// globalThis.locdifmesh = locdifmesh;
 
 		let diffgroup: DiffMesh = {
 			a: cachea,
@@ -1739,58 +1738,36 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 			floora,
 			floorb,
 			visible: true,
-			floormesh: {
+			mesh: {
 				getSceneElements() {
 					return {
-						modelnode: (!diffgroup.visible ? undefined : floordifmesh),
-						projectionChanged(proj) {
-							let chunktoscreen = proj.clone().multiply(floordifmesh.matrixWorld);
-							let hash = 0;
-							for (let tile of floordepsb) {
-								let verts = tileSetVertices(tile);
-								if (pointsIntersectProjection(chunktoscreen, [verts])) {
-									hash = crc32addInt(tile.dephash, hash);
-									for (let floor = 0; floor < floorb; floor++) {
-										hash = crc32addInt(tile.tilehashes[floor], hash);
-									}
-								}
-							}
-							console.log("floordepsb", hash);
-						}
-					}
-				}
-			},
-			locsmesh: {
-				getSceneElements() {
-					return {
-						modelnode: (!diffgroup.visible ? undefined : locdifmesh),
-						projectionChanged(proj) {
-							let chunktoscreen = proj.clone().multiply(floordifmesh.matrixWorld);
-							let hash = 0;
-							for (let loc of locdepsb) {
-								for (let inst of loc.instances) {
-									let verts = inst.bounds;
-									if (pointsIntersectProjection(chunktoscreen, [verts])) {
-										hash = crc32addInt(loc.dependencyhash, hash);
-										hash = crc32addInt(inst.placementhash, hash);
-									}
-								}
-							}
-							console.log("locshashb", hash);
-						}
+						// modelnode: (!diffgroup.visible ? undefined : floordifmesh),
+						// projectionChanged(proj) {
+						// 	let chunktoscreen = proj.clone().multiply(floordifmesh.matrixWorld);
+						// 	visibleChunkHash([])
+						// 	let hash = 0;
+						// 	for (let tile of floordepsb) {
+						// 		let verts = tileSetVertices(tile);
+						// 		if (pointsIntersectProjection(chunktoscreen, [verts])) {
+						// 			hash = crc32addInt(tile.dephash, hash);
+						// 			for (let floor = 0; floor < floorb; floor++) {
+						// 				hash = crc32addInt(tile.tilehashes[floor], hash);
+						// 			}
+						// 		}
+						// 	}
+						// 	console.log("floordepsb", hash);
+						// }
 					}
 				}
 			},
 			remove: () => {
 				group.diffs = group.diffs.filter(q => q != diffgroup);
-				this.props.ctx?.renderer.removeSceneElement(diffgroup.floormesh);
-				this.props.ctx?.renderer.removeSceneElement(diffgroup.locsmesh);
+				this.props.ctx?.renderer.removeSceneElement(diffgroup.mesh);
 				this.forceUpdate();
 			}
 		};
 
-		this.props.ctx.renderer.addSceneElement(diffgroup.floormesh);
-		this.props.ctx.renderer.addSceneElement(diffgroup.locsmesh);
+		this.props.ctx.renderer.addSceneElement(diffgroup.mesh);
 
 		group.diffs.push(diffgroup);
 		this.forceUpdate();

@@ -52,7 +52,7 @@ export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: numbe
 // 	return cam;
 // }
 
-export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, config, layer, deps, baseoutput, maprect, variants }) {
     let zooms = config.getLayerZooms(layer);
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
     let tasks: RenderTask[] = [];
@@ -65,57 +65,62 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
         for (let subx = 0; subx < subslices; subx++) {
             for (let subz = 0; subz < subslices; subz++) {
                 let suby = (config.config.noyflip ? subz : subslices - 1 - subz);
-                let filename = config.makeFileName(layer.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, layer.format ?? "webp");
+                let imgtilex = baseoutput.x * subslices + subx;
+                let imgtiley = baseoutput.y * subslices + suby;
+                let filename = config.makeFileName(layer.name, zoom, imgtilex, imgtiley, layer.format ?? "webp");
 
-                let parentCandidates: { name: string, level: number }[] = [
-                    { name: filename, level: layer.level }
-                ];
-                for (let sub of layer.subtractlayers ?? []) {
-                    let other = config.config.layers.find(q => q.name == sub);
-                    if (!other) {
-                        console.warn("subtrack layer " + sub + "missing");
-                        continue;
-                    }
-                    parentCandidates.push({
-                        name: config.makeFileName(other.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, other.format ?? "webp"),
-                        level: other.level
-                    });
-                }
+                // let parentCandidates: { name: string, level: number }[] = [
+                //     { name: filename, level: layer.level }
+                // ];
+                // for (let sub of layer.subtractlayers ?? []) {
+                //     let other = config.config.layers.find(q => q.name == sub);
+                //     if (!other) {
+                //         console.warn("subtrack layer " + sub + "missing");
+                //         continue;
+                //     }
+                //     parentCandidates.push({
+                //         name: config.makeFileName(other.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, other.format ?? "webp"),
+                //         level: other.level
+                //     });
+                // }
 
+                let cam = mapImageCamera(worldrect.x + tiles * subx, worldrect.z + tiles * subz, tiles, layer.dxdy, layer.dzdy);
                 let depcrc = deps.recthash(loadedchunksrect);
                 tasks.push({
                     layer: layer,
-                    name: filename,
-                    hash: depcrc,
+                    nameinfo: { x: imgtilex, y: imgtiley, zoom: zoom, ext: layer.format ?? "webp" },
+                    dependencyhash: depcrc,
                     datarect: loadedchunksrect,
-                    dedupeDependencies: parentCandidates.map(q => q.name),
-                    mippable: (zoom == zooms.base ? { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zoom } : null),
-                    async run(chunks, renderer, parentinfo) {
-                        setChunkRenderToggles(chunks, layer.level, layer.mode == "minimap", !!layer.hidelocs);
-                        let cam = mapImageCamera(worldrect.x + tiles * subx, worldrect.z + tiles * subz, tiles, layer.dxdy, layer.dzdy);
-
-                        // check if any other layer has the same render already
-                        for (let parentoption of parentCandidates) {
-                            let parentfile = await parentinfo.checkMatches(parentoption.name, this.datarect, chunks, cam, layer.level, parentoption.level);
-                            if (parentfile) {
-                                return {
-                                    file: undefined,
-                                    symlink: parentfile
-                                };
-                            }
-                        }
-
-                        // calculate exact hash of visible meshes
-                        let depgraph = await engine.getDependencyGraph();
-                        chunks.sort((a, b) => a.x - b.x || a.z - b.z);
-                        let exacthash = 0;
+                    // dedupeDependencies: parentCandidates.map(q => q.name),
+                    mippable: zoom == zooms.base,
+                    getExactHash(chunks) {
+                        let hash = 0;
                         for (let chunk of chunks) {
+                            chunk.model.loaded!.chunkroot.updateWorldMatrix(true, false);
+                            let modelmatrix = chunk.model.loaded!.chunkroot.matrixWorld;
+
                             let chunktoscreen = cam.projectionMatrix.clone()
                                 .multiply(cam.matrixWorldInverse)
-                                .multiply(chunk.model.rootnode.matrixWorld);
-                            let visiblehash = visibleChunkHash(depgraph, chunk.loaded.chunkdata, chunktoscreen, layer.level);
-                            exacthash = crc32addInt(visiblehash, exacthash);
+                                .multiply(modelmatrix);
+                            let subhash = visibleChunkHash(chunk.loaded.rendermeta.visuals, chunktoscreen, layer.level);
+                            hash = crc32addInt(subhash, hash);
                         }
+                        return hash;
+                    },
+                    async run(chunks, renderer) {
+                        setChunkRenderToggles(chunks, layer.level, layer.mode == "minimap", !!layer.hidelocs);
+
+                        // // check if any other layer has the same render already
+                        // for (let parentoption of parentCandidates) {
+                        //     let parentfile = await parentinfo.checkMatches(parentoption.name, this.datarect, chunks, cam, layer.level, parentoption.level);
+                        //     if (parentfile) {
+                        //         return {
+                        //             file: undefined,
+                        //             symlink: parentfile
+                        //         };
+                        //     }
+                        // }
+
 
                         // svg overlay to draw walls/icons need to be rendered for this chunk
                         if (!overlayimg && (layer.overlayicons || layer.overlaywalls)) {
@@ -142,16 +147,16 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                         // the actual render
                         let img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, layer.mode == "minimap");
 
-                        //keep reference to dedupe similar renders
-                        chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
-                        parentinfo.addLocalFile({
-                            file: this.name,
-                            fshash: depcrc,
-                            buildnr: config.version,
-                            firstbuildnr: config.version,
-                            hash: depcrc,
-                            time: Date.now()
-                        });
+                        // //keep reference to dedupe similar renders
+                        // chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
+                        // parentinfo.addLocalFile({
+                        //     file: this.name,
+                        //     fshash: depcrc,
+                        //     buildnr: config.version,
+                        //     firstbuildnr: config.version,
+                        //     hash: depcrc,
+                        //     time: Date.now()
+                        // });
 
                         if (overlayimg) {
                             let mergecnv = document.createElement("canvas");
@@ -168,13 +173,11 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                                 0, 0, img.width, img.height
                             );
                             return {
-                                file: (() => canvasToImageFile(mergecnv, layer.format ?? "webp", 0.9)),
-                                symlink: undefined
+                                file: canvasToImageFile(mergecnv, layer.format ?? "webp", 0.9)
                             };
                         } else {
                             return {
-                                file: (() => pixelsToImageFile(img, layer.format ?? "webp", 0.9)),
-                                symlink: undefined
+                                file: pixelsToImageFile(img, layer.format ?? "webp", 0.9)
                             };
                         }
                     }
@@ -187,11 +190,10 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
 
 
 export const rendermodeInteractions: RenderMode<"interactions"> = function ({ config, layer, deps, maprect }) {
-    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
     return [{
         layer: layer,
-        name: filename,
-        hash: deps.recthash(maprect),
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run(chunks, renderer) {
             let loaded = chunks[0].loaded.chunkdata;
@@ -247,7 +249,7 @@ export const rendermodeInteractions: RenderMode<"interactions"> = function ({ co
             if (layer.usegzip) {
                 buf = zlib.gzipSync(buf);
             }
-            return { file: () => Promise.resolve(buf) };
+            return { file: Promise.resolve(buf) };
         }
     }];
 }

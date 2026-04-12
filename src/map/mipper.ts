@@ -18,7 +18,7 @@ export class MipScheduler {
 		this.progress = progress;
 		this.minzoom = Math.floor(Math.log2(render.config.tileimgsize / (Math.max(render.config.mapsizex, render.config.mapsizez) * 64)));
 	}
-	addTask(layer: LayerConfig, zoom: number, hash: number, x: number, y: number, srcfile: string, fshash: number) {
+	addTask(layer: LayerConfig, zoom: number, hash: number, x: number, y: number, srcfile: string, exacthash: number) {
 		if (zoom - 1 < this.minzoom) { return; }
 		let newname = this.render.makeFileName(layer.name, zoom - 1, Math.floor(x / 2), Math.floor(y / 2), layer.format ?? "webp");
 		let incomp = getOrInsert(this.incompletes, newname, () => ({
@@ -32,7 +32,7 @@ export class MipScheduler {
 		let isbot = (y % 2) != 0;
 		if (this.render.config.noyflip) { isbot = !isbot; }
 		let subindex = (isright ? 1 : 0) + (isbot ? 2 : 0);
-		incomp.files[subindex] = { name: srcfile, hash, fshash };
+		incomp.files[subindex] = { name: srcfile, hash, fshash: exacthash };
 	}
 	async run(includeIncomplete = false) {
 		const maxgroup = 200;
@@ -139,7 +139,7 @@ async function mipCanvas(render: MapRender, files: (MipFile | null)[], format: "
 	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	const subtilesize = render.config.tileimgsize / 2;
 	await Promise.all(files.map(async (f, i) => {
-		if (!f) { return null; }
+		if (!f || !f.name) { return null; }
 		let res = await render.getFileResponse(f.name);
 		let mimetype = res.headers.get("content-type");
 		let hashheader = res.headers.get("x-amz-meta-mapfile-hash");
@@ -154,7 +154,7 @@ async function mipCanvas(render: MapRender, files: (MipFile | null)[], format: "
 			let scaled = avgFilterMipImage(data);
 			ctx.putImageData(scaled, outx, outy);
 		} else {
-			let img: any;//Image|VideoFrame
+			let img: HTMLImageElement | VideoFrame;
 			if (!res.ok) {
 				throw new Error("image not found");
 			}

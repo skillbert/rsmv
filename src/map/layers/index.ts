@@ -10,6 +10,7 @@ import * as zlib from "zlib";
 import prettyJson from "json-stringify-pretty-compact";
 import { jsonIcons, svgfloor } from "../svgrender";
 import { rendermode3d, rendermodeInteractions } from "./3d";
+import { VariantInfo, VariantResolver } from "../varianttracker";
 
 
 type MaprenderSquareData = {
@@ -31,20 +32,22 @@ export type MaprenderSquare = {
 export type MaprenderSquareLoaded = MaprenderSquare & { model: RSMapChunk, loaded: MaprenderSquareData };
 
 export type RenderResult = {
-    file?: () => Promise<Buffer>,
-    symlink?: undefined | KnownMapFile
+    file?: Promise<Buffer>,
+    storedvariant?: VariantInfo,
+    exacthash?: number
 }
 
 export type RenderTask = {
     layer: LayerConfig,
-    name: string,
-    hash: number,
+    nameinfo: { x: number, y: number, zoom: number | null, ext: string },
+    dependencyhash: number,
     datarect: MapRect,
     dedupeDependencies?: string[],
-    mippable?: null | { zoom: number, outputx: number, outputy: number },
+    mippable?: boolean,
+    getExactHash?: (chunks: MaprenderSquareLoaded[]) => number,
     //first callback depends on state and should be series, 2nd is deferred and can be parallel
     run2d?: (chunks: AsyncReturnType<typeof parseMapsquare>[]) => Promise<RenderResult>,
-    run?: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer, parentinfo: RenderDepsVersionInstance) => Promise<RenderResult>,
+    run?: (chunks: MaprenderSquareLoaded[], renderer: MapRenderer) => Promise<RenderResult>,
 }
 
 export type ChunkrenderContext<MODE extends LayerConfig["mode"]> = {
@@ -52,6 +55,7 @@ export type ChunkrenderContext<MODE extends LayerConfig["mode"]> = {
     config: MapRender,
     layer: LayerConfig & { mode: MODE },
     deps: SimpleHasher,
+    variants: VariantResolver,
     baseoutput: { x: number, y: number },
     maprect: MapRect
 }
@@ -79,29 +83,27 @@ export function chunkrectToOffetWorldRect(engine: EngineCache, config: MapRender
 const rendermodeCollision: RenderMode<"collision"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
     let zooms = config.getLayerZooms(layer);
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
-    let filename = config.makeFileName(layer.name, zooms.base, baseoutput.x, baseoutput.y, layer.format ?? "webp");
     let depcrc = deps.recthash(loadedchunksrect);
     return [{
         layer: layer,
-        name: filename,
-        hash: depcrc,
+        nameinfo: { ...baseoutput, zoom: zooms.base, ext: layer.format ?? "webp" },
+        dependencyhash: depcrc,
         datarect: loadedchunksrect,
-        mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base },
+        mippable: true,
         async run2d(chunks) {
             //TODO try enable 2d map render without loading all the 3d stuff
             let grids = chunks.map(q => q.grid);
             let file = drawCollision(grids, worldrect, layer.level, layer.pxpersquare, 1);
-            return { file: () => file };
+            return { file: file };
         }
     }];
 }
 
 const rendermodeHeight: RenderMode<"height"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
-    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "bin.gz" : "bin");
     return [{
         layer: layer,
-        name: filename,
-        hash: deps.recthash(maprect),
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "bin.gz" : "bin" },
+        dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run2d(chunks) {
             //TODO what to do with classic 48x48 chunks?
@@ -110,17 +112,16 @@ const rendermodeHeight: RenderMode<"height"> = function ({ engine, config, layer
             if (layer.usegzip) {
                 buf = zlib.gzipSync(buf);
             }
-            return { file: () => Promise.resolve(buf) };
+            return { file: Promise.resolve(buf) };
         }
     }];
 }
 
 const rendermodeLocs: RenderMode<"locs"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
-    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
     return [{
         layer: layer,
-        name: filename,
-        hash: deps.recthash(maprect),
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run(chunks) {
             let { grid, modeldata, chunkSize } = chunks[0].loaded.chunkdata;
@@ -131,17 +132,16 @@ const rendermodeLocs: RenderMode<"locs"> = function ({ engine, config, layer, de
             if (layer.usegzip) {
                 buf = zlib.gzipSync(buf);
             }
-            return { file: () => Promise.resolve(buf) };
+            return { file: Promise.resolve(buf) };
         }
     }];
 }
 
 const rendermodeMaplabels: RenderMode<"maplabels"> = function ({ engine, config, layer, deps, maprect }) {
-    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
     return [{
         layer: layer,
-        name: filename,
-        hash: deps.recthash(maprect),
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run2d(chunks) {
             let chunkSize = chunks[0].chunkSize;
@@ -153,17 +153,16 @@ const rendermodeMaplabels: RenderMode<"maplabels"> = function ({ engine, config,
             if (layer.usegzip) {
                 buf = zlib.gzipSync(buf);
             }
-            return { file: () => Promise.resolve(buf) };
+            return { file: Promise.resolve(buf) };
         }
     }];
 }
 
 const rendermodeRenderMeta: RenderMode<"rendermeta"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
-    let filename = config.makeFileName(layer.name, null, maprect.x, maprect.z, layer.usegzip ? "json.gz" : "json");
     return [{
         layer: layer,
-        name: filename,
-        hash: deps.recthash(maprect),
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run(chunks) {
             let obj = chunks[0].loaded.rendermeta;
@@ -171,22 +170,21 @@ const rendermodeRenderMeta: RenderMode<"rendermeta"> = function ({ engine, confi
             if (layer.usegzip) {
                 file = zlib.gzipSync(file) as any;
             }
-            return { file: () => Promise.resolve(file) };
+            return { file: Promise.resolve(file) };
         }
     }];
 }
 
 const rendermodeMap: RenderMode<"map"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
-    let zooms = config.getLayerZooms(layer);
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
-    let filename = config.makeFileName(layer.name, zooms.base, baseoutput.x, baseoutput.y, "svg");
+    let zooms = config.getLayerZooms(layer);
     let depcrc = deps.recthash(loadedchunksrect);
     return [{
         layer: layer,
-        name: filename,
-        hash: depcrc,
+        nameinfo: { ...baseoutput, zoom: zooms.base, ext: "svg" },
+        dependencyhash: depcrc,
         datarect: loadedchunksrect,
-        mippable: { outputx: baseoutput.x, outputy: baseoutput.y, zoom: zooms.base },
+        mippable: true,
         async run2d(parsedata) {
             let grid = new CombinedTileGrid(parsedata.map(pp => ({
                 src: pp.grid,
@@ -200,7 +198,7 @@ const rendermodeMap: RenderMode<"map"> = function ({ engine, config, layer, deps
             let locs = parsedata.flatMap(ch => ch.chunk?.locs ?? []);
             let svg = await svgfloor(engine, grid, locs, worldrect, layer.level, layer.pxpersquare, !!layer.wallsonly, !!layer.mapicons, !!layer.thicklines);
             return {
-                file: () => Promise.resolve(Buffer.from(svg, "utf8"))
+                file: Promise.resolve(Buffer.from(svg, "utf8"))
             };
         }
     }];

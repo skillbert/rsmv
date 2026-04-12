@@ -8,7 +8,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
 import { delay, stringToFileRange, trickleTasks } from "../utils";
-import { mapsquareFloorDependencies, mapsquareLocDependencies, RenderDepsTracker } from "./chunksummary";
+import { mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals, RenderDepsTracker } from "./chunksummary";
 import { RSMapChunk } from "../3d/modelnodes";
 import { MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
@@ -353,13 +353,16 @@ export class MapRenderer {
 				square.model = new RSMapChunk(this.scenecache, square.parseprom, x, z, this.opts);
 				square.loadprom = (async () => {
 					let chunkdata = await square.model!.chunkdata;
+					let floordeps = (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk));
+					let locdeps = mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz);
 					square!.loaded = {
 						rendermeta: {
 							x: chunkdata.chunkx,
 							z: chunkdata.chunkz,
 							version: this.config.version,
-							floor: (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk)),
-							locs: mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz)
+							floor: floordeps,
+							locs: locdeps,
+							visuals: mapsquareVisuals(floordeps, locdeps, chunkdata.chunkx, chunkdata.chunkz)
 						},
 						grid: chunkdata.grid,
 						chunkdata: chunkdata
@@ -435,10 +438,16 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
 
 	let versionsFile = await getVersionsFile(config, engine);
+	let versiontime = +engine.getCacheMeta().timestamp;
+	let targetversions = versionsFile.versions
+		.slice()
+		.sort((a, b) => Math.abs(a.date - versiontime) - Math.abs(b.date - versiontime))
+		.slice(0, 10)
+		.map(q => q.version);
 
 	let mipper = new MipScheduler(config, progress);
-	let depstracker = new RenderDepsTracker(engine, config, deps, versionsFile);
-	let varianttracker = new VariantResolver(config);
+	let depstracker = new RenderDepsTracker(config, deps, targetversions);
+	let varianttracker = new VariantResolver(config, targetversions);
 	let maprender: MapRenderer | null = null;
 	let activerender = Promise.resolve();
 
@@ -447,7 +456,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		for (let chunk of chunks) {
 			if (output.state != "running") { break; }
 
-			let task = renderMapsquare(engine, config, depstracker, mipper, progress, chunk.x, chunk.z);
+			let task = renderMapsquare(engine, config, depstracker, varianttracker, mipper, progress, chunk.x, chunk.z);
 			let lastrender = activerender;
 			let fn = (async () => {
 				if (output.state != "running") { return; }
@@ -525,7 +534,8 @@ export class SimpleHasher {
 	}
 }
 
-export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
+
+export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, varianttracker: VariantResolver, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
 	progress.update(chunkx, chunkz, "imaging");
 
 	let filebasecoord = {
@@ -544,74 +554,152 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 		let modefunc = rendermodes[layer.mode];
 		if (!modefunc) { throw new Error("unknown render mode"); }
-		let ctx: ChunkrenderContext<any> = { engine, config, deps, baseoutput: filebasecoord, layer, maprect };
+		let ctx: ChunkrenderContext<any> = { engine, config, deps, baseoutput: filebasecoord, layer, maprect, variants: varianttracker };
 		chunktasks.push(...modefunc(ctx));
 	}
 
-	let runTasks = async (renderer: MapRenderer) => {
-		let savetasks: Promise<any>[] = [];
-		let symlinkcommands: SymlinkCommand[] = [];
 
-		let nonemptytasks = chunktasks.filter(q => deps.rectexists(q.datarect));
+	let runTask = async (renderer: MapRenderer, task: RenderTask): Promise<RenderResult | null> => {
+		let resolver = varianttracker.getOrCreateResolver(task.layer, task.nameinfo.zoom ?? null);
 
-		let metas = await config.getMetas(nonemptytasks.filter(q => q.hash != 0));
+		// // try using old system
+		// let existingfile = metas.find(q => q.file == filename && q.hash == task.dependencyhash);
+		// if (existingfile) {
+		// 	let storedfilename = existingfile.file;
+		// 	return {
+		// 		symlink: {
+		// 			file: filename,
+		// 			hash: task.dependencyhash,
+		// 			buildnr: config.version,
+		// 			symlink: storedfilename,
+		// 			symlinkbuildnr: existingfile.buildnr,
+		// 			symlinkfirstbuildnr: existingfile.firstbuildnr
+		// 		}
+		// 	};
+		// }
 
-		let allparentcandidates = new Set<string>();
-		for (let task of nonemptytasks) {
-			let existingfile = metas.find(q => q.file == task.name && q.hash == task.hash);
-			if (!existingfile) {
-				task.dedupeDependencies?.forEach(q => allparentcandidates.add(q));
+		let load3dmodels = !!task.run;
+		let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, load3dmodels);
+		let parsedchunks = await Promise.all(chunks.map(q => q.parseprom));
+
+		// try find match
+		let exacthash = task.getExactHash?.(chunks as MaprenderSquareLoaded[]) ?? task.dependencyhash;
+		let exacthashmatch = await resolver.findCandidate(config, task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash);
+		if (exacthashmatch) {
+			return {
+				exacthash: exacthashmatch.exacthash,
+				storedvariant: exacthashmatch
 			}
 		}
-		let parentinfo = await depstracker.forkDeps([...allparentcandidates]);
 
-		for (let task of nonemptytasks) {
-			let existingfile = metas.find(q => q.file == task.name && q.hash == task.hash);
-			if (!existingfile) {
-				let load3dmodels = !!task.run;
-				let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, load3dmodels);
-				let parsedchunks = await Promise.all(chunks.map(q => q.parseprom));
+		//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
+		if (!parsedchunks.some(q => q.chunk)) {
+			console.warn("no chunk data found for task, skipping", task.layer.name, task.nameinfo);
+			return null;
+		}
 
-				//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
-				if (!parsedchunks.some(q => q.chunk)) { continue; }
+		//run the render task
+		if (task.run) {
+			await Promise.all(chunks.map(q => q.loadprom));
+			let res = await task.run(chunks as MaprenderSquareLoaded[], renderer);
+			res.exacthash = exacthash;
+			return res;
+		} else if (task.run2d) {
+			let res = await task.run2d(parsedchunks);
+			res.exacthash = exacthash;
+			return res;
+		} else {
+			throw new Error("task has no run and also no run2d method");
+		}
+	}
 
-				//run the render task
-				let data: RenderResult;
-				if (task.run) {
-					await Promise.all(chunks.map(q => q.loadprom));
-					data = await task.run(chunks as MaprenderSquareLoaded[], renderer, parentinfo);
-				} else if (task.run2d) {
-					data = await task.run2d(parsedchunks);
-				} else {
-					throw new Error("task has no run and also no run2d method");
-				}
+	let runTasks = async (renderer: MapRenderer) => {
+		let savequeue: Promise<any>[] = [];
+		let symlinkcommands: SymlinkCommand[] = [];
 
-				//store it
-				if (data.symlink) {
-					existingfile = data.symlink;
-				} else if (data.file) {
-					savetasks.push(data.file().then(buf => config.saveFile(task.name, task.hash, buf)));
-				}
+		// dedupe using varianttracker
+		let candidatesprom = chunktasks.map(q => {
+			let resolver = varianttracker.getOrCreateResolver(q.layer, q.nameinfo.zoom ?? null);
+			return resolver.findCandidate(config, q.nameinfo.x, q.nameinfo.y, q.dependencyhash, 0)
+		});
+
+		// dedupe using old rendermeta system
+		// let nonemptytasks = chunktasks.filter(q => deps.rectexists(q.datarect));
+		// let metas = await config.getMetas(nonemptytasks.filter(q => q.dependencyhash != 0).map(q => ({
+		// 	name: config.makeFileName(q.layer.name, q.nameinfo.zoom, q.nameinfo.x, q.nameinfo.y, q.nameinfo.ext),
+		// 	hash: q.dependencyhash
+		// })));
+		// let allparentcandidates = new Set<string>();
+		// for (let task of nonemptytasks) {
+		// 	let filename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+		// 	let existingfile = metas.find(q => q.file == filename && q.hash == task.dependencyhash);
+		// 	if (!existingfile) {
+		// 		task.dedupeDependencies?.forEach(q => allparentcandidates.add(q));
+		// 	}
+		// }
+		// let parentinfo = await depstracker.forkDeps([...allparentcandidates]);
+		let candidates = await Promise.all(candidatesprom);
+
+		for (let taskindex = 0; taskindex < chunktasks.length; taskindex++) {
+			let task = chunktasks[taskindex];
+			let resolver = varianttracker.getOrCreateResolver(task.layer, task.nameinfo.zoom ?? null);
+			let isempty = !deps.rectexists(task.datarect);
+
+			// naive hash dedupe
+			let hashmatch = candidates[taskindex];
+			if (hashmatch) {
+				return {
+					exacthash: hashmatch.exacthash,
+					storedvariant: hashmatch,
+				};
 			}
-			if (existingfile) {
-				symlinkcommands.push({ file: task.name, hash: task.hash, buildnr: config.version, symlink: existingfile.file, symlinkbuildnr: existingfile.buildnr, symlinkfirstbuildnr: existingfile.firstbuildnr });
+
+			let res = (isempty ? null : await runTask(renderer, task));
+
+			//store it
+			let exacthash = res?.exacthash ?? task.dependencyhash;
+			let storedlayername = res?.storedvariant ? res.storedvariant.savedLayerName : task.layer.name;
+			let storedlayerversion = res?.storedvariant ? res.storedvariant.savedLayerVersion : config.version;
+			let storedfilename = "";
+			if (!res) {
+				// empty chunk, store nothing
+			} else if (res.storedvariant) {
+				storedfilename = config.makeFileName(res.storedvariant.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+				symlinkcommands.push({
+					file: config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext),
+					hash: task.dependencyhash,
+					buildnr: config.version,
+					symlink: storedfilename,
+					symlinkbuildnr: res.storedvariant.savedLayerVersion,
+					symlinkfirstbuildnr: res.storedvariant.savedLayerVersion
+				});
+			} else if (res.file) {
+				storedfilename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+				savequeue.push(res.file.then(buf => config.saveFile(storedfilename, task.dependencyhash, buf)));
 			}
+
+			// store its reference
+			resolver.addFile(config, task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash, storedlayername, storedlayerversion);
+
+			// queue mipping if needed
 			if (task.mippable) {
 				miptasks.push(() => {
-					let mip = task.mippable!;
-					mipper.addTask(task.layer, mip.zoom, task.hash, mip.outputx, mip.outputy, task.name, existingfile?.fshash ?? task.hash);
+					if (task.nameinfo.zoom == null) { throw new Error("only zoomed tasks can be mipped"); }
+					mipper.addTask(task.layer, task.nameinfo.zoom, task.dependencyhash, task.nameinfo.x, task.nameinfo.y, storedfilename, exacthash);
 				});
 			}
 		}
 
 		progress.update(chunkx, chunkz, "done");
 
-		await Promise.all(savetasks);
+		await Promise.all(savequeue);
 		await config.symlinkBatch(symlinkcommands);
 		miptasks.forEach(q => q());
-		progress.update(chunkx, chunkz, (savetasks.length == 0 ? "skipped" : "done"));
+		varianttracker.finishChunk(chunkx, chunkz);
+
+		progress.update(chunkx, chunkz, (savequeue.length == 0 ? "skipped" : "done"));
 		let localsymlinkcount = symlinkcommands.filter(q => q.symlinkbuildnr == config.version && q.file != q.symlink).length;
-		console.log("imaged", chunkx, chunkz, "files", savetasks.length, "symlinks", localsymlinkcount, "(unchanged)", symlinkcommands.length - localsymlinkcount);
+		console.log("imaged", chunkx, chunkz, "files", savequeue.length, "symlinks", localsymlinkcount, "(unchanged)", symlinkcommands.length - localsymlinkcount);
 		globalThis.onWatchdogProgress?.();
 	}
 

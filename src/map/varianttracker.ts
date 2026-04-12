@@ -15,7 +15,7 @@ type VariantMetadata = {
     variants: { name: string, version: number }[]
 }
 
-type FileMeta = {
+export type VariantInfo = {
     dependencyhash: number,
     exacthash: number,
     savedLayerName: string,
@@ -45,7 +45,7 @@ export class VariantChunk {
         return (y % variantGridSize) * variantGridSize + (x % variantGridSize);
     }
 
-    set(x: number, y: number, variant: FileMeta) {
+    set(x: number, y: number, variant: VariantInfo) {
         let index = this.getIndex(x, y);
         if (this.sourceindices[index] == 0) {
             this.filled++;
@@ -77,7 +77,7 @@ export class VariantChunk {
             savedLayerVersion: layer.version,
             dependencyhash: this.dependencyhashes[index],
             exacthash: this.exacthashes[index]
-        };
+        } as VariantInfo;
     }
 
     pack(includehashes: boolean) {
@@ -136,7 +136,7 @@ class VariantLayer {
     zoom: number | null;
     version: number;
 
-    constructor(layername: string, zoom: number | null, version: number) {
+    constructor(layername: string, version: number, zoom: number | null) {
         this.layername = layername;
         this.zoom = zoom;
         this.version = version;
@@ -180,7 +180,7 @@ class VariantLayer {
 
 export class VariantLayerResolver {
     private trackers: Map<string, VariantLayer> = new Map();
-    private currentlayer: VariantLayer;
+    currentlayer: VariantLayer;
 
     constructor(mainlayer: VariantLayer) {
         this.currentlayer = mainlayer;
@@ -196,9 +196,9 @@ export class VariantLayerResolver {
         this.trackers.set(key, layer);
     }
 
-    async addFile(tilex: number, tiley: number, dependencyhash: number, exacthash: number) {
+    async addFile(backend: MapRender, tilex: number, tiley: number, dependencyhash: number, exacthash: number, savedLayerName = this.currentlayer.layername, savedLayerVersion = this.currentlayer.version) {
         let { chunkx, chunky } = this.currentlayer.getChunkCoords(tilex, tiley);
-        let chunk = await this.currentlayer.getOrLoad(null as any, chunkx, chunky);
+        let chunk = await this.currentlayer.getOrLoad(backend, chunkx, chunky);
         if (!chunk) {
             chunk = new VariantChunk(this.currentlayer.layername, chunkx * variantGridSize, chunky * variantGridSize);
             this.currentlayer.setChunk(chunkx, chunky, chunk);
@@ -206,8 +206,8 @@ export class VariantLayerResolver {
         chunk.set(tilex, tiley, {
             dependencyhash,
             exacthash,
-            savedLayerName: this.currentlayer.layername,
-            savedLayerVersion: this.currentlayer.version
+            savedLayerName,
+            savedLayerVersion
         });
     }
 
@@ -231,37 +231,58 @@ export class VariantLayerResolver {
 }
 
 export class VariantResolver {
-    private layers: Map<string, VariantLayerResolver> = new Map();
+    private resolvers = new Map<string, VariantLayerResolver>();
+    private layers = new Map<string, VariantLayer>();
     private render: MapRender;
+    private versions: number[];
 
-    constructor(render: MapRender) {
+    constructor(render: MapRender, versions: number[]) {
         this.render = render;
-        for (let layer of render.config.layers) {
-            this.initLayer(layer);
-        }
+        this.versions = versions;
     }
 
-    layerkey(layername: string, zoom: number | null) {
+    resolverkey(layername: string, zoom: number | null) {
         return `${layername}/${zoom}`;
     }
+    layerkey(layername: string, version: number, zoom: number | null) {
+        return `${version}/${layername}/${zoom}`;
+    }
 
-    initLayer(layer: LayerConfig) {
-        let zooms = this.render.getLayerZooms(layer);
-        for (let zoom = zooms.min; zoom <= zooms.max; zoom++) {
-            let newlayer = new VariantLayer(layer.name, zoom, this.render.version);
-            let resolver = new VariantLayerResolver(newlayer);
-            this.layers.set(this.layerkey(layer.name, zoom), resolver);
+    initLayer(layer: LayerConfig, zoom: number | null) {
+        let newlayer = this.getOrCreateLayer(layer.name, this.render.version, zoom);
+        let resolver = new VariantLayerResolver(newlayer);
+
+        for (let parent of layer.subtractlayers ?? []) {
+            let parentlayer = this.layers.get(this.layerkey(parent, this.render.version, zoom));
+            if (!parentlayer) { throw new Error(`subtractlayer ${parent} not found for layer ${layer.name}. Make sure subtracklayers appear before their dependent layers`); }
+            resolver.addLayer(parentlayer);
         }
+        for (let version of this.versions) {
+            resolver.addLayer(this.getOrCreateLayer(layer.name, version, zoom));
+        }
+
+        this.resolvers.set(this.resolverkey(layer.name, zoom), resolver);
+        return resolver;
     }
 
     async finishChunk(chunkx: number, chunkz: number) {
-        // TODO purge caches for obsolete chunks and write completed current chunks to backend
+        for (let layer of this.layers.values()) {
+            // TODO purge caches for obsolete chunks and write completed current chunks to backend
+        }
     }
 
-    getLayerLevel(layername: string, zoom: number | null) {
-        let key = this.layerkey(layername, zoom);
-        let res = this.layers.get(key);
-        if (!res) { throw new Error(`Layer ${layername} zoom ${zoom} not found in variant resolver`); }
-        return res;
+    getOrCreateResolver(layer: LayerConfig, zoom: number | null) {
+        let key = this.resolverkey(layer.name, zoom);
+        return this.resolvers.get(key) ?? this.initLayer(layer, zoom);
+    }
+
+    getOrCreateLayer(layername: string, version: number, zoom: number | null) {
+        let key = this.layerkey(layername, version, zoom);
+        let layer = this.layers.get(key);
+        if (!layer) {
+            layer = new VariantLayer(layername, version, zoom);
+            this.layers.set(key, layer);
+        }
+        return layer;
     }
 }
