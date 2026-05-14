@@ -12,8 +12,7 @@ type VariantMetadata = {
     basey: number,
     sizex: number,
     sizey: number,
-    variants: { name: string, version: number }[],
-    embeddedjson?: [number, number, number][]
+    variants: { name: string, version: number }[]
 }
 
 export type VariantInfo = {
@@ -29,6 +28,7 @@ export class VariantGroup {
     basex: number;
     basey: number;
     lastUsed = 0;
+    dirty = false;
 
     private dependencyhashes = new Uint32Array(variantGridSize * variantGridSize);
     private exacthashes = new Uint32Array(variantGridSize * variantGridSize);
@@ -50,6 +50,7 @@ export class VariantGroup {
 
     set(x: number, y: number, variant: VariantInfo) {
         this.lastUsed = this.manager.chunkscompleted;
+        this.dirty = true;
         let index = this.getIndex(x, y);
         let layerindex = this.layers.findIndex(l => l.name == variant.savedLayerName && l.version == variant.savedLayerVersion);
         if (layerindex == -1) {
@@ -77,7 +78,19 @@ export class VariantGroup {
         } as VariantInfo;
     }
 
-    pack(includehashes: boolean, jsonformat = false) {
+    getDebug() {
+        let debugtext: string[] = [];
+        for (let y = 0; y < variantGridSize; y++) {
+            for (let x = 0; x < variantGridSize; x++) {
+                let variant = this.get(this.basex + x, this.basey + y);
+                if (variant) {
+                    debugtext.push(`${x},${y}: dep:${variant.dependencyhash.toString(16).padStart(8, "0")} exact:${variant.exacthash.toString(16).padStart(8, "0")} v${variant.savedLayerVersion}/${variant.savedLayerName}`);
+                }
+            }
+        }
+        return debugtext;
+    }
+    pack(includehashes: boolean) {
         let metadata: VariantMetadata = {
             layerfolder: this.layerfolder,
             hasHashes: includehashes,
@@ -87,18 +100,7 @@ export class VariantGroup {
             sizey: variantGridSize,
             variants: this.layers
         }
-        if (jsonformat) {
-            metadata.embeddedjson = [];
-            for (let i = 0; i < this.sourceindices.length; i++) {
-                metadata.embeddedjson.push([
-                    this.sourceindices[i],
-                    this.dependencyhashes[i],
-                    this.exacthashes[i]
-                ]);
-            }
-        }
-
-        let metastring = JSON.stringify(metadata, undefined, jsonformat ? "\t" : undefined);
+        let metastring = JSON.stringify(metadata);
         // pad to multiple of 4 for easier parsing
         metastring = metastring.padEnd((metastring.length + 3) & ~3, " ");
         let metabuffer = Buffer.from(metastring, 'utf-8');
@@ -107,14 +109,12 @@ export class VariantGroup {
         headerbuf.writeUInt32LE(metabuffer.byteLength, 4);
         let parts = [
             headerbuf,
-            metabuffer
+            metabuffer,
+            Buffer.from(this.sourceindices.buffer)
         ];
-        if (!jsonformat) {
-            parts.push(Buffer.from(this.sourceindices.buffer));
-            if (includehashes) {
-                parts.push(Buffer.from(this.dependencyhashes.buffer));
-                parts.push(Buffer.from(this.exacthashes.buffer));
-            }
+        if (includehashes) {
+            parts.push(Buffer.from(this.dependencyhashes.buffer));
+            parts.push(Buffer.from(this.exacthashes.buffer));
         }
         return Buffer.concat(parts);
     }
@@ -130,22 +130,14 @@ export class VariantGroup {
         index += metadataLength;
         let chunk = new VariantGroup(manager, metadata.layerfolder, metadata.basex, metadata.basey);
         chunk.layers = metadata.variants;
-        if (metadata.embeddedjson) {
-            //less efficient storage format for debugging
-            for (let [index, entry] of metadata.embeddedjson.entries()) {
-                chunk.sourceindices[index] = entry[0];
-                chunk.dependencyhashes[index] = entry[1];
-                chunk.exacthashes[index] = entry[2];
-            }
-        } else {
-            chunk.sourceindices.set(new Uint8Array(buffer.buffer, buffer.byteOffset + index, variantGridSize * variantGridSize));
-            index += variantGridSize * variantGridSize;
-            if (metadata.hasHashes) {
-                chunk.dependencyhashes.set(new Uint32Array(buffer.buffer, buffer.byteOffset + index, variantGridSize * variantGridSize));
-                index += variantGridSize * variantGridSize * 4;
-                chunk.exacthashes.set(new Uint32Array(buffer.buffer, buffer.byteOffset + index, variantGridSize * variantGridSize));
-                index += variantGridSize * variantGridSize * 4;
-            }
+
+        chunk.sourceindices.set(new Uint8Array(buffer.buffer, buffer.byteOffset + index, variantGridSize * variantGridSize));
+        index += variantGridSize * variantGridSize;
+        if (metadata.hasHashes) {
+            chunk.dependencyhashes.set(new Uint32Array(buffer.buffer, buffer.byteOffset + index, variantGridSize * variantGridSize));
+            index += variantGridSize * variantGridSize * 4;
+            chunk.exacthashes.set(new Uint32Array(buffer.buffer, buffer.byteOffset + index, variantGridSize * variantGridSize));
+            index += variantGridSize * variantGridSize * 4;
         }
         return chunk;
     }
@@ -176,7 +168,7 @@ class VariantLayer {
         let chunk = this.getChunk(chunkx, chunky);
         // not loaded yet, try to load it
         if (chunk === undefined) {
-            let filename = manager.render.makeFileName(this.layername, this.zoom, chunkx, chunky, "bin", "versions");
+            let filename = manager.render.makeFileName(this.layername, this.zoom, chunkx, chunky, "bin", "hashes_");
             chunk = (async () => {
                 try {
                     let file = await manager.render.getFileResponse(filename, this.version);
@@ -192,8 +184,20 @@ class VariantLayer {
         }
         return chunk;
     }
-    async getLoadOrInit(manager: VariantResolver, groupx: number, groupy: number) {
-        let chunk = await this.getOrLoad(manager, groupx, groupy);
+    getLoadOrInit(manager: VariantResolver, groupx: number, groupy: number) {
+        let chunk = this.getOrLoad(manager, groupx, groupy);
+        if (chunk instanceof Promise) {
+            // chain the fallback value into the promise since we might be racing with another load or init
+            let newchunk = chunk.then<VariantGroup>(res => {
+                if (!res) {
+                    res = new VariantGroup(manager, this.layername, groupx * variantGridSize, groupy * variantGridSize);
+                    this.setChunk(groupx, groupy, res);
+                }
+                return res;
+            });
+            this.setChunk(groupx, groupy, newchunk);
+            return newchunk;
+        }
         if (!chunk) {
             chunk = new VariantGroup(manager, this.layername, groupx * variantGridSize, groupy * variantGridSize);
             this.setChunk(groupx, groupy, chunk);
@@ -206,21 +210,32 @@ class VariantLayer {
     setChunk(x: number, y: number, chunk: VariantGroup | null | Promise<VariantGroup | null>) {
         this.chunks.set(this.getkey(x, y), chunk);
     }
-    flush(backend: MapRender, olderthen: number) {
+    flush(backend: MapRender, olderthen: number, flushall = false) {
         let promises: Promise<void>[] = [];
         for (let [key, chunk] of this.chunks) {
             if (chunk instanceof Promise) { continue; }
             if (chunk === null) { continue; }
-            if (chunk.lastUsed < olderthen) {
+            let evicted = chunk.lastUsed < olderthen;
+            if (evicted) {
                 this.chunks.delete(key);
+            }
+            if (chunk.dirty && (evicted || flushall)) {
                 if (backend.config.variantsparse) {
-                    let file = chunk.pack(false, false);
+                    let file = chunk.pack(false);
                     let filename = backend.makeFileName(this.layername, this.zoom, chunk.basex / variantGridSize, chunk.basey / variantGridSize, "bin", "hashesv_");
                     promises.push(backend.saveFile(filename, 0, file, backend.version));
                 }
-                let file = chunk.pack(true, backend.config.variantdebug);
+                chunk.dirty = false;
+                let file = chunk.pack(true);
                 let filename = backend.makeFileName(this.layername, this.zoom, chunk.basex / variantGridSize, chunk.basey / variantGridSize, "bin", "hashes_");
                 promises.push(backend.saveFile(filename, 0, file, backend.version));
+
+                // // TODO remove
+                // if (true) {
+                //     let debugtexts = chunk.getDebug();
+                //     let debugfilename = backend.makeFileName(this.layername, this.zoom, chunk.basex / variantGridSize, chunk.basey / variantGridSize, "txt", "debug_");
+                //     promises.push(backend.saveFile(debugfilename, 0, Buffer.from(debugtexts.join("\n")), backend.version));
+                // }
             }
         }
         return promises;
@@ -282,6 +297,14 @@ export class VariantLayerResolver {
             }
         }
     }
+
+    flush(backend: MapRender, olderthen: number, flushall = false) {
+        let promises: Promise<void>[] = [];
+        for (let tracker of this.trackers.values()) {
+            promises.push(...tracker.flush(backend, olderthen, flushall));
+        }
+        return promises;
+    }
 }
 
 export class VariantResolver {
@@ -336,12 +359,14 @@ export class VariantResolver {
     }
     async finishChunk(flushall = false) {
         this.chunkscompleted++;
-        let olderthen = flushall ? 0x3fffffff : this.chunkscompleted - 10;
+        let olderthen = this.chunkscompleted - 10;
         let flushpromises: Promise<any>[] = [];
         for (let resolver of this.resolvers.values()) {
-            flushpromises.push(...resolver.currentlayer.flush(this.render, olderthen));
+            flushpromises.push(...resolver.flush(this.render, olderthen, flushall));
         }
-        console.log(`Flushing ${flushpromises.length} variant files`);
+        if (flushpromises.length != 0) {
+            console.log(`Flushing ${flushpromises.length} variant files`);
+        }
         await Promise.all(flushpromises);
     }
 }

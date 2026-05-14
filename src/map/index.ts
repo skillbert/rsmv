@@ -467,7 +467,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 				for (let retry = 0; retry <= maxretries; retry++) {
 					try {
 						await lastrender;
-						maprender ??= await getRenderer();
+						maprender ??= getRenderer();
 						await task.runTasks(maprender);
 						await varianttracker.finishChunk();
 						break;
@@ -490,6 +490,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 			completed++;
 			if (completed % 20 == 0) {
 				yield mipper.run();
+				yield varianttracker.finishChunk(true);
 			}
 		}
 	}
@@ -567,22 +568,6 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 	let runTask = async (renderer: MapRenderer, task: RenderTask): Promise<RenderResult | null> => {
 		let resolver = varianttracker.getOrCreateResolver(task.layer, task.nameinfo.zoom ?? null);
 
-		// // try using old system
-		// let existingfile = metas.find(q => q.file == filename && q.hash == task.dependencyhash);
-		// if (existingfile) {
-		// 	let storedfilename = existingfile.file;
-		// 	return {
-		// 		symlink: {
-		// 			file: filename,
-		// 			hash: task.dependencyhash,
-		// 			buildnr: config.version,
-		// 			symlink: storedfilename,
-		// 			symlinkbuildnr: existingfile.buildnr,
-		// 			symlinkfirstbuildnr: existingfile.firstbuildnr
-		// 		}
-		// 	};
-		// }
-
 		let load3dmodels = !!task.run;
 		let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, load3dmodels);
 
@@ -620,33 +605,19 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		}
 	}
 
+	// dedupe using varianttracker
+	let candidatesprom = chunktasks.map(q => {
+		let resolver = varianttracker.getOrCreateResolver(q.layer, q.nameinfo.zoom ?? null);
+		return resolver.findCandidate(q.nameinfo.x, q.nameinfo.y, q.dependencyhash, false);
+	});
+
 	let runTasks = async (renderer: MapRenderer) => {
 		let savequeue: Promise<any>[] = [];
+		let savemetaqueue: Promise<any>[] = [];
 		let symlinkcommands: SymlinkCommand[] = [];
 
-		// dedupe using varianttracker
-		let candidatesprom = chunktasks.map(q => {
-			let resolver = varianttracker.getOrCreateResolver(q.layer, q.nameinfo.zoom ?? null);
-			return resolver.findCandidate(q.nameinfo.x, q.nameinfo.y, q.dependencyhash, false);
-		});
 
-		// dedupe using old rendermeta system
-		// let nonemptytasks = chunktasks.filter(q => deps.rectexists(q.datarect));
-		// let metas = await config.getMetas(nonemptytasks.filter(q => q.dependencyhash != 0).map(q => ({
-		// 	name: config.makeFileName(q.layer.name, q.nameinfo.zoom, q.nameinfo.x, q.nameinfo.y, q.nameinfo.ext),
-		// 	hash: q.dependencyhash
-		// })));
-		// let allparentcandidates = new Set<string>();
-		// for (let task of nonemptytasks) {
-		// 	let filename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
-		// 	let existingfile = metas.find(q => q.file == filename && q.hash == task.dependencyhash);
-		// 	if (!existingfile) {
-		// 		task.dedupeDependencies?.forEach(q => allparentcandidates.add(q));
-		// 	}
-		// }
-		// let parentinfo = await depstracker.forkDeps([...allparentcandidates]);
 		let candidates = await Promise.all(candidatesprom);
-
 		for (let taskindex = 0; taskindex < chunktasks.length; taskindex++) {
 			let task = chunktasks[taskindex];
 			let resolver = varianttracker.getOrCreateResolver(task.layer, task.nameinfo.zoom ?? null);
@@ -688,7 +659,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			}
 
 			// store its reference
-			resolver.addFile(task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash, storedlayername, storedlayerversion);
+			savemetaqueue.push(resolver.addFile(task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash, storedlayername, storedlayerversion));
 
 			// queue mipping if needed
 			if (task.mippable) {
@@ -703,8 +674,8 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 		await Promise.all(savequeue);
 		await config.symlinkBatch(symlinkcommands);
+		await Promise.all(savemetaqueue);
 		miptasks.forEach(q => q());
-		await varianttracker.finishChunk();
 
 		progress.update(chunkx, chunkz, (savequeue.length == 0 ? "skipped" : "done"));
 		let localsymlinkcount = symlinkcommands.filter(q => q.symlinkbuildnr == config.version && q.file != q.symlink).length;
@@ -712,6 +683,6 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		globalThis.onWatchdogProgress?.();
 	}
 
-	//TODO returning a promise just gets flattened with our currnet async execution
+	//TODO returning a promise just gets flattened with our current async execution
 	return { runTasks };
 }
