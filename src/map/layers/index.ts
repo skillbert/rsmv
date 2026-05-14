@@ -21,6 +21,7 @@ type MaprenderSquareData = {
 
 export type MaprenderSquare = {
     parseprom: ReturnType<typeof parseMapsquare>,
+    parsed: Awaited<ReturnType<typeof parseMapsquare>> | null,
     x: number,
     z: number,
     id: number,
@@ -29,7 +30,11 @@ export type MaprenderSquare = {
     loadprom: Promise<MaprenderSquareData> | null,
 };
 
-export type MaprenderSquareLoaded = MaprenderSquare & { model: RSMapChunk, loaded: MaprenderSquareData };
+export type MaprenderSquareLoaded = MaprenderSquare & {
+    model: RSMapChunk,
+    loaded: MaprenderSquareData
+    parsed: Awaited<ReturnType<typeof parseMapsquare>>,
+};
 
 export type RenderResult = {
     file?: Promise<Buffer>,

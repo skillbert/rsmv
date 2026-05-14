@@ -67,7 +67,7 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                 let suby = (config.config.noyflip ? subz : subslices - 1 - subz);
                 let imgtilex = baseoutput.x * subslices + subx;
                 let imgtiley = baseoutput.y * subslices + suby;
-                let filename = config.makeFileName(layer.name, zoom, imgtilex, imgtiley, layer.format ?? "webp");
+                // let filename = config.makeFileName(layer.name, zoom, imgtilex, imgtiley, layer.format ?? "webp");
 
                 // let parentCandidates: { name: string, level: number }[] = [
                 //     { name: filename, level: layer.level }

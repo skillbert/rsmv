@@ -123,7 +123,6 @@ export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents> {
 		scene.add(this.topdowncam);
 
 		//three typings are outdated
-		renderer.useLegacyLights = false;
 		renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 		const planeSize = 11;

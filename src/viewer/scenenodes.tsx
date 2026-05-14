@@ -2295,7 +2295,7 @@ function MaprenderScript(p: UiScriptProps) {
 		localStorage.rsmv_script_map_lastconfig = (configjson == examplemapconfig ? "" : configjson);
 		let output = new UIScriptOutput();
 		let fs = output.makefs("render");
-		let config = new MapRenderFsBacked(fs, parseMapConfig(configjson));
+		let config = new MapRenderFsBacked(fs, parseMapConfig(configjson), false);
 		await fs.writeFile("mapconfig.jsonc", configjson);
 		output.run(runMapRender, p.source, config, true);
 		p.onRun(output, "");

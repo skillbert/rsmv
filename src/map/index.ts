@@ -44,7 +44,9 @@ export type Mapconfig = {
 	mapsizez: number,
 	area: string,
 	noyflip: boolean | undefined,
-	nochunkoffset: boolean | undefined
+	nochunkoffset: boolean | undefined,
+	variantdebug: boolean | undefined,
+	variantsparse: boolean | undefined,
 }
 
 export type LayerConfig = {
@@ -343,10 +345,12 @@ export class MapRenderer {
 					x: x,
 					z: z,
 					parseprom: parseprom,
+					parsed: null,
 					model: null,
 					loaded: null,
 					loadprom: null,
 				}
+				parseprom.then(res => square!.parsed = res);
 				this.squares.push(square);
 			}
 			if (needsmodels) {
@@ -395,7 +399,7 @@ export class MapRenderer {
 			});
 			this.squares = this.squares.filter(sq => !removed.includes(sq));
 		}
-		return load;
+		return load as MaprenderSquareLoaded[];
 	}
 }
 
@@ -465,7 +469,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 						await lastrender;
 						maprender ??= await getRenderer();
 						await task.runTasks(maprender);
-						await varianttracker.finishChunk(chunk.x, chunk.z);
+						await varianttracker.finishChunk();
 						break;
 					} catch (e) {
 						console.warn(e.toString());
@@ -492,6 +496,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 
 	await trickleTasks("", 10, render);
 	await mipper.run(true);
+	await varianttracker.finishChunk(true);
 	configjson.errorcount = errs.length;
 	configjson.running = false;
 	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
@@ -580,13 +585,12 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 
 		let load3dmodels = !!task.run;
 		let chunks = await renderer.setArea(task.datarect.x, task.datarect.z, task.datarect.xsize, task.datarect.zsize, load3dmodels);
-		let parsedchunks = await Promise.all(chunks.map(q => q.parseprom));
 
 		let exacthash: number | undefined = undefined;
 		// try find match
 		if (task.getExactHash) {
-			exacthash = task.getExactHash(chunks as MaprenderSquareLoaded[]) ?? task.dependencyhash;
-			let exacthashmatch = await resolver.findCandidate(config, task.nameinfo.x, task.nameinfo.y, exacthash, true);
+			exacthash = task.getExactHash(chunks) ?? task.dependencyhash;
+			let exacthashmatch = await resolver.findCandidate(task.nameinfo.x, task.nameinfo.y, exacthash, true);
 			if (exacthashmatch) {
 				return {
 					exacthash: exacthashmatch.exacthash,
@@ -596,7 +600,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		}
 
 		//no actual chunks loaded, this shouldn't happen (not often) because we filter existing rects before
-		if (!parsedchunks.some(q => q.chunk)) {
+		if (!chunks.some(q => q.parsed.chunk)) {
 			console.warn("no chunk data found for task, skipping", task.layer.name, task.nameinfo);
 			return null;
 		}
@@ -604,11 +608,11 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		//run the render task
 		if (task.run) {
 			await Promise.all(chunks.map(q => q.loadprom));
-			let res = await task.run(chunks as MaprenderSquareLoaded[], renderer);
+			let res = await task.run(chunks, renderer);
 			res.exacthash = exacthash;
 			return res;
 		} else if (task.run2d) {
-			let res = await task.run2d(parsedchunks);
+			let res = await task.run2d(chunks.map(q => q.parsed));
 			res.exacthash = exacthash;
 			return res;
 		} else {
@@ -623,7 +627,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		// dedupe using varianttracker
 		let candidatesprom = chunktasks.map(q => {
 			let resolver = varianttracker.getOrCreateResolver(q.layer, q.nameinfo.zoom ?? null);
-			return resolver.findCandidate(config, q.nameinfo.x, q.nameinfo.y, q.dependencyhash, false);
+			return resolver.findCandidate(q.nameinfo.x, q.nameinfo.y, q.dependencyhash, false);
 		});
 
 		// dedupe using old rendermeta system
@@ -649,15 +653,17 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			let isempty = !deps.rectexists(task.datarect);
 
 			// naive hash dedupe
+			let res: RenderResult | null = null;
 			let hashmatch = candidates[taskindex];
 			if (hashmatch) {
-				return {
+				res = {
 					exacthash: hashmatch.exacthash,
 					storedvariant: hashmatch,
 				};
+			} else if (!isempty) {
+				// actual render
+				res = await runTask(renderer, task);
 			}
-
-			let res = (isempty ? null : await runTask(renderer, task));
 
 			//store it
 			let exacthash = res?.exacthash ?? task.dependencyhash;
@@ -682,7 +688,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			}
 
 			// store its reference
-			resolver.addFile(config, task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash, storedlayername, storedlayerversion);
+			resolver.addFile(task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash, storedlayername, storedlayerversion);
 
 			// queue mipping if needed
 			if (task.mippable) {
@@ -698,7 +704,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		await Promise.all(savequeue);
 		await config.symlinkBatch(symlinkcommands);
 		miptasks.forEach(q => q());
-		varianttracker.finishChunk(chunkx, chunkz);
+		await varianttracker.finishChunk();
 
 		progress.update(chunkx, chunkz, (savequeue.length == 0 ? "skipped" : "done"));
 		let localsymlinkcount = symlinkcommands.filter(q => q.symlinkbuildnr == config.version && q.file != q.symlink).length;

@@ -80,32 +80,46 @@ export abstract class MapRender {
 
 export class MapRenderFsBacked extends MapRender {
 	fs: ScriptFS;
-	constructor(fs: ScriptFS, config: Mapconfig) {
+	multiversion: boolean;
+	constructor(fs: ScriptFS, config: Mapconfig, multiversion: boolean) {
 		super(config);
 		this.fs = fs;
+		this.multiversion = multiversion;
 	}
-	assertVersion(version: number) {
-		if (version != 0 && version != this.version) { throw new Error("versions not supported"); }
+	versionedName(version: number, name: string) {
+		if (this.multiversion) {
+			if (version == 0) {
+				return name;
+			} else {
+				return `${version}/${name}`;
+			}
+		} else {
+			if (version != 0 && version != this.version) {
+				throw new Error("unexpected file version");
+			}
+			return name;
+		}
 	}
 	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
-		this.assertVersion(version);
+		name = this.versionedName(version, name);
 		await this.fs.mkDir(naiveDirname(name));
 		await this.fs.writeFile(name, data);
 	}
 	async getFileResponse(name: string, version = this.version) {
-		this.assertVersion(version);
+		name = this.versionedName(version, name);
 		try {
 			let ext = name.match(/\.(\w+)$/);
 			let mimetype = (ext ? ext[1] == "svg" ? "image/svg+xml" : `image/${ext[1]}` : "");
 			await this.fs.mkDir(naiveDirname(name));
 			let file = await this.fs.readFileBuffer(name);
-			return new Response(file, { headers: { "content-type": mimetype } });
+			return new Response(file as Buffer<ArrayBuffer>, { headers: { "content-type": mimetype } });
 		} catch {
 			return new Response(null, { status: 404 });
 		}
 	}
 	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
-		this.assertVersion(targetversion);
+		name = this.versionedName(this.version, name);
+		targetname = this.versionedName(targetversion, targetname);
 		await this.fs.mkDir(naiveDirname(name));
 		await this.fs.copyFile(targetname, name, true);
 	}
@@ -156,7 +170,7 @@ export class MapRenderDatabaseBacked extends MapRender {
 		});
 		if (!send.ok) { throw new Error("failed to init map"); }
 	}
-	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
+	async saveFile(name: string, hash: number, data: Buffer<ArrayBuffer>, version = this.version) {
 		let send = await this.postThrottler.apiRequest(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${version}&mapid=${this.uploadmapid}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },

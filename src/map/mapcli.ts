@@ -43,7 +43,7 @@ let cmd = cmdts.command({
 			let configfile = await fs.readFile(args.configfile!, "utf8");
 			await fs.access(outdir);//check if we're allowed to write the outdir
 			let scriptfs = new CLIScriptFS(outdir);
-			config = new MapRenderFsBacked(scriptfs, parseMapConfig(configfile));
+			config = new MapRenderFsBacked(scriptfs, parseMapConfig(configfile), !!args.builds);
 		} else {
 			throw new Error("no map endpoint selected");
 		}
