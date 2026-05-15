@@ -83,7 +83,7 @@ export type LayerConfig = {
 	mode: "rendermeta"
 });
 
-async function getVersionsFile(config: MapRender, includeCacheVersion: CacheFileSource | null = null) {
+export async function getVersionsFile(config: MapRender, includeCacheVersion: CacheFileSource | null = null) {
 	//make sure versions file is updated
 	let versionsres = await config.getFileResponse("versions.json", 0);
 	let mapversionsinfo: RenderedMapMeta;
@@ -644,13 +644,15 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			if (!res) {
 				// empty chunk, store nothing
 			} else if (res.storedvariant) {
-				storedfilename = config.makeFileName(res.storedvariant.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
-				symlinkcommands.push({
-					file: config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext),
-					version: config.version,
-					target: storedfilename,
-					targetversion: res.storedvariant.savedLayerVersion
-				});
+				if (!config.config.variantsparse) {
+					storedfilename = config.makeFileName(res.storedvariant.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+					symlinkcommands.push({
+						file: config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext),
+						version: config.version,
+						target: storedfilename,
+						targetversion: res.storedvariant.savedLayerVersion
+					});
+				}
 			} else if (res.file) {
 				storedfilename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
 				savequeue.push(res.file.then(buf => config.saveFile(storedfilename, buf)));

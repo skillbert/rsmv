@@ -48,7 +48,7 @@ export abstract class MapRender {
 	abstract readDir(name: string, type: "files" | "directories", version?: VersionFolder): Promise<string[]>;
 	abstract getFileResponse(name: string, version?: VersionFolder): Promise<Response>;
 	abstract saveFile(name: string, data: Buffer, version?: VersionFolder): Promise<void>;
-	abstract symlink(name: string, version: VersionFolder, targetname: string, targetversion: VersionFolder): Promise<void>;
+	abstract symlink(name: string, version: VersionFolder, sourcename: string, sourceversion: VersionFolder): Promise<void>;
 	abstract delete(name: string, version?: VersionFolder): Promise<void>;
 
 	getLayerZooms(layercnf: LayerConfig) {
@@ -60,8 +60,8 @@ export abstract class MapRender {
 
 	makeFolderName(layer: string, zoom: number | null, extra = "") {
 		let name = layer;
-		if (extra) { name += `/${extra}`; }
 		if (zoom != null) { name += `/${zoom}`; }
+		if (extra) { name += `/${extra}`; }
 		return name;
 	}
 	makeFileName(layer: string, zoom: number | null, x: number, y: number, ext: string, extra = "") {
@@ -105,7 +105,7 @@ export class MapRenderFsBacked extends MapRender {
 	}
 	async readDir(name: string, type: "files" | "directories", version: VersionFolder = this.version) {
 		name = this.versionedName(version, name);
-		let entries = await this.fs.readDir(name);
+		let entries = await this.fs.readDir(name).catch(() => []);
 		if (type == "files") {
 			return entries.filter(q => q.kind == "file").map(q => q.name);
 		} else {
@@ -127,8 +127,12 @@ export class MapRenderFsBacked extends MapRender {
 	async symlink(name: string, version: VersionFolder, targetname: string, targetversion: VersionFolder) {
 		name = this.versionedName(version, name);
 		targetname = this.versionedName(targetversion, targetname);
-		// await this.fs.mkDir(naiveDirname(name));
-		// await this.fs.copyFile(targetname, name, true);
+		await this.fs.mkDir(naiveDirname(name));
+		await this.fs.copyFile(targetname, name, true);
+	}
+	async delete(name: string, version: VersionFolder = this.version) {
+		name = this.versionedName(version, name);
+		await this.fs.unlink(name);
 	}
 }
 

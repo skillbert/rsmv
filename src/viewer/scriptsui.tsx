@@ -65,7 +65,7 @@ export class WebFsScriptFS implements ScriptFS {
 		}
 		return files;
 	}
-	async writeFile(name: string, data: Buffer | string) {
+	async writeFile(name: string, data: Buffer<ArrayBuffer> | string) {
 		let file = await this.getFile(name, true);
 		let str = await file.createWritable({ keepExistingData: false });
 		await str.write(data);

@@ -2,7 +2,7 @@
 import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CLIScriptFS, CLIScriptOutput } from "../scriptrunner";
-import { runMapRender } from ".";
+import { getVersionsFile, runMapRender } from ".";
 import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked, parseMapConfig } from "./backends";
 import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { stringToFileRange } from "../utils";
@@ -106,7 +106,9 @@ let cmd = cmdts.command({
 				}
 			}
 			if (args.livefolder) {
-				extractVersionSlice(output, config, args.livefolder);
+				let versionsfile = await getVersionsFile(config);
+				let version = versionsfile.versions.sort((a, b) => b.version - a.version)[0];
+				extractVersionSlice(output, config, version.version, args.livefolder);
 			}
 		}
 	}

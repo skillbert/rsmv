@@ -441,7 +441,7 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
                 if (srcmeta && src && (!dst || dst.exacthash != src.exacthash)) {
                     // src is different
                     let filename = dstmeta.makeFilename(config, srcmeta.basex + x, srcmeta.basey + y);
-                    promises.push(config.symlink(filename, sourceversion, filename, targetname));
+                    promises.push(config.symlink(filename, targetname, filename, sourceversion));
                     dstmeta.set(x, y, src);
                 } else if (dst && !src) {
                     // existing is extra
@@ -461,9 +461,7 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
     }
 }
 
-export async function extractVersionSlice(output: ScriptOutput, config: MapRender, targetname: string) {
-    // let versions = await getVersionsFile(config);
-    let sourceversion = config.version;
+export async function extractVersionSlice(output: ScriptOutput, config: MapRender, sourceversion: number, targetname: string) {
     let layers = await config.readDir("", "directories", sourceversion);
     // process each layer
     for (let layer of config.config.layers) {
@@ -473,7 +471,7 @@ export async function extractVersionSlice(output: ScriptOutput, config: MapRende
             continue;
         }
         let subfolders = await config.readDir(layer.name, "directories", sourceversion);
-        if (subfolders.length == 1 && subfolders[0] == "hashes") {
+        if (subfolders.includes("hashes")) {
             await extractVersionSliceFolder(output, config, layer, sourceversion, targetname, null);
         } else if (subfolders.every(q => !isNaN(+q))) {
             for (let zoomfolder of subfolders) {
