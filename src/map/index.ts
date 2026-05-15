@@ -14,8 +14,8 @@ import { MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";
 import { crc32addInt } from "../libs/crc32util";
-import { ChunkrenderContext, MaprenderSquare, MaprenderSquareLoaded, rendermodes, RenderResult, RenderTask } from "./layers";
-import { VariantResolver } from "./varianttracker";
+import { ChunkrenderContext, ImgNameInfoZoom, MaprenderSquare, MaprenderSquareLoaded, rendermodes, RenderResult, RenderTask } from "./layers";
+import { VariantGroup, VariantResolver } from "./varianttracker";
 
 type RenderedMapVersionMeta = {
 	buildnr: number,
@@ -104,7 +104,7 @@ async function getVersionsFile(config: MapRender, includeCacheVersion: CacheFile
 		mapversionsinfo.versions.sort((a, b) => b.version - a.version);
 		//no lock this is technically a race condition when using multiple renderers
 		console.log("updating versions file");
-		await config.saveFile("versions.json", 0, Buffer.from(JSON.stringify(mapversionsinfo)), 0);
+		await config.saveFile("versions.json", Buffer.from(JSON.stringify(mapversionsinfo)), 0);
 	}
 	return mapversionsinfo;
 }
@@ -127,7 +127,7 @@ export async function purgeBadRenders(config: MapRender, versionfilter: VersionF
 		metajson.running = true;
 		metajson.rendertimestamp = timestamp;
 
-		await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(metajson, undefined, "\t")));
+		await config.saveFile("meta.json", Buffer.from(JSON.stringify(metajson, undefined, "\t")));
 	}
 }
 
@@ -439,7 +439,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		rendertimestamp: new Date().toISOString()
 	};
 
-	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
+	await config.saveFile("meta.json", Buffer.from(JSON.stringify(configjson, undefined, "\t")));
 
 	let versionsFile = await getVersionsFile(config, engine);
 	let versiontime = +engine.getCacheMeta().timestamp;
@@ -449,9 +449,9 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		.slice(0, 10)
 		.map(q => q.version);
 
-	let mipper = new MipScheduler(config, progress);
 	let depstracker = new RenderDepsTracker(config, deps, targetversions);
 	let varianttracker = new VariantResolver(config, targetversions);
+	let mipper = new MipScheduler(config, varianttracker, progress);
 	let maprender: MapRenderer | null = null;
 	let activerender = Promise.resolve();
 
@@ -500,7 +500,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	await varianttracker.finishChunk(true);
 	configjson.errorcount = errs.length;
 	configjson.running = false;
-	await config.saveFile("meta.json", 0, Buffer.from(JSON.stringify(configjson, undefined, "\t")));
+	await config.saveFile("meta.json", Buffer.from(JSON.stringify(configjson, undefined, "\t")));
 	output.log(errs);
 }
 
@@ -647,15 +647,13 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 				storedfilename = config.makeFileName(res.storedvariant.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
 				symlinkcommands.push({
 					file: config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext),
-					hash: task.dependencyhash,
-					buildnr: config.version,
-					symlink: storedfilename,
-					symlinkbuildnr: res.storedvariant.savedLayerVersion,
-					symlinkfirstbuildnr: res.storedvariant.savedLayerVersion
+					version: config.version,
+					target: storedfilename,
+					targetversion: res.storedvariant.savedLayerVersion
 				});
 			} else if (res.file) {
 				storedfilename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
-				savequeue.push(res.file.then(buf => config.saveFile(storedfilename, task.dependencyhash, buf)));
+				savequeue.push(res.file.then(buf => config.saveFile(storedfilename, buf)));
 			}
 
 			// store its reference
@@ -664,8 +662,9 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			// queue mipping if needed
 			if (task.mippable) {
 				miptasks.push(() => {
-					if (task.nameinfo.zoom == null) { throw new Error("only zoomed tasks can be mipped"); }
-					mipper.addTask(task.layer, task.nameinfo.zoom, task.dependencyhash, task.nameinfo.x, task.nameinfo.y, storedfilename, exacthash);
+					let nameinfo = task.nameinfo;
+					if (nameinfo.zoom == null) { throw new Error("only zoomed tasks can be mipped"); }
+					mipper.addTask(task.layer, storedlayername, nameinfo as ImgNameInfoZoom, storedlayerversion, task.dependencyhash, exacthash);
 				});
 			}
 		}
@@ -678,7 +677,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		miptasks.forEach(q => q());
 
 		progress.update(chunkx, chunkz, (savequeue.length == 0 ? "skipped" : "done"));
-		let localsymlinkcount = symlinkcommands.filter(q => q.symlinkbuildnr == config.version && q.file != q.symlink).length;
+		let localsymlinkcount = symlinkcommands.filter(q => q.targetversion == config.version && q.file != q.target).length;
 		console.log("imaged", chunkx, chunkz, "files", savequeue.length, "symlinks", localsymlinkcount, "(unchanged)", symlinkcommands.length - localsymlinkcount);
 		globalThis.onWatchdogProgress?.();
 	}

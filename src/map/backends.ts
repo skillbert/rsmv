@@ -25,11 +25,9 @@ export type KnownMapFile = {
 
 export type SymlinkCommand = {
 	file: string,
-	buildnr: number,
-	hash: number,
-	symlink: string,
-	symlinkbuildnr: number,
-	symlinkfirstbuildnr: number
+	version: number,
+	target: string,
+	targetversion: number,
 };
 
 export function parseMapConfig(configfile: string) {
@@ -39,6 +37,7 @@ export function parseMapConfig(configfile: string) {
 	return layerconfig;
 }
 
+type VersionFolder = string | number;
 export abstract class MapRender {
 	config: Mapconfig;
 	version = 0;
@@ -46,9 +45,11 @@ export abstract class MapRender {
 	constructor(config: Mapconfig) {
 		this.config = config;
 	}
-	abstract getFileResponse(name: string, version?: number): Promise<Response>;
-	abstract saveFile(name: string, hash: number, data: Buffer, version?: number): Promise<void>;
-	abstract symlink(name: string, hash: number, symlinktarget: string, symlinkversion?: number): Promise<void>;
+	abstract readDir(name: string, type: "files" | "directories", version?: VersionFolder): Promise<string[]>;
+	abstract getFileResponse(name: string, version?: VersionFolder): Promise<Response>;
+	abstract saveFile(name: string, data: Buffer, version?: VersionFolder): Promise<void>;
+	abstract symlink(name: string, version: VersionFolder, targetname: string, targetversion: VersionFolder): Promise<void>;
+	abstract delete(name: string, version?: VersionFolder): Promise<void>;
 
 	getLayerZooms(layercnf: LayerConfig) {
 		const min = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
@@ -57,24 +58,21 @@ export abstract class MapRender {
 		return { min, max, base };
 	}
 
+	makeFolderName(layer: string, zoom: number | null, extra = "") {
+		let name = layer;
+		if (extra) { name += `/${extra}`; }
+		if (zoom != null) { name += `/${zoom}`; }
+		return name;
+	}
 	makeFileName(layer: string, zoom: number | null, x: number, y: number, ext: string, extra = "") {
-		return `${layer}${zoom != null ? "/" + zoom : ""}/${extra}${x}-${y}.${ext}`;
+		return `${this.makeFolderName(layer, zoom, extra)}/${x}-${y}.${ext}`;
 	}
 
 	async symlinkBatch(files: SymlinkCommand[]) {
-		await Promise.all(files.map(f => this.symlink(f.file, f.hash, f.symlink, f.symlinkbuildnr)));
+		await Promise.all(files.map(f => this.symlink(f.file, f.version, f.target, f.targetversion)));
 	}
 	async beginMapVersion(version: number) {
 		this.version = version;
-	}
-
-	//optional api's when rendering history stuff
-	rendermetaLayer: LayerConfig | undefined = undefined;
-	async getRelatedFiles(names: string[], versions: number[]) {
-		return [] as KnownMapFile[];
-	}
-	async getMetas(names: UniqueMapFile[]) {
-		return [] as KnownMapFile[];
 	}
 }
 
@@ -86,7 +84,7 @@ export class MapRenderFsBacked extends MapRender {
 		this.fs = fs;
 		this.multiversion = multiversion;
 	}
-	versionedName(version: number, name: string) {
+	versionedName(version: VersionFolder, name: string) {
 		if (this.multiversion) {
 			if (version == 0) {
 				return name;
@@ -100,10 +98,19 @@ export class MapRenderFsBacked extends MapRender {
 			return name;
 		}
 	}
-	async saveFile(name: string, hash: number, data: Buffer, version = this.version) {
+	async saveFile(name: string, data: Buffer, version: VersionFolder = this.version) {
 		name = this.versionedName(version, name);
 		await this.fs.mkDir(naiveDirname(name));
 		await this.fs.writeFile(name, data);
+	}
+	async readDir(name: string, type: "files" | "directories", version: VersionFolder = this.version) {
+		name = this.versionedName(version, name);
+		let entries = await this.fs.readDir(name);
+		if (type == "files") {
+			return entries.filter(q => q.kind == "file").map(q => q.name);
+		} else {
+			return entries.filter(q => q.kind == "directory").map(q => q.name);
+		}
 	}
 	async getFileResponse(name: string, version = this.version) {
 		name = this.versionedName(version, name);
@@ -117,11 +124,11 @@ export class MapRenderFsBacked extends MapRender {
 			return new Response(null, { status: 404 });
 		}
 	}
-	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
-		name = this.versionedName(this.version, name);
+	async symlink(name: string, version: VersionFolder, targetname: string, targetversion: VersionFolder) {
+		name = this.versionedName(version, name);
 		targetname = this.versionedName(targetversion, targetname);
-		await this.fs.mkDir(naiveDirname(name));
-		await this.fs.copyFile(targetname, name, true);
+		// await this.fs.mkDir(naiveDirname(name));
+		// await this.fs.copyFile(targetname, name, true);
 	}
 }
 
@@ -170,7 +177,8 @@ export class MapRenderDatabaseBacked extends MapRender {
 		});
 		if (!send.ok) { throw new Error("failed to init map"); }
 	}
-	async saveFile(name: string, hash: number, data: Buffer<ArrayBuffer>, version = this.version) {
+	async saveFile(name: string, data: Buffer<ArrayBuffer>, version = this.version) {
+		let hash = 0;
 		let send = await this.postThrottler.apiRequest(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${version}&mapid=${this.uploadmapid}`, {
 			method: "post",
 			headers: { "Authorization": this.auth },
@@ -178,12 +186,12 @@ export class MapRenderDatabaseBacked extends MapRender {
 		});
 		if (!send.ok) { throw new Error("file upload failed"); }
 	}
-	async symlink(name: string, hash: number, targetname: string, targetversion: number) {
-		return this.symlinkBatch([{ file: name, hash, buildnr: this.version, symlink: targetname, symlinkbuildnr: targetversion, symlinkfirstbuildnr: targetversion }]);
+	async symlink(name: string, version: number, targetname: string, targetversion: number) {
+		return this.symlinkBatch([{ file: name, version: version, target: targetname, targetversion: targetversion }]);
 	}
 	async symlinkBatch(files: SymlinkCommand[]) {
 		let version = this.version;
-		let filtered = files.filter(q => q.file != q.symlink || version > q.symlinkbuildnr || version < q.symlinkfirstbuildnr);
+		let filtered = files.filter(q => q.file != q.target || version > q.targetversion || version < q.targetversion);
 		if (filtered.length == 0) {
 			return;
 		}

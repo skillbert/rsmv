@@ -42,9 +42,17 @@ export type RenderResult = {
     exacthash?: number
 }
 
+export type ImgNameInfo = {
+    x: number,
+    y: number,
+    zoom: number | null,
+    ext: string
+};
+export type ImgNameInfoZoom = ImgNameInfo & { zoom: number };
+
 export type RenderTask = {
     layer: LayerConfig,
-    nameinfo: { x: number, y: number, zoom: number | null, ext: string },
+    nameinfo: ImgNameInfo,
     dependencyhash: number,
     datarect: MapRect,
     dedupeDependencies?: string[],

@@ -63,7 +63,7 @@ export class CLIScriptFS implements ScriptFS {
     }
     copyFile(from: string, to: string, symlink: boolean) {
         if (!symlink || this.copyOnSymlink) {
-            //don't actually symliink because its weird in windows
+            //don't actually symlink because its weird in windows
             return fs.promises.copyFile(this.convertPath(from), this.convertPath(to));
         } else {
             return fs.promises.symlink(this.convertPath(to), this.convertPath(from));

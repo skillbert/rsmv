@@ -599,18 +599,19 @@ export class RenderDepsTracker {
 		let match = this.cachedMetas.find(q => q.x == x && q.z == z);
 		if (!match) {
 			let metas = (async () => {
-				if (!this.config.rendermetaLayer || !this.config.getRelatedFiles) {
-					return [];
-				}
-				let filename = `${this.config.rendermetaLayer.name}/${x}-${z}.${this.config.rendermetaLayer.usegzip ? "json.gz" : "json"}`;
-				let urls = await this.config.getRelatedFiles([filename], this.targetversions);
-				urls = urls.filter(q => q.buildnr != this.config.version);
-				let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
-					buildnr: q.buildnr,
-					firstbuildnr: q.firstbuildnr,
-					meta: await w.json() as ChunkRenderMeta
-				})));
-				return Promise.all(fetches)
+				return [];
+				// if (!this.config.rendermetaLayer || !this.config.getRelatedFiles) {
+				// 	return [];
+				// }
+				// let filename = `${this.config.rendermetaLayer.name}/${x}-${z}.${this.config.rendermetaLayer.usegzip ? "json.gz" : "json"}`;
+				// let urls = await this.config.getRelatedFiles([filename], this.targetversions);
+				// urls = urls.filter(q => q.buildnr != this.config.version);
+				// let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
+				// 	buildnr: q.buildnr,
+				// 	firstbuildnr: q.firstbuildnr,
+				// 	meta: await w.json() as ChunkRenderMeta
+				// })));
+				// return Promise.all(fetches)
 			})();
 
 			match = { x, z, metas };
@@ -635,7 +636,8 @@ export class RenderDepsTracker {
 	}
 
 	async forkDeps(names: string[]) {
-		let allFiles = await this.config.getRelatedFiles?.(names, this.targetversions) ?? [];
+		// let allFiles = await this.config.getRelatedFiles?.(names, this.targetversions) ?? [];
+		let allFiles: KnownMapFile[] = [];
 		let localmetas: ChunkRenderMeta[] = [];
 		let localfiles: KnownMapFile[] = [];
 
