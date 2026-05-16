@@ -41,7 +41,6 @@ npm run nodegl -- dist/maprender -o openrs2:1720 -c extract_map/mapconfig.jsonc
             "mode": "map", //old style 2d map render
             "format": "png",
             "level": 0,
-            "pxpersquare": 64,
             "mapicons": true,
             "wallsonly": false //can be turned on to create a walls overlay layer to use on top of an existing 3d layer
         },
@@ -56,28 +55,24 @@ npm run nodegl -- dist/maprender -o openrs2:1720 -c extract_map/mapconfig.jsonc
             "name": "height",
             "mode": "height", //binary file per chunk containing 16bit height data and 16 bits of collision data in base3 per tile
             "level": 0,
-            "pxpersquare": 1, //unused but required
             "usegzip": true //gzips the resulting file, need some server config to serve the compressed file
         },
         {
             "name": "locs",
             "mode": "locs", //json file with locs per chunk
             "level": 0,
-            "pxpersquare": 1, //unused but required
             "usegzip": false
         },
         {
             "name": "maplabels",
             "mode": "maplabels", //json file per chunk containing maplabel images and uses
             "level": 0,
-            "pxpersquare": 1,
             "usegzip": false
         },
         {
             "name": "rendermeta",
             "mode": "rendermeta", //advanced - json file containing metadata about the chunk render, used to dedupe historic renders
-            "level": 0,
-            "pxpersquare": 1
+            "level": 0
         },
         {
             "name": "interactions",

@@ -51,9 +51,9 @@ export abstract class MapRender {
 	abstract symlink(name: string, version: VersionFolder, sourcename: string, sourceversion: VersionFolder): Promise<void>;
 	abstract delete(name: string, version?: VersionFolder): Promise<void>;
 
-	getLayerZooms(layercnf: LayerConfig) {
+	getLayerZooms(pxpersquare: number) {
 		const min = Math.floor(Math.log2(this.config.tileimgsize / (Math.max(this.config.mapsizex, this.config.mapsizez) * 64)));
-		const max = Math.log2(layercnf.pxpersquare);
+		const max = Math.log2(pxpersquare);
 		const base = Math.log2(this.config.tileimgsize / 64);
 		return { min, max, base };
 	}
@@ -136,121 +136,6 @@ export class MapRenderFsBacked extends MapRender {
 	}
 }
 
-//The Runeapps map saves directly to the server and keeps a version history, the server side code for this is non-public
-//The render code decides which (opaque to server) file names should exist and checks if that name+hash already exists,
-//if not it will generate the file and save it together with some metadata (hash+build nr)
-export class MapRenderDatabaseBacked extends MapRender {
-	endpoint: string;
-	workerid: string;
-	uploadmapid: number;
-	auth: string;
-	overwrite: boolean;
-	ignorebefore: Date;
-	rendermetaLayer: LayerConfig | undefined;
-
-	private postThrottler = new FetchThrottler(20);
-	private fileThrottler = new FetchThrottler(20);
-
-	constructor(endpoint: string, auth: string, workerid: string, uploadmapid: number, config: Mapconfig, rendermetaLayer: LayerConfig | undefined, overwrite: boolean, ignorebefore: Date) {
-		super(config);
-		this.endpoint = endpoint;
-		this.auth = auth;
-		this.workerid = workerid;
-		this.overwrite = overwrite;
-		this.rendermetaLayer = rendermetaLayer;
-		this.uploadmapid = uploadmapid;
-		this.ignorebefore = ignorebefore;
-	}
-	static async create(endpoint: string, auth: string, uploadmapid: number, overwrite: boolean, ignorebefore: Date) {
-		let res = await fetch(`${endpoint}/config.json`, { headers: { "Authorization": auth } });
-		if (!res.ok) { throw new Error("map config fetch error"); }
-		let config: Mapconfig = await res.json();
-		let rendermetaname = config.layers.find(q => q.mode == "rendermeta");
-
-		let workerid = localStorage.map_workerid ?? "" + (Math.random() * 10000 | 0);
-		localStorage.map_workerid ??= workerid;
-
-		return new MapRenderDatabaseBacked(endpoint, auth, workerid, uploadmapid, config, rendermetaname, overwrite, ignorebefore);
-	}
-	async beginMapVersion(version: number) {
-		this.version = version;
-		let send = await this.postThrottler.apiRequest(`${this.endpoint}/assurebuildnr?mapid=${this.uploadmapid}&buildnr=${this.version}`, {
-			method: "post",
-			headers: { "Authorization": this.auth },
-			timeout: 1000 * 60 * 15
-		});
-		if (!send.ok) { throw new Error("failed to init map"); }
-	}
-	async saveFile(name: string, data: Buffer<ArrayBuffer>, version = this.version) {
-		let hash = 0;
-		let send = await this.postThrottler.apiRequest(`${this.endpoint}/upload?file=${encodeURIComponent(name)}&hash=${hash}&buildnr=${version}&mapid=${this.uploadmapid}`, {
-			method: "post",
-			headers: { "Authorization": this.auth },
-			body: data
-		});
-		if (!send.ok) { throw new Error("file upload failed"); }
-	}
-	async symlink(name: string, version: number, targetname: string, targetversion: number) {
-		return this.symlinkBatch([{ file: name, version: version, target: targetname, targetversion: targetversion }]);
-	}
-	async symlinkBatch(files: SymlinkCommand[]) {
-		let version = this.version;
-		let filtered = files.filter(q => q.file != q.target || version > q.targetversion || version < q.targetversion);
-		if (filtered.length == 0) {
-			return;
-		}
-		let send = await this.postThrottler.apiRequest(`${this.endpoint}/uploadbatch?mapid=${this.uploadmapid}`, {
-			method: "post",
-			headers: {
-				"Authorization": this.auth,
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify(files)
-		});
-		if (!send.ok) { throw new Error("file symlink failed"); }
-	}
-	async getMetas(names: UniqueMapFile[]) {
-		if (this.overwrite) {
-			return [];
-		} else if (names.length == 0) {
-			return [];
-		} else {
-			let req = await this.postThrottler.apiRequest(`${this.endpoint}/getmetas?file=${encodeURIComponent(names.map(q => `${q.name}!${q.hash}`).join(","))}&mapid=${this.uploadmapid}&buildnr=${this.version}&ignorebefore=${+this.ignorebefore}`, {
-				headers: { "Authorization": this.auth },
-			});
-			if (!req.ok) { throw new Error("req failed"); }
-			return await req.json() as KnownMapFile[];
-		}
-	}
-	async getRelatedFiles(names: string[], versions: number[]) {
-		if (names.length == 0 || versions.length == 0) {
-			return [];
-		}
-		let req = await this.postThrottler.apiRequest(`${this.endpoint}/getfileversions?mapid=${this.uploadmapid}&ignorebefore=${+this.ignorebefore}`, {
-			method: "post",
-			headers: {
-				"Authorization": this.auth,
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify({
-				//TODO actually implement this?
-				startversion: Math.min(...versions),
-				endversion: Math.max(...versions),
-				files: names
-			})
-		});
-		if (!req.ok) { throw new Error("req faield"); }
-		let files = await req.json() as KnownMapFile[];
-		return files;
-	}
-	getFileResponse(name: string, version = this.version) {
-		let url = `${this.endpoint}/getnamed?file=${encodeURIComponent(name)}&version=${version}&mapid=${this.uploadmapid}`;
-		return this.fileThrottler.apiRequest(url, { cache: "reload" });
-	}
-}
-
-
-
 //TODO move to seperate file?
 export const examplemapconfig = `
 {
@@ -298,7 +183,6 @@ export const examplemapconfig = `
 			"mode": "map", //old style 2d map render
 			"format": "png",
 			"level": 0,
-			"pxpersquare": 16,
 			"mapicons": true,
 			"wallsonly": false //can be turned on to create a walls overlay layer to use on top of an existing 3d layer
 		},
@@ -324,28 +208,24 @@ export const examplemapconfig = `
 			"name": "height",
 			"mode": "height", //binary file per chunk containing 16bit height data and 16 bits of collision data in base3 per tile
 			"level": 0,
-			"pxpersquare": 1, //unused but required
 			"usegzip": true //gzips the resulting file, need some server config to serve the compressed file
 		},
 		{
 			"name": "locs",
 			"mode": "locs", //json file with locs per chunk
 			"level": 0,
-			"pxpersquare": 1, //unused but required
 			"usegzip": false
 		},
 		{
 			"name": "maplabels",
 			"mode": "maplabels", //json file per chunk containing maplabel images and uses
 			"level": 0,
-			"pxpersquare": 1,
 			"usegzip": false
 		},
 		{
 			"name": "rendermeta",
 			"mode": "rendermeta", //advanced - json file containing metadata about the chunk render, used to dedupe historic renders
-			"level": 0,
-			"pxpersquare": 1
+			"level": 0
 		},
 		{
 			"name": "interactions",

@@ -197,10 +197,10 @@ export const maprenderConfigSchema: JSONSchema6 = {
             default: false,
             description: "Set to true to keep output chunks aligned with in-game chunks. Incurs performance penalty as more neighbouring chunks have to be loaded."
         },
-        variantsparse: {
+        skipsymlinks: {
             type: "boolean",
             default: false,
-            description: "Stops outputting symlinks and relies on the map renderer reading variant files to construct redirects. Also outputs separate small variant files."
+            description: "Stops outputting symlinks and relies on the map viewer reading variant files to construct redirects. Also outputs separate small variant files."
         },
         layers: {
             items: {

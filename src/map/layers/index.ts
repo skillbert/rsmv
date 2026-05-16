@@ -94,7 +94,7 @@ export function chunkrectToOffetWorldRect(engine: EngineCache, config: MapRender
 }
 
 const rendermodeCollision: RenderMode<"collision"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
-    let zooms = config.getLayerZooms(layer);
+    let zooms = config.getLayerZooms(layer.pxpersquare);
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
     let depcrc = deps.recthash(loadedchunksrect);
     return [{
@@ -190,7 +190,8 @@ const rendermodeRenderMeta: RenderMode<"rendermeta"> = function ({ engine, confi
 
 const rendermodeMap: RenderMode<"map"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
-    let zooms = config.getLayerZooms(layer);
+    let dummypxpersquare = 256; //svg is arbitrary resolution so this only matters for default view
+    let zooms = config.getLayerZooms(dummypxpersquare);
     let depcrc = deps.recthash(loadedchunksrect);
     return [{
         layer: layer,
@@ -209,7 +210,7 @@ const rendermodeMap: RenderMode<"map"> = function ({ engine, config, layer, deps
                 }
             })));
             let locs = parsedata.flatMap(ch => ch.chunk?.locs ?? []);
-            let svg = await svgfloor(engine, grid, locs, worldrect, layer.level, layer.pxpersquare, !!layer.wallsonly, !!layer.mapicons, !!layer.thicklines);
+            let svg = await svgfloor(engine, grid, locs, worldrect, layer.level, dummypxpersquare, !!layer.wallsonly, !!layer.mapicons, !!layer.thicklines);
             return {
                 file: Promise.resolve(Buffer.from(svg, "utf8"))
             };

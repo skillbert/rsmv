@@ -47,9 +47,6 @@
 					"mode": {
 						"type": "string"
 					},
-					"pxpersquare": {
-						"type": "number"
-					},
 					"name": {
 						"type": "string"
 					},
@@ -81,7 +78,6 @@
 				"required": [
 					"mode",
 					"name",
-					"pxpersquare",
 					"level"
 				],
 				"oneOf": [
@@ -100,6 +96,9 @@
 							"dzdy": {
 								"type": "number"
 							},
+							"pxpersquare": {
+								"type": "number"
+							},
 							"hidelocs": {
 								"type": "boolean"
 							},
@@ -113,13 +112,17 @@
 						"required": [
 							"mode",
 							"dxdy",
-							"dzdy"
+							"dzdy",
+							"pxpersquare"
 						]
 					},
 					{
 						"properties": {
 							"mode": {
 								"const": "map"
+							},
+							"pxpersquare": {
+								"type": "number"
 							},
 							"wallsonly": {
 								"type": "boolean"
@@ -132,7 +135,22 @@
 							}
 						},
 						"required": [
-							"mode"
+							"mode",
+							"pxpersquare"
+						]
+					},
+					{
+						"properties": {
+							"mode": {
+								"const": "collision"
+							},
+							"pxpersquare": {
+								"type": "number"
+							}
+						},
+						"required": [
+							"mode",
+							"pxpersquare"
 						]
 					},
 					{
@@ -140,7 +158,6 @@
 							"mode": {
 								"enum": [
 									"height",
-									"collision",
 									"locs",
 									"maplabels",
 									"rendermeta"

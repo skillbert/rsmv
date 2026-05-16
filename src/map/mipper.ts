@@ -86,12 +86,14 @@ export class MipScheduler {
 				if (hashmatch) {
 					storedlayername = hashmatch.savedLayerName;
 					storedlayerversion = hashmatch.savedLayerVersion;
-					symlinks.push({
-						file: task.name,
-						version: this.render.version,
-						target: this.render.makeFileName(hashmatch.savedLayerName, task.args.imgname.zoom, task.args.imgname.x, task.args.imgname.y, task.args.imgname.ext),
-						targetversion: hashmatch.savedLayerVersion
-					});
+					if (!this.render.config.skipsymlinks) {
+						symlinks.push({
+							file: task.name,
+							version: this.render.version,
+							target: this.render.makeFileName(hashmatch.savedLayerName, task.args.imgname.zoom, task.args.imgname.x, task.args.imgname.y, task.args.imgname.ext),
+							targetversion: hashmatch.savedLayerVersion
+						});
+					}
 					skipped++;
 				} else {
 					proms.push(task.run().catch(e => console.warn("mipping", task.name, "failed", e)));

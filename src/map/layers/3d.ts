@@ -53,7 +53,7 @@ export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: numbe
 // }
 
 export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, config, layer, deps, baseoutput, maprect, variants }) {
-    let zooms = config.getLayerZooms(layer);
+    let zooms = config.getLayerZooms(layer.pxpersquare);
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
     let tasks: RenderTask[] = [];
     let overlayimg: HTMLImageElement | null = null;

@@ -3,7 +3,7 @@ import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CLIScriptFS, CLIScriptOutput } from "../scriptrunner";
 import { getVersionsFile, runMapRender } from ".";
-import { MapRender, MapRenderDatabaseBacked, MapRenderFsBacked, parseMapConfig } from "./backends";
+import { MapRender, MapRenderFsBacked, parseMapConfig } from "./backends";
 import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { stringToFileRange } from "../utils";
 import { classicBuilds, ClassicFileSource, detectClassicVersions } from "../cache/classicloader";
@@ -36,10 +36,11 @@ let cmd = cmdts.command({
 
 		let config: MapRender;
 		if (args.endpoint) {
-			if (!args.endpoint || !args.auth || typeof args.mapid != "number") {
-				throw new Error("need --endpoint, --auth and --mapid to use a remote map save");
-			}
-			config = await MapRenderDatabaseBacked.create(args.endpoint, args.auth, args.mapid, false, ignorebefore);
+			// if (!args.endpoint || !args.auth || typeof args.mapid != "number") {
+			// 	throw new Error("need --endpoint, --auth and --mapid to use a remote map save");
+			// }
+			// config = await MapRenderDatabaseBacked.create(args.endpoint, args.auth, args.mapid, false, ignorebefore);
+			throw new Error("remote endpoint not implemented yet");
 		} else if (args.configfile) {
 			let outdir = args.outdir ?? path.dirname(args.configfile!);
 			let configfile = await fs.readFile(args.configfile!, "utf8");

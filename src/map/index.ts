@@ -45,14 +45,12 @@ export type Mapconfig = {
 	area: string,
 	noyflip: boolean | undefined,
 	nochunkoffset: boolean | undefined,
-	variantdebug: boolean | undefined,
-	variantsparse: boolean | undefined,
+	skipsymlinks: boolean | undefined,
 }
 
 export type LayerConfig = {
 	mode: string,
 	name: string,
-	pxpersquare: number,
 	level: number,
 	format?: "png" | "webp",
 	mipmode?: "default" | "avg",
@@ -60,6 +58,7 @@ export type LayerConfig = {
 	subtractlayers?: string[]
 } & ({
 	mode: "3d" | "minimap" | "interactions",
+	pxpersquare: number,
 	dxdy: number,
 	dzdy: number,
 	hidelocs?: boolean,
@@ -74,7 +73,8 @@ export type LayerConfig = {
 	mode: "height"
 	allcorners?: boolean
 } | {
-	mode: "collision"
+	mode: "collision",
+	pxpersquare: number
 } | {
 	mode: "locs"
 } | {
@@ -616,6 +616,8 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		let savemetaqueue: Promise<any>[] = [];
 		let symlinkcommands: SymlinkCommand[] = [];
 
+		let symlinkcount = 0;
+		let localsymlinkcount = 0;
 
 		let candidates = await Promise.all(candidatesprom);
 		for (let taskindex = 0; taskindex < chunktasks.length; taskindex++) {
@@ -644,7 +646,9 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			if (!res) {
 				// empty chunk, store nothing
 			} else if (res.storedvariant) {
-				if (!config.config.variantsparse) {
+				symlinkcount++;
+				if (res.storedvariant.savedLayerVersion == config.version) { localsymlinkcount++; }
+				if (!config.config.skipsymlinks) {
 					storedfilename = config.makeFileName(res.storedvariant.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
 					symlinkcommands.push({
 						file: config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext),
@@ -679,8 +683,7 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		miptasks.forEach(q => q());
 
 		progress.update(chunkx, chunkz, (savequeue.length == 0 ? "skipped" : "done"));
-		let localsymlinkcount = symlinkcommands.filter(q => q.targetversion == config.version && q.file != q.target).length;
-		console.log("imaged", chunkx, chunkz, "files", savequeue.length, "symlinks", localsymlinkcount, "(unchanged)", symlinkcommands.length - localsymlinkcount);
+		console.log("imaged", chunkx, chunkz, "files", savequeue.length, "symlinks", localsymlinkcount, "(unchanged)", symlinkcount - localsymlinkcount);
 		globalThis.onWatchdogProgress?.();
 	}
 

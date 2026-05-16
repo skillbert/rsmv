@@ -31,7 +31,7 @@ import { fileHistory } from '../scripts/filehistory';
 import { MaterialData } from '../3d/jmat';
 import { extractCacheFiles } from '../scripts/extractfiles';
 import { debugProcTexture } from '../3d/proceduraltexture';
-import { MapRenderDatabaseBacked, MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../map/backends';
+import { MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../map/backends';
 import { compareFloorDependencies, compareLocDependencies, mapdiffmesh, mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals, pointsIntersectProjection, tileSetVertices, visibleChunkHash } from '../map/chunksummary';
 import { previewAllFileTypes } from '../scripts/previewall';
 import { CliApiContext, cliApi } from '../clicommands';
@@ -2251,37 +2251,6 @@ function ExtractHistoricScript(p: UiScriptProps) {
 			</LabeledInput>
 			<LabeledInput label="Build numbers (empty for all)">
 				<input type="text" value={buildnrs} onChange={e => setbuildnrs(e.currentTarget.value)} />
-			</LabeledInput>
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
-		</React.Fragment>
-	)
-}
-
-//not currently exposed, needs some fixing or just delete
-function MapRemoteRenderScript(p: UiScriptProps) {
-	let [endpoint, setEndpoint] = React.useState(localStorage.rsmv_script_map_endpoint ?? "");
-	let [auth, setAuth] = React.useState("");
-	let [mapid, setMapId] = React.useState(0);
-
-	let run = async () => {
-		let output = new UIScriptOutput();
-		let config = await MapRenderDatabaseBacked.create(endpoint, auth, mapid, false, new Date(0));
-		localStorage.rsmv_script_map_endpoint = endpoint;
-		output.run(runMapRender, p.source, config, true);
-		p.onRun(output, "");
-	}
-
-	return (
-		<React.Fragment>
-			<p>Update a map database, requires compatible server endpoint.</p>
-			<LabeledInput label="Endpoint">
-				<InputCommitted type="text" onChange={e => setEndpoint(e.currentTarget.value)} value={endpoint} />
-			</LabeledInput>
-			<LabeledInput label="Auth">
-				<InputCommitted type="text" onChange={e => setAuth(e.currentTarget.value)} value={auth} />
-			</LabeledInput>
-			<LabeledInput label="mapid">
-				<InputCommitted type="number" onChange={e => setMapId(+e.currentTarget.value)} value={mapid} />
 			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>

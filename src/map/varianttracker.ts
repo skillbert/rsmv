@@ -65,9 +65,6 @@ export class VariantGroup {
     makeMetaFilename(config: MapRender, includehashes: boolean) {
         return VariantGroup.makeMetaFilename(config, this.layerfolder, this.zoom, this.basex / variantGridSize, this.basey / variantGridSize, includehashes);
     }
-    makeFilename(config: MapRender, x: number, y: number) {
-        return config.makeFileName(this.layerfolder, this.zoom, x, y, this.fileext);
-    }
 
     set(x: number, y: number, variant: VariantInfo | null) {
         if (this.manager) { this.lastUsed = this.manager.chunkscompleted; }
@@ -251,7 +248,7 @@ class VariantLayer {
                 this.chunks.delete(key);
             }
             if (chunk.dirty && (evicted || flushall)) {
-                if (backend.config.variantsparse) {
+                if (backend.config.skipsymlinks) {
                     promises.push(backend.saveFile(chunk.makeMetaFilename(backend, false), chunk.pack(false), backend.version));
                 }
                 chunk.dirty = false;
@@ -407,6 +404,7 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
     let srchashfiles = await config.readDir(srcfolder, "files", sourceversion);
     let existinghashfiles = await config.readDir(existingfolder, "files", targetname);
 
+    let updatecount = 0;
     let allmetas = new Set([...srchashfiles, ...existinghashfiles]);
     for (let metaname of allmetas) {
         if (output.state != "running") { break; }
@@ -438,15 +436,16 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
             for (let x = 0; x < dstmeta.gridsizex; x++) {
                 let src = srcmeta?.get(x, y);
                 let dst = dstmeta?.get(x, y);
+                let dstname = config.makeFileName(layer.name, dstmeta.zoom, dstmeta.basex + x, dstmeta.basey + y, dstmeta.fileext);
                 if (srcmeta && src && (!dst || dst.exacthash != src.exacthash)) {
                     // src is different
-                    let filename = dstmeta.makeFilename(config, srcmeta.basex + x, srcmeta.basey + y);
-                    promises.push(config.symlink(filename, targetname, filename, sourceversion));
+                    let srcname = config.makeFileName(src.savedLayerName, srcmeta.zoom, srcmeta.basex + x, srcmeta.basey + y, srcmeta.fileext);
+                    promises.push(config.symlink(dstname, targetname, srcname, sourceversion));
                     dstmeta.set(x, y, src);
+                    updatecount++;
                 } else if (dst && !src) {
                     // existing is extra
-                    let filename = dstmeta.makeFilename(config, dstmeta.basex + x, dstmeta.basey + y);
-                    promises.push(config.delete(filename, targetname));
+                    promises.push(config.delete(dstname, targetname));
                     dstmeta.set(x, y, null);
                 }
             }
@@ -454,11 +453,12 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
 
         // flush meta changes
         await Promise.all(promises);
-        if (config.config.variantsparse) {
+        if (config.config.skipsymlinks) {
             await config.saveFile(dstmeta.makeMetaFilename(config, false), Buffer.from(dstmeta.pack(false)), targetname);
         }
         await config.saveFile(dstmeta.makeMetaFilename(config, true), Buffer.from(dstmeta.pack(true)), targetname);
     }
+    console.log(`processed ${layer.name}/${zoom} - updated ${updatecount} tiles`);
 }
 
 export async function extractVersionSlice(output: ScriptOutput, config: MapRender, sourceversion: number, targetname: string) {
