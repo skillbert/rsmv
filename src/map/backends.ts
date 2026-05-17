@@ -1,5 +1,6 @@
 import { LayerConfig, Mapconfig } from ".";
 import { FetchThrottler } from "../utils";
+import { AwsClient } from "aws4fetch"
 import { ScriptFS, naiveDirname } from "../scriptrunner";
 import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
 import * as commentjson from "comment-json";
@@ -38,12 +39,33 @@ export function parseMapConfig(configfile: string) {
 }
 
 type VersionFolder = string | number;
+
+export function mimeTypeFromExtension(filename: string): string {
+	const ext = filename.match(/\.(\w+)$/);
+	if (!ext) { return "application/octet-stream"; }
+	switch (ext[1].toLowerCase()) {
+		case "svg": return "image/svg+xml";
+		case "png": return "image/png";
+		case "jpg":
+		case "jpeg":
+			return "image/jpeg";
+		case "webp": return "image/webp";
+		case "gif": return "image/gif";
+		case "json": return "application/json";
+		case "gz": return "application/gzip";
+		case "bin": return "application/octet-stream";
+		default: return `image/${ext[1]}`;
+	}
+}
+
 export abstract class MapRender {
 	config: Mapconfig;
 	version = 0;
+	multiversion: boolean;
 	workerid = "default";
-	constructor(config: Mapconfig) {
+	constructor(config: Mapconfig, multiversion = false) {
 		this.config = config;
+		this.multiversion = multiversion;
 	}
 	abstract readDir(name: string, type: "files" | "directories", version?: VersionFolder): Promise<string[]>;
 	abstract getFileResponse(name: string, version?: VersionFolder): Promise<Response>;
@@ -68,22 +90,6 @@ export abstract class MapRender {
 		return `${this.makeFolderName(layer, zoom, extra)}/${x}-${y}.${ext}`;
 	}
 
-	async symlinkBatch(files: SymlinkCommand[]) {
-		await Promise.all(files.map(f => this.symlink(f.file, f.version, f.target, f.targetversion)));
-	}
-	async beginMapVersion(version: number) {
-		this.version = version;
-	}
-}
-
-export class MapRenderFsBacked extends MapRender {
-	fs: ScriptFS;
-	multiversion: boolean;
-	constructor(fs: ScriptFS, config: Mapconfig, multiversion: boolean) {
-		super(config);
-		this.fs = fs;
-		this.multiversion = multiversion;
-	}
 	versionedName(version: VersionFolder, name: string) {
 		if (this.multiversion) {
 			if (version == 0) {
@@ -97,6 +103,21 @@ export class MapRenderFsBacked extends MapRender {
 			}
 			return name;
 		}
+	}
+
+	async symlinkBatch(files: SymlinkCommand[]) {
+		await Promise.all(files.map(f => this.symlink(f.file, f.version, f.target, f.targetversion)));
+	}
+	async beginMapVersion(version: number) {
+		this.version = version;
+	}
+}
+
+export class MapRenderFsBacked extends MapRender {
+	fs: ScriptFS;
+	constructor(fs: ScriptFS, config: Mapconfig, multiversion: boolean) {
+		super(config, multiversion);
+		this.fs = fs;
 	}
 	async saveFile(name: string, data: Buffer, version: VersionFolder = this.version) {
 		name = this.versionedName(version, name);
@@ -115,8 +136,7 @@ export class MapRenderFsBacked extends MapRender {
 	async getFileResponse(name: string, version = this.version) {
 		name = this.versionedName(version, name);
 		try {
-			let ext = name.match(/\.(\w+)$/);
-			let mimetype = (ext ? ext[1] == "svg" ? "image/svg+xml" : `image/${ext[1]}` : "");
+			const mimetype = mimeTypeFromExtension(name);
 			await this.fs.mkDir(naiveDirname(name));
 			let file = await this.fs.readFileBuffer(name);
 			return new Response(file as Buffer<ArrayBuffer>, { headers: { "content-type": mimetype } });
@@ -133,6 +153,110 @@ export class MapRenderFsBacked extends MapRender {
 	async delete(name: string, version: VersionFolder = this.version) {
 		name = this.versionedName(version, name);
 		await this.fs.unlink(name);
+	}
+}
+
+export type S3BackendConfig = {
+	bucket: string,
+	endpoint: string,
+	prefix?: string,
+	accessKeyId?: string,
+	secretAccessKey?: string,
+};
+
+export class MapRenderS3Backed extends MapRender {
+	s3config: S3BackendConfig;
+	private client: AwsClient | null = null;
+
+	constructor(s3config: S3BackendConfig, config: Mapconfig, multiversion: boolean) {
+		super(config, multiversion);
+		this.s3config = s3config;
+	}
+
+	private getClient() {
+		if (!this.client) {
+			this.client = new AwsClient({
+				accessKeyId: this.s3config.accessKeyId ?? "",
+				secretAccessKey: this.s3config.secretAccessKey ?? "",
+				service: "s3",
+			});
+		}
+		return this.client;
+	}
+
+	// Builds the full URL for an S3 key using path-style against the configured endpoint.
+	private s3url(key: string) {
+		const prefix = this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "";
+		const fullKey = encodeURI(`${prefix}${key}`);
+		return `${this.s3config.endpoint}/${this.s3config.bucket}/${fullKey}`;
+	}
+
+	async saveFile(name: string, data: Buffer, version: VersionFolder = this.version) {
+		const client = this.getClient();
+		name = this.versionedName(version, name);
+		const resp = await client.fetch(this.s3url(name), {
+			method: "PUT",
+			headers: { "content-type": mimeTypeFromExtension(name) },
+			body: data as unknown as BodyInit,
+		});
+		if (!resp.ok) { throw new Error(`S3 PUT failed: ${resp.status} ${resp.statusText}`); }
+	}
+
+	async readDir(name: string, type: "files" | "directories", version: VersionFolder = this.version): Promise<string[]> {
+		const client = this.getClient();
+		name = this.versionedName(version, name);
+		const prefix = (this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "") + name + "/";
+		const results: string[] = [];
+		let continuationToken: string | undefined;
+		do {
+			const baseUrl = `${this.s3config.endpoint}/${this.s3config.bucket}`;
+			const params = new URLSearchParams({ "list-type": "2", prefix, delimiter: "/" });
+			if (continuationToken) { params.set("continuation-token", continuationToken); }
+			const resp = await client.fetch(`${baseUrl}/?${params}`);
+			if (!resp.ok) { throw new Error(`S3 list failed: ${resp.status}`); }
+			const xml = await resp.text();
+			if (type === "files") {
+				for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) {
+					const key = m[1];
+					if (!key.endsWith("/")) { results.push(key.slice(prefix.length)); }
+				}
+			} else {
+				for (const m of xml.matchAll(/<Prefix>([^<]+)<\/Prefix>/g)) {
+					const p = m[1];
+					if (p !== prefix) { results.push(p.slice(prefix.length).replace(/\/$/, "")); }
+				}
+			}
+			const tokenMatch = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+			continuationToken = tokenMatch?.[1];
+		} while (continuationToken);
+		return results;
+	}
+
+	getFileResponse(name: string, version: VersionFolder = this.version) {
+		const client = this.getClient();
+		name = this.versionedName(version, name);
+		return client.fetch(this.s3url(name));
+	}
+
+	async symlink(name: string, version: VersionFolder, targetname: string, targetversion: VersionFolder) {
+		// S3 has no symlinks; copy the object server-side instead
+		const client = this.getClient();
+		name = this.versionedName(version, name);
+		targetname = this.versionedName(targetversion, targetname);
+		const prefix = this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "";
+		const copySource = encodeURIComponent(`/${this.s3config.bucket}/${prefix}${targetname}`);
+		const resp = await client.fetch(this.s3url(name), {
+			method: "PUT",
+			headers: { "x-amz-copy-source": copySource },
+		});
+		if (!resp.ok) { throw new Error(`S3 COPY failed: ${resp.status} ${resp.statusText}`); }
+	}
+
+	async delete(name: string, version: VersionFolder = this.version) {
+		const client = this.getClient();
+		name = this.versionedName(version, name);
+		const resp = await client.fetch(this.s3url(name), { method: "DELETE" });
+		if (!resp.ok) { throw new Error(`S3 DELETE failed: ${resp.status} ${resp.statusText}`); }
 	}
 }
 

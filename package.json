@@ -64,6 +64,7 @@
 		"webpack-dev-server": "^4.7.4"
 	},
 	"dependencies": {
+		"aws4fetch": "^1.0.20",
 		"cmd-ts": "^0.7.0",
 		"comment-json": "^4.2.2",
 		"lzma": "^2.3.2",
