@@ -477,46 +477,48 @@ export async function mapdiffmesh(scene: ThreejsSceneCache, points: number[][], 
 	return models;
 }
 
-// export async function generateLocationHashBoxes(scene: ThreejsSceneCache, locs: Map<WorldLocation, PlacedMesh[]>, grid: TileGrid, chunkx: number, chunkz: number, level: number) {
-// 	let deps = await scene.engine.getDependencyGraph();
-// 	await deps.preloadChunkDependencies({ area: { x: chunkx, z: chunkz, xsize: 1, zsize: 1 } });
-// 	let visuals = mapsquareLocVisuals(grid, deps, locs, chunkx, chunkz);
+export async function generateLocationHashBoxes(scene: ThreejsSceneCache, locs: Map<WorldLocation, PlacedMesh[]>, grid: TileGrid, chunkx: number, chunkz: number, level: number) {
+	let deps = await scene.engine.getDependencyGraph();
+	await deps.preloadChunkDependencies({ area: { x: chunkx, z: chunkz, xsize: 1, zsize: 1 } });
+	let lochashes = mapsquareLocDependencies(grid, deps, locs, chunkx, chunkz);
+	let visuals = mapsquareLocVisuals(lochashes);
 
-// 	let group = new Group();
-// 	for (let visual of visuals) {
-// 		if (visual.level != level) { continue; }
-// 		let color = [(visual.hash >> 16) & 0xff, (visual.hash >> 8) & 0xff, (visual.hash >> 0) & 0xff] as [number, number, number];
-// 		group.add(await mapdiffmesh(scene, [visual.bounds], color));
-// 	}
-// 	group.userData = {
-// 		modeltype: "overlay",
-// 		isclickable: false,
-// 		modelgroup: "hashbox_objects" + level,
-// 		level
-// 	} satisfies ModelExtras;
+	let group = new Group();
+	for (let visual of visuals) {
+		if (visual.level != level) { continue; }
+		let color = [(visual.hash >> 16) & 0xff, (visual.hash >> 8) & 0xff, (visual.hash >> 0) & 0xff] as [number, number, number];
+		group.add(await mapdiffmesh(scene, [visual.bounds], color));
+	}
+	group.userData = {
+		modeltype: "overlay",
+		isclickable: false,
+		modelgroup: "hashbox_objects" + level,
+		level
+	} satisfies ModelExtras;
 
-// 	return group;
-// }
+	return group;
+}
 
-// export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, level: number) {
-// 	let deps = await scene.engine.getDependencyGraph();
-// 	await deps.preloadChunkDependencies({ area: { x: chunk.mapsquarex, z: chunk.mapsquarez, xsize: 1, zsize: 1 } });
-// 	let visuals = mapsquareFloorVisuals(grid, deps, chunk);
+export async function generateFloorHashBoxes(scene: ThreejsSceneCache, grid: TileGrid, chunk: ChunkData, level: number) {
+	let deps = await scene.engine.getDependencyGraph();
+	await deps.preloadChunkDependencies({ area: { x: chunk.mapsquarex, z: chunk.mapsquarez, xsize: 1, zsize: 1 } });
+	let tilehashes = mapsquareFloorDependencies(grid, deps, chunk);
+	let visuals = mapsquareFloorVisuals(tilehashes);
 
-// 	let group = new Group();
-// 	for (let visual of visuals) {
-// 		let color = [(visual.hash >> 16) & 0xff, (visual.hash >> 8) & 0xff, (visual.hash >> 0) & 0xff] as [number, number, number];
-// 		group.add(await mapdiffmesh(scene, [visual.bounds], color));
-// 	}
-// 	group.userData = {
-// 		modeltype: "overlay",
-// 		isclickable: false,
-// 		modelgroup: "hashbox_floor" + level,
-// 		level
-// 	} satisfies ModelExtras;
+	let group = new Group();
+	for (let visual of visuals) {
+		let color = [(visual.hash >> 16) & 0xff, (visual.hash >> 8) & 0xff, (visual.hash >> 0) & 0xff] as [number, number, number];
+		group.add(await mapdiffmesh(scene, [visual.bounds], color));
+	}
+	group.userData = {
+		modeltype: "overlay",
+		isclickable: false,
+		modelgroup: "hashbox_floor" + level,
+		level
+	} satisfies ModelExtras;
 
-// 	return group;
-// }
+	return group;
+}
 
 export function pointsIntersectProjection(projection: Matrix4, points: number[][]) {
 	const min = new Vector3();
@@ -571,174 +573,4 @@ export type ChunkRenderMeta = {
 	floor: ChunkTileDependencies[],
 	locs: ChunkLocDependencies[],
 	visuals: VisualHash[]
-}
-
-type RenderDepsEntry = {
-	x: number,
-	z: number,
-	metas: Promise<{ buildnr: number, firstbuildnr: number, meta: ChunkRenderMeta }[]>
-}
-
-export type RenderDepsVersionInstance = Awaited<ReturnType<RenderDepsTracker["forkDeps"]>>;
-
-export class RenderDepsTracker {
-	config: MapRender;
-	deps: DependencyGraph;
-	targetversions: number[];
-
-	cachedMetas: RenderDepsEntry[] = [];
-	readonly cacheSize = 15;
-
-	constructor(config: MapRender, deps: DependencyGraph, targetversions: number[]) {
-		this.config = config;
-		this.deps = deps;
-		this.targetversions = targetversions;
-	}
-
-	getEntry(x: number, z: number) {
-		let match = this.cachedMetas.find(q => q.x == x && q.z == z);
-		if (!match) {
-			let metas = (async () => {
-				return [];
-				// if (!this.config.rendermetaLayer || !this.config.getRelatedFiles) {
-				// 	return [];
-				// }
-				// let filename = `${this.config.rendermetaLayer.name}/${x}-${z}.${this.config.rendermetaLayer.usegzip ? "json.gz" : "json"}`;
-				// let urls = await this.config.getRelatedFiles([filename], this.targetversions);
-				// urls = urls.filter(q => q.buildnr != this.config.version);
-				// let fetches = urls.map(q => this.config.getFileResponse(q.file, q.buildnr).then(async w => ({
-				// 	buildnr: q.buildnr,
-				// 	firstbuildnr: q.firstbuildnr,
-				// 	meta: await w.json() as ChunkRenderMeta
-				// })));
-				// return Promise.all(fetches)
-			})();
-
-			match = { x, z, metas };
-			this.cachedMetas.push(match);
-
-			//remove first item if cache is full
-			while (this.cachedMetas.length > this.cacheSize) {
-				this.cachedMetas.shift();
-			}
-		}
-		return match;
-	}
-
-	getRect(rect: MapRect) {
-		let entries: RenderDepsEntry[] = [];
-		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
-			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				entries.push(this.getEntry(x, z));
-			}
-		}
-		return entries;
-	}
-
-	async forkDeps(names: string[]) {
-		// let allFiles = await this.config.getRelatedFiles?.(names, this.targetversions) ?? [];
-		let allFiles: KnownMapFile[] = [];
-		let localmetas: ChunkRenderMeta[] = [];
-		let localfiles: KnownMapFile[] = [];
-
-		let addLocalFile = (file: KnownMapFile) => {
-			// allFiles.push(file);
-			localfiles.push(file);
-		}
-
-		let addLocalSquare = (rendermeta: ChunkRenderMeta) => {
-			if (!localmetas.some(q => q.x == rendermeta.x && q.z == rendermeta.z)) {
-				localmetas.push(rendermeta);
-			}
-		}
-
-		let findMatches = async (chunkRect: MapRect, name: string) => {
-			let matches: { file: KnownMapFile, metas: ChunkRenderMeta[] }[] = [];
-
-			//try find match in current render
-			let localfile = localfiles.find(q => q.file == name);
-			if (localfile) {
-				let haslocalchunks = true;
-				let localchunks: ChunkRenderMeta[] = []
-				for (let z = chunkRect.z; z < chunkRect.z + chunkRect.zsize; z++) {
-					for (let x = chunkRect.x; x < chunkRect.x + chunkRect.xsize; x++) {
-						let meta = localmetas.find(q => q.x == x && q.z == z);
-						if (!meta) {
-							haslocalchunks = false;
-						} else {
-							localchunks.push(meta);
-						}
-					}
-				}
-				if (haslocalchunks && localfiles.some(q => q.file == name)) {
-					matches.push({ file: localfile, metas: localchunks });
-				}
-			}
-
-			//search nearby build renders
-			let chunks = this.getRect(chunkRect);
-			let chunkmetas = await Promise.all(chunks.map(ch => ch.metas));
-			let namedversions = allFiles.filter(q => q.file == name);
-			matchloop: for (let file of namedversions) {
-				let metas: ChunkRenderMeta[] = [];
-				for (let chunk of chunkmetas) {
-					let meta = chunk.find(q => q.buildnr >= file.firstbuildnr && q.firstbuildnr <= file.buildnr);
-					if (!meta) {
-						continue matchloop;
-					} else {
-						metas.push(meta.meta);
-					}
-				}
-				matches.push({ file, metas });
-			}
-			return matches;
-		}
-
-		//TODO remove this entirely
-		let checkMatches = async (name: string, datarect: MapRect, chunks: MaprenderSquareLoaded[], cam: Camera, level: number, parentlevel: number) => {
-			console.warn("calling obsolete diff API, returning null");
-			return null;
-			// for (let versionMatch of await findMatches(datarect, name)) {
-			// 	let isdirty = false;
-			// 	for (let chunk of chunks) {
-			// 		let other = versionMatch.metas.find(q => q.x == chunk.x && q.z == chunk.z);
-			// 		if (!other) { throw new Error("unexpected"); }
-
-			// 		chunk.model.rootnode.updateWorldMatrix(true, false);
-			// 		let modelmatrix = new Matrix4()
-			// 			.makeTranslation(
-			// 				chunk.model.chunkx * tiledimensions * chunk.model.loaded!.chunkSize,
-			// 				0,
-			// 				chunk.model.chunkz * tiledimensions * chunk.model.loaded!.chunkSize)
-			// 			.premultiply(chunk.model.rootnode.matrixWorld);
-
-			// 		let proj = cam.projectionMatrix.clone()
-			// 			.multiply(cam.matrixWorldInverse)
-			// 			.multiply(modelmatrix);
-
-			// 		let locs = compareLocDependencies(chunk.loaded.rendermeta.locs, other.locs, level, parentlevel);
-			// 		let floor = compareFloorDependencies(chunk.loaded.rendermeta.floor, other.floor, level, parentlevel);
-
-			// 		isdirty ||= pointsIntersectProjection(proj, locs);
-			// 		isdirty ||= pointsIntersectProjection(proj, floor);
-			// 		if (isdirty) {
-			// 			break;
-			// 		}
-			// 	}
-
-			// 	if (!isdirty) {
-			// 		return versionMatch.file;
-			// 	}
-			// }
-			// return null;
-		}
-
-		return {
-			allFiles,
-			findMatches,
-			checkMatches,
-			addLocalFile,
-			addLocalSquare
-		};
-	}
 }

@@ -3,7 +3,7 @@ import { canvasToImageFile, fileToImageData, makeImageData } from "../imgutils";
 import { crc32addInt } from "../libs/crc32util";
 import { getOrInsert } from "../utils";
 import { MapRender, SymlinkCommand } from "./backends";
-import { ImgNameInfoZoom } from "./layers";
+import { getModeOutputInfo, ImgNameInfoZoom } from "./layers";
 import { ProgressUI } from "./progressui";
 import { VariantResolver } from "./varianttracker";
 
@@ -34,14 +34,15 @@ export class MipScheduler {
 	}
 	addTask(layer: LayerConfig, srclayer: string, src: ImgNameInfoZoom, srcversion: number, hash: number, exacthash: number) {
 		if (src.zoom - 1 < this.minzoom) { return; }
-		let newname = this.render.makeFileName(layer.name, src.zoom - 1, Math.floor(src.x / 2), Math.floor(src.y / 2), layer.format ?? "webp");
+		let format = getModeOutputInfo(this.render, layer, src.zoom - 1).ext;
+		let newname = this.render.makeFileName(layer.name, src.zoom - 1, Math.floor(src.x / 2), Math.floor(src.y / 2), format);
 		let incomp = getOrInsert(this.incompletes, newname, () => ({
 			layer,
 			imgname: {
 				x: Math.floor(src.x / 2),
 				y: Math.floor(src.y / 2),
 				zoom: src.zoom - 1,
-				ext: layer.format ?? "webp"
+				ext: format
 			},
 			files: [null, null, null, null]
 		}));
@@ -112,20 +113,25 @@ export class MipScheduler {
 			tasks = [];
 			this.progress.updateProp("mipqueue", "" + this.incompletes.size);
 		}
-		do {
+		while (this.incompletes.size != 0) {
 			// ensure the highest zoom level is processed first, also order by layer index to support subtractlayers
 			let zoomlevel = -100;
 			let layer: LayerConfig | null = null;
 			let layerindex = 0;
 			for (let args of this.incompletes.values()) {
 				let thislayerindex = this.render.config.layers.indexOf(args.layer);
-				if (args.imgname.zoom > zoomlevel || (args.imgname.zoom == zoomlevel && thislayerindex < layerindex)) {
+				let isvalid = includeIncomplete || !args.files.some(q => q == null);
+				if (isvalid && (args.imgname.zoom > zoomlevel || (args.imgname.zoom == zoomlevel && thislayerindex < layerindex))) {
 					zoomlevel = args.imgname.zoom;
 					layer = args.layer;
 					layerindex = thislayerindex;
 				}
 			}
-			if (!layer) { throw new Error("unexpected state: no layer found"); }
+			// no suitable candidates found
+			if (!layer) {
+				console.log("no suitable candidates found for mipmapping, skipping", this.incompletes.size, "incomplete files left");
+				break;
+			}
 			for (let [out, args] of this.incompletes.entries()) {
 				if (layer != args.layer || args.imgname.zoom != zoomlevel) { continue; }
 				if (!includeIncomplete && args.files.some(q => !q)) { continue; }
@@ -143,7 +149,8 @@ export class MipScheduler {
 					exacthash: exacthash,
 					args: args,
 					run: async () => {
-						let buf = await mipCanvas(this.render, args.files, args.layer.format ?? "webp", 0.9, args.layer.mipmode == "avg");
+						let imgformat = getModeOutputInfo(this.render, args.layer, args.imgname.zoom).ext;
+						let buf = await mipCanvas(this.render, args.files, imgformat as any, 0.9, args.layer.mipmode == "avg");
 						await this.render.saveFile(out, buf);
 					}
 				})
@@ -152,8 +159,9 @@ export class MipScheduler {
 					await processTasks();
 				}
 			}
+			// finish all tasks from this group before moving on to the next zoom level
 			await processTasks();
-		} while (includeIncomplete && this.incompletes.size != 0)
+		}
 		console.log("mipped", completed, "skipped", skipped, "left", this.incompletes.size);
 		return completed
 	}
@@ -218,8 +226,11 @@ async function mipCanvas(render: MapRender, files: (MipFile | null)[], format: "
 				let blobsrc = URL.createObjectURL(await res.blob());
 				img = new Image(subtilesize, subtilesize);
 				img.src = blobsrc;
-				await img.decode();
-				URL.revokeObjectURL(blobsrc);
+				try {
+					await img.decode();
+				} finally {
+					URL.revokeObjectURL(blobsrc);
+				}
 			}
 			ctx.drawImage(img, outx, outy, subtilesize, subtilesize);
 		}

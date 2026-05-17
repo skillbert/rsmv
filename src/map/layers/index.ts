@@ -4,7 +4,7 @@ import { RSMapChunk } from "../../3d/modelnodes";
 import { EngineCache } from "../../3d/modeltothree";
 import { AsyncReturnType } from "../../utils";
 import { KnownMapFile, MapRender } from "../backends";
-import { ChunkRenderMeta, chunkSummary, RenderDepsVersionInstance } from "../chunksummary";
+import { ChunkRenderMeta, chunkSummary } from "../chunksummary";
 import { drawCollision } from "../collisionimage";
 import * as zlib from "zlib";
 import prettyJson from "json-stringify-pretty-compact";
@@ -27,7 +27,7 @@ export type MaprenderSquare = {
     id: number,
     model: RSMapChunk | null,
     loaded: MaprenderSquareData | null,
-    loadprom: Promise<MaprenderSquareData> | null,
+    loadprom: Promise<void> | null,
 };
 
 export type MaprenderSquareLoaded = MaprenderSquare & {
@@ -97,32 +97,34 @@ const rendermodeCollision: RenderMode<"collision"> = function ({ engine, config,
     let zooms = config.getLayerZooms(layer.pxpersquare);
     let { loadedchunksrect, worldrect } = chunkrectToOffetWorldRect(engine, config, maprect);
     let depcrc = deps.recthash(loadedchunksrect);
+    let format = getModeOutputInfo(config, layer, null);
     return [{
         layer: layer,
-        nameinfo: { ...baseoutput, zoom: zooms.base, ext: layer.format ?? "webp" },
+        nameinfo: { ...baseoutput, zoom: zooms.base, ext: format.ext },
         dependencyhash: depcrc,
         datarect: loadedchunksrect,
         mippable: true,
         async run2d(chunks) {
             //TODO try enable 2d map render without loading all the 3d stuff
             let grids = chunks.map(q => q.grid);
-            let file = drawCollision(grids, worldrect, layer.level, layer.pxpersquare, 1);
+            let file = drawCollision(grids, worldrect, layer.level, layer.pxpersquare, 1, format.ext as any);
             return { file: file };
         }
     }];
 }
 
 const rendermodeHeight: RenderMode<"height"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let format = getModeOutputInfo(config, layer, null);
     return [{
         layer: layer,
-        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "bin.gz" : "bin" },
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: format.ext },
         dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run2d(chunks) {
             //TODO what to do with classic 48x48 chunks?
             let file = chunks[0].grid.getHeightCollisionFile(maprect.x * 64, maprect.z * 64, layer.level, 64, 64, layer.allcorners ?? false);
             let buf: Buffer = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
-            if (layer.usegzip) {
+            if (format.gzip) {
                 buf = zlib.gzipSync(buf);
             }
             return { file: Promise.resolve(buf) };
@@ -131,9 +133,10 @@ const rendermodeHeight: RenderMode<"height"> = function ({ engine, config, layer
 }
 
 const rendermodeLocs: RenderMode<"locs"> = function ({ engine, config, layer, deps, baseoutput, maprect }) {
+    let format = getModeOutputInfo(config, layer, null);
     return [{
         layer: layer,
-        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: format.ext },
         dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run(chunks) {
@@ -142,7 +145,7 @@ const rendermodeLocs: RenderMode<"locs"> = function ({ engine, config, layer, de
             let { locdatas, locs } = chunkSummary(grid, modeldata, rect);
             let textual = prettyJson({ locdatas, locs, rect }, { indent: "\t" });
             let buf: Buffer = Buffer.from(textual, "utf8");
-            if (layer.usegzip) {
+            if (format.gzip) {
                 buf = zlib.gzipSync(buf);
             }
             return { file: Promise.resolve(buf) };
@@ -151,9 +154,10 @@ const rendermodeLocs: RenderMode<"locs"> = function ({ engine, config, layer, de
 }
 
 const rendermodeMaplabels: RenderMode<"maplabels"> = function ({ engine, config, layer, deps, maprect }) {
+    let format = getModeOutputInfo(config, layer, null);
     return [{
         layer: layer,
-        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: format.ext },
         dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run2d(chunks) {
@@ -163,7 +167,7 @@ const rendermodeMaplabels: RenderMode<"maplabels"> = function ({ engine, config,
             let iconjson = await jsonIcons(engine, locs, rawarea, layer.level);
             let textual = prettyJson(iconjson, { indent: "\t" });
             let buf: Buffer = Buffer.from(textual, "utf8");
-            if (layer.usegzip) {
+            if (format.gzip) {
                 buf = zlib.gzipSync(buf);
             }
             return { file: Promise.resolve(buf) };
@@ -230,3 +234,30 @@ export const rendermodes: Record<LayerConfig["mode"], RenderMode<any>> = {
     maplabels: rendermodeMaplabels,
     rendermeta: rendermodeRenderMeta
 }
+
+export function getModeOutputInfo(config: MapRender, layer: LayerConfig, zoom: number | null) {
+    switch (layer.mode) {
+        case "3d":
+        case "minimap":
+        case "collision":
+            return { ext: layer.format ?? "webp", gzip: false };
+        case "map": {
+            let zoominfo = config.getLayerZooms(config.config.tileimgsize / rs2ChunkSize);
+            if (zoom == zoominfo.base) {
+                return { ext: "svg", gzip: false };
+            } else {
+                return { ext: layer.format ?? "webp", gzip: false };
+            }
+        }
+        case "height":
+            return { ext: layer.usegzip ? "bin.gz" : "bin", gzip: !!layer.usegzip };
+        case "locs":
+        case "maplabels":
+        case "rendermeta":
+        case "interactions":
+            return { ext: layer.usegzip ? "json.gz" : "json", gzip: !!layer.usegzip };
+        default:
+            throw new Error("Unknown layer mode");
+    }
+}
+

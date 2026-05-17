@@ -2,7 +2,7 @@ import { canvasToImageFile } from "../imgutils";
 import { MapRect, tiledimensions, TileGridSource, TileProps } from "../3d/mapsquare";
 
 
-export function drawCollision(grids: TileGridSource[], rect: MapRect, maplevel: number, pxpertile: number, wallpx: number) {
+export function drawCollision(grids: TileGridSource[], rect: MapRect, maplevel: number, pxpertile: number, wallpx: number, format = "png" as "png" | "webp") {
 	let cnv = document.createElement("canvas");
 	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	cnv.width = rect.xsize * pxpertile;
@@ -60,5 +60,5 @@ export function drawCollision(grids: TileGridSource[], rect: MapRect, maplevel: 
 		}
 	}
 
-	return canvasToImageFile(cnv, "png", 1);
+	return canvasToImageFile(cnv, format, 1);
 }

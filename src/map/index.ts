@@ -8,7 +8,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
 import { delay, stringToFileRange, trickleTasks } from "../utils";
-import { mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals, RenderDepsTracker } from "./chunksummary";
+import { mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals } from "./chunksummary";
 import { RSMapChunk } from "../3d/modelnodes";
 import { MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
@@ -329,54 +329,50 @@ export class MapRenderer {
 
 	private async getChunk(x: number, z: number, needsmodels: boolean) {
 		let square = this.squares.find(q => q.x == x && q.z == z);
-		if (square && (!needsmodels || square.model)) {
-			return square;
-		} else {
-			this.loadcallback?.(x, z, "loading");
-			if (!this.scenecache) {
-				console.log("refreshing scenecache");
-				this.scenecache = await ThreejsSceneCache.create(this.engine);
-			}
-			if (!square) {
-				let parseprom = parseMapsquare(this.scenecache.engine, x, z, this.opts);
-				let id = this.idcounter++;
-				square = {
-					id,
-					x: x,
-					z: z,
-					parseprom: parseprom,
-					parsed: null,
-					model: null,
-					loaded: null,
-					loadprom: null,
-				}
-				parseprom.then(res => square!.parsed = res);
-				this.squares.push(square);
-			}
-			if (needsmodels) {
-				square.model = new RSMapChunk(this.scenecache, square.parseprom, x, z, this.opts);
-				square.loadprom = (async () => {
-					let chunkdata = await square.model!.chunkdata;
-					let floordeps = (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk));
-					let locdeps = mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz);
-					square!.loaded = {
-						rendermeta: {
-							x: chunkdata.chunkx,
-							z: chunkdata.chunkz,
-							version: this.config.version,
-							floor: floordeps,
-							locs: locdeps,
-							visuals: mapsquareVisuals(floordeps, locdeps)
-						},
-						grid: chunkdata.grid,
-						chunkdata: chunkdata
-					};
-					this.loadcallback?.(x, z, "loaded");
-					return square!.loaded;
-				})()
-			}
-			return square;
+		if (!this.scenecache) {
+			console.log("refreshing scenecache");
+			this.scenecache = await ThreejsSceneCache.create(this.engine);
 		}
+		if (!square) {
+			this.loadcallback?.(x, z, "loading");
+			let parseprom = parseMapsquare(this.scenecache.engine, x, z, this.opts);
+			let id = this.idcounter++;
+			square = {
+				id,
+				x: x,
+				z: z,
+				parseprom: parseprom,
+				parsed: null,
+				model: null,
+				loaded: null,
+				loadprom: parseprom.then(),
+			}
+			parseprom.then(res => square!.parsed = res);
+			this.squares.push(square);
+		}
+		if (needsmodels && !square.model) {
+			square.model = new RSMapChunk(this.scenecache, square.parseprom, x, z, this.opts);
+			square.loadprom = (async () => {
+				let chunkdata = await square.model!.chunkdata;
+				let floordeps = (!chunkdata.chunk ? [] : mapsquareFloorDependencies(chunkdata.grid, this.deps, chunkdata.chunk));
+				let locdeps = mapsquareLocDependencies(chunkdata.grid, this.deps, chunkdata.modeldata, chunkdata.chunkx, chunkdata.chunkz);
+				square!.loaded = {
+					rendermeta: {
+						x: chunkdata.chunkx,
+						z: chunkdata.chunkz,
+						version: this.config.version,
+						floor: floordeps,
+						locs: locdeps,
+						visuals: mapsquareVisuals(floordeps, locdeps)
+					},
+					grid: chunkdata.grid,
+					chunkdata: chunkdata
+				};
+				this.loadcallback?.(x, z, "loaded");
+			})();
+		}
+
+		return square;
 	}
 
 	async setArea(x: number, z: number, xsize: number, zsize: number, needsmodels: boolean) {
@@ -449,7 +445,6 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		.slice(0, 10)
 		.map(q => q.version);
 
-	let depstracker = new RenderDepsTracker(config, deps, targetversions);
 	let varianttracker = new VariantResolver(config, targetversions);
 	let mipper = new MipScheduler(config, varianttracker, progress);
 	let maprender: MapRenderer | null = null;
@@ -460,7 +455,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 		for (let chunk of chunks) {
 			if (output.state != "running") { break; }
 
-			let task = renderMapsquare(engine, config, depstracker, varianttracker, mipper, progress, chunk.x, chunk.z);
+			let task = renderMapsquare(engine, config, deps, varianttracker, mipper, progress, chunk.x, chunk.z);
 			let lastrender = activerender;
 			let fn = (async () => {
 				if (output.state != "running") { return; }
@@ -505,15 +500,15 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 }
 
 export class SimpleHasher {
-	depstracker: RenderDepsTracker;
+	depstracker: DependencyGraph;
 	subhashes: { x: number, z: number, hash: number }[] = [];
-	constructor(deps: RenderDepsTracker) {
+	constructor(deps: DependencyGraph) {
 		this.depstracker = deps;
 	}
 	getsubhash(x: number, z: number) {
 		let h = this.subhashes.find(q => q.x == x && q.z == z);
 		if (!h) {
-			let hash = this.depstracker.deps.hashDependencies(this.depstracker.deps.makeDeptName("mapsquare", x + z * worldStride));
+			let hash = this.depstracker.hashDependencies(this.depstracker.makeDeptName("mapsquare", x + z * worldStride));
 			this.subhashes.push({ x, z, hash });
 			return hash;
 		} else {
@@ -533,7 +528,7 @@ export class SimpleHasher {
 		let exists = false;
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				exists ||= this.depstracker.deps.hasEntry("mapsquare", x + z * worldStride);
+				exists ||= this.depstracker.hasEntry("mapsquare", x + z * worldStride);
 			}
 		}
 		return exists;
@@ -541,7 +536,7 @@ export class SimpleHasher {
 }
 
 
-export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: RenderDepsTracker, varianttracker: VariantResolver, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
+export function renderMapsquare(engine: EngineCache, config: MapRender, depstracker: DependencyGraph, varianttracker: VariantResolver, mipper: MipScheduler, progress: ProgressUI, chunkx: number, chunkz: number) {
 	progress.update(chunkx, chunkz, "imaging");
 
 	let filebasecoord = {

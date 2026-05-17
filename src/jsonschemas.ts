@@ -235,7 +235,13 @@ export const maprenderConfigSchema: JSONSchema6 = {
                     required: ["mode"]
                 }, {
                     properties: {
-                        mode: { enum: ["height", "collision", "locs", "maplabels", "rendermeta"] }
+                        mode: { const: "height" },
+                        allcorners: boolean
+                    },
+                    required: ["mode"]
+                }, {
+                    properties: {
+                        mode: { enum: ["collision", "locs", "maplabels", "rendermeta"] }
                     },
                     required: ["mode"]
                 }]

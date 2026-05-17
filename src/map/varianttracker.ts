@@ -1,6 +1,7 @@
 import { LayerConfig } from ".";
 import { ScriptOutput } from "../scriptrunner";
 import { MapRender } from "./backends";
+import { getModeOutputInfo } from "./layers";
 
 
 const variantGridSize = 32;
@@ -351,7 +352,7 @@ export class VariantResolver {
     }
 
     initLayer(layer: LayerConfig, zoom: number | null) {
-        let fileext = (layer.format ?? "webp") + (layer.usegzip ? ".gz" : "");
+        let fileext = getModeOutputInfo(this.render, layer, zoom).ext;
         let newlayer = this.getOrCreateLayer(layer.name, fileext, this.render.version, zoom);
         let resolver = new VariantLayerResolver(this, newlayer);
 

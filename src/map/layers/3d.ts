@@ -1,5 +1,5 @@
 import { Camera, Object3D } from "three";
-import { chunkrectToOffetWorldRect, MaprenderSquare, RenderMode, RenderTask } from ".";
+import { chunkrectToOffetWorldRect, getModeOutputInfo, MaprenderSquare, RenderMode, RenderTask } from ".";
 import { CombinedTileGrid, getTileHeight, tiledimensions } from "../../3d/mapsquare";
 import { canvasToImageFile, findImageBounds, pixelsToImageFile, sliceImage } from "../../imgutils";
 import prettyJson from "json-stringify-pretty-compact";
@@ -59,6 +59,7 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
     let overlayimg: HTMLImageElement | null = null;
 
     for (let zoom = zooms.base; zoom <= zooms.max; zoom++) {
+        let format = getModeOutputInfo(config, layer, zoom);
         let subslices = 1 << (zoom - zooms.base);
         let pxpersquare = layer.pxpersquare >> (zooms.max - zoom);
         let tiles = worldrect.xsize / subslices;
@@ -67,28 +68,12 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                 let suby = (config.config.noyflip ? subz : subslices - 1 - subz);
                 let imgtilex = baseoutput.x * subslices + subx;
                 let imgtiley = baseoutput.y * subslices + suby;
-                // let filename = config.makeFileName(layer.name, zoom, imgtilex, imgtiley, layer.format ?? "webp");
-
-                // let parentCandidates: { name: string, level: number }[] = [
-                //     { name: filename, level: layer.level }
-                // ];
-                // for (let sub of layer.subtractlayers ?? []) {
-                //     let other = config.config.layers.find(q => q.name == sub);
-                //     if (!other) {
-                //         console.warn("subtrack layer " + sub + "missing");
-                //         continue;
-                //     }
-                //     parentCandidates.push({
-                //         name: config.makeFileName(other.name, zoom, baseoutput.x * subslices + subx, baseoutput.y * subslices + suby, other.format ?? "webp"),
-                //         level: other.level
-                //     });
-                // }
 
                 let cam = mapImageCamera(worldrect.x + tiles * subx, worldrect.z + tiles * subz, tiles, layer.dxdy, layer.dzdy);
                 let depcrc = deps.recthash(loadedchunksrect);
                 tasks.push({
                     layer: layer,
-                    nameinfo: { x: imgtilex, y: imgtiley, zoom: zoom, ext: layer.format ?? "webp" },
+                    nameinfo: { x: imgtilex, y: imgtiley, zoom: zoom, ext: format.ext },
                     dependencyhash: depcrc,
                     datarect: loadedchunksrect,
                     // dedupeDependencies: parentCandidates.map(q => q.name),
@@ -109,18 +94,6 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                     },
                     async run(chunks, renderer) {
                         setChunkRenderToggles(chunks, layer.level, layer.mode == "minimap", !!layer.hidelocs);
-
-                        // // check if any other layer has the same render already
-                        // for (let parentoption of parentCandidates) {
-                        //     let parentfile = await parentinfo.checkMatches(parentoption.name, this.datarect, chunks, cam, layer.level, parentoption.level);
-                        //     if (parentfile) {
-                        //         return {
-                        //             file: undefined,
-                        //             symlink: parentfile
-                        //         };
-                        //     }
-                        // }
-
 
                         // svg overlay to draw walls/icons need to be rendered for this chunk
                         if (!overlayimg && (layer.overlayicons || layer.overlaywalls)) {
@@ -147,17 +120,6 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                         // the actual render
                         let img = await renderer.renderer.takeMapPicture(cam, tiles * pxpersquare, tiles * pxpersquare, layer.mode == "minimap");
 
-                        // //keep reference to dedupe similar renders
-                        // chunks.forEach(chunk => parentinfo.addLocalSquare(chunk.loaded.rendermeta));
-                        // parentinfo.addLocalFile({
-                        //     file: this.name,
-                        //     fshash: depcrc,
-                        //     buildnr: config.version,
-                        //     firstbuildnr: config.version,
-                        //     hash: depcrc,
-                        //     time: Date.now()
-                        // });
-
                         if (overlayimg) {
                             let mergecnv = document.createElement("canvas");
                             mergecnv.width = img.width;
@@ -173,11 +135,11 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
                                 0, 0, img.width, img.height
                             );
                             return {
-                                file: canvasToImageFile(mergecnv, layer.format ?? "webp", 0.9)
+                                file: canvasToImageFile(mergecnv, format.ext as any, 0.9)
                             };
                         } else {
                             return {
-                                file: pixelsToImageFile(img, layer.format ?? "webp", 0.9)
+                                file: pixelsToImageFile(img, format.ext as any, 0.9)
                             };
                         }
                     }
@@ -190,9 +152,10 @@ export const rendermode3d: RenderMode<"3d" | "minimap"> = function ({ engine, co
 
 
 export const rendermodeInteractions: RenderMode<"interactions"> = function ({ config, layer, deps, maprect }) {
+    let format = getModeOutputInfo(config, layer, null);
     return [{
         layer: layer,
-        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: layer.usegzip ? "json.gz" : "json" },
+        nameinfo: { x: maprect.x, y: maprect.z, zoom: null, ext: format.ext },
         dependencyhash: deps.recthash(maprect),
         datarect: maprect,
         async run(chunks, renderer) {
@@ -231,9 +194,9 @@ export const rendermodeInteractions: RenderMode<"interactions"> = function ({ co
                     continue;
                 }
 
-                let format = layer.format ?? "webp";
+                let imgformat = layer.format ?? "webp";
                 let subimg = sliceImage(img, bounds);
-                let imgfile = await pixelsToImageFile(subimg, format, 0.9);
+                let imgfile = await pixelsToImageFile(subimg, imgformat, 0.9);
                 hashimgs[hash] = {
                     loc: locdata.locid,
                     dx: bounds.x - img.width / 2,
@@ -241,12 +204,12 @@ export const rendermodeInteractions: RenderMode<"interactions"> = function ({ co
                     w: bounds.width,
                     h: bounds.height,
                     center,
-                    img: `data:image/${format};base64,${imgfile.toString("base64")}`
+                    img: `data:image/${imgformat};base64,${imgfile.toString("base64")}`
                 };
             }
             let textual = prettyJson({ locs, locdatas, rect, hashimgs, pxpertile: layer.pxpersquare, dxdy: layer.dxdy, dzdy: layer.dzdy }, { indent: "\t" });
             let buf: Buffer = Buffer.from(textual, "utf8");
-            if (layer.usegzip) {
+            if (format.gzip) {
                 buf = zlib.gzipSync(buf);
             }
             return { file: Promise.resolve(buf) };
