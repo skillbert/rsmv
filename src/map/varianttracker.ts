@@ -254,13 +254,6 @@ class VariantLayer {
                 }
                 chunk.dirty = false;
                 promises.push(backend.saveFile(chunk.makeMetaFilename(backend, true), chunk.pack(true), backend.version));
-
-                // // TODO remove
-                // if (true) {
-                //     let debugtexts = chunk.getDebug();
-                //     let debugfilename = backend.makeFileName(this.layername, this.zoom, chunk.basex / variantGridSize, chunk.basey / variantGridSize, "txt", "debug");
-                //     promises.push(backend.saveFile(debugfilename, Buffer.from(debugtexts.join("\n"))));
-                // }
             }
         }
         return promises;
@@ -287,15 +280,10 @@ export class VariantLayerResolver {
         this.trackers.set(key, layer);
     }
 
-    async addFile(tilex: number, tiley: number, dependencyhash: number, exacthash: number, savedLayerName = this.currentlayer.layername, savedLayerVersion = this.currentlayer.version) {
+    async addFile(tilex: number, tiley: number, variantinfo: VariantInfo | null) {
         let { groupx, groupy } = this.currentlayer.getImageGroup(tilex, tiley);
         let chunk = await this.currentlayer.getLoadOrInit(this.manager, groupx, groupy);
-        chunk.set(tilex, tiley, {
-            dependencyhash,
-            exacthash,
-            savedLayerName,
-            savedLayerVersion
-        });
+        chunk.set(tilex, tiley, variantinfo);
     }
 
     async findCandidate(tilex: number, tiley: number, hashvalue: number, isexacthash: boolean) {
@@ -441,7 +429,7 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
                 if (srcmeta && src && (!dst || dst.exacthash != src.exacthash)) {
                     // src is different
                     let srcname = config.makeFileName(src.savedLayerName, srcmeta.zoom, srcmeta.basex + x, srcmeta.basey + y, srcmeta.fileext);
-                    promises.push(config.symlink(dstname, targetname, srcname, sourceversion));
+                    promises.push(config.symlink(dstname, targetname, srcname, src.savedLayerVersion));
                     dstmeta.set(x, y, src);
                     updatecount++;
                 } else if (dst && !src) {
@@ -458,6 +446,7 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
             await config.saveFile(dstmeta.makeMetaFilename(config, false), Buffer.from(dstmeta.pack(false)), targetname);
         }
         await config.saveFile(dstmeta.makeMetaFilename(config, true), Buffer.from(dstmeta.pack(true)), targetname);
+        globalThis.onWatchdogProgress?.();
     }
     console.log(`processed ${layer.name}/${zoom} - updated ${updatecount} tiles`);
 }

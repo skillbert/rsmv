@@ -152,6 +152,7 @@ console.log(path.resolve(process.cwd(), entry));
 			}
 			if (Date.now() - lastprogress > watchdoglimit) {
 				console.warn(`no progress for ${watchdoglimit / 1000 / 60} minutes, reloading`);
+				lastprogress = Date.now();
 				index.reload();
 			}
 		}, 10000);

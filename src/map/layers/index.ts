@@ -38,7 +38,7 @@ export type MaprenderSquareLoaded = MaprenderSquare & {
 
 export type RenderResult = {
     file?: Promise<Buffer>,
-    storedvariant?: VariantInfo,
+    symlink?: VariantInfo,
     exacthash?: number
 }
 

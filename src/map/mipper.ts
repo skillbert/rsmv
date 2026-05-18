@@ -5,14 +5,11 @@ import { getOrInsert } from "../utils";
 import { MapRender, SymlinkCommand } from "./backends";
 import { getModeOutputInfo, ImgNameInfoZoom } from "./layers";
 import { ProgressUI } from "./progressui";
-import { VariantResolver } from "./varianttracker";
+import { VariantInfo, VariantResolver } from "./varianttracker";
 
 type MipFile = {
-	sourcelayer: string,
-	sourceversion: number,
 	sourceinfo: ImgNameInfoZoom,
-	hash: number,
-	exacthash: number
+	filevariant: VariantInfo | null
 };
 type MipCommand = {
 	layer: LayerConfig,
@@ -26,13 +23,14 @@ export class MipScheduler {
 	progress: ProgressUI;
 	incompletes = new Map<string, MipCommand>();
 	minzoom: number;
+	running: Promise<void> | null = null;
 	constructor(render: MapRender, varianttracker: VariantResolver, progress: ProgressUI) {
 		this.render = render;
 		this.varianttracker = varianttracker;
 		this.progress = progress;
 		this.minzoom = Math.floor(Math.log2(render.config.tileimgsize / (Math.max(render.config.mapsizex, render.config.mapsizez) * 64)));
 	}
-	addTask(layer: LayerConfig, srclayer: string, src: ImgNameInfoZoom, srcversion: number, hash: number, exacthash: number) {
+	addTask(layer: LayerConfig, src: ImgNameInfoZoom, filevariant: VariantInfo | null) {
 		if (src.zoom - 1 < this.minzoom) { return; }
 		let format = getModeOutputInfo(this.render, layer, src.zoom - 1).ext;
 		let newname = this.render.makeFileName(layer.name, src.zoom - 1, Math.floor(src.x / 2), Math.floor(src.y / 2), format);
@@ -51,20 +49,23 @@ export class MipScheduler {
 		if (this.render.config.noyflip) { isbot = !isbot; }
 		let subindex = (isright ? 1 : 0) + (isbot ? 2 : 0);
 		incomp.files[subindex] = {
-			sourcelayer: srclayer,
-			sourceversion: srcversion,
 			sourceinfo: src,
-			hash,
-			exacthash
+			filevariant: filevariant,
 		};
 	}
 	async run(includeIncomplete = false) {
+		// wait for any previous run to finish before starting a new one
+		while (this.running) { await this.running; }
+		this.running = this.runInner(includeIncomplete);
+		await this.running;
+		this.running = null;
+	}
+	async runInner(includeIncomplete: boolean) {
 		const maxgroup = 200;
 		let completed = 0;
 		let skipped = 0;
 		let tasks: { name: string, hash: number, exacthash: number, args: MipCommand, run: () => Promise<void> }[] = [];
 		let processTasks = async () => {
-
 			// dedupe using varianttracker
 			let candidatesprom = tasks.map(q => {
 				let resolver = this.varianttracker.getOrCreateResolver(q.args.layer, q.args.imgname.zoom ?? null);
@@ -100,10 +101,16 @@ export class MipScheduler {
 					proms.push(task.run().catch(e => console.warn("mipping", task.name, "failed", e)));
 					completed++;
 				}
-				savemetaqueue.push(resolver.addFile(task.args.imgname.x, task.args.imgname.y, task.hash, task.exacthash, storedlayername, storedlayerversion));
+				let variant: VariantInfo = {
+					dependencyhash: task.hash,
+					exacthash: task.exacthash,
+					savedLayerName: storedlayername,
+					savedLayerVersion: storedlayerversion
+				};
+				savemetaqueue.push(resolver.addFile(task.args.imgname.x, task.args.imgname.y, variant));
 
 				callbacks.push(() => {
-					this.addTask(task.args.layer, storedlayername, task.args.imgname, storedlayerversion, task.hash, task.exacthash);
+					this.addTask(task.args.layer, task.args.imgname, variant);
 				});
 			}
 			proms.push(this.render.symlinkBatch(symlinks));
@@ -139,8 +146,8 @@ export class MipScheduler {
 				let hash = 0;
 				let exacthash = 0;
 				for (let file of args.files) {
-					hash = crc32addInt(file?.hash ?? 0, hash);
-					exacthash = crc32addInt(file?.exacthash ?? 0, exacthash);
+					hash = crc32addInt(file?.filevariant?.dependencyhash ?? 0, hash);
+					exacthash = crc32addInt(file?.filevariant?.exacthash ?? 0, exacthash);
 				}
 
 				tasks.push({
@@ -163,7 +170,6 @@ export class MipScheduler {
 			await processTasks();
 		}
 		console.log("mipped", completed, "skipped", skipped, "left", this.incompletes.size);
-		return completed
 	}
 }
 
@@ -197,13 +203,14 @@ async function mipCanvas(render: MapRender, files: (MipFile | null)[], format: "
 	let ctx = cnv.getContext("2d", { willReadFrequently: true })!;
 	const subtilesize = render.config.tileimgsize / 2;
 	await Promise.all(files.map(async (f, i) => {
+		// file is missing (probably outside of map bounds)
 		if (!f) { return null; }
-		let filename = render.makeFileName(f.sourcelayer, f.sourceinfo.zoom, f.sourceinfo.x, f.sourceinfo.y, f.sourceinfo.ext);
-		let res = await render.getFileResponse(filename, f.sourceversion);
+		// file is known to be empty
+		if (!f.filevariant) { return null; }
+
+		let filename = render.makeFileName(f.filevariant.savedLayerName, f.sourceinfo.zoom, f.sourceinfo.x, f.sourceinfo.y, f.sourceinfo.ext);
+		let res = await render.getFileResponse(filename, f.filevariant.savedLayerVersion);
 		let mimetype = res.headers.get("content-type");
-		//old sanity check
-		// let hashheader = res.headers.get("x-amz-meta-mapfile-hash");
-		// if (typeof hashheader == "string" && +hashheader != f.fshash) { throw new Error("hash mismatch while creating mip file"); }
 
 		let outx = (i % 2) * subtilesize;
 		let outy = Math.floor(i / 2) * subtilesize;
@@ -215,7 +222,7 @@ async function mipCanvas(render: MapRender, files: (MipFile | null)[], format: "
 		} else {
 			let img: HTMLImageElement | VideoFrame;
 			if (!res.ok) {
-				throw new Error("image not found");
+				throw new Error(`image not found ${filename} version ${f.filevariant?.savedLayerVersion}`);
 			}
 			// imagedecoder API doesn't support svg
 			if (mimetype != "image/svg+xml" && typeof ImageDecoder != "undefined") {

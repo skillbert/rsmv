@@ -15,7 +15,7 @@ import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";
 import { crc32addInt } from "../libs/crc32util";
 import { ChunkrenderContext, ImgNameInfoZoom, MaprenderSquare, MaprenderSquareLoaded, rendermodes, RenderResult, RenderTask } from "./layers";
-import { VariantGroup, VariantResolver } from "./varianttracker";
+import { VariantGroup, VariantInfo, VariantResolver } from "./varianttracker";
 
 type RenderedMapVersionMeta = {
 	buildnr: number,
@@ -450,6 +450,18 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 	let maprender: MapRenderer | null = null;
 	let activerender = Promise.resolve();
 
+	let checkpointing = false;
+	let lastcheckpoint = 0;
+	let checkpoint = async () => {
+		if (!checkpointing && (Date.now() > lastcheckpoint + 30 * 1000)) {
+			checkpointing = true;
+			await mipper.run();
+			await varianttracker.finishChunk(true);
+			lastcheckpoint = Date.now();
+			checkpointing = false;
+		}
+	}
+
 	let render = function* () {
 		let completed = 0;
 		for (let chunk of chunks) {
@@ -484,8 +496,7 @@ export async function downloadMap(output: ScriptOutput, getRenderer: () => MapRe
 			yield fn;
 			completed++;
 			if (completed % 20 == 0) {
-				yield mipper.run();
-				yield varianttracker.finishChunk(true);
+				yield checkpoint();
 			}
 		}
 	}
@@ -569,12 +580,12 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 		let exacthash: number | undefined = undefined;
 		// try find match
 		if (task.getExactHash) {
-			exacthash = task.getExactHash(chunks) ?? task.dependencyhash;
+			exacthash = task.getExactHash(chunks);
 			let exacthashmatch = await resolver.findCandidate(task.nameinfo.x, task.nameinfo.y, exacthash, true);
 			if (exacthashmatch) {
 				return {
 					exacthash: exacthashmatch.exacthash,
-					storedvariant: exacthashmatch
+					symlink: exacthashmatch
 				}
 			}
 		}
@@ -626,46 +637,57 @@ export function renderMapsquare(engine: EngineCache, config: MapRender, depstrac
 			if (hashmatch) {
 				res = {
 					exacthash: hashmatch.exacthash,
-					storedvariant: hashmatch,
+					symlink: hashmatch,
 				};
 			} else if (!isempty) {
 				// actual render
 				res = await runTask(renderer, task);
 			}
 
+			let stored: VariantInfo | null = null;
+
 			//store it
-			let exacthash = res?.exacthash ?? task.dependencyhash;
-			let storedlayername = res?.storedvariant ? res.storedvariant.savedLayerName : task.layer.name;
-			let storedlayerversion = res?.storedvariant ? res.storedvariant.savedLayerVersion : config.version;
-			let storedfilename = "";
 			if (!res) {
 				// empty chunk, store nothing
-			} else if (res.storedvariant) {
+			} else if (res.symlink) {
 				symlinkcount++;
-				if (res.storedvariant.savedLayerVersion == config.version) { localsymlinkcount++; }
+				if (res.symlink.savedLayerVersion == config.version) { localsymlinkcount++; }
 				if (!config.config.skipsymlinks) {
-					storedfilename = config.makeFileName(res.storedvariant.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+					let storedfilename = config.makeFileName(res.symlink.savedLayerName, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+					let newfilename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
 					symlinkcommands.push({
-						file: config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext),
+						file: newfilename,
 						version: config.version,
 						target: storedfilename,
-						targetversion: res.storedvariant.savedLayerVersion
+						targetversion: res.symlink.savedLayerVersion
 					});
 				}
+				stored = {
+					savedLayerName: res.symlink.savedLayerName,
+					savedLayerVersion: res.symlink.savedLayerVersion,
+					dependencyhash: task.dependencyhash,
+					exacthash: res.exacthash ?? task.dependencyhash
+				};
 			} else if (res.file) {
-				storedfilename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
+				let storedfilename = config.makeFileName(task.layer.name, task.nameinfo.zoom, task.nameinfo.x, task.nameinfo.y, task.nameinfo.ext);
 				savequeue.push(res.file.then(buf => config.saveFile(storedfilename, buf)));
+				stored = {
+					savedLayerName: task.layer.name,
+					savedLayerVersion: config.version,
+					dependencyhash: task.dependencyhash,
+					exacthash: res.exacthash ?? task.dependencyhash
+				};
 			}
 
 			// store its reference
-			savemetaqueue.push(resolver.addFile(task.nameinfo.x, task.nameinfo.y, task.dependencyhash, exacthash, storedlayername, storedlayerversion));
+			savemetaqueue.push(resolver.addFile(task.nameinfo.x, task.nameinfo.y, stored));
 
 			// queue mipping if needed
 			if (task.mippable) {
 				miptasks.push(() => {
-					let nameinfo = task.nameinfo;
+					let nameinfo = task.nameinfo as ImgNameInfoZoom;
 					if (nameinfo.zoom == null) { throw new Error("only zoomed tasks can be mipped"); }
-					mipper.addTask(task.layer, storedlayername, nameinfo as ImgNameInfoZoom, storedlayerversion, task.dependencyhash, exacthash);
+					mipper.addTask(task.layer, nameinfo, stored);
 				});
 			}
 		}

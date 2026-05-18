@@ -121,9 +121,9 @@ let cmd = cmdts.command({
 				for await (let source of cacheiterator) {
 					output.log(`Starting '${source.getCacheMeta().name}', build: ${source.getBuildNr()}`);
 					globalThis.onWatchdogProgress?.();
-					console.log("config", config.version, config);
 					let cleanup = await runMapRender(output, source, config, args.force);
 					cleanup();
+					cleanup = null!;//prevent memory leak
 					globalThis.onWatchdogProgress?.();
 				}
 			}
