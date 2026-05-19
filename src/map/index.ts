@@ -265,7 +265,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		globalThis.onWatchdogProgress?.();
 	} catch (e) {
 		console.error(e);
-		progress.updateProp("deps", "starting dependency graph");
+		progress.updateProp("deps", "errored dependency graph");
 		return cleanup;
 	}
 	progress.updateProp("deps", `completed, ${deps.dependencyMap.size} nodes`);

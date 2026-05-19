@@ -681,7 +681,7 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
 		el = <FileDecodeErrorViewer file={fileText()} />;
 	} else if (ext == "ui.json") {
 		el = <RsUIViewer data={fileText()} />
-	} else if (ext == "font.json") { 
+	} else if (ext == "font.json") {
 		el = <RsFontViewer data={JSON.parse(fileText())} />
 	} else if (ext == "cs2.json") {
 		el = <ClientScriptViewer data={fileText()} />
@@ -710,6 +710,8 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
 		} else {
 			console.log("unexpected header", header, header.toString(16));
 		}
+	} else if (["json", "jsonc", "txt"].includes(ext)) {
+		el = <SimpleTextViewer file={fileText()} />
 	} else {
 		el = <UnknownFileViewer data={fileBuffer()} ext={ext} />
 	}

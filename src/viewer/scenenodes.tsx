@@ -39,6 +39,8 @@ import * as cmdts from "cmd-ts";
 import { crc32addInt } from '../libs/crc32util';
 import { RSMapChunk, RSMapChunkGroup } from '../3d/scene/mapchunk';
 import { RSModel } from '../3d/scene/model';
+import { diffFileDependencyHash } from '../scripts/dependencydiff';
+import { depClasses } from '../scripts/dependencies';
 
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
@@ -2294,13 +2296,11 @@ function MaprenderScript(p: UiScriptProps) {
 }
 function CacheDiffScript(p: UiScriptProps) {
 	let [cache2, setCache2] = React.useState<CacheFileSource | null>(null);
-	let [selectopen, setSelectopen] = React.useState(false);
 	let [result, setResult] = React.useState<FileEdit[] | null>(null);
 	let [filerange, setFilerange] = React.useState("");
 	let [showmodels, setshowmodels] = React.useState(false);
 
 	let openCache = async (s: SavedCacheSource) => {
-		setSelectopen(false);
 		setCache2(await openSavedCache(s, false));
 	}
 
@@ -2359,19 +2359,61 @@ function CacheDiffScript(p: UiScriptProps) {
 	return (
 		<React.Fragment>
 			<p>Shows all changes between the current cache and a second cache.</p>
-			{!cache2 && !selectopen && <input type="button" className="sub-btn" value="Select second cache" onClick={e => clickOpen()} />}
-			{!cache2 && selectopen && (
-				<div style={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
-					<input type="button" className="sub-btn" value="Cancel select cache" onClick={e => setSelectopen(false)} />
-					<CacheSelector onOpen={openCache} />
-				</div>
-			)}
+			{!cache2 && <input type="button" className="sub-btn" value="Select second cache" onClick={e => clickOpen()} />}
 			{cache2 && <input type="button" className="sub-btn" value={`Close ${cache2.getCacheMeta().name}`} onClick={e => setCache2(null)} />}
 			<LabeledInput label="file range">
 				<input type="text" onChange={e => setFilerange(e.currentTarget.value)} value={filerange} />
 			</LabeledInput>
 			<input type="button" className="sub-btn" value="Run" onClick={run} />
 			{result && <label><input checked={showmodels} onChange={e => setshowmodels(e.currentTarget.checked)} type="checkbox" />View changed models</label>}
+		</React.Fragment>
+	)
+}
+
+function DependencyDiffScript(p: UiScriptProps) {
+	let [engine2, setEngine2] = React.useState<EngineCache | null>(null);
+	let [objclass, setObjclass] = React.useState("map");
+	let [fileid, setFileid] = React.useState("50.50");
+
+	let openCache = async (s: SavedCacheSource) => {
+		let cache = await openSavedCache(s, false);
+		if (cache) {
+			let engine = await EngineCache.create(cache);
+			setEngine2(engine);
+		}
+	}
+
+	React.useEffect(() => () => engine2?.close(), [engine2]);
+
+	let run = async () => {
+		if (!p.ctx.sceneCache || !engine2) { return; }
+		let output = new UIScriptOutput();
+		let outdir = output.makefs("diff");
+		p.onRun(output, "");
+		let res = output.run(diffFileDependencyHash, outdir, p.ctx.sceneCache!.engine, engine2, objclass, fileid);
+	}
+
+	let clickOpen = () => {
+		let frame = showModal({ title: "Select a cache" }, (
+			<CacheSelector onOpen={v => { openCache(v); frame.close(); }} noReopen={true} />
+		));
+	}
+
+	return (
+		<React.Fragment>
+			<p>Builds a dependency tree and then shows which files depend on changed files</p>
+			{!engine2 && <input type="button" className="sub-btn" value="Select second cache" onClick={e => clickOpen()} />}
+			{engine2 && <input type="button" className="sub-btn" value={`Close ${engine2.getCacheMeta().name}`} onClick={e => setEngine2(null)} />}
+			<LabeledInput label="object class">
+				<select value={objclass} onChange={e => setObjclass(e.currentTarget.value)}>
+					<option value="map">map</option>
+					{depClasses.flatMap(group => <option key={group}>{group}</option>)}
+				</select>
+			</LabeledInput>
+			<LabeledInput label="file id">
+				<input type="text" onChange={e => setFileid(e.currentTarget.value)} value={fileid} />
+			</LabeledInput>
+			<input type="button" className="sub-btn" value="Run" onClick={run} />
 		</React.Fragment>
 	)
 }
@@ -2476,6 +2518,7 @@ const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	historic: ExtractHistoricScript,
 	maprender: MaprenderScript,
 	diff: CacheDiffScript,
+	deps: DependencyDiffScript,
 	cli: RawCliScript
 }
 

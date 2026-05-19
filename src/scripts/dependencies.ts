@@ -12,9 +12,16 @@ import { legacyMajors, legacyGroups } from "../cache/legacycache";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 
-const depids = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
-const depidmap = Object.fromEntries(depids.map((q, i) => [q, i]));
-export type DepTypes = typeof depids[number];
+export const depClasses = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
+const depidmap = Object.fromEntries(depClasses.map((q, i) => [q, i]));
+export type DepTypes = typeof depClasses[number];
+
+export type DepMeta = {
+	key: string,
+	children: DepMeta[],
+	ownhash: number,
+	treehash: number
+}
 
 type DepArgs = { area?: MapRect } | undefined;
 type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => void;
@@ -228,7 +235,7 @@ const materialDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
-const materialDeps2: DepCollector = async (cache, addDep, addHash) => {
+const materialAndTextureDeps: DepCollector = async (cache, addDep, addHash) => {
 	//TODO id=-1 material??
 	if (cache.getBuildNr() <= lastLegacyBuildnr) {
 		let mats = await cache.getArchiveById(legacyMajors.data, legacyGroups.textures);
@@ -244,7 +251,7 @@ const materialDeps2: DepCollector = async (cache, addDep, addHash) => {
 			addDep("texture", matdata.spriteid, "material", mat.fileid);
 		}
 	} else if (cache.getBuildNr() < 759) {
-		//unkown how this works...
+		//unknown how this works...
 	} else {
 		let arch = await cache.getArchiveById(cacheMajors.materials, 0);
 
@@ -329,39 +336,75 @@ const modelDeps: DepCollector = async (cache, addDep, addHash, opts) => {
 	}
 }
 
-export type DependencyGraph = (typeof getDependencies) extends ((...args: any[]) => Promise<infer T>) ? T : never;
-export async function getDependencies(cache: EngineCache, args?: {}) {
-	let dependentsMap = new Map<string, string[]>();
-	let dependencyMap = new Map<string, string[]>();
-	let hashes = new Map<string, number>();
-	let addDep = (holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) => {
+
+export class DependencyGraph {
+	dependentsMap = new Map<string, string[]>();
+	dependencyMap = new Map<string, string[]>();
+	hashes = new Map<string, number>();
+
+	cache: EngineCache;
+	decodeargs: DepArgs;
+	private constructor(cache: EngineCache, args: DepArgs) {
+		this.cache = cache;
+		this.decodeargs = args;
+	}
+
+	static async create(cache: EngineCache, args?: DepArgs) {
+		let res = new DependencyGraph(cache, args);
+		let runs: DepCollector[] = [
+			// mapsquareDeps2,
+			locationDeps,
+			itemDeps,
+			animgroupDeps,
+			materialAndTextureDeps,
+			npcDeps,
+			mapOverlayDeps,
+			mapUnderlayDeps,
+			// modelDeps,
+
+			// sequenceDeps,
+			// skeletonDeps,
+			// framesetDeps,
+		];
+
+		for (let run of runs) {
+			await res.runDependencyGroup(run, args);
+		}
+		return res;
+	}
+
+	preloadChunkDependencies(args?: DepArgs) {
+		return this.runDependencyGroup(mapsquareDeps2, args);
+	}
+
+	addDep(holdertype: DepTypes, holderId: number, deptType: DepTypes, depId: number) {
 		let holder = `${holdertype}-${holderId}`;
 		let newdep = `${deptType}-${depId}`;
 		//add dependency
-		let dependencies = dependencyMap.get(newdep);
+		let dependencies = this.dependencyMap.get(newdep);
 		if (!dependencies) {
 			dependencies = [];
-			dependencyMap.set(newdep, dependencies);
+			this.dependencyMap.set(newdep, dependencies);
 		}
 		if (dependencies.indexOf(holder) == -1) { dependencies.push(holder); }
 		//add dependent
-		let deps = dependentsMap.get(holder);
+		let deps = this.dependentsMap.get(holder);
 		if (!deps) {
 			deps = [];
-			dependentsMap.set(holder, deps);
+			this.dependentsMap.set(holder, deps);
 		}
 		if (deps.indexOf(newdep) == -1) { deps.push(newdep); }
 	}
-	let addHash = (deptType: DepTypes, depId: number, hash: number, version: number) => {
+	addHash(deptType: DepTypes, depId: number, hash: number, version: number) {
 		let depname = `${deptType}-${depId}`;
-		hashes.set(depname, hash);
+		this.hashes.set(depname, hash);
 	}
 
-	let runDependencyGroup = async (run: DepCollector, args) => {
+	async runDependencyGroup(run: DepCollector, args) {
 		try {
 			console.log(`starting ${run.name}`);
 			let t = Date.now();
-			await run(cache, addDep, addHash, args);
+			await run(this.cache, this.addDep.bind(this), this.addHash.bind(this), args);
 			console.log(`finished ${run.name}, duration ${((Date.now() - t) / 1000).toFixed(1)}`);
 		} catch (e) {
 			debugger;
@@ -369,75 +412,105 @@ export async function getDependencies(cache: EngineCache, args?: {}) {
 		}
 	}
 
-	let runs: DepCollector[] = [
-		// mapsquareDeps2,
-		locationDeps,
-		itemDeps,
-		animgroupDeps,
-		materialDeps2,
-		npcDeps,
-		mapOverlayDeps,
-		mapUnderlayDeps,
-		// modelDeps,
-
-		// sequenceDeps,
-		// skeletonDeps,
-		// framesetDeps,
-	];
-
-	for (let run of runs) {
-		await runDependencyGroup(run, args);
-	}
-
-	let preloadChunkDependencies = (args?: DepArgs) => {
-		return runDependencyGroup(mapsquareDeps2, args);
-	}
-
-	let makeDeptName = (deptType: DepTypes, id: number) => {
+	makeDeptName(deptType: DepTypes, id: number) {
 		return `${deptType}-${id}`;
 	}
 
-	let cascadeDependencies = (depname: string, list: string[] = []) => {
-		let hash = hashes.get(depname) ?? 0;
-		let hashtext = `${depname}-${hash}`;
-		if (!list.includes(hashtext)) {
-			list.push(hashtext);
-			let deps = dependencyMap.get(depname);
-			if (deps) {
-				for (let dep of deps) {
-					cascadeDependencies(dep, list);
+	cascadeDependencies(depname: string,) {
+		let inner = (depname: string, list: string[], hashes: number[]) => {
+			let hash = this.hashes.get(depname) ?? 0;
+			let hashtext = `${depname}-${hash}`;
+			if (!list.includes(hashtext)) {
+				list.push(hashtext);
+				hashes.push(hash);
+				let deps = this.dependencyMap.get(depname);
+				if (deps) {
+					for (let dep of deps) {
+						inner(dep, list, hashes);
+					}
 				}
 			}
 		}
-		return list;
+		let ids: string[] = [];
+		let hashes: number[] = [];
+		inner(depname, ids, hashes);
+		return { ids, hashes };
 	}
 
-	let hashDependencies = (depname: string, previouscrc = 0) => {
-		let hash = hashes.get(depname) ?? 0;
+	debugDependencyTree(depname: string) {
+		let inner = (depname: string, previouscrc: number) => {
+			let hash = this.hashes.get(depname) ?? 0;
+			let [type, id] = depname.split("-");
+			let crc = previouscrc;
+			crc = crc32addInt(depidmap[type], crc);
+			crc = crc32addInt(+id, crc);
+			crc = crc32addInt(+hash, crc);
+			let deps = this.dependencyMap.get(depname);
+			if (deps) {
+				for (let dep of deps) {
+					[crc] = inner(dep, crc);
+				}
+			}
+
+			let sub = visited.get(depname);
+			if (!sub) {
+				sub = {
+					key: depname,
+					ownhash: hash,
+					children: [],
+					treehash: 0,
+				};
+				visited.set(depname, sub);
+
+				let isolatedcrc = 0;
+				isolatedcrc = crc32addInt(depidmap[type], isolatedcrc);
+				isolatedcrc = crc32addInt(+id, isolatedcrc);
+				isolatedcrc = crc32addInt(+hash, isolatedcrc);
+
+				for (let dep of deps ?? []) {
+					let child: DepMeta;
+					[isolatedcrc, child] = inner(dep, isolatedcrc);
+					sub.children.push(child);
+				}
+				sub.treehash = isolatedcrc;
+			}
+
+			return [crc, sub] as const;
+		}
+
+		let visited = new Map<string, DepMeta>();
+		let res = inner(depname, 0);
+		return {
+			visited,
+			root: res[1]
+		}
+	}
+
+	hashDependencies(depname: string, previouscrc = 0) {
+		let hash = this.hashes.get(depname) ?? 0;
 		let [type, id] = depname.split("-");
 		let crc = previouscrc;
 		crc = crc32addInt(depidmap[type], crc);
 		crc = crc32addInt(+id, crc);
 		crc = crc32addInt(+hash, crc);
-		let deps = dependencyMap.get(depname);
+		let deps = this.dependencyMap.get(depname);
 		if (deps) {
 			for (let dep of deps) {
-				crc = hashDependencies(dep, crc);
+				crc = this.hashDependencies(dep, crc);
 			}
 		}
 		return crc;
 	}
 
-	let hasEntry = (deptType: DepTypes, depId: number) => {
-		return hashes.has(makeDeptName(deptType, depId));
+	hasEntry(deptType: DepTypes, depId: number) {
+		return this.hashes.has(this.makeDeptName(deptType, depId));
 	}
 
-	let insertMapChunk = (data: ChunkData) => {
-		chunkDeps(data, addDep, addHash);
+	insertMapChunk(data: ChunkData) {
+		chunkDeps(data, this.addDep.bind(this), this.addHash.bind(this));
 		let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
-		return makeDeptName("mapsquare", squareindex);
+		return this.makeDeptName("mapsquare", squareindex);
 	}
 
-	return { dependencyMap, dependentsMap, cascadeDependencies, makeDeptName, hashDependencies, hasEntry, insertMapChunk, preloadChunkDependencies };
 }
 

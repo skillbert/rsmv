@@ -26,7 +26,7 @@ import { HSL2RGBfloat, packedHSL2HSL } from "../utils";
 import { loadProcTexture } from "./materials/proceduraltexture";
 import { maplabels } from "../../generated/maplabels";
 import { minimapLocMaterial } from "../rs3shaders";
-import { DependencyGraph, getDependencies } from "../scripts/dependencies";
+import { DependencyGraph } from "../scripts/dependencies";
 import { ModelData } from "./modeldata";
 
 const constModelOffset = 1000000;
@@ -289,7 +289,7 @@ export class EngineCache extends CachingFileSource {
 	}
 
 	async getDependencyGraph() {
-		this.dependencyGraph ??= getDependencies(this, { lazyMapChunks: true });
+		this.dependencyGraph ??= DependencyGraph.create(this);
 		return this.dependencyGraph;
 	}
 

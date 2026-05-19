@@ -17,6 +17,8 @@ import { getGameInterfaces } from "./scripts/gameinterfaces";
 import { CacheFileSource } from "./cache";
 import fs from "fs/promises";
 import { extractClientModuleCode, IsolatedCS2Module } from "./clientscript/extractmodule";
+import { diffFileDependencyHash } from "./scripts/dependencydiff";
+import { EngineCache } from "./3d/modeltothree";
 
 
 export type CliApiContext = {
@@ -227,6 +229,31 @@ export function cliApi(ctx: CliApiContext) {
 		}
 	});
 
+	const diffdeps = command({
+		name: "run",
+		args: {
+			...saveArg("out"),
+			a: option({ long: "cache1", short: "a", type: ReadCacheSource }),
+			b: option({ long: "cache2", short: "b", type: ReadCacheSource }),
+			depskey: option({ long: "key", short: "k", type: cmdts.optional(cmdts.string) }),
+			mapkey: option({ long: "map", short: "m", type: cmdts.optional(cmdts.string) }),
+		},
+		handler: async (args) => {
+			if (!args.depskey && !args.mapkey) { throw new Error("either key or map must be provided"); }
+
+			let [sourcea, sourceb] = await Promise.all([
+				args.a().then(src => EngineCache.create(src)),
+				args.b().then(src => EngineCache.create(src))
+			]);
+
+			let output = ctx.getConsole();
+			await output.run(diffFileDependencyHash, args.save, sourcea, sourceb, (args.mapkey ? "map" : "raw"), args.mapkey ?? args.depskey!);
+
+			sourcea.close();
+			sourceb.close();
+		}
+	});
+
 	const quickchat = command({
 		name: "run",
 		args: {
@@ -310,7 +337,23 @@ export function cliApi(ctx: CliApiContext) {
 
 	let subcommands = cmdts.subcommands({
 		name: "",
-		cmds: { extract, indexoverview, testdecode, diff, quickchat, scrapeavatars, edit, historicdecode, openrs2ids, filehist, cluecoords, sequencegroups, gameinterfaces, clientscriptmodule }
+		cmds: {
+			extract,
+			indexoverview,
+			testdecode,
+			diff,
+			diffdeps,
+			quickchat,
+			scrapeavatars,
+			edit,
+			historicdecode,
+			openrs2ids,
+			filehist,
+			cluecoords,
+			sequencegroups,
+			gameinterfaces,
+			clientscriptmodule
+		}
 	});
 
 	return {
