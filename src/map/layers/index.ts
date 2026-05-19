@@ -1,9 +1,8 @@
-import { LayerConfig, Mapconfig, MapRenderer, SimpleHasher } from "..";
-import { classicChunkSize, CombinedTileGrid, getTileHeight, MapRect, parseMapsquare, rs2ChunkSize, RSMapChunkData, tiledimensions, TileGrid } from "../../3d/mapsquare";
-import { RSMapChunk } from "../../3d/modelnodes";
+import { LayerConfig, MapRenderer, SimpleHasher } from "..";
+import { classicChunkSize, CombinedTileGrid, MapRect, parseMapsquare, rs2ChunkSize, RSMapChunkData, TileGrid } from "../../3d/mapsquare";
 import { EngineCache } from "../../3d/modeltothree";
 import { AsyncReturnType } from "../../utils";
-import { KnownMapFile, MapRender } from "../backends";
+import { MapRender } from "../backends";
 import { ChunkRenderMeta, chunkSummary } from "../chunksummary";
 import { drawCollision } from "../collisionimage";
 import * as zlib from "zlib";
@@ -11,6 +10,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { jsonIcons, svgfloor } from "../svgrender";
 import { rendermode3d, rendermodeInteractions } from "./3d";
 import { VariantInfo, VariantResolver } from "../varianttracker";
+import { RSMapChunk } from "../../3d/scene/mapchunk";
 
 
 type MaprenderSquareData = {

@@ -4,7 +4,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { getEnumInt, getEnumIntPairs, getEnumString, getStructInt, getStructString, loadEnum, loadParams, loadStruct } from "../clientscript/util";
 import { structs } from "../../generated/structs";
 import { cacheMajors } from "../constants";
-import { expandSprite, parseSprite } from "../3d/sprite";
+import { expandSprite, parseSprite } from "../3d/materials/sprite";
 import { pixelsToImageFile } from "../imgutils";
 
 

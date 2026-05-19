@@ -1,6 +1,6 @@
-import { HSL2RGBfloat, packedHSL2HSL } from "../utils";
-import { parse } from "../opdecoder";
-import type { materials } from "../../generated/materials";
+import { HSL2RGBfloat, packedHSL2HSL } from "../../utils";
+import { parse } from "../../opdecoder";
+import type { materials } from "../../../generated/materials";
 import type { CacheFileSource } from "cache";
 
 type TextureRepeatMode = "clamp" | "repeat" | "mirror";

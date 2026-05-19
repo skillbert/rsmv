@@ -1,17 +1,11 @@
-import { Box2, BufferAttribute, Camera, Group, Matrix4, Vector2, Vector3 } from "three";
+import { BufferAttribute, Group, Matrix4, Vector3 } from "three";
 import { objects } from "../../generated/objects";
-import { ChunkData, getTileHeight, MapRect, ModelExtras, ModelExtrasLocation, PlacedMesh, PlacedMeshBase, PlacedModel, rs2ChunkSize, RSMapChunkData, tiledimensions, TileGrid, tileshapes, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
-import { DependencyGraphObject, EngineCache, ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
-import { ModelBuilder } from "../3d/modelutils";
+import { ChunkData, getTileHeight, MapRect, ModelExtras, PlacedMesh, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
+import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
+import { ModelBuilder } from "../3d/meshes/meshutils";
 import { DependencyGraph } from "../scripts/dependencies";
-import { KnownMapFile, MapRender } from "./backends";
-import { CacheFileSource } from "../cache";
-import { RenderedMapMeta } from ".";
 import { crc32addInt } from "../libs/crc32util";
-import type { RSMapChunk } from "../3d/modelnodes";
 import { getOrInsert } from "../utils";
-import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { MaprenderSquareLoaded } from "./layers";
 
 export function getLocImageHash(grid: TileGrid, info: WorldLocation) {
 	let loc = info.location;

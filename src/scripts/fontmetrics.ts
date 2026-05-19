@@ -1,4 +1,4 @@
-import { parseSprite, spriteHash } from "../3d/sprite";
+import { parseSprite, spriteHash } from "../3d/materials/sprite";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { pixelsToDataUrl, sliceImage } from "../imgutils";

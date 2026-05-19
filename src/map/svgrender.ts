@@ -1,5 +1,5 @@
 import { TileGridSource, squareLevels, WorldLocation, MapRect, TileProps } from "../3d/mapsquare";
-import { parseSprite } from "../3d/sprite";
+import { parseSprite } from "../3d/materials/sprite";
 import { cacheMajors } from "../constants";
 import { EngineCache } from "../3d/modeltothree";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";

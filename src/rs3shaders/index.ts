@@ -1,5 +1,5 @@
 import { SRGBColorSpace, ShaderMaterial, Texture } from "three";
-import { MaterialData } from "../3d/jmat";
+import { MaterialData } from "../3d/materials/jmat";
 
 let inputreplace: InputReplacer = {
     //camera matrices, slightly different

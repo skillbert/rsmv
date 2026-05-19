@@ -1,7 +1,7 @@
 import { interfaces } from "../../generated/interfaces";
-import { RSModel } from "../3d/modelnodes";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { expandSprite, parseSprite } from "../3d/sprite";
+import { RSModel } from "../3d/scene/model";
+import { expandSprite, parseSprite } from "../3d/materials/sprite";
 import { CacheFileSource } from "../cache";
 import { prepareClientScript } from "../clientscript";
 import { ClientScriptInterpreter } from "../clientscript/interpreter";
@@ -11,6 +11,7 @@ import { parse } from "../opdecoder";
 import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
 import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
+
 
 export const MAGIC_CONST_MOUSE_X = 0x80000001 | 0;
 export const MAGIC_CONST_MOUSE_Y = 0x80000002 | 0;

@@ -9,7 +9,7 @@ import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
 import { delay, stringToFileRange, trickleTasks } from "../utils";
 import { mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals } from "./chunksummary";
-import { RSMapChunk } from "../3d/modelnodes";
+import { RSMapChunk } from "../3d/scene/mapchunk";
 import { MapRender, SymlinkCommand, VersionFilter } from "./backends";
 import { ProgressUI, TileLoadState } from "./progressui";
 import { MipScheduler } from "./mipper";

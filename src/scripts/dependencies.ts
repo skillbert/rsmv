@@ -4,7 +4,7 @@ import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from 
 import { parse } from "../opdecoder";
 import { archiveToFileId } from "../cache";
 import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
-import { convertMaterial } from "../3d/jmat";
+import { convertMaterial } from "../3d/materials/jmat";
 import { crc32, crc32addInt } from "../libs/crc32util";
 import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
 import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";

@@ -2,7 +2,7 @@ import { CacheFileSource, SubFile } from "./index";
 import { EngineCache } from "../3d/modeltothree";
 import { cacheFilenameHash, Stream } from "../utils";
 import { legacybz2 } from "./compression";
-import { parseLegacySprite, parseTgaSprite } from "../3d/sprite";
+import { parseLegacySprite, parseTgaSprite } from "../3d/materials/sprite";
 import { makeImageData } from "../imgutils";
 
 export const legacyMajors = {

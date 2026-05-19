@@ -1,6 +1,6 @@
-import { makeImageData } from "../imgutils";
-import { crc32 } from "../libs/crc32util";
-import { Stream } from "../utils";
+import { makeImageData } from "../../imgutils";
+import { crc32 } from "../../libs/crc32util";
+import { Stream } from "../../utils";
 
 export type SubImageData = {
 	x: number,

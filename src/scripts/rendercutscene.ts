@@ -1,5 +1,5 @@
 import { cutscenes } from "../../generated/cutscenes";
-import { parseSprite } from "../3d/sprite";
+import { parseSprite } from "../3d/materials/sprite";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { pixelsToDataUrl } from "../imgutils";

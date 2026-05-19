@@ -12,7 +12,7 @@ import { DomWrap, UIScriptFile } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, findParentElement, TypedEmitter } from "../utils";
-import { ParsedTexture } from "../3d/textures";
+import { ParsedTexture } from "../3d/materials/textures";
 import { CacheDownloader } from "../cache/downloader";
 import { parse } from "../opdecoder";
 import * as path from "path";
