@@ -84,6 +84,8 @@ export function validOpenrs2Caches() {
 			644, 257,//incomplete textures
 			1456, 1665,//missing materials
 			1479,//missing items could probably be worked around
+
+			2085, 2079, 2136, 2137, 2002//probably fixable by changing parser version switch constants
 		];
 		let allcaches = await loadOpenrsCachelist();
 		let checkedcaches = allcaches.filter(q =>

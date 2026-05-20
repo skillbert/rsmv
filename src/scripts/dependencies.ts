@@ -11,6 +11,7 @@ import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
+import { objects } from "../../generated/objects";
 
 export const depClasses = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
 const depidmap = Object.fromEntries(depClasses.map((q, i) => [q, i]));
@@ -139,6 +140,33 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
+function locationMetaHash(loc: objects) {
+	// only hash properties that affect rendering of a loc (3d and minimap)
+	// can ignore dependencies like models since they are already hashed on their own
+	let hash = 0;
+	// collision
+	hash = crc32addInt(+!!loc.probably_nocollision, hash);
+	hash = crc32addInt(+!!loc.maybe_blocks_movement, hash);
+	hash = crc32addInt(+!!loc.maybe_allows_lineofsight, hash);
+	// minimap
+	hash = crc32addInt(loc.mapFunction ?? 0, hash);
+	hash = crc32addInt(loc.mapscene ?? 0, hash);
+	hash = crc32addInt(+!!loc.deletable, hash);
+	// placement
+	hash = crc32addInt(loc.width ?? 1, hash);
+	hash = crc32addInt(loc.length ?? 1, hash);
+	// anim - currently not rendered, but shouldnt be expensive
+	hash = crc32addInt(loc.probably_animation ?? 0, hash);
+	// name and rightclicks - not rendered, but are included in other layers
+	hash = crc32(Buffer.from(loc.name ?? "", "utf8"), hash);
+	hash = crc32(Buffer.from(loc.actions_0 ?? "", "utf8"), hash);
+	hash = crc32(Buffer.from(loc.actions_1 ?? "", "utf8"), hash);
+	hash = crc32(Buffer.from(loc.actions_2 ?? "", "utf8"), hash);
+	hash = crc32(Buffer.from(loc.actions_3 ?? "", "utf8"), hash);
+	hash = crc32(Buffer.from(loc.actions_4 ?? "", "utf8"), hash);
+	return hash;
+}
+
 const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 	if (cache.classicData) {
 		for (let [id, loc] of cache.classicData.objects.entries()) {
@@ -151,8 +179,9 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 		}
 	} else {
 		for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.objects)) {
-			addHash("loc", id, crc32(file), 0);
 			let loc = parse.object.read(file, cache);
+			// addHash("loc", id, crc32(file), 0);
+			addHash("loc", id, locationMetaHash(loc), 0);
 			if (loc.probably_animation) {
 				addDep("sequence", loc.probably_animation, "loc", id);
 			}

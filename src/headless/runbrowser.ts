@@ -10,10 +10,7 @@ app.commandLine.appendSwitch("disable-gpu-process-crash-limit");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
-app.commandLine.appendSwitch("js-flags", "--expose-gc");
-//these flags only make it worse right now since it prevents a full crash when buffer allocs start failing
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=16384");
-app.commandLine.appendSwitch("js-flags", "--max-heap-size=16384");
+app.commandLine.appendSwitch("js-flags", "--expose-gc --max-old-space-size=16384 --max-heap-size=16384");
 //needed to read map imagedata from runeapps
 app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
 
@@ -23,10 +20,6 @@ app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
 //forces dedicated gpu on windows
 //https://stackoverflow.com/questions/54464276/how-to-force-discrete-gpu-in-electron-js/63668188#63668188
 // process.env.SHIM_MCCOMPAT = '0x800000001';
-
-//prevents computer from sleeping
-const id = powerSaveBlocker.start("prevent-app-suspension");
-//powerSaveBlocker.stop(id)
 
 let hidden = false;
 let exitonend = false;
@@ -105,6 +98,11 @@ console.log(path.resolve(process.cwd(), entry));
 
 (async () => {
 	await app.whenReady();
+
+	//prevents computer from sleeping
+	const id = powerSaveBlocker.start("prevent-app-suspension");
+	//powerSaveBlocker.stop(id)
+
 	let lastprogress = Date.now();
 
 	ipcMain.on("toggledevtools", () => index.webContents.toggleDevTools());
@@ -128,8 +126,10 @@ console.log(path.resolve(process.cwd(), entry));
 			nodeIntegration: true,
 			contextIsolation: false,
 			//needed to disable CORS
-			webSecurity: false
+			webSecurity: false,
+			backgroundThrottling: false,
 		},
+		paintWhenInitiallyHidden: true,
 		show: !hidden
 	});
 	index.webContents.openDevTools();

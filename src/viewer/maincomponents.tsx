@@ -550,7 +550,7 @@ function annotatedHexDom(data: Buffer, chunks: DecodeErrorJson["chunks"]) {
 
 function UnknownFileViewer(p: { data: Buffer, ext: string }) {
 	let finalext = p.ext.split(".").at(-1)!;
-	let istext = ["json", "jsonc", "ts", "js"].includes(finalext);
+	let istext = ["json", "jsonc", "ts", "js", "txt"].includes(finalext);
 
 	let [override, setoverride] = React.useState<{ ext: string, istext: boolean } | null>(null);
 
@@ -710,8 +710,6 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
 		} else {
 			console.log("unexpected header", header, header.toString(16));
 		}
-	} else if (["json", "jsonc", "txt"].includes(ext)) {
-		el = <SimpleTextViewer file={fileText()} />
 	} else {
 		el = <UnknownFileViewer data={fileBuffer()} ext={ext} />
 	}
