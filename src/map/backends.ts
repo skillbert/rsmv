@@ -1,5 +1,4 @@
-import { LayerConfig, Mapconfig } from ".";
-import { FetchThrottler } from "../utils";
+import { Mapconfig } from ".";
 import { AwsClient } from "aws4fetch"
 import { ScriptFS, naiveDirname } from "../scriptrunner";
 import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
@@ -157,8 +156,8 @@ export class MapRenderFsBacked extends MapRender {
 }
 
 export type S3BackendConfig = {
+	endpoint: string,//hostname of the endpoint excluding the bucket eg "region.amazonaws.com"
 	bucket: string,
-	endpoint: string,
 	prefix?: string,
 	accessKeyId?: string,
 	secretAccessKey?: string,
@@ -178,17 +177,20 @@ export class MapRenderS3Backed extends MapRender {
 			this.client = new AwsClient({
 				accessKeyId: this.s3config.accessKeyId ?? "",
 				secretAccessKey: this.s3config.secretAccessKey ?? "",
-				service: "s3",
+				service: "s3"
 			});
 		}
 		return this.client;
 	}
 
+	private s3host() {
+		return `https://${this.s3config.bucket}.${this.s3config.endpoint}`;
+	}
 	// Builds the full URL for an S3 key using path-style against the configured endpoint.
 	private s3url(key: string) {
 		const prefix = this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "";
 		const fullKey = encodeURI(`${prefix}${key}`);
-		return `${this.s3config.endpoint}/${this.s3config.bucket}/${fullKey}`;
+		return `${this.s3host()}/${fullKey}`;
 	}
 
 	async saveFile(name: string, data: Buffer, version: VersionFolder = this.version) {
@@ -196,7 +198,10 @@ export class MapRenderS3Backed extends MapRender {
 		name = this.versionedName(version, name);
 		const resp = await client.fetch(this.s3url(name), {
 			method: "PUT",
-			headers: { "content-type": mimeTypeFromExtension(name) },
+			headers: {
+				"content-type": mimeTypeFromExtension(name),
+				"x-amz-acl": "public-read"
+			},
 			body: data as unknown as BodyInit,
 		});
 		if (!resp.ok) { throw new Error(`S3 PUT failed: ${resp.status} ${resp.statusText}`); }
@@ -205,14 +210,13 @@ export class MapRenderS3Backed extends MapRender {
 	async readDir(name: string, type: "files" | "directories", version: VersionFolder = this.version): Promise<string[]> {
 		const client = this.getClient();
 		name = this.versionedName(version, name);
-		const prefix = (this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "") + name + "/";
+		const prefix = (this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "") + name.replace(/\/*$/, "/");
 		const results: string[] = [];
 		let continuationToken: string | undefined;
 		do {
-			const baseUrl = `${this.s3config.endpoint}/${this.s3config.bucket}`;
 			const params = new URLSearchParams({ "list-type": "2", prefix, delimiter: "/" });
 			if (continuationToken) { params.set("continuation-token", continuationToken); }
-			const resp = await client.fetch(`${baseUrl}/?${params}`);
+			const resp = await client.fetch(`${this.s3host()}/?${params}`);
 			if (!resp.ok) { throw new Error(`S3 list failed: ${resp.status}`); }
 			const xml = await resp.text();
 			if (type === "files") {
@@ -244,10 +248,13 @@ export class MapRenderS3Backed extends MapRender {
 		name = this.versionedName(version, name);
 		targetname = this.versionedName(targetversion, targetname);
 		const prefix = this.s3config.prefix ? this.s3config.prefix.replace(/\/*$/, "/") : "";
-		const copySource = encodeURIComponent(`/${this.s3config.bucket}/${prefix}${targetname}`);
+		const copySource = `${this.s3config.bucket}/${prefix}${targetname}`;
 		const resp = await client.fetch(this.s3url(name), {
 			method: "PUT",
-			headers: { "x-amz-copy-source": copySource },
+			headers: {
+				"x-amz-copy-source": encodeURIComponent(copySource),
+				"x-amz-acl": "public-read"
+			},
 		});
 		if (!resp.ok) { throw new Error(`S3 COPY failed: ${resp.status} ${resp.statusText}`); }
 	}

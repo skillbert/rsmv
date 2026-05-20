@@ -3,7 +3,7 @@ import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { CLIScriptFS, CLIScriptOutput } from "../scriptrunner";
 import { getVersionsFile, runMapRender } from ".";
-import { MapRender, MapRenderFsBacked, parseMapConfig } from "./backends";
+import { MapRender, MapRenderFsBacked, MapRenderS3Backed, parseMapConfig, S3BackendConfig } from "./backends";
 import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } from "../cache/openrs2loader";
 import { stringToFileRange } from "../utils";
 import { classicBuilds, ClassicFileSource, detectClassicVersions } from "../cache/classicloader";
@@ -22,36 +22,40 @@ let cmd = cmdts.command({
 		livefolder: cmdts.option({ long: "livefolder", type: cmdts.optional(cmdts.string) }),
 		ascending: cmdts.flag({ long: "ascending", short: "a" }),
 		force: cmdts.flag({ long: "force", short: "f" }),
-		ignorebefore: cmdts.option({ long: "ignorebefore", type: cmdts.optional(cmdts.string) }),
+		configfile: cmdts.option({ long: "config", short: "c", type: cmdts.string }),
 		//remote
-		endpoint: cmdts.option({ long: "endpoint", short: "e", type: cmdts.optional(cmdts.string) }),
-		auth: cmdts.option({ long: "auth", short: "p", type: cmdts.optional(cmdts.string) }),
-		mapid: cmdts.option({ long: "mapid", type: cmdts.optional(cmdts.number) }),
+		mapname: cmdts.option({ long: "mapname", type: cmdts.optional(cmdts.string) }),
+		s3host: cmdts.option({ long: "s3host", short: "e", type: cmdts.optional(cmdts.string) }),
+		s3bucket: cmdts.option({ long: "s3bucket", type: cmdts.optional(cmdts.string) }),
+		s3id: cmdts.option({ long: "s3id", type: cmdts.optional(cmdts.string) }),
+		s3key: cmdts.option({ long: "s3key", type: cmdts.optional(cmdts.string) }),
 		//fs
-		configfile: cmdts.option({ long: "config", short: "c", type: cmdts.optional(cmdts.string) }),
 		outdir: cmdts.option({ long: "out", short: "s", type: cmdts.optional(cmdts.string) })
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
 
-		let ignorebefore = new Date(args?.ignorebefore ?? 0);
 		let ismultiversion = !!args.builds || !!args.cacheids || !!args.livefolder;
 
+		let renderconfig = parseMapConfig(await fs.readFile(args.configfile!, "utf8"));
 		let config: MapRender;
-		if (args.endpoint) {
-			// if (!args.endpoint || !args.auth || typeof args.mapid != "number") {
-			// 	throw new Error("need --endpoint, --auth and --mapid to use a remote map save");
-			// }
-			// config = await MapRenderDatabaseBacked.create(args.endpoint, args.auth, args.mapid, false, ignorebefore);
-			throw new Error("remote endpoint not implemented yet");
-		} else if (args.configfile) {
+		if (args.s3host) {
+			if (!args.s3host || !args.s3bucket || !args.s3id || !args.s3key) {
+				throw new Error("need --s3host, --s3bucket, --s3id and --s3key to save to s3");
+			}
+			let s3conf: S3BackendConfig = {
+				endpoint: args.s3host,
+				bucket: args.s3bucket,
+				prefix: args.mapname ? `${args.mapname}/` : "",
+				accessKeyId: args.s3id,
+				secretAccessKey: args.s3key
+			};
+			config = new MapRenderS3Backed(s3conf, renderconfig, ismultiversion);
+		} else {
 			let outdir = args.outdir ?? path.dirname(args.configfile!);
-			let configfile = await fs.readFile(args.configfile!, "utf8");
 			// await fs.access(outdir);//check if we're allowed to write the outdir
 			let scriptfs = new CLIScriptFS(outdir);
-			config = new MapRenderFsBacked(scriptfs, parseMapConfig(configfile), ismultiversion);
-		} else {
-			throw new Error("no map endpoint selected");
+			config = new MapRenderFsBacked(scriptfs, renderconfig, ismultiversion);
 		}
 
 		if (!ismultiversion) {
