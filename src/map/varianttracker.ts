@@ -421,6 +421,7 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
         }
 
         let promises: Promise<any>[] = [];
+        let errors: any[] = [];
         for (let y = 0; y < dstmeta.gridsizey; y++) {
             for (let x = 0; x < dstmeta.gridsizex; x++) {
                 let src = srcmeta?.get(x, y);
@@ -429,8 +430,9 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
                 if (srcmeta && src && (!dst || dst.exacthash != src.exacthash)) {
                     // src is different
                     let srcname = config.makeFileName(src.savedLayerName, srcmeta.zoom, srcmeta.basex + x, srcmeta.basey + y, srcmeta.fileext);
-                    promises.push(config.symlink(dstname, targetname, srcname, src.savedLayerVersion));
-                    dstmeta.set(x, y, src);
+                    promises.push(config.symlink(dstname, targetname, srcname, src.savedLayerVersion).then(() => {
+                        dstmeta.set(x, y, src);
+                    }).catch(e => errors.push(e)));
                     updatecount++;
                 } else if (dst && !src) {
                     // existing is extra
@@ -446,6 +448,9 @@ async function extractVersionSliceFolder(output: ScriptOutput, config: MapRender
             await config.saveFile(dstmeta.makeMetaFilename(config, false), Buffer.from(dstmeta.pack(false)), targetname);
         }
         await config.saveFile(dstmeta.makeMetaFilename(config, true), Buffer.from(dstmeta.pack(true)), targetname);
+        if (errors.length != 0) {
+            console.error(`errors while processing ${layer.name}/${zoom}:`, errors);
+        }
         globalThis.onWatchdogProgress?.();
     }
     console.log(`processed ${layer.name}/${zoom} - updated ${updatecount} tiles`);

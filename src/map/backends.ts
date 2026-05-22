@@ -177,7 +177,9 @@ export class MapRenderS3Backed extends MapRender {
 			this.client = new AwsClient({
 				accessKeyId: this.s3config.accessKeyId ?? "",
 				secretAccessKey: this.s3config.secretAccessKey ?? "",
-				service: "s3"
+				service: "s3",
+				initRetryMs: 10000,
+				retries: 5,
 			});
 		}
 		return this.client;
