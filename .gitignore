@@ -2,10 +2,15 @@ node_modules/
 /dist/
 !/src/libs/sqljsfork/dist/
 .vscode/
-/cache*/
-/extract*/
 *.code-workspace
 .*
+!.gitignore
+!.gitattributes
+!.dockerignore
+
+# cache files and extract results
+/cache*/
+/extract*/
 *.sqlite3
 
 

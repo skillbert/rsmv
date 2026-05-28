@@ -1,0 +1,9 @@
+node_modules/
+/dist/
+!/src/libs/sqljsfork/dist/
+.vscode/
+/cache*/
+/extract*/
+*.code-workspace
+.*
+*.sqlite3
