@@ -11,7 +11,7 @@ export async function previewAllFileTypes(output: ScriptOutput, fs: ScriptFS, so
         if (output.state != "running") { break; }
         let modename = untypedmodename as keyof typeof cacheFileDecodeModes;
         if (modename == "bin") { continue; }
-        // if (modename == "cutscenehtml") { continue; }
+        if (modename == "cutscenehtml") { continue; }
 
         let decoder = mode({});
         try {
@@ -47,9 +47,11 @@ export async function previewAllFileTypes(output: ScriptOutput, fs: ScriptFS, so
                 continue;
             }
             for (let { buffer, fileid } of archieve) {
-                let logicalid = decoder.fileToLogical(source, entry.major, entry.minor, fileid);
-                let resname = `${modename}_${logicalid.join(".")}.${decoder.ext}`;
+                // placeholder name in case fileToLogical fails
+                let resname = `${modename}_raw_${entry.major}.${entry.minor}.${fileid}`;
                 try {
+                    let logicalid = decoder.fileToLogical(source, entry.major, entry.minor, fileid);
+                    resname = `${modename}_${logicalid.join(".")}.${decoder.ext}`;
                     var res = await decoder.read(buffer, logicalid, source);
                     if (typeof res != "string" && !Buffer.isBuffer(res)) {
                         throw new Error("decoder didn't return a valid file");
