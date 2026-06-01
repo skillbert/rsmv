@@ -17,7 +17,9 @@
 		["normal",["opt",["textureflags",10,"bitor"],["match","buildnr",{">=887":"uint",">=0":0}]]],
 
 		["texrepeatflags",["match","buildnr",{">=876":"ubyte",">=0":0}]],
-		["unk3_skybox",["match","buildnr",{">=876":["buffer",3,"hex"],">=0":"null"}]],//looks like a bitflag thing, bit weird
+		["unk3_skybox0",["match","buildnr",{">=876":"ubyte",">=0":0}]],
+		["unk3_skybox1",["match","buildnr",{">=876":"ubyte",">=0":0}]],
+		["unk3_skybox2",["match","buildnr",{">=876":"ubyte",">=0":0}]],
 
 		["flags2","ubyte"],//always 12,13,14,28
 		["unkfloats",["opt",["flags2",4,"bitflag"],["tuple","float","float"]]],//always 1; 1,4,32
@@ -36,6 +38,8 @@
 		["animtex","ubyte"],//0123
 		["animtexU",["opt",["animtex",0,"bitflag"],["match","buildnr",{">=897":"short",">=0":"byte"}]]],
 		["animtexV",["opt",["animtex",1,"bitflag"],["match","buildnr",{">=897":"short",">=0":"byte"}]]],
+		
+		["skybox_extra",["opt",["unk3_skybox1",7,"bitflag"],"uint"]],//so far 62x 0x4ccccd00 on first cache with it in it
 
 		["flagextra","bool"],
 		["extra",["opt",["flagextra",1],["struct",

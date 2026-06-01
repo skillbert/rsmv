@@ -20,7 +20,9 @@ export type materials = {
 		diffuse: (number|0) | null,
 		normal: (number|0) | null,
 		texrepeatflags: (number|0),
-		unk3_skybox: (Uint8Array|null),
+		unk3_skybox0: (number|0),
+		unk3_skybox1: (number|0),
+		unk3_skybox2: (number|0),
 		flags2: number,
 		unkfloats: [
 			number,
@@ -37,6 +39,7 @@ export type materials = {
 		animtex: number,
 		animtexU: (number|number) | null,
 		animtexV: (number|number) | null,
+		skybox_extra: number | null,
 		flagextra: boolean,
 		extra: {
 			unk00_flags: number,
