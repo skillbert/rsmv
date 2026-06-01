@@ -36,7 +36,7 @@ export function mapImageCamera(x: number, z: number, ntiles: number, dxdy: numbe
     cam.projectionMatrix.elements = [
         scale, scale * dxdy, 0, -x * scale - 1,
         0, scale * dzdy, -scale, -z * scale - 1,
-        0, -0.01, 0, 0,
+        0, -1/400, 0, 0,
         0, 0, 0, 1
     ];
     // cam.projectionMatrix.scale(new Vector3(1, -1, 1));
