@@ -214,10 +214,14 @@ export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSc
 	skeleton.calculateInverses();
 	rootnode.traverse(node => {
 		if (node instanceof SkinnedMesh) {
-			node.bind(skeleton, childbind);
 			let geo = node.geometry as BufferGeometry;
-			geo.attributes.skinIndex = geo.attributes.RA_skinIndex_skin;
-			geo.attributes.skinWeight = geo.attributes.RA_skinWeight_skin;
+			if (!geo.attributes.RA_skinIndex_skin || !geo.attributes.RA_skinWeight_skin) {
+				console.log("warning, mesh without skin bones used in skinned animation");
+			} else {
+				node.bind(skeleton, childbind);
+				geo.attributes.skinIndex = geo.attributes.RA_skinIndex_skin;
+				geo.attributes.skinWeight = geo.attributes.RA_skinWeight_skin;
+			}
 		}
 	});
 }
