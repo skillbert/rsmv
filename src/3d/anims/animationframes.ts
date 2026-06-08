@@ -77,6 +77,18 @@ export function mountBakedSkeleton(rootnode: Object3D, model: ModelData) {
 			geo.attributes.skinWeight = geo.attributes.RA_skinWeight_bone;
 		}
 	});
+	rootnode.traverse(node => {
+		if (node instanceof SkinnedMesh) {
+			let geo = node.geometry as BufferGeometry;
+			if (!geo.attributes.RA_skinIndex_bone || !geo.attributes.RA_skinWeight_bone) {
+				console.log("warning, mesh without legacy bones used in legacy animation");
+			} else {
+				node.bind(skeleton, childbind);
+				geo.attributes.skinIndex = geo.attributes.RA_skinIndex_bone;
+				geo.attributes.skinWeight = geo.attributes.RA_skinWeight_bone;
+			}
+		}
+	});
 
 	let mixer = new AnimationMixer(rootnode);
 	return { mixer };

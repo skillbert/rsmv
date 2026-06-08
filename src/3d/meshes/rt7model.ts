@@ -60,8 +60,9 @@ export function getModelCenter(model: ModelData) {
 	return center;
 }
 
-function parsePosData(arr: Int16Array) {
-	return new THREE.BufferAttribute(new Float32Array(arr), 3);
+function parsePosData(arr: Int16Array | Float32Array) {
+	let arrayinner = (arr instanceof Int16Array ? new Float32Array(arr) : arr);
+	return new THREE.BufferAttribute(arrayinner, 3);
 }
 
 function addBoneIdBuffer(attributes: ModelMeshData["attributes"], boneidBuffer: Uint16Array) {

@@ -70,16 +70,18 @@ const defaultcols = {
 
 const humanheadanims: Record<string, number> = {
 	none: -1,
-	default: 9804,
-	worried: 9743,
-	talkfast: 9745,
-	scared: 9748,
-	wtf: 9752,
-	drunk: 9851,
-	happy: 9843,
-	evil: 9842,
-	laughing: 9841,
-	crying: 9765
+	default: -1,
+	// none: -1,
+	// default: 9804,
+	// worried: 9743,
+	// talkfast: 9745,
+	// scared: 9748,
+	// wtf: 9752,
+	// drunk: 9851,
+	// happy: 9843,
+	// evil: 9842,
+	// laughing: 9841,
+	// crying: 9765
 }
 
 let kitcolors: Record<"feet" | "skin" | "hair" | "clothes", Record<number, number>> | null = null;
@@ -161,7 +163,12 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 				let models: number[] = [];
 				let headmodels: number[] = [];
 				for (let m of kit.models) { models.push(m, m); }
-				if (kit.headmodel) { headmodels.push(kit.headmodel, kit.headmodel); }
+				if (kit.headmodel) {
+					headmodels.push(kit.headmodel, kit.headmodel);
+					if (kit.headbasemodel) {
+						headmodels.push(kit.headbasemodel, kit.headbasemodel);
+					}
+				}
 
 				//add penalty if kit is worn in wrong slot
 				let bodypart = kit.bodypart ?? -1;

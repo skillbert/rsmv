@@ -11,5 +11,5 @@ export type identitykit = {
 		number,
 	][] | null
 	headmodel?: number | null
-	unknown?: number | null
+	headbasemodel?: number | null
 };

@@ -39,7 +39,7 @@ export type models = {
 		} | null,
 	}[] | null,
 	meshdata: {
-		unkint: number,
+		positionFormat: number,
 		faceCount: number,
 		hasVertices: number,
 		hasVertexAlpha: number,
@@ -48,7 +48,7 @@ export type models = {
 		isHidden: number,
 		hasSkin: number,
 		vertexCount: number,
-		positionBuffer: Int16Array | null,
+		positionBuffer: (Int16Array|Float32Array) | null,
 		normalBuffer: Int8Array | null,
 		tagentBuffer: Int16Array | null,
 		uvBuffer: Uint16Array | null,
