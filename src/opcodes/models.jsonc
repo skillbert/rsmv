@@ -57,7 +57,7 @@
 	]]]],
 	["meshdata",["opt","version>3",["struct",
 		["$groupFlags","ubyte"],
-		["unkint","ubyte"],
+		["positionFormat","ubyte"],
 		["faceCount","ushort le"],
 
 		["hasVertices",["ref","$groupFlags",[0,1]]],
@@ -68,7 +68,10 @@
 		["hasSkin",["ref","$groupFlags",[5,1]]],
 
 		["vertexCount","uint le"],
-		["positionBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",3]]],
+		["positionBuffer",["opt",["hasVertices",1],["match",["ref","positionFormat"],{
+			"0":["buffer",["ref","vertexCount"],"short",3],
+			"1":["buffer",["ref","vertexCount"],"float_be",3]
+		}]]],
 		["normalBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"byte",3]]],
 		["tagentBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"short",2]]],
 		["uvBuffer",["opt",["hasVertices",1],["buffer",["ref","vertexCount"],"ushort",2]]],

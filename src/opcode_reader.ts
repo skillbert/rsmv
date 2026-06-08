@@ -5,16 +5,17 @@ import type { ClientscriptObfuscation } from "./clientscript/callibrator";
 export type TypeDef = { [name: string]: unknown };
 
 const BufferTypes = {
-	buffer: { constr: Buffer as any as Uint8ArrayConstructor },//Buffer typings doesn't have BYTES_PER_ELEMENT
-	hex: { constr: Uint8Array },//used to debug into json file
-	byte: { constr: Int8Array },
-	ubyte: { constr: Uint8Array },
-	short: { constr: Int16Array },
-	ushort: { constr: Uint16Array },
-	int: { constr: Int32Array },
-	uint: { constr: Uint32Array },
-	float: { constr: Float32Array }
-};
+	buffer: { constr: Buffer as any as Uint8ArrayConstructor, bigEndian: false },//Buffer typings doesn't have BYTES_PER_ELEMENT
+	hex: { constr: Uint8Array, bigEndian: false },//used to debug into json file
+	byte: { constr: Int8Array, bigEndian: false },
+	ubyte: { constr: Uint8Array, bigEndian: false },
+	short: { constr: Int16Array, bigEndian: false },
+	ushort: { constr: Uint16Array, bigEndian: false },
+	int: { constr: Int32Array, bigEndian: false },
+	uint: { constr: Uint32Array, bigEndian: false },
+	float: { constr: Float32Array, bigEndian: false },
+	float_be: { constr: Float32Array, bigEndian: true }
+} satisfies Record<string, { constr: new () => ArrayBufferView, bigEndian?: boolean }>;
 
 var debugdata: null | {
 	rootstate: unknown,
@@ -635,6 +636,30 @@ function bufferParserValue(value: unknown, type: typeof BufferTypes[keyof typeof
 	return value;
 }
 
+function flipBufferEndianness(bytes: Uint8Array, bytesPerElement: number) {
+	if (bytesPerElement == 1) {
+		//noop
+	} else if (bytesPerElement == 2) {
+		for (let i = 0; i < bytes.length; i += 2) {
+			let a = bytes[i];
+			bytes[i] = bytes[i + 1];
+			bytes[i + 1] = a;
+		}
+	}
+	else if (bytesPerElement == 4) {
+		for (let i = 0; i < bytes.length; i += 4) {
+			let a = bytes[i];
+			let b = bytes[i + 1];
+			bytes[i] = bytes[i + 3];
+			bytes[i + 1] = bytes[i + 2];
+			bytes[i + 2] = b;
+			bytes[i + 3] = a;
+		}
+	} else { 
+		throw new Error("unsupported BYTES_PER_ELEMENT " + bytesPerElement);
+	}
+}
+
 function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let r: ChunkParser = {
 		read(state) {
@@ -645,6 +670,9 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			let bytes = Buffer.from(backing);
 			bytes.set(state.buffer.subarray(state.scan, state.scan + bytelen));
 			state.scan += bytelen;
+			if (type.bigEndian) {
+				flipBufferEndianness(bytes, type.constr.BYTES_PER_ELEMENT);
+			}
 			let array = (scalartype == "buffer" ? bytes : new type.constr(backing));
 			if (scalartype == "hex") { (array as any).toJSON = () => bytes.toString("hex"); }
 			else if (state.args.keepBufferJson === true) { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
@@ -657,6 +685,9 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			lengthtype.write(state, value.length / vectorLength);
 
 			let bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+			if (type.bigEndian) {
+				flipBufferEndianness(bytes, type.constr.BYTES_PER_ELEMENT);
+			}
 			state.buffer.set(bytes, state.scan);
 			state.scan += bytes.byteLength;
 		},
@@ -687,7 +718,7 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 	let scalartype: keyof typeof BufferTypes = typestring as any;
 
 	let lengthtype = buildParser(resolveLengthReference, args[0], typedef);
-	const type = BufferTypes[typestring];
+	const type = BufferTypes[typestring as keyof typeof BufferTypes];
 	return r;
 }
 
