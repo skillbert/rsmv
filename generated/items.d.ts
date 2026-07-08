@@ -12,6 +12,7 @@ export type items = {
 	rotation_1?: number | null
 	modelTranslate_0?: number | null
 	modelTranslate_1?: number | null
+	unknown_09?: true | null
 	unknown_0A?: number | null
 	stackable_1?: true | null
 	value?: number | null
@@ -67,8 +68,113 @@ export type items = {
 	category?: number | null
 	rotation_2?: number | null
 	dummyItem?: number | null
-	noteData?: number | null
-	noteTemplate?: number | null
+	noteData_old?: number | null
+	noteTemplate_old?: number | null
+	stack_info_old_0?: [
+		number,
+		number,
+	] | null
+	stack_info_old_1?: [
+		number,
+		number,
+	] | null
+	stack_info_old_2?: [
+		number,
+		number,
+	] | null
+	stack_info_old_3?: [
+		number,
+		number,
+	] | null
+	stack_info_old_4?: [
+		number,
+		number,
+	] | null
+	stack_info_old_5?: [
+		number,
+		number,
+	] | null
+	stack_info_old_6?: [
+		number,
+		number,
+	] | null
+	stack_info_old_7?: [
+		number,
+		number,
+	] | null
+	stack_info_old_8?: [
+		number,
+		number,
+	] | null
+	stack_info_old_9?: [
+		number,
+		number,
+	] | null
+	scale_0?: number | null
+	scale_1?: number | null
+	scale_2?: number | null
+	ambiance?: number | null
+	contrast?: number | null
+	team?: number | null
+	loanId_old?: number | null
+	loanTemplate_old?: number | null
+	male_translate?: [
+		number,
+		number,
+		number,
+	] | null
+	female_translate?: [
+		number,
+		number,
+		number,
+	] | null
+	unknown_7F?: [
+		number,
+		number,
+	] | null
+	unknown_80?: [
+		number,
+		number,
+	] | null
+	unknown_81?: [
+		number,
+		number,
+	] | null
+	unknown_82?: [
+		number,
+		number,
+	] | null
+	quests?: [
+		number,
+		number,
+	][] | null
+	pickSizeShift?: number | null
+	bindLink_old?: number | null
+	bindTemplate_old?: number | null
+	ground_actions_cursor_0?: number | null
+	ground_actions_cursor_1?: number | null
+	ground_actions_cursor_2?: number | null
+	ground_actions_cursor_3?: number | null
+	ground_actions_cursor_4?: number | null
+	widget_actions_cursor_0?: number | null
+	widget_actions_cursor_1?: number | null
+	widget_actions_cursor_2?: number | null
+	widget_actions_cursor_3?: number | null
+	widget_actions_cursor_4?: number | null
+	dummy?: true | null
+	randomizeGroundPos?: true | null
+	combine_info_old?: number | null
+	combine_template_old?: number | null
+	combine_num_required?: number | null
+	combine_shard_name?: string | null
+	neverStackable?: true | null
+	unknown_A7?: true | null
+	unknown_A8?: true | null
+	unknown_B2?: true | null
+	big_value?: [
+		number,
+		number,
+	] | null
 	stack_info_0?: [
 		number,
 		number,
@@ -109,71 +215,14 @@ export type items = {
 		number,
 		number,
 	] | null
-	scale_0?: number | null
-	scale_1?: number | null
-	scale_2?: number | null
-	ambiance?: number | null
-	contrast?: number | null
-	team?: number | null
+	noteData?: number | null
+	noteTemplate?: number | null
 	loanId?: number | null
 	loanTemplate?: number | null
-	male_translate?: [
-		number,
-		number,
-		number,
-	] | null
-	female_translate?: [
-		number,
-		number,
-		number,
-	] | null
-	unknown_7F?: [
-		number,
-		number,
-	] | null
-	unknown_80?: [
-		number,
-		number,
-	] | null
-	unknown_81?: [
-		number,
-		number,
-	] | null
-	unknown_82?: [
-		number,
-		number,
-	] | null
-	quests?: [
-		number,
-		number,
-	][] | null
-	pickSizeShift?: number | null
 	bindLink?: number | null
 	bindTemplate?: number | null
-	ground_actions_cursor_0?: number | null
-	ground_actions_cursor_1?: number | null
-	ground_actions_cursor_2?: number | null
-	ground_actions_cursor_3?: number | null
-	ground_actions_cursor_4?: number | null
-	widget_actions_cursor_0?: number | null
-	widget_actions_cursor_1?: number | null
-	widget_actions_cursor_2?: number | null
-	widget_actions_cursor_3?: number | null
-	widget_actions_cursor_4?: number | null
-	dummy?: true | null
-	randomizeGroundPos?: true | null
 	combine_info?: number | null
 	combine_template?: number | null
-	combine_num_required?: number | null
-	combine_shard_name?: string | null
-	neverStackable?: true | null
-	unknown_A7?: true | null
-	unknown_A8?: true | null
-	unknown_B2?: true | null
-	big_value?: [
-		number,
-		number,
-	] | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,
