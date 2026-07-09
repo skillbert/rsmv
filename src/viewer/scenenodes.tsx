@@ -4,7 +4,7 @@ import { boundMethod } from 'autobind-decorator';
 import { CacheFileSource } from '../cache';
 import { MapRect, TileGrid, CombinedTileGrid, getTileHeight, rs2ChunkSize, classicChunkSize, RSMapChunkData } from '../3d/mapsquare';
 import { Euler, Group, PerspectiveCamera, Quaternion, Vector3 } from "three";
-import { cacheMajors } from "../constants";
+import { cacheMajors, internalNameFiles } from "../constants";
 import * as React from "react";
 import classNames from "classnames";
 import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomization, EquipSlot, slotNames, slotToKitFemale, slotToKitMale, writeAvatar } from "../3d/scene/avatar";
@@ -19,7 +19,7 @@ import { diffCaches, FileEdit } from "../scripts/cachediff";
 import { selectEntity, showModal } from "./jsonsearch";
 import { drawTexture, findImageBounds, makeImageData } from "../imgutils";
 import { avataroverrides } from "../../generated/avataroverrides";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton } from "./commoncontrols";
+import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, IdInputSearch, CanvasView, PasteButton, CopyButton, RawTextDisplay } from "./commoncontrols";
 import { items } from "../../generated/items";
 import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, npcToModel, playerDataToModel, playerToModel, SimpleModelDef, SimpleModelInfo, spotAnimToModel } from "../3d/scene";
 import fetch from "node-fetch";
@@ -59,18 +59,18 @@ function propOrDefault<T extends { [key: string]: number | string | boolean }>(v
 	return r;
 }
 
+type ModelBrowserState = { search: unknown, mode: LookupMode }
+
 export function ModelBrowser(p: { ctx: UIContext }) {
-
-	type state = { search: unknown, mode: LookupMode }
-
 	let [state, setMode] = React.useReducer((prev: any, v: LookupMode) => {
 		localStorage.rsmv_lastmode = v;
-		return { search: null, mode: v } as state;
+		return { search: null, mode: v } as ModelBrowserState;
 	}, null, () => {
 		let search: unknown = null;
-		try { search = JSON.parse(localStorage.rsmv_lastsearch ?? ""); } catch (e) { }
-		return { search, mode: localStorage.rsmv_lastmode } as state;
-	})
+		try { search = JSON.parse(localStorage.rsmv_lastsearch ?? ""); }
+		catch (e) { }
+		return { search, mode: localStorage.rsmv_lastmode } as ModelBrowserState;
+	});
 
 	const tabs: Record<LookupMode, string> = {
 		item: "Item",
@@ -466,6 +466,7 @@ function modeldefJsonToModel(cache: any, json: string): SimpleModelInfo<null, st
 
 	return {
 		id: json,
+		assetName: undefined,
 		info: null,
 		models: models,
 		anims: {},
@@ -1139,12 +1140,12 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 
 	let saveGltf = async () => {
 		let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
-		downloadBlob("model.glb", new Blob([file]));
+		downloadBlob("model.glb", new Blob([file as Uint8Array<ArrayBuffer>]));
 	}
 
 	let saveStl = async () => {
 		let file = await exportThreeJsStl(p.ctx.renderer.getModelNode());
-		downloadBlob("model.stl", new Blob([file]));
+		downloadBlob("model.stl", new Blob([file as Uint8Array<ArrayBuffer>]));
 	}
 
 	let clicktab = (v: typeof tab) => {
@@ -1275,6 +1276,13 @@ function ImageDataView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVide
 	)
 }
 
+type AsyncModelData<ID, T> = [
+	visible: SimpleModelInfo<T, ID> | null,
+	loadedModel: RSModel | null,
+	loadedId: ID | null,
+	setter: (id: ID) => void
+];
+
 function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T, ID>>) {
 	let pendingId = React.useRef<ID | null>(null);
 	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
@@ -1316,7 +1324,12 @@ function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: Th
 			}
 		}
 	}, [visible, ctx]);
-	return [visible, loadedModel, loadedId, setter] as [state: SimpleModelInfo<T> | null, model: RSModel | null, id: ID | null, setter: (id: ID) => void];
+	return [
+		visible,
+		loadedModel,
+		loadedId,
+		setter
+	] satisfies AsyncModelData<ID, T>;
 }
 
 type MaterialIshId = { mode: "material" | "underlay" | "overlay" | "texture", id: number };
@@ -1335,6 +1348,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 
 	let overlay: mapsquare_overlays | null = null;
 	let underlay: mapsquare_underlays | null = null;
+	let assetName: string | undefined = undefined;
 	if (reqid.mode == "overlay") {
 		overlay = sceneCache.engine.mapOverlays[reqid.id];
 		if (overlay.material) { matid = overlay.material; }
@@ -1344,6 +1358,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 		if (underlay.material) { matid = underlay.material; }
 		if (underlay.color) { color = underlay.color; }
 	} else if (reqid.mode == "material") {
+		assetName = await sceneCache.engine.rawsource.getInternalName(internalNameFiles.material, reqid.id);
 		matid = reqid.id;
 	} else if (reqid.mode == "texture") {
 		await addtex("diffuse", "original", reqid.id, false);
@@ -1374,6 +1389,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 		anims: {},
 		info: { overlay, underlay, texs, obj: json },
 		id: reqid,
+		assetName: undefined,
 		name: `${reqid.mode}:${reqid.id}`
 	});
 }
@@ -1413,6 +1429,7 @@ function SceneMaterialIsh(p: LookupModeProps) {
 						<ImageDataView img={img.img0} />
 					</div>
 				))}
+				{data?.assetName && <RawTextDisplay text={data?.assetName} />}
 				{data?.info.overlay && <JsonDisplay obj={data?.info.overlay} />}
 				{data?.info.underlay && <JsonDisplay obj={data?.info.underlay} />}
 				<JsonDisplay obj={data?.info.obj} />
@@ -1435,6 +1452,7 @@ function SceneRawModel(p: LookupModeProps) {
 			)}
 			{data && (
 				<div className="mv-sidebar-scroll">
+					<RawTextDisplay text={data?.assetName} />
 					<JsonDisplay obj={{ ...data?.info.modeldata, meshes: undefined }} />
 					<JsonDisplay obj={data?.info.info} />
 				</div>
@@ -1459,6 +1477,7 @@ function SceneLocation(p: LookupModeProps) {
 			)}
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<div className="mv-sidebar-scroll">
+				<RawTextDisplay text={data?.assetName} />
 				<JsonDisplay obj={data?.info} />
 			</div>
 		</React.Fragment>
@@ -1598,6 +1617,7 @@ function SceneItem(p: LookupModeProps) {
 			<div className="mv-sidebar-scroll">
 				<input type="button" className="sub-btn" value={enablecam ? "exit" : "Icon Camera"} onClick={e => setenablecam(!enablecam)} />
 				{enablecam && p.ctx && <ItemCameraMode ctx={p.ctx} meta={data?.info} centery={centery} />}
+				<RawTextDisplay text={data?.assetName} />
 				<JsonDisplay obj={data?.info} />
 			</div>
 			{/* <input type="button" className="sub-btn" value="history" onClick={gethistory} />
@@ -1626,6 +1646,7 @@ function SceneNpc(p: LookupModeProps) {
 				</LabeledInput>
 			)}
 			<div className="mv-sidebar-scroll">
+				<RawTextDisplay text={data?.assetName} />
 				<JsonDisplay obj={data?.info} />
 			</div>
 		</React.Fragment>
@@ -1645,6 +1666,7 @@ function SceneSpotAnim(p: LookupModeProps) {
 				</React.Fragment>
 			)}
 			<div className="mv-sidebar-scroll">
+				<RawTextDisplay text={data?.assetName} />
 				<JsonDisplay obj={data?.info} />
 			</div>
 		</React.Fragment>
@@ -2558,7 +2580,11 @@ function ScriptsUI(p: LookupModeProps) {
 	);
 }
 
-type LookupModeProps = { initialId: unknown, ctx: UIContextReady | null, partial: UIContext }
+type LookupModeProps = {
+	initialId: unknown,
+	ctx: UIContextReady | null,
+	partial: UIContext
+}
 
 const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {
 	model: SceneRawModel,

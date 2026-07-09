@@ -253,9 +253,48 @@ export function archiveToFileId(major: number, minor: number, subfile: number) {
 	return minor * archsize + subfile;
 }
 
+export function parseFileNameList(buffer: Buffer) {
+	let index = 0;
+	let version = buffer.readUInt32BE(index);
+	index += 4;
+	let hasexplicitindex = (version == 2);
+	let nentries = buffer.readUInt32BE(index);
+	index += 4;
+	let textoffset = index + nentries * (4 + (hasexplicitindex ? 4 : 0));
+	let res = new Map<number, string>();
+	for (let i = 0; i < nentries; i++) {
+		let fileid = i;
+		if (hasexplicitindex) {
+			fileid = buffer.readUInt32BE(index);
+			index += 4;
+		}
+		let stringoffset = textoffset + buffer.readUInt32BE(index);
+		index += 4;
+		let endoffset = stringoffset;
+		while (endoffset < buffer.length && buffer[endoffset] != 0) { endoffset++; }
+		let name = buffer.toString("latin1", stringoffset, endoffset);
+		res.set(fileid, name);
+	}
+	return res;
+}
 
 export abstract class CacheFileSource {
 	decodeArgs: Record<string, any> = {};
+	nameFiles: Map<number, Map<number, string>> = new Map();
+
+	async getInternalName(namefile: number, index: number) {
+		let names = this.nameFiles.get(namefile);
+		if (names === undefined) {
+			let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
+				console.log("failed to load filename file", namefile, e);
+				return null;
+			});
+			names = (file ? parseFileNameList(file) : new Map<number, string>());
+			this.nameFiles.set(namefile, names);
+		}
+		return names.get(index);
+	}
+
 	getCacheMeta(): { name: string, descr: string, timestamp: Date, otherCaches?: Record<string, string> } {
 		return { name: "unkown", descr: "", timestamp: new Date(0) };
 	}

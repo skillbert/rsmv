@@ -389,6 +389,7 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 		anims,
 		info: { avatar, gender, npc: npc, kitcolors: kitdata, buffer },
 		id: buffer,
+		assetName: undefined,
 		name: "player"
 	});
 }

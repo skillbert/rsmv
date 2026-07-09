@@ -80,6 +80,10 @@ export function JsonDisplay(p: { obj: any }) {
 	return (<pre className="mv-json-block">{prettyJson(p.obj, { maxLength: 32 })}</pre>);
 }
 
+export function RawTextDisplay(p: { text: string | undefined | null }) {
+	return (<pre className="mv-json-block">{p.text ?? ""}</pre>);
+}
+
 export function IdInput({ initialid, onChange }: { initialid?: number, onChange: (id: number) => void }) {
 	let [idstate, setId] = React.useState(initialid ?? 0);
 	let stale = React.useRef(false);

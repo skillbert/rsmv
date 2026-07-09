@@ -45,9 +45,48 @@ export const cacheMajors = {
 	fontmetrics: 58,
 	vectorfonts: 59,
 	cutscenes: 66,
+	filenames: 67,
 
 	index: 255
 } as const;
+
+export const internalNameFiles = {
+	component: 0,
+	bas: 5,
+	category: 9,
+	cursor: 12,
+	dbrow: 14,
+	dbtable: 15,
+	enum: 16,
+	headbar: 20,
+	hitmark: 21,
+	interface: 24,
+	inv: 25,
+	loc: 28,
+	material: 32,
+	model: 34,
+	npc: 35,
+	obj: 36,
+	param: 37,
+	quest: 41,
+	seq: 44,
+	graphic: 49,
+	struct: 50,
+	var_clan: 55,
+	var_clan_setting: 56,
+	var_client: 57,
+	var_npc: 59,
+	var_object: 60,
+	var_player: 61,
+	sound: 64,
+	midi: 69,
+	var_player_group: 80,
+	achievement: 89,
+	fontmetrics: 90,
+	stylesheet: 92,
+	ui_anim_curve: 96,
+	ui_anim: 97,
+}
 
 //represents the largest build number that this application is aware off
 //is used as default value when a cache is considered "current"

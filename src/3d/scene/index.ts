@@ -3,7 +3,7 @@ import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import { ThreejsSceneCache, constModelsIds } from '../modeltothree';
 import { ModelModifications } from '../../utils';
 import { resolveMorphedObject } from '../mapsquare';
-import { cacheConfigPages, cacheMajors, lastClassicBuildnr } from "../../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles, lastClassicBuildnr } from "../../constants";
 import { animgroupconfigs } from "../../../generated/animgroupconfigs";
 import fetch from "node-fetch";
 import { MaterialData } from "../materials/jmat";
@@ -21,7 +21,8 @@ export type SimpleModelInfo<T = object, ID = string> = {
 	anims: Record<string, number>,
 	info: T,
 	id: ID,
-	name: string
+	name: string,
+	assetName: string | undefined
 }
 
 //typescript helper to force type inference
@@ -31,6 +32,7 @@ export function castModelInfo<T, ID>(info: SimpleModelInfo<T, ID>) {
 
 export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 	let modeldata = await cache.getModelData(id);
+	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.model, id);
 	//getting the same file a 2nd time to get the full json
 	let info: any;
 	if (cache.modelType == "classic") {
@@ -47,6 +49,7 @@ export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 		anims: {},
 		info: { modeldata, info },
 		id,
+		assetName,
 		name: `model:${id}`
 	});
 }
@@ -84,6 +87,7 @@ export async function npcBodyToModel(cache: ThreejsSceneCache, id: number) {
 
 export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, head: boolean }) {
 	let npc = parse.npc.read(await cache.engine.getGameFile("npcs", id.id), cache.engine.rawsource);
+	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.npc, id.id);
 	let anims: Record<string, number> = {};
 	let modelids = (id.head ? npc.headModels : npc.models) ?? [];
 	if (!id.head && npc.animation_group) {
@@ -100,12 +104,14 @@ export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, hea
 		models,
 		anims,
 		id,
+		assetName,
 		name: npc.name ?? `npc:${id.id}`
 	});
 }
 
 export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 	let animdata = parse.spotAnims.read(await cache.engine.getGameFile("spotanims", id), cache.engine.rawsource);
+
 	let mods: ModelModifications = {};
 	if (animdata.replace_colors) { mods.replaceColors = animdata.replace_colors; }
 	if (animdata.replace_materials) { mods.replaceMaterials = animdata.replace_materials; }
@@ -117,12 +123,14 @@ export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
 		anims,
 		info: animdata,
 		id,
+		assetName: undefined,
 		name: `spotanim:${id}`
 	});
 }
 
 export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	let { morphedloc } = await resolveMorphedObject(cache.engine, id);
+	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.loc, id);
 	let mods: ModelModifications = {};
 	let anims: Record<string, number> = {};
 	let models: SimpleModelDef = [];
@@ -146,11 +154,13 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 		anims,
 		info: morphedloc,
 		id,
+		assetName,
 		name: morphedloc.name ?? `loc:${id}`
 	});
 }
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	let item = parse.item.read(await cache.engine.getGameFile("items", id), cache.engine.rawsource);
+	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.obj, id);
 	if (!item.baseModel && item.noteTemplate) {
 		item = parse.item.read(await cache.engine.getGameFile("items", item.noteTemplate), cache.engine.rawsource);
 	}
@@ -164,6 +174,7 @@ export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 		anims: {},
 		info: item,
 		id,
+		assetName,
 		name: item.name ?? `item:${id}`
 	});
 }
@@ -174,6 +185,7 @@ export async function materialToModel(sceneCache: ThreejsSceneCache, id: number)
 		replaceMaterials: [[0, id]]
 	};
 	let mat = sceneCache.engine.getMaterialData(id);
+	let assetName = await sceneCache.engine.rawsource.getInternalName(internalNameFiles.material, id);
 	let texs: Record<string, { texid: number, filesize: number, img0: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap }> = {};
 	let addtex = async (type: keyof MaterialData["textures"], name: string, texid: number) => {
 		let tex = await sceneCache.getTextureFile(type, texid, mat.stripDiffuseAlpha && name == "diffuse");
@@ -191,6 +203,7 @@ export async function materialToModel(sceneCache: ThreejsSceneCache, id: number)
 		anims: {},
 		info: { texs, obj: mat },
 		id: id,
+		assetName,
 		name: `material:${id}`
 	});
 }
