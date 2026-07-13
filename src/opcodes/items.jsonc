@@ -8,7 +8,7 @@
 	"0x06": { "name":                          "rotation_1", "read": "unsigned short" },
 	"0x07": { "name":                    "modelTranslate_0", "read": "short" },
 	"0x08": { "name":                    "modelTranslate_1", "read": "short" },
-	"0x09": { "name":                          "unknown_09", "read": "true" },
+	"0x09": { "name":                       "baseModelList", "read": ["array","ubyte","item_modelid"] },
 	"0x0A": { "name":                          "unknown_0A", "read": "ushort" },
 	"0x0B": { "name":                         "stackable_1", "read": "true" },
 	"0x0C": { "name":                               "value", "read": "int" },
@@ -100,6 +100,7 @@
 	"0xA8": { "name":                          "unknown_A8", "read": "true" },
 	"0xB2": { "name":                          "unknown_B2", "read": "true" },//seems to always be set when config has a "big_Value"
 	"0xB5": { "name":                           "big_value", "read": ["tuple","int","int"] },//to be comfirmed if this is int64, or int32*1e9+int32 like the coin pouch is
+	"0xB6": { "name":                        "noteDataIcon", "read": "unsigned tribyte" },
 	"0xBE": { "name":                        "stack_info_0", "read": [ "tuple", "unsigned tribyte", "unsigned short" ] },
 	"0xBF": { "name":                        "stack_info_1", "read": [ "tuple", "unsigned tribyte", "unsigned short" ] },
 	"0xC0": { "name":                        "stack_info_2", "read": [ "tuple", "unsigned tribyte", "unsigned short" ] },

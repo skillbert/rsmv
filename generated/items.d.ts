@@ -12,7 +12,7 @@ export type items = {
 	rotation_1?: number | null
 	modelTranslate_0?: number | null
 	modelTranslate_1?: number | null
-	unknown_09?: true | null
+	baseModelList?: (number|number)[] | null
 	unknown_0A?: number | null
 	stackable_1?: true | null
 	value?: number | null
@@ -175,6 +175,7 @@ export type items = {
 		number,
 		number,
 	] | null
+	noteDataIcon?: number | null
 	stack_info_0?: [
 		number,
 		number,

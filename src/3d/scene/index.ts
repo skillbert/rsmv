@@ -167,7 +167,13 @@ export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	let mods: ModelModifications = {};
 	if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
 	if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
-	let models = (item.baseModel ? [{ modelid: item.baseModel, mods }] : [])
+	let models: SimpleModelDef = [];
+	if (item.baseModel) {
+		models.push({ modelid: item.baseModel, mods });
+	}
+	if (item.baseModelList) {
+		models.push(...item.baseModelList.map(q => ({ modelid: q, mods })));
+	}
 
 	return castModelInfo({
 		models,
