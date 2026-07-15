@@ -10,7 +10,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 	let flags = { ...decoderflags };
 	if (args.batched || args.batchlimit != -1) { flags.batched = "true"; }
 	let mode = modeconstr(flags);
-	await mode.prepareDump(outdir, source);
+	let decodectx = await mode.prepareDump(outdir, source);
 
 	let batchMaxFiles = args.batchlimit;
 	let batchSubfile = args.batched;
@@ -60,7 +60,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
 
 			try {
-				var res = mode.read(file.buffer, logicalid, source);
+				var res = mode.read(file.buffer, logicalid, source, decodectx);
 				if (res instanceof Promise) { res = await res; }
 			} catch (e) {
 				output.log(`file ${logicalid.join(".")}: ${e}`);

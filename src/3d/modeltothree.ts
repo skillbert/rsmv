@@ -356,6 +356,7 @@ export class EngineCache extends CachingFileSource {
 			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
 				await mode.prepareDump?.(this);
+				let namelist = (typeof mode.namefile == "number" ? await this.getInternalNameList(mode.namefile) : null);
 				let allfiles = await mode.lookup.logicalRangeToFiles(this, [0, 0], [Infinity, Infinity]);
 				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 				let files: any[] = [];
@@ -371,12 +372,18 @@ export class EngineCache extends CachingFileSource {
 					let logicalid = mode.lookup.fileToLogical(this, fileid.index.major, fileid.index.minor, file.fileid);
 					let res = mode.parser.read(file.buffer, this.rawsource);
 					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
+					let filename = namelist?.get(logicalid[0]);
+					if (filename) { res.$filename = filename; }
 					files.push(res);
 				}
 
 				return files;
 			})();
-			cached = { files, schema: mode.parser.parser.getJsonSchema() }
+			let schema = mode.parser.parser.getJsonSchema();
+			if (typeof schema == "object" && schema.properties) {
+				schema.properties.$filename = { oneOf: [{ type: "string" }, { type: "null" }] };
+			}
+			cached = { files, schema }
 			this.jsonSearchCache.set(modename, cached);
 		}
 		return cached;
@@ -509,7 +516,7 @@ async function convertMaterialToThree(source: ThreejsSceneCache, material: Mater
 			//threejs expects g=metal,b=roughness, rs has r=metal,g=roughness
 			for (let i = 0; i < compound.data.length; i += 4) {
 				compoundmapped.data[i + 1] = compound.data[i + 1];
-				compoundmapped.data[i + 2] = compound.data[i + 0];
+				compoundmapped.data[i + 2] = Math.min(200, compound.data[i + 0]);//cap to prevent threejs render bug making it black
 				compoundmapped.data[i + 3] = 255;
 			}
 			let tex = new THREE.DataTexture(compoundmapped.data, compoundmapped.width, compoundmapped.height, THREE.RGBAFormat);

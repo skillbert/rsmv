@@ -282,7 +282,7 @@ export abstract class CacheFileSource {
 	decodeArgs: Record<string, any> = {};
 	nameFiles: Map<number, Map<number, string>> = new Map();
 
-	async getInternalName(namefile: number, index: number) {
+	async getInternalNameList(namefile: number) {
 		let names = this.nameFiles.get(namefile);
 		if (names === undefined) {
 			let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
@@ -292,6 +292,10 @@ export abstract class CacheFileSource {
 			names = (file ? parseFileNameList(file) : new Map<number, string>());
 			this.nameFiles.set(namefile, names);
 		}
+		return names;
+	}
+	async getInternalName(namefile: number, index: number) {
+		let names = await this.getInternalNameList(namefile);
 		return names.get(index);
 	}
 

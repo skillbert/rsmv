@@ -1,5 +1,5 @@
 
-import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
+import { cacheConfigPages, cacheMajors, cacheMapFiles, internalNameFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse, FileParser } from "../opdecoder";
 import { Archive, archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { cacheFilenameHash, constrainedMap } from "../utils";
@@ -270,20 +270,20 @@ function rootindexfileIndex(): DecodeLookup {
 	}
 }
 
-function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump?: ((source: CacheFileSource) => Promise<void> | void) | null, prepareParser?: ((source: CacheFileSource) => Promise<void> | void) | null): DecodeModeFactory {
-	let constr: DecodeModeFactory = (args: Record<string, string>) => {
+function standardFile(mode: JsonBasedFile): DecodeModeFactory {
+	let constr = ((args: Record<string, string>) => {
 		let singleschemaurl = "";
 		let batchschemaurl = "";
 		return {
-			...lookup,
+			...mode.lookup,
 			ext: "json",
-			parser: parser,
+			parser: mode.parser,
 			async prepareDump(output, source) {
-				await prepareParser?.(source);
-				await prepareDump?.(source);
+				await mode.prepareParser?.(source);
+				await mode.prepareDump?.(source);
 				let name = Object.entries(cacheFileDecodeModes).find(q => q[1] == constr);
 				if (!name) { throw new Error(); }
-				let schema = parser.parser.getJsonSchema();
+				let schema = mode.parser.parser.getJsonSchema();
 				//need seperate files since vscode doesn't seem to support hastag paths in the uri
 				if (args.batched == "true") {
 					let batchschema: JSONSchema6Definition = {
@@ -300,22 +300,24 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 					output.writeFile(relurl, prettyJson(schema));
 					singleschemaurl = relurl;
 				}
+				return (typeof mode.namefile == "number" ? source.getInternalNameList(mode.namefile) : undefined);
 			},
-			prepareWrite(source) {
-				return prepareParser?.(source);
+			async prepareWrite(source) {
+				await mode.prepareParser?.(source);
 			},
-			read(b, id, source) {
-				let obj = parser.read(b, source, { keepbuffers: args.keepbuffers });
+			read(b, id, source, ctx) {
+				let obj = mode.parser.read(b, source, { keepbuffers: args.keepbuffers });
 
-				if (args.batched) {
-					obj.$fileid = (id.length == 1 ? id[0] : id);
-				} else {
+				let filename = ctx?.get(id[0]);
+				if (filename) { obj.$filename = filename; }
+				obj.$fileid = (id.length == 1 ? id[0] : id);
+				if (!args.batched) {
 					obj.$schema = singleschemaurl;
 				}
 				return prettyJson(obj);
 			},
 			write(b, id, source) {
-				return parser.write(JSON.parse(b.toString("utf8")), source.getDecodeArgs());
+				return mode.parser.write(JSON.parse(b.toString("utf8")), source.getDecodeArgs());
 			},
 			combineSubs(b) {
 				return `{"$schema":"${batchschemaurl}","files":[\n\n${b.join("\n,\n\n")}]}`;
@@ -325,12 +327,12 @@ function standardFile(parser: FileParser<any>, lookup: DecodeLookup, prepareDump
 				keepbuffers: { text: "Keep binary buffers (can be very large)", type: "boolean" }
 			}
 		}
-	}
+	}) satisfies DecodeModeFactory<string, Map<number, string> | undefined>;
 
 	return constr;
 }
 
-export type DecodeModeFactory = (flags: Record<string, string>) => DecodeMode;
+export type DecodeModeFactory<T = Buffer | string, CTX = any> = (flags: Record<string, string>) => DecodeMode<T, CTX>;
 
 type FileId = { major: number, minor: number, subid: number };
 
@@ -344,11 +346,11 @@ type DecodeLookup = {
 	logicalToFile(source: CacheFileSource, id: LogicalIndex): FileId
 }
 
-export type DecodeMode<T = Buffer | string> = {
+export type DecodeMode<T = Buffer | string, CTX = void> = {
 	ext: string,
 	parser?: FileParser<any>,
-	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource): T | Promise<T>,
-	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<void> | void,
+	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource, ctx: CTX | undefined): T | Promise<T>,
+	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<CTX> | CTX,
 	prepareWrite(source: CacheFileSource): Promise<void> | void,
 	write(file: Buffer, fileid: LogicalIndex, source: CacheFileSource): Buffer | Promise<Buffer>,
 	combineSubs(files: T[]): T,
@@ -640,39 +642,40 @@ const decodeMeshHash: DecodeModeFactory = () => {
 export type JsonBasedFile = {
 	parser: FileParser<any>,
 	lookup: DecodeLookup,
+	namefile?: number,
 	prepareParser?: (source: CacheFileSource) => Promise<void> | void,
 	prepareDump?: (source: CacheFileSource) => Promise<void> | void
 }
 
 export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	framemaps: { parser: parse.framemaps, lookup: chunkedIndex(cacheMajors.framemaps) },
-	items: { parser: parse.item, lookup: chunkedIndex(cacheMajors.items) },
-	enums: { parser: parse.enums, lookup: chunkedIndex(cacheMajors.enums) },
-	npcs: { parser: parse.npc, lookup: chunkedIndex(cacheMajors.npcs) },
-	soundjson: { parser: parse.audio, lookup: blacklistIndex(standardIndex(cacheMajors.sounds), [{ major: cacheMajors.sounds, minor: 0 }]) },
+	items: { parser: parse.item, namefile: internalNameFiles.obj, lookup: chunkedIndex(cacheMajors.items) },
+	enums: { parser: parse.enums, namefile: internalNameFiles.enum, lookup: chunkedIndex(cacheMajors.enums) },
+	npcs: { parser: parse.npc, namefile: internalNameFiles.npc, lookup: chunkedIndex(cacheMajors.npcs) },
+	soundjson: { parser: parse.audio, namefile: internalNameFiles.sound, lookup: blacklistIndex(standardIndex(cacheMajors.sounds), [{ major: cacheMajors.sounds, minor: 0 }]) },
 	musicjson: { parser: parse.audio, lookup: blacklistIndex(standardIndex(cacheMajors.music), [{ major: cacheMajors.music, minor: 0 }]) },
-	objects: { parser: parse.object, lookup: chunkedIndex(cacheMajors.objects) },
-	achievements: { parser: parse.achievement, lookup: chunkedIndex(cacheMajors.achievements) },
-	structs: { parser: parse.structs, lookup: chunkedIndex(cacheMajors.structs) },
-	sequences: { parser: parse.sequences, lookup: chunkedIndex(cacheMajors.sequences) },
+	objects: { parser: parse.object, namefile: internalNameFiles.loc, lookup: chunkedIndex(cacheMajors.objects) },
+	achievements: { parser: parse.achievement, namefile: internalNameFiles.achievement, lookup: chunkedIndex(cacheMajors.achievements) },
+	structs: { parser: parse.structs, namefile: internalNameFiles.struct, lookup: chunkedIndex(cacheMajors.structs) },
+	sequences: { parser: parse.sequences, namefile: internalNameFiles.seq, lookup: chunkedIndex(cacheMajors.sequences) },
 	spotanims: { parser: parse.spotAnims, lookup: chunkedIndex(cacheMajors.spotanims) },
-	materials: { parser: parse.materials, lookup: chunkedIndex(cacheMajors.materials) },
+	materials: { parser: parse.materials, namefile: internalNameFiles.material, lookup: chunkedIndex(cacheMajors.materials) },
 	oldmaterials: { parser: parse.oldmaterials, lookup: singleMinorIndex(cacheMajors.materials, 0) },
 	quickchatcats: { parser: parse.quickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
 	quickchatlines: { parser: parse.quickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
-	dbtables: { parser: parse.dbtables, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables) },
-	dbrows: { parser: parse.dbrows, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows) },
+	dbtables: { parser: parse.dbtables, namefile: internalNameFiles.dbtable, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables) },
+	dbrows: { parser: parse.dbrows, namefile: internalNameFiles.dbrow, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows) },
 
 	overlays: { parser: parse.mapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
 	identitykit: { parser: parse.identitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },
-	params: { parser: parse.params, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.params) },
+	params: { parser: parse.params, namefile: internalNameFiles.param, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.params) },
 	underlays: { parser: parse.mapsquareUnderlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays) },
 	mapscenes: { parser: parse.mapscenes, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes) },
 	environments: { parser: parse.environments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
-	animgroupconfigs: { parser: parse.animgroupConfigs, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
+	animgroupconfigs: { parser: parse.animgroupConfigs, namefile: internalNameFiles.bas, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
 	maplabels: { parser: parse.maplabels, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
 	mapzones: { parser: parse.mapZones, lookup: singleMinorIndex(cacheMajors.worldmap, 0) },
-	cutscenes: { parser: parse.cutscenes, lookup: noArchiveIndex(cacheMajors.cutscenes) },
+	cutscenes: { parser: parse.cutscenes, namefile: internalNameFiles.ui_anim, lookup: noArchiveIndex(cacheMajors.cutscenes) },
 
 	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
 	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },
@@ -685,13 +688,13 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	maplocations_old: { parser: parse.mapsquareLocations, lookup: oldWorldmapIndex("l") },
 
 	frames: { parser: parse.frames, lookup: standardIndex(cacheMajors.frames) },
-	models: { parser: parse.models, lookup: noArchiveIndex(cacheMajors.models) },
+	models: { parser: parse.models, namefile: internalNameFiles.model, lookup: noArchiveIndex(cacheMajors.models) },
 	oldmodels: { parser: parse.oldmodels, lookup: noArchiveIndex(cacheMajors.oldmodels) },
 	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
 	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
 	oldproctextures: { parser: parse.oldproctexture, lookup: singleMinorIndex(cacheMajors.texturesOldPng, 0) },
-	interfaces: { parser: parse.interfaces, lookup: standardIndex(cacheMajors.interfaces) },
-	fontmetrics: { parser: parse.fontmetrics, lookup: standardIndex(cacheMajors.fontmetrics) },
+	interfaces: { parser: parse.interfaces, namefile: internalNameFiles.interface, lookup: standardIndex(cacheMajors.interfaces) },
+	fontmetrics: { parser: parse.fontmetrics, namefile: internalNameFiles.fontmetrics, lookup: standardIndex(cacheMajors.fontmetrics) },
 
 	classicmodels: { parser: parse.classicmodels, lookup: singleMinorIndex(0, classicGroups.models) },
 
@@ -770,7 +773,7 @@ const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({
 });
 
 const cacheFileDecodersJson = (Object.fromEntries(Object.entries(cacheFileJsonModes)
-	.map(([k, v]) => [k, standardFile(v.parser, v.lookup, v.prepareDump, v.prepareParser)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+	.map(([k, v]) => [k, standardFile(v)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 
 export const cacheFileDecodeGroups = {
 	image: cacheFileDecodersImage,

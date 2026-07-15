@@ -27,7 +27,7 @@ export function BlobImage(p: { file: Uint8Array, ext: string, fillHeight?: boole
 	let urlref = React.useRef("");
 	let ref = React.useCallback((el: HTMLImageElement | null) => {
 		if (el) {
-			let blob = new Blob([p.file], { type: `image/${p.ext == "svg" ? "svg+xml" : p.ext}` });
+			let blob = new Blob([p.file as Uint8Array<ArrayBuffer>], { type: `image/${p.ext == "svg" ? "svg+xml" : p.ext}` });
 			let url = URL.createObjectURL(blob);
 			urlref.current = url;
 			el.src = url;
@@ -49,7 +49,7 @@ export function BlobAudio(p: { file: Uint8Array, autoplay: boolean }) {
 
 	let ref = React.useCallback((el: HTMLAudioElement | null) => {
 		if (el) {
-			let blob = new Blob([p.file], { type: `audio/ogg` });
+			let blob = new Blob([p.file as Uint8Array<ArrayBuffer>], { type: `audio/ogg` });
 			let url = URL.createObjectURL(blob);
 			urlref.current = url;
 			el.src = url;
@@ -106,8 +106,12 @@ export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheF
 	let [search, setSearch] = React.useState("" + (p.initialid ?? ""));
 	let [id, setidstate] = React.useState(p.initialid ?? 0);
 	let [searchopen, setSearchopen] = React.useState(false);
-	const filters: JsonSearchFilter[] = [{ path: ["name"], search: search }];
-	let { loaded, filtered, getprop } = useJsonCacheSearch(p.cache, p.mode, filters, !searchopen);
+	const friendlynamefilter: JsonSearchFilter[] = [{ path: ["name"], search: search }];
+	const internalnamefilter: JsonSearchFilter[] = [{ path: ["$filename"], search: search }];
+	let friendlyname = useJsonCacheSearch(p.cache, p.mode, friendlynamefilter, !searchopen);
+	let internalname = useJsonCacheSearch(p.cache, p.mode, internalnamefilter, !searchopen);
+	let anyloaded = friendlyname.loaded || internalname.loaded;
+	let bothloaded = friendlyname.loaded && internalname.loaded;
 
 	const submitid = (v: number) => {
 		setidstate(v);
@@ -134,13 +138,17 @@ export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheF
 				<input type="text" className="mv-searchbar-input" spellCheck="false" value={search} onChange={e => setSearchText(e.currentTarget.value)} />
 				<input type="submit" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
 			</form>
-			{searchopen && !loaded && (
+			{searchopen && !bothloaded && (
 				<div>Loading...</div>
 			)}
-			{searchopen && loaded && (
+			{searchopen && anyloaded && (
 				<div className="mv-sidebar-scroll">
-					{filtered.slice(0, 100).map((q, i) => (
-						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {getprop(q, ["name"], 0).next().value}</div>
+					{friendlyname.filtered.slice(0, 100).map((q, i) => (
+						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {q.name}</div>
+					))}
+					<hr />
+					{internalname.filtered.slice(0, 100).map((q, i) => (
+						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {q.$filename}</div>
 					))}
 				</div>
 			)}
