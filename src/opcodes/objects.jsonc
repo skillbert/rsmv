@@ -99,6 +99,9 @@
 	"0x69": { "name":                      "invertMapScene", "read": "true" },
 	"0x6A": { "name":                          "headModels", "read": [ "array", ["struct", ["model", "varuint"], ["unknown_2", "unsigned byte"]] ] },
 	"0x6B": { "name":                         "mapFunction", "read": "unsigned short" },
+	"0x6C": { "name":                          "unknown_6C", "read": "true" },
+	"0x6D": { "name":                          "unknown_6D", "read": "true" },
+	"0x6E": { "name":                          "unknown_6E", "read": "true" },
 	"0x71": { "name":                          "unknown_71", "read": "unsigned byte" },
 	"0x96": { "name":                    "members_action_1", "read": "string" },
 	"0x97": { "name":                    "members_action_2", "read": "string" },
@@ -138,5 +141,6 @@
 	"0xCB": { "name":						   "unknown_CB", "read": "true" },
 	"0xCC": { "name":						   "unknown_CC", "read": ["array","ubyte",["buffer",27,"hex"]] },
 	"0xCD": { "name":						   "unknown_CD", "read": "modelmorphs" },
+	"0xCE": { "name":                          "unknown_CE", "read": [ "array", "ushort", "ubyte" ] },
 	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }
