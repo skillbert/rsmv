@@ -132,6 +132,9 @@ export type objects = {
 		unknown_2: number,
 	}[] | null
 	mapFunction?: number | null
+	unknown_6C?: true | null
+	unknown_6D?: true | null
+	unknown_6E?: true | null
 	unknown_71?: number | null
 	members_action_1?: string | null
 	members_action_2?: string | null
@@ -238,6 +241,7 @@ export type objects = {
 		}[] | null,
 		default: number,
 	} | null
+	unknown_CE?: number[] | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,
