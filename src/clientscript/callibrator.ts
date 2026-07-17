@@ -37,14 +37,16 @@ export type StackDiffEquation = {
 //TODO move to file
 let varInfoParser = new FileParser<{ type: number }>({
     "0x03": { "name": "type", "read": "ubyte" },
-    "0x04": { "name": "0x04", "read": "ubyte" },
-    "0x07": { "name": "0x07", "read": true },
-    "0x6e": { "name": "0x6e", "read": "ushort" },
+    "0x04": { "name": "lifetime", "read": "ubyte" },
+    "0x07": { "name": "domaindefault", "read": false },
+    "0x08": { "name": "wikisync", "read": true },
+    "0x6e": { "name": "clientcode", "read": "ushort" },
 });
 
 var varbitInfoParser = new FileParser<{ varid: number, bits: [number, number] }>({
     "0x01": { "name": "varid", "read": "utribyte" },//[8bit domain][16bit id] read as tribyte since thats also how we read pushvar/popvar imm
-    "0x02": { "name": "bits", "read": ["tuple", "ubyte", "ubyte"] }
+    "0x02": { "name": "bits", "read": ["tuple", "ubyte", "ubyte"] },
+    "0x10": { "name": "wikisync", "read": true },
 });
 
 export class OpcodeInfo {
