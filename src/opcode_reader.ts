@@ -655,7 +655,7 @@ function flipBufferEndianness(bytes: Uint8Array, bytesPerElement: number) {
 			bytes[i + 2] = b;
 			bytes[i + 3] = a;
 		}
-	} else { 
+	} else {
 		throw new Error("unsupported BYTES_PER_ELEMENT " + bytesPerElement);
 	}
 }
@@ -726,18 +726,28 @@ function arrayParser(args: unknown[], parent: ChunkParentCallback, typedef: Type
 	let r: ChunkParser = {
 		read(state) {
 			let len = lengthtype.read(state);
+			let ctx = { $index: 0, $length: len };
+			state.hiddenstack.push(ctx);
+			state.stack.push({});
 			let r: any[] = [];
 			for (let i = 0; i < len; i++) {
+				ctx.$index = i;
 				r.push(subtype.read(state));
 			}
+			state.hiddenstack.pop();
+			state.stack.pop();
 			return r;
 		},
 		write(state, value) {
 			if (!Array.isArray(value)) { throw new Error("array expected"); }
 			lengthtype.write(state, value.length);
+			state.stack.push({});
+			state.hiddenstack.push({ $index: 0, $length: value.length });
 			for (let i = 0; i < value.length; i++) {
 				subtype.write(state, value[i]);
 			}
+			state.hiddenstack.pop();
+			state.stack.pop();
 		},
 		getTypescriptType(indent) {
 			return `${subtype.getTypescriptType(indent)}[]`;
@@ -758,9 +768,15 @@ function arrayParser(args: unknown[], parent: ChunkParentCallback, typedef: Type
 			}
 		});
 	}
-	const resolvePropReference = function (name, child) {
+	const resolvePropReference: ChunkParentCallback = function (name, child) {
+		if (name == "$index" || name == "$length") {
+			return {
+				stackdepth: child.stackdepth + 1,
+				resolve(v, old) { throw new Error("not implemented") }
+			}
+		}
 		return buildReference(name, parent, {
-			stackdepth: child.stackdepth,
+			stackdepth: child.stackdepth + 1,
 			resolve(v, old) {
 				if (!Array.isArray(v)) { throw new Error("array expected"); }
 				//possibly do this for all elements in the array if needed and allowed by performance
@@ -875,6 +891,10 @@ function literalValueParser(constvalue: unknown) {
 function referenceValueParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
 	let read = (state: SharedEncoderState) => {
 		let value = ref.read(state);
+		if (indexgetter) {
+			let index = indexgetter.read(state);
+			value = value[index];
+		}
 		if (minbit != -1) {
 			value = (value >> minbit) & ~((~0) << bitlength);
 		}
@@ -902,10 +922,15 @@ function referenceValueParser(args: unknown[], parent: ChunkParentCallback, type
 	if (typeof args[0] != "string") { throw new Error("ref propname expected"); }
 	let propname = args[0];
 	let [minbit, bitlength] = [-1, -1];
+	let indexgetter: ReturnType<typeof refgetter> | null = null;
 	if (args[1]) {
 		if (Array.isArray(args[1]) && args[1].length == 2 && typeof args[1][0] == "number" && typeof args[1][1] == "number") {
 			minbit = args[1][0];
 			bitlength = args[1][1];
+		} else if (typeof args[1] == "string") {
+			indexgetter = refgetter(parent, args[1], (v, old) => {
+				return old;
+			});
 		} else {
 			throw new Error("second argument for ref should be [minbit,bitlen] pair");
 		}
@@ -922,6 +947,7 @@ function referenceValueParser(args: unknown[], parent: ChunkParentCallback, type
 			return v;
 		}
 	});
+
 
 	return r;
 }

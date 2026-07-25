@@ -6,12 +6,11 @@ export type dbrows = {
 	unk01?: {
 		cols: number,
 		columndata: {
-			id: number,
+			columnid: number,
 			flags: number,
-			columns: {
-				type: number,
-				value: (string|number)[],
-			}[],
+			subcount: number,
+			subtypes: number[],
+			rows: (string|number)[][],
 		}[],
 	} | null
 	table?: number | null
