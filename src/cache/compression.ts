@@ -1,18 +1,44 @@
 import { simplexteadecrypt } from "../libs/xtea";
 
+
+let compressiontimes = {
+	bzip2: 0,
+	lzma: 0,
+	zlib: 0,
+	zlibsqlite: 0,
+};
+
+globalThis.compressiontimes = compressiontimes;
+
 //decompress data as it comes from the server
 export function decompress(input: Buffer, key?: Uint32Array) {
 	switch (input.readUInt8(0x0)) {
 		case 0:
 			return _uncompressed(input);
-		case 1:
-			return _bz2(input);
-		case 2:
-			return _zlib(input, key);
-		case 3:
-			return _lzma(input);
-		case 0x5a: //0x5a4c4201
-			return _zlibSqlite(input);
+		case 1: {
+			let t = performance.now();
+			let output = _bz2_stream(input);
+			compressiontimes.bzip2 += performance.now() - t;
+			return output;
+		}
+		case 2: {
+			let t = performance.now();
+			let output = _zlib(input, key);
+			compressiontimes.zlib += performance.now() - t;
+			return output;
+		}
+		case 3: {
+			let t = performance.now();
+			let output = _lzma(input);
+			compressiontimes.lzma += performance.now() - t;
+			return output;
+		}
+		case 0x5a: {//0x5a4c4201
+			let t = performance.now();
+			let output = _zlibSqlite(input);
+			compressiontimes.zlibsqlite += performance.now() - t;
+			return output;
+		}
 		default:
 			throw new Error("Unknown compression type (" + input.readUInt8(0x0).toString() + ")");
 	}
@@ -39,10 +65,7 @@ var _uncompressed = function (input: Buffer) {
 	return output;
 }
 
-/**
- * @param {Buffer} input The input buffer straight from the server
- */
-var _bz2 = function (input: Buffer) {
+var _bz2_old = function (input: Buffer) {
 	//var bzip2 = require("bzip2");
 	var bzip2 = require("../libs/bzip2fork");
 	var compressed = input.readUInt32BE(0x1);
@@ -57,8 +80,81 @@ var _bz2 = function (input: Buffer) {
 	processed.writeUInt8(8 + 0x30, 0x3); // the lib expects a number between 1-9 here (+0x30)
 	return Buffer.from(bzip2.simple(bzip2.array(processed)));
 }
+
+/**
+ * @param {Buffer} input The input buffer straight from the server
+ */
+var _bz2 = function (input: Buffer) {
+	//var bzip2 = require("bzip2");
+	var bzip2 = require("../libs/bzip2wasm") as typeof import("../libs/bzip2wasm");
+	var compressed = input.readUInt32BE(0x1);
+	var uncompressed = input.readUInt32BE(0x5);
+	var processed = Buffer.alloc(compressed + 0x2 + 0x1 + 0x1);
+	input.copy(processed, 0x4, 0x9);
+
+	// Add the header
+	processed.writeUInt16BE(0x425A, 0x0); // Magic Number
+	processed.writeUInt8(0x68, 0x2); // Version
+	// processed.writeUInt8(Math.ceil(uncompressed / (1024 * 102.4)) + 0x30, 0x3); // Block size in 100kB because why the hell not
+	processed.writeUInt8(8 + 0x30, 0x3); // the lib expects a number between 1-9 here (+0x30)
+	return Buffer.from(bzip2.bzip2decompress(processed));
+}
+
+
+function _bz2_stream(container: Buffer) {
+	var bzip2 = require("../libs/bzip2wasm") as typeof import("../libs/bzip2wasm");
+	if (!(container instanceof Uint8Array)) {
+		throw new TypeError("container must be Uint8Array");
+	}
+	if (container.length < 9) {
+		throw new Error("legacy container too small");
+	}
+
+	const compressedLen = container.readUint32BE(0x1);
+	const uncompressedLen = container.readUint32BE(0x5);
+	const payloadStart = 0x9;
+	const payloadEnd = payloadStart + compressedLen;
+	if (payloadEnd > container.length) {
+		throw new Error("legacy payload truncated");
+	}
+
+	const inputChunkSize = 64 * 1024;
+	const outputChunkSize = 64 * 1024;
+	const blockSizeChar = 8 + 0x30; // the lib expects a number between 1-9 here (+0x30)
+
+	const stream = bzip2.createBzip2Stream({ outputChunkSize });
+	const out = Buffer.alloc(uncompressedLen);
+	let outOffset = 0;
+
+	const onOutput = (chunk: Uint8Array) => {
+		const end = outOffset + chunk.length;
+		if (end > out.length) {
+			throw new Error("decompressed output exceeded expected length");
+		}
+		out.set(chunk, outOffset);
+		outOffset = end;
+	};
+
+	try {
+		stream.pushTo(new Uint8Array([0x42, 0x5a, 0x68, blockSizeChar]), onOutput);
+		for (let offset = payloadStart; offset < payloadEnd; offset += inputChunkSize) {
+			const end = Math.min(offset + inputChunkSize, payloadEnd);
+			stream.pushTo(container.subarray(offset, end), onOutput);
+		}
+		stream.finishTo(onOutput);
+	} finally {
+		stream.close();
+	}
+
+	if (outOffset !== out.length) {
+		throw new Error(`legacy header length mismatch (expected ${out.length}, got ${outOffset})`);
+	}
+
+	return out;
+}
+
 export function legacybz2(input: Buffer) {
-	var bzip2 = require("../libs/bzip2fork");
+	var bzip2 = require("../libs/bzip2wasm") as typeof import("../libs/bzip2wasm");
 	var processed = Buffer.alloc(input.byteLength + 0x4);
 	input.copy(processed, 0x4);
 
@@ -67,7 +163,7 @@ export function legacybz2(input: Buffer) {
 	processed.writeUInt8(0x68, 0x2); // Version
 	// processed.writeUInt8(Math.ceil(uncompressed / (1024 * 102.4)) + 0x30, 0x3); // Block size in 100kB because why the hell not
 	processed.writeUInt8(8 + 0x30, 0x3); // the lib expects a number between 1-9 here (+0x30)
-	return Buffer.from(bzip2.simple(bzip2.array(processed)));
+	return Buffer.from(bzip2.bzip2decompress(processed));
 }
 
 /**

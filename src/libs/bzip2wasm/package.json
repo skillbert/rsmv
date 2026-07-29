@@ -1,0 +1,28 @@
+{
+    "name": "bzip2wasm",
+    "version": "0.1.0",
+    "description": "Tiny bzip2 Uint8Array decompressor powered by WebAssembly",
+    "type": "module",
+    "main": "./dist/index.js",
+    "exports": {
+        ".": "./dist/index.js"
+    },
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist",
+        "LICENSE",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "node scripts/build-in-docker.mjs",
+        "build:local": "bash scripts/build.sh",
+        "test": "node test/smoke.test.mjs",
+        "size": "node scripts/size-check.mjs"
+    },
+    "keywords": [
+        "bzip2",
+        "wasm",
+        "decompress"
+    ],
+    "license": "BSD-4-Clause"
+}
