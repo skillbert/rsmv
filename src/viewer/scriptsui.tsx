@@ -1,12 +1,12 @@
 import { TypedEmitter } from "../utils";
 import { useEffect } from "react";
 import * as React from "react";
-import { UIContext } from "./maincomponents";
 import { TabStrip } from "./commoncontrols";
 import { showModal } from "./jsonsearch";
 import VR360Viewer from "../libs/vr360viewer";
 import { CLIScriptFS, ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
 import path from "path";
+import { UIRootContext } from "./maincomponents";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -312,6 +312,16 @@ export function useForceUpdate() {
 	return forceUpdate;
 }
 
+export function useEmitterProperty<T extends TypedEmitter<any>, R>(emitter: T, prop: T extends TypedEmitter<infer Q> ? keyof Q : never, selector: (obj: T) => R): R {
+	const [value, setValue] = React.useState(selector(emitter));
+	React.useEffect(() => {
+		let handler = () => setValue(selector(emitter));
+		emitter.on(prop, handler);
+		return () => emitter.off(prop, handler);
+	}, [emitter, prop, selector]);
+	return value;
+}
+
 export function useForceUpdateDebounce(delay = 50) {
 	const forceUpdate = useForceUpdate();
 	let ref = React.useRef(() => { });
@@ -374,7 +384,7 @@ export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefin
 	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
 
-export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) {
+export function OutputUI(p: { output?: UIScriptOutput | null }) {
 	let [tab, setTab] = React.useState<"console" | string>("console");
 
 	let forceUpdate = useForceUpdateDebounce();
@@ -404,13 +414,14 @@ export function OutputUI(p: { output?: UIScriptOutput | null, ctx: UIContext }) 
 			{p.output.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
 			<TabStrip value={tab} onChange={setTab as any} tabs={tabs} />
 			{tab == "console" && <UIScriptConsole output={p.output} />}
-			{selectedfs && <UIScriptFiles fs={selectedfs} ctx={p.ctx} />}
+			{selectedfs && <UIScriptFiles fs={selectedfs} />}
 		</div>
 	)
 }
 
-export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
+export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
 	const initialMaxlist = 4000;
+	let ctx = React.useContext(UIRootContext);
 	let [maxlist, setMaxlist] = React.useState(initialMaxlist);
 	let [folder, setfolder] = React.useState("");
 	let [hasbacking, setbacking] = React.useState(false);
@@ -465,11 +476,11 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 
 	let openFile = React.useCallback(async (name: string) => {
 		let data = await p.fs!.readFileBuffer(`${folder}/${name}`);
-		p.ctx.openFile({ fs: p.fs!, name, data });
-	}, [p.fs, p.ctx, folder]);
+		ctx.openFile({ fs: p.fs!, name, data });
+	}, [p.fs, ctx, folder]);
 
 	let listkeydown = React.useCallback((e: React.KeyboardEvent) => {
-		if (p.fs && p.ctx.openedfile && e.key == "ArrowDown" || e.key == "ArrowUp") {
+		if (p.fs && ctx.openedfile && (e.key == "ArrowDown" || e.key == "ArrowUp")) {
 			e.preventDefault();
 			//bit of a yikes, map behaves as a single linked list and i'm trying to not
 			//piss of the god of JIT by writing a custom iterator
@@ -480,7 +491,7 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 				if (grabnext) {
 					match = file;
 					break;
-				} else if (file == p.ctx.openedfile?.name) {
+				} else if (file == ctx.openedfile?.name) {
 					if (e.key == "ArrowUp") {
 						match = previous;
 						break;
@@ -522,7 +533,7 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null, ctx: UIContext }) {
 		for (let name of files) {
 			if (filelist.length > maxlist) { break; }
 			filelist.push(
-				<div key={name} onClick={e => openFile(name)} style={name == p.ctx.openedfile?.name ? { background: "black" } : undefined}>{name}</div>
+				<div key={name} onClick={e => openFile(name)} style={name == ctx.openedfile?.name ? { background: "black" } : undefined}>{name}</div>
 			);
 		}
 

@@ -345,15 +345,15 @@ function CacheDragNDropHelp() {
 	);
 }
 
-export type UIContextReady = UIContext & { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
 export type UIOpenedFile = { fs: ScriptFS, name: string, data: string | Buffer };
+export type RenderableContext = { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
 
-//i should figure out this redux thing...
 export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, statechange: undefined }> {
 	source: CacheFileSource | null = null;
 	sceneCache: ThreejsSceneCache | null = null;
 	renderer: ThreeJsRenderer | null = null;
 	openedfile: UIOpenedFile | null = null;
+	renderable: RenderableContext | null = null;
 	rootElement: HTMLElement;
 	useServiceWorker: boolean;
 
@@ -369,22 +369,40 @@ export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, sta
 		}
 	}
 
+	fixRenderable() {
+		let canrender = this.canRender();
+		if (canrender && (!this.renderable || this.renderable.source !== this.source || this.renderable.sceneCache !== this.sceneCache || this.renderable.renderer !== this.renderer)) {
+			this.renderable = {
+				source: this.source!,
+				sceneCache: this.sceneCache!,
+				renderer: this.renderer!
+			};
+			this.emit("statechange", undefined);
+		} else if (!canrender && this.renderable) {
+			this.renderable = null;
+			this.emit("statechange", undefined);
+		}
+	}
+
 	setCacheSource(source: CacheFileSource | null) {
 		this.source = source;
-		this.emit("statechange", undefined)
+		this.emit("statechange", undefined);
+		this.fixRenderable();
 	}
 
 	setSceneCache(sceneCache: ThreejsSceneCache | null) {
 		this.sceneCache = sceneCache;
-		this.emit("statechange", undefined)
+		this.emit("statechange", undefined);
+		this.fixRenderable();
 	}
 
 	setRenderer(renderer: ThreeJsRenderer | null) {
 		this.renderer = renderer;
 		this.emit("statechange", undefined);
+		this.fixRenderable();
 	}
 
-	canRender(): this is UIContextReady {
+	canRender(): boolean {
 		return !!this.source && !!this.sceneCache && !!this.renderer;
 	}
 
@@ -395,6 +413,8 @@ export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, sta
 	}
 }
 
+export const UIRootContext = React.createContext<UIContext>(null!);
+export const UIEngineContext = React.createContext<RenderableContext | null>(null);
 
 export async function openSavedCache(source: SavedCacheSource, remember: boolean) {
 	let cache: CacheFileSource | null = null;

@@ -12,7 +12,7 @@ import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJ
 import { cacheFileJsonModes, cacheFileDecodeModes, cacheFileDecodeGroups, DecodeMode } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
 import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap, UIScriptConsole } from "./scriptsui";
-import { CacheSelector, downloadBlob, openSavedCache, SavedCacheSource, UIContext, UIContextReady } from "./maincomponents";
+import { CacheSelector, downloadBlob, openSavedCache, RenderableContext, SavedCacheSource, UIContext, UIEngineContext, UIRootContext } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { runMapRender } from "../map";
 import { diffCaches, FileEdit } from "../scripts/cachediff";
@@ -79,7 +79,7 @@ async function paramsToJson(params: { prop: number, intvalue: number | null, str
 
 type ModelBrowserState = { search: unknown, mode: LookupMode }
 
-export function ModelBrowser(p: { ctx: UIContext }) {
+export function ModelBrowser(p: {}) {
 	let [state, setMode] = React.useReducer((prev: any, v: LookupMode) => {
 		localStorage.rsmv_lastmode = v;
 		return { search: null, mode: v } as ModelBrowserState;
@@ -107,7 +107,7 @@ export function ModelBrowser(p: { ctx: UIContext }) {
 	return (
 		<React.Fragment>
 			<TabStrip value={state.mode} tabs={tabs} onChange={setMode} />
-			{ModeComp && <ModeComp initialId={state.search} ctx={p.ctx.canRender() ? p.ctx : null} partial={p.ctx} />}
+			{ModeComp && <ModeComp initialId={state.search} />}
 		</React.Fragment>
 	);
 }
@@ -375,7 +375,8 @@ function ScenarionComponentSettings(p: { comp: ScenarioComponent<"custom">, onCh
 // 	let box = showModal({ title: "Edit Component" }, <div>{<ScenarionComponentSettings comp={comp} onChange={onChange} />}</div>);
 // }
 
-function ScenarioComponentControl(p: { ctx: UIContextReady | null, comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
+function ScenarioComponentControl(p: { comp: ScenarioComponent, onChange: (v: ScenarioComponent | null) => void }) {
+	let ctx = React.useContext(UIEngineContext);
 	let [showOpts, setShowOpts] = React.useState(false);
 	let edit = () => {
 		if (p.comp.type == "simple") {
@@ -384,8 +385,8 @@ function ScenarioComponentControl(p: { ctx: UIContextReady | null, comp: Scenari
 		}
 	}
 	let revert = async () => {
-		if (p.comp.type != "custom" || !p.ctx) { return; }
-		let def = await modelInitToModel(p.ctx.sceneCache, p.comp.basecomp);
+		if (p.comp.type != "custom" || !ctx) { return; }
+		let def = await modelInitToModel(ctx.sceneCache, p.comp.basecomp);
 		p.onChange({
 			type: "simple",
 			modelkey: p.comp.basecomp,
@@ -507,14 +508,22 @@ async function modelInitToModel(cache: ThreejsSceneCache, init: string): Promise
 	else { throw new Error("unknown modelinit type"); }
 }
 
-export class SceneScenario extends React.Component<LookupModeProps, ScenarioInterfaceState> {
+
+export function SceneScenario(p: LookupModeProps) {
+	let ctx = React.useContext(UIRootContext);
+	let render = React.useContext(UIEngineContext);
+	return <SceneScenarioInner {...p} ctx={render} partial={ctx} />;
+}
+
+
+export class SceneScenarioInner extends React.Component<LookupModeProps & { ctx: RenderableContext | null, partial: UIContext }, ScenarioInterfaceState> {
 	models = new Map<ScenarioComponent, RSModel | RSMapChunk | RSMapChunkGroup>();
 	idcounter = 0;
 	mapoffset: { x: number, z: number } | null = null;
 	mapgrid = new CombinedTileGrid([]);
 	hadctx = false;
 
-	constructor(p: LookupModeProps) {
+	constructor(p: LookupModeProps & { ctx: RenderableContext | null, partial: UIContext }) {
 		super(p);
 		this.state = {
 			actions: [],
@@ -619,7 +628,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 		});
 	}
 
-	ensureComp(uictx: UIContextReady, newcomp: ScenarioComponent | null, oldcomp: ScenarioComponent | null) {
+	ensureComp(uictx: RenderableContext, newcomp: ScenarioComponent | null, oldcomp: ScenarioComponent | null) {
 		let newmodel: RSModel | RSMapChunk | RSMapChunkGroup | undefined = undefined;
 		if (oldcomp) {
 			let oldmodel = this.models.get(oldcomp);
@@ -779,11 +788,11 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 	advancedIdSelect() {
 		if (!this.props.ctx) { return; }
 		if (this.state.addModelType == "npc") {
-			selectEntity(this.props.ctx, "npcs", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+			selectEntity(this.props.ctx.sceneCache.engine, "npcs", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
 		} else if (this.state.addModelType == "item") {
-			selectEntity(this.props.ctx, "items", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+			selectEntity(this.props.ctx.sceneCache.engine, "items", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
 		} else if (this.state.addModelType == "loc") {
-			selectEntity(this.props.ctx, "locs", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+			selectEntity(this.props.ctx.sceneCache.engine, "locs", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
 		}
 	}
 
@@ -823,7 +832,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 					{hasmodels && (
 						<div className="mv-inset">
 							{Object.entries(this.state.components).map(([id, comp]) => {
-								return <ScenarioComponentControl key={id} ctx={this.props.ctx} comp={comp} onChange={e => this.editComp(+id, e)} />;
+								return <ScenarioComponentControl key={id} comp={comp} onChange={e => this.editComp(+id, e)} />;
 							})}
 						</div>
 					)}
@@ -859,7 +868,8 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 }
 
 function ScenePlayer(p: LookupModeProps) {
-	const [data, model, id, setId] = useAsyncModelData(p.ctx, playerDataToModel);
+	const ctx = React.useContext(UIEngineContext);
+	const [data, model, id, setId] = useAsyncModelData(ctx, playerDataToModel);
 	const [errtext, seterrtext] = React.useState("");
 	const forceUpdate = useForceUpdate();
 
@@ -961,9 +971,9 @@ function ScenePlayer(p: LookupModeProps) {
 			<div className="mv-sidebar-scroll">
 				{data && <h2>Slots</h2>}
 				<div style={{ userSelect: "text" }}>
-					{p.ctx && data?.info.avatar?.slots.map((q, i) => {
+					{ctx && data?.info.avatar?.slots.map((q, i) => {
 						return (
-							<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} ctx={p.ctx!} custChanged={customizationChanged} female={data.info.gender == 1} equipChanged={equipChanged} />
+							<AvatarSlot key={i} index={i} slot={q.slot} cust={q.cust} custChanged={customizationChanged} female={data.info.gender == 1} equipChanged={equipChanged} />
 						);
 					})}
 				</div>
@@ -994,8 +1004,8 @@ function ScenePlayer(p: LookupModeProps) {
 	);
 }
 
-function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female }: { ctx: UIContextReady, index: number, slot: EquipSlot | null, female: boolean, cust: EquipCustomization, equipChanged: (index: number, type: "kit" | "item" | "none", id: number) => void, custChanged: (index: number, v: EquipCustomization) => void }) {
-
+function AvatarSlot({ index, slot, cust, custChanged, equipChanged, female }: { index: number, slot: EquipSlot | null, female: boolean, cust: EquipCustomization, equipChanged: (index: number, type: "kit" | "item" | "none", id: number) => void, custChanged: (index: number, v: EquipCustomization) => void }) {
+	let ctx = React.useContext(UIEngineContext);
 	let editcust = (ch?: (cust: NonNullable<EquipCustomization>) => {}) => {
 		if (!ch) { custChanged(index, null); }
 		else {
@@ -1007,11 +1017,11 @@ function AvatarSlot({ index, slot, cust, custChanged, equipChanged, ctx, female 
 	}
 
 	let searchItem = () => {
-		selectEntity(ctx, "items", i => equipChanged(index, "item", i), [{ path: ["equipSlotId"], search: index + "" }, { path: ["name"], search: "" }]);
+		selectEntity(ctx?.sceneCache.engine, "items", i => equipChanged(index, "item", i), [{ path: ["equipSlotId"], search: index + "" }, { path: ["name"], search: "" }]);
 	}
 	let searchKit = () => {
 		let kitid = (female ? slotToKitFemale : slotToKitMale)[index] ?? -1;
-		selectEntity(ctx, "identitykit", i => equipChanged(index, "kit", i), [{ path: ["bodypart"], search: kitid + "" }]);
+		selectEntity(ctx?.sceneCache.engine, "identitykit", i => equipChanged(index, "kit", i), [{ path: ["bodypart"], search: kitid + "" }]);
 	}
 
 	return (
@@ -1108,16 +1118,18 @@ const exportimgsizes: ExportImgSize[] = [
 	{ w: 2048, h: 2048, mode: "topdown", name: "" },
 ]
 
-function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneElement["options"] }) {
+function ExportSceneMenu(p: { renderopts: ThreeJsSceneElement["options"] }) {
+	let renderctx = React.useContext(UIEngineContext);
 	let [tab, settab] = React.useState<"img" | "gltf" | "stl" | "none">("none");
 	let [img, setimg] = React.useState<{ cnv: HTMLCanvasElement, data: ImageData } | null>(null);
 	let [imgsize, setimgsize] = React.useState<ExportImgSize>(exportimgsizes.find(q => q.mode == p.renderopts!.camMode) ?? exportimgsizes[0]);
 	let [cropimg, setcropimg] = React.useState(true);
 
 	let changeImg = async (instCrop = cropimg, instSize = imgsize) => {
+		if (!renderctx) { return; }
 		if (p.renderopts!.camMode == "vr360") { instCrop = false; }
 
-		let newpixels = await p.ctx.renderer.takeScenePicture(instSize.w || undefined, instSize.h || undefined);
+		let newpixels = await renderctx.renderer.takeScenePicture(instSize.w || undefined, instSize.h || undefined);
 		let newimg = makeImageData(newpixels.data, newpixels.width, newpixels.height);
 		let cnv = document.createElement("canvas");
 		let ctx = cnv.getContext("2d")!;
@@ -1157,12 +1169,14 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 	}
 
 	let saveGltf = async () => {
-		let file = await exportThreeJsGltf(p.ctx.renderer.getModelNode());
+		if (!renderctx) { return; }
+		let file = await exportThreeJsGltf(renderctx.renderer.getModelNode());
 		downloadBlob("model.glb", new Blob([file as Uint8Array<ArrayBuffer>]));
 	}
 
 	let saveStl = async () => {
-		let file = await exportThreeJsStl(p.ctx.renderer.getModelNode());
+		if (!renderctx) { return; }
+		let file = await exportThreeJsStl(renderctx.renderer.getModelNode());
 		downloadBlob("model.stl", new Blob([file as Uint8Array<ArrayBuffer>]));
 	}
 
@@ -1221,7 +1235,8 @@ function ExportSceneMenu(p: { ctx: UIContextReady, renderopts: ThreeJsSceneEleme
 	)
 }
 
-export function RendererControls(p: { ctx: UIContext }) {
+export function RendererControls(p: {}) {
+	const ctx = React.useContext(UIEngineContext);
 	const elconfig = React.useRef<ThreeJsSceneElement>({ options: {} });
 	const sceneEl = React.useRef<ThreeJsSceneElementSource>({ getSceneElements() { return elconfig.current } });
 
@@ -1232,7 +1247,7 @@ export function RendererControls(p: { ctx: UIContext }) {
 	let [camMode, setcammode] = React.useState<"standard" | "vr360" | "topdown">("standard");
 	let [camControls, setcamcontrols] = React.useState<"free" | "world">("free");
 
-	const render = p.ctx?.renderer;
+	const render = ctx?.renderer;
 
 	let newopts: ThreeJsSceneElement["options"] = { hideFog, hideFloor, camMode, camControls };
 	let oldopts = elconfig.current.options;
@@ -1276,7 +1291,7 @@ export function RendererControls(p: { ctx: UIContext }) {
 					</label>
 				</div>
 			)}
-			{showexport && p.ctx.canRender() && <ExportSceneMenu ctx={p.ctx} renderopts={newopts} />}
+			{showexport && ctx && <ExportSceneMenu renderopts={newopts} />}
 		</React.Fragment>
 	)
 }
@@ -1316,7 +1331,7 @@ type AsyncModelData<ID, T> = [
 	setter: (id: ID) => void
 ];
 
-function useAsyncModelData<ID, T>(ctx: UIContextReady | null, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T, ID>>) {
+function useAsyncModelData<ID, T>(ctx: RenderableContext | null, getter: (cache: ThreejsSceneCache, id: ID) => Promise<SimpleModelInfo<T, ID>>) {
 	let pendingId = React.useRef<ID | null>(null);
 	let [loadedModel, setLoadedModel] = React.useState<RSModel | null>(null);
 	let [visible, setVisible] = React.useState<SimpleModelInfo<T, ID> | null>(null);
@@ -1428,11 +1443,12 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 }
 
 function SceneMaterialIsh(p: LookupModeProps) {
-	let [data, model, id, setId] = useAsyncModelData(p.ctx, materialIshToModel);
+	let ctx = React.useContext(UIEngineContext);
+	let [data, model, id, setId] = useAsyncModelData(ctx, materialIshToModel);
 
 	let initid = id ?? checkObject(p.initialId, { mode: "string", id: "number" }) as MaterialIshId ?? { mode: "material", id: 0 };
 	let modechange = (v: React.FormEvent<HTMLInputElement>) => setId({ mode: v.currentTarget.value as any, id: initid.id });
-	let isproc = p.ctx?.sceneCache.textureType == "fullproc";
+	let isproc = ctx && ctx.sceneCache.textureType == "fullproc";
 	return (
 		<React.Fragment>
 			<IdInput onChange={v => setId({ ...initid, id: v })} initialid={initid.id} />
@@ -1451,9 +1467,9 @@ function SceneMaterialIsh(p: LookupModeProps) {
 			<div className="mv-sidebar-scroll">
 				{data && Object.entries(data.info.texs).map(([name, img]) => (
 					<div key={name}>
-						{isproc && data && p.ctx && (
+						{isproc && data && ctx && (
 							<input type="button" className="sub-btn" value="Debug proc" onClick={async () => {
-								let el = await debugProcTexture(p.ctx!.sceneCache.engine, img.texid);
+								let el = await debugProcTexture(ctx.sceneCache.engine, img.texid);
 								el.style.position = "initial";
 								showModal({ title: "proc texture " + img.texid, maxWidth: "unset" }, <DomWrap el={el} />);
 							}} />
@@ -1472,7 +1488,8 @@ function SceneMaterialIsh(p: LookupModeProps) {
 }
 
 function SceneRawModel(p: LookupModeProps) {
-	let [data, model, id, setId] = useAsyncModelData(p.ctx, modelToModel);
+	let ctx = React.useContext(UIEngineContext);
+	let [data, model, id, setId] = useAsyncModelData(ctx, modelToModel);
 	let initid = (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
@@ -1495,13 +1512,14 @@ function SceneRawModel(p: LookupModeProps) {
 }
 
 function SceneLocation(p: LookupModeProps) {
-	const [data, model, id, setId] = useAsyncModelData(p.ctx, locToModel);
+	const ctx = React.useContext(UIEngineContext);
+	const [data, model, id, setId] = useAsyncModelData(ctx, locToModel);
 	const forceUpdate = useForceUpdate();
 	const anim = data?.anims.default ?? -1;
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="locs" onChange={setId} initialid={initid} />}
+			<IdInputSearch cache={ctx?.sceneCache.engine} mode="locs" onChange={setId} initialid={initid} />
 			{id == null && (
 				<React.Fragment>
 					<p>Enter a location id or search by name.</p>
@@ -1568,7 +1586,7 @@ export type UiCameraParams = {
 	zoom: number
 }
 
-function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: items, centery: number }) {
+function ItemCameraMode({ meta, centery }: { meta?: items, centery: number }) {
 	let [translatex, settranslatex] = React.useState(meta?.modelTranslate_0 ?? 0);
 	let [translatey, settranslatey] = React.useState(meta?.modelTranslate_1 ?? 0);
 	let [rotx, setrotx] = React.useState(meta?.rotation_0 ?? 0);
@@ -1593,9 +1611,11 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 		reset();
 	}
 
-	let cam = updateItemCamera(ctx.renderer.getItemCamera(), imgwidth, imgheight, centery, params);
+	let ctx = React.useContext(UIEngineContext);
+	let cam = ctx && updateItemCamera(ctx.renderer.getItemCamera(), imgwidth, imgheight, centery, params);
 
 	React.useEffect(() => {
+		if (!ctx) { return; }
 		let el: ThreeJsSceneElementSource = {
 			getSceneElements() {
 				return {
@@ -1607,10 +1627,10 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 			},
 		}
 		ctx.renderer.addSceneElement(el);
-		return () => ctx.renderer.removeSceneElement(el);
-	}, [cam]);
+		return () => ctx.renderer!.removeSceneElement(el);
+	}, [cam, ctx]);
 
-	ctx.renderer.forceFrame();
+	ctx?.renderer.forceFrame();
 
 	return (
 		<React.Fragment>
@@ -1626,13 +1646,14 @@ function ItemCameraMode({ ctx, meta, centery }: { ctx: UIContextReady, meta?: it
 }
 
 function SceneItem(p: LookupModeProps) {
-	let [data, model, id, setId] = useAsyncModelData(p.ctx, itemToModel);
+	let ctx = React.useContext(UIEngineContext);
+	let [data, model, id, setId] = useAsyncModelData(ctx, itemToModel);
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	let [enablecam, setenablecam] = React.useState(false);
 	// let [histfs, sethistfs] = React.useState<UIScriptFS | null>(null);
 
 	let centery = (model?.loaded ? (model.loaded.modeldata.maxy + model.loaded.modeldata.miny) / 2 : 0);
-	let paramtable = useAwaited(() => p.ctx?.source && data?.info.extra && paramsToJson(data?.info.extra, p.ctx.source), [p.ctx, data?.info.extra]);
+	let paramtable = useAwaited(() => ctx?.source && data?.info.extra && paramsToJson(data?.info.extra, ctx.source), [ctx, data?.info.extra]);
 
 	// let gethistory = async () => {
 	// 	if (id == null || !p.ctx) { return; }
@@ -1644,13 +1665,13 @@ function SceneItem(p: LookupModeProps) {
 
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="items" onChange={setId} initialid={initid} />}
+			<IdInputSearch cache={ctx?.sceneCache.engine} mode="items" onChange={setId} initialid={initid} />
 			{id == null && (
 				<p>Enter an item id or search by name.</p>
 			)}
 			<div className="mv-sidebar-scroll">
 				<input type="button" className="sub-btn" value={enablecam ? "exit" : "Icon Camera"} onClick={e => setenablecam(!enablecam)} />
-				{enablecam && p.ctx && <ItemCameraMode ctx={p.ctx} meta={data?.info} centery={centery} />}
+				{enablecam && <ItemCameraMode meta={data?.info} centery={centery} />}
 				<RawTextDisplay text={data?.assetName} />
 				<JsonDisplay obj={data?.info} />
 				<JsonDisplay obj={paramtable ?? undefined} />
@@ -1662,13 +1683,14 @@ function SceneItem(p: LookupModeProps) {
 }
 
 function SceneNpc(p: LookupModeProps) {
-	const [data, model, id, setId] = useAsyncModelData(p.ctx, npcToModel);
+	const ctx = React.useContext(UIEngineContext);
+	const [data, model, id, setId] = useAsyncModelData(ctx, npcToModel);
 	const forceUpdate = useForceUpdate();
 	const initid = id ?? checkObject(p.initialId, { id: "number", head: "boolean" }) ?? { id: 0, head: false };
 
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="npcs" onChange={v => setId({ id: v, head: initid.head })} initialid={initid.id} />}
+			<IdInputSearch cache={ctx?.sceneCache.engine} mode="npcs" onChange={v => setId({ id: v, head: initid.head })} initialid={initid.id} />
 			{id == null && (
 				<p>Enter an NPC id or search by name.</p>
 			)}
@@ -1689,7 +1711,8 @@ function SceneNpc(p: LookupModeProps) {
 }
 
 function SceneSpotAnim(p: LookupModeProps) {
-	let [data, model, id, setId] = useAsyncModelData(p.ctx, spotAnimToModel);
+	let ctx = React.useContext(UIEngineContext);
+	let [data, model, id, setId] = useAsyncModelData(ctx, spotAnimToModel);
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
@@ -1726,7 +1749,14 @@ type SceneMapState = {
 	versions: { cache: ThreejsSceneCache, visible: boolean }[],
 	extramodels: boolean
 };
-export class SceneMapModel extends React.Component<LookupModeProps, SceneMapState> {
+
+export function SceneMapModel(p: LookupModeProps) {
+	let ctx = React.useContext(UIEngineContext);
+	let partial = React.useContext(UIRootContext);
+	return <SceneMapModelInner {...p} ctx={ctx as any} partial={partial} />;
+}
+
+export class SceneMapModelInner extends React.Component<LookupModeProps & { ctx: RenderableContext | null, partial: UIContext }, SceneMapState> {
 	selectCleanup: (() => void)[] = [];
 	constructor(p) {
 		super(p);
@@ -2008,7 +2038,7 @@ export class SceneMapModel extends React.Component<LookupModeProps, SceneMapStat
 		this.fixVisibility();
 	}
 
-	static getDerivedStateFromProps(props: LookupModeProps, state: SceneMapState): Partial<SceneMapState> | null {
+	static getDerivedStateFromProps(props: LookupModeProps & { ctx: RenderableContext | null, partial: UIContext }, state: SceneMapState): Partial<SceneMapState> | null {
 		if (props.ctx && !state.versions.find(q => q.cache == props.ctx?.sceneCache)) {
 			return { versions: [{ cache: props.ctx.sceneCache, visible: true }, ...state.versions] };
 		}
@@ -2210,19 +2240,21 @@ export class Map2dView extends React.Component<{ addArea?: (x: number, z: number
 }
 
 function PreviewFilesScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [] = p.initialArgs.split(":") as (string | undefined)[];
 
 	let run = () => {
+		if (!ctx.source) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
-		output.run(previewAllFileTypes, outdir, p.source);
+		output.run(previewAllFileTypes, outdir, ctx.source);
 		p.onRun(output, ``);
 	}
 
 	return (
 		<React.Fragment>
 			<p>Extracts a couple example files for each known extraction mode.</p>
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
 		</React.Fragment>
 	)
 }
@@ -2240,6 +2272,7 @@ function ModeDropDownOptions() {
 }
 
 function ExtractFilesScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [initmode, initbatched, initdecoder, initfilestext] = p.initialArgs.split(":") as (string | undefined)[];
 	let [filestext, setFilestext] = React.useState(initfilestext ?? "");
 	let [mode, setMode] = React.useState<string>(initmode || "items");
@@ -2247,10 +2280,11 @@ function ExtractFilesScript(p: UiScriptProps) {
 	let [decoderflags, setdecodersflags] = React.useState((initdecoder ? Object.fromEntries(initdecoder.split(",").map(q => [q.split("=")[0], q.split("=")[1] ?? ""])) : {}));
 
 	let run = () => {
+		if (!ctx.source) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("out");
 		let files = stringToFileRange(filestext);
-		output.run(extractCacheFiles, outdir, p.source, { files, mode, batched, batchlimit: -1, edit: false, skipread: false }, decoderflags);
+		output.run(extractCacheFiles, outdir, ctx.source, { files, mode, batched, batchlimit: -1, edit: false, skipread: false }, decoderflags);
 		p.onRun(output, `${mode}:${batched}:${Object.entries(decoderflags).map(([k, v]) => `${k}=${v}`).join(",")}:${filestext}`);
 	}
 
@@ -2279,7 +2313,7 @@ function ExtractFilesScript(p: UiScriptProps) {
 			{Object.entries(modemeta?.flagtemplate ?? {}).map(([k, v]) => (
 				<div key={k}><label><input type="checkbox" checked={decoderflags[k] == "true"} onChange={e => setFlag(k, e.currentTarget.checked)} />{v.text}</label></div>
 			))}
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
 		</React.Fragment>
 	)
 }
@@ -2319,15 +2353,17 @@ function ExtractHistoricScript(p: UiScriptProps) {
 }
 
 function MaprenderScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [configjson, setconfigjson] = React.useState(localStorage.rsmv_script_map_lastconfig || examplemapconfig);
 
 	let run = async () => {
+		if (!ctx.source) { return; }
 		localStorage.rsmv_script_map_lastconfig = (configjson == examplemapconfig ? "" : configjson);
 		let output = new UIScriptOutput();
 		let fs = output.makefs("render");
 		let config = new MapRenderFsBacked(fs, parseMapConfig(configjson), false);
 		await fs.writeFile("mapconfig.jsonc", configjson);
-		output.run(runMapRender, p.source, config, true);
+		output.run(runMapRender, ctx.source, config, true);
 		p.onRun(output, "");
 	}
 
@@ -2335,7 +2371,7 @@ function MaprenderScript(p: UiScriptProps) {
 		let modal = showModal({ title: "Map render config" }, (
 			<form style={{ display: "flex", flexDirection: "column", height: "100%" }}>
 				<textarea name="parsertext" defaultValue={configjson} style={{ flex: "1000px 1 1", resize: "none", whiteSpace: "nowrap" }} />
-				<input type="button" className="sub-btn" value="Confirm" onClick={e => { setconfigjson(e.currentTarget.form!.parsertext.value); modal.close(); }} />
+				<input type="button" className="sub-btn" value="Confirm" disabled={!ctx.source} onClick={e => { setconfigjson(e.currentTarget.form!.parsertext.value); modal.close(); }} />
 			</form>
 		))
 	}
@@ -2352,6 +2388,7 @@ function MaprenderScript(p: UiScriptProps) {
 	)
 }
 function CacheDiffScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [cache2, setCache2] = React.useState<CacheFileSource | null>(null);
 	let [result, setResult] = React.useState<FileEdit[] | null>(null);
 	let [filerange, setFilerange] = React.useState("");
@@ -2364,12 +2401,12 @@ function CacheDiffScript(p: UiScriptProps) {
 	React.useEffect(() => () => cache2?.close(), [cache2]);
 
 	let run = async () => {
-		if (!cache2) { return; }
+		if (!cache2 || !ctx.source) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("diff");
 		let files = stringToFileRange(filerange);
 		p.onRun(output, "");
-		let res = output.run(diffCaches, outdir, cache2, p.source, files);
+		let res = output.run(diffCaches, outdir, cache2, ctx.source, files);
 		res.then(setResult);
 	}
 
@@ -2380,7 +2417,7 @@ function CacheDiffScript(p: UiScriptProps) {
 	}
 
 	React.useEffect(() => {
-		if (result && showmodels && cache2 && p.ctx.sceneCache) {
+		if (result && showmodels && cache2 && ctx.sceneCache) {
 			let prom = EngineCache.create(cache2).then(async engine => {
 				let oldscene = await ThreejsSceneCache.create(engine);
 				let models: RSModel[] = [];
@@ -2393,13 +2430,13 @@ function CacheDiffScript(p: UiScriptProps) {
 							let model = new RSModel(oldscene, [{ modelid: diff.minor, mods: {} }], `before ${diff.minor}`);
 							model.rootnode.position.set(modelcount * xstep, 0, zstep);
 							models.push(model);
-							model.addToScene(p.ctx.renderer!);
+							model.addToScene(ctx.renderer!);
 						}
 						if (diff.after) {
-							let model = new RSModel(p.ctx.sceneCache!, [{ modelid: diff.minor, mods: {} }], `after ${diff.minor}`);
+							let model = new RSModel(ctx.sceneCache!, [{ modelid: diff.minor, mods: {} }], `after ${diff.minor}`);
 							model.rootnode.position.set(modelcount * xstep, 0, 0);
 							models.push(model);
-							model.addToScene(p.ctx.renderer!);
+							model.addToScene(ctx.renderer!);
 						}
 						modelcount++;
 					}
@@ -2421,13 +2458,14 @@ function CacheDiffScript(p: UiScriptProps) {
 			<LabeledInput label="file range">
 				<input type="text" onChange={e => setFilerange(e.currentTarget.value)} value={filerange} />
 			</LabeledInput>
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" disabled={!ctx.source || !cache2} onClick={run} />
 			{result && <label><input checked={showmodels} onChange={e => setshowmodels(e.currentTarget.checked)} type="checkbox" />View changed models</label>}
 		</React.Fragment>
 	)
 }
 
 function DependencyDiffScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [engine2, setEngine2] = React.useState<EngineCache | null>(null);
 	let [objclass, setObjclass] = React.useState("map");
 	let [fileid, setFileid] = React.useState("50.50");
@@ -2443,11 +2481,11 @@ function DependencyDiffScript(p: UiScriptProps) {
 	React.useEffect(() => () => engine2?.close(), [engine2]);
 
 	let run = async () => {
-		if (!p.ctx.sceneCache || !engine2) { return; }
+		if (!ctx.sceneCache || !engine2) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("diff");
 		p.onRun(output, "");
-		let res = output.run(diffFileDependencyHash, outdir, p.ctx.sceneCache!.engine, engine2, objclass, fileid);
+		let res = output.run(diffFileDependencyHash, outdir, ctx.sceneCache!.engine, engine2, objclass, fileid);
 	}
 
 	let clickOpen = () => {
@@ -2470,12 +2508,13 @@ function DependencyDiffScript(p: UiScriptProps) {
 			<LabeledInput label="file id">
 				<input type="text" onChange={e => setFileid(e.currentTarget.value)} value={fileid} />
 			</LabeledInput>
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" disabled={!ctx.source || !engine2} onClick={run} />
 		</React.Fragment>
 	)
 }
 
 function TestFilesScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [initmode, initrange, initdumpall, initordersize] = p.initialArgs.split(":") as (string | undefined)[];
 	let [mode, setMode] = React.useState(initmode || "");
 	let [range, setRange] = React.useState(initrange || "");
@@ -2485,7 +2524,7 @@ function TestFilesScript(p: UiScriptProps) {
 
 	let run = () => {
 		let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
-		if (!modeobj) { return; }
+		if (!modeobj || !ctx.source) { return; }
 		let output = new UIScriptOutput();
 		let outdir = output.makefs("output")
 		let opts = defaultTestDecodeOpts();
@@ -2496,7 +2535,7 @@ function TestFilesScript(p: UiScriptProps) {
 			modeobj = { ...modeobj };
 			modeobj.parser = FileParser.fromJson(customparser);
 		}
-		output.run(testDecode, outdir, p.source, modeobj, stringToFileRange(range), opts);
+		output.run(testDecode, outdir, ctx.source, modeobj, stringToFileRange(range), opts);
 		p.onRun(output, `${mode}:${range}:${dumpall}:${ordersize}`);
 	}
 
@@ -2528,24 +2567,26 @@ function TestFilesScript(p: UiScriptProps) {
 			<input type="button" className="sub-btn" value="Edit parser" onClick={customparserUi} />
 			{customparser && <input type="button" className="sub-btn" value="Reset" onClick={() => setCustomparser("")} />}
 			<br />
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
 		</React.Fragment>
 	)
 }
 
 function RawCliScript(p: UiScriptProps) {
+	let ctx = React.useContext(UIRootContext);
 	let [text, setText] = React.useState(p.initialArgs);
 
 	let run = async () => {
+		if (!ctx.source) { return; }
 		let output = new UIScriptOutput();
-		let ctx: CliApiContext = {
+		let apictx: CliApiContext = {
 			getConsole() { return output; },
 			getFs(name: string) { return output.makefs(name); },
-			getDefaultCache() { return p.source; }
+			getDefaultCache() { return ctx.source!; }
 		};
 
 		p.onRun(output, text);
-		let api = cliApi(ctx);
+		let api = cliApi(apictx);
 
 		let res = await cmdts.runSafely(api.subcommands, text.split(/\s+/g));
 		if (output.state == "running") {
@@ -2562,12 +2603,12 @@ function RawCliScript(p: UiScriptProps) {
 		<React.Fragment>
 			<p>Run CLI code</p>
 			<input type="text" value={text} onInput={e => setText(e.currentTarget.value)} />
-			<input type="button" className="sub-btn" value="Run" onClick={run} />
+			<input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
 		</React.Fragment>
 	)
 }
 
-type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, initialArgs: string, source: CacheFileSource, ctx: UIContext };
+type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, initialArgs: string };
 const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 	test: TestFilesScript,
 	extract: ExtractFilesScript,
@@ -2580,6 +2621,7 @@ const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 }
 
 function ScriptsUI(p: LookupModeProps) {
+	let ctx = React.useContext(UIRootContext);
 	let initialscript = "test";
 	let initialargs = "";
 	if (typeof p.initialId == "string") {
@@ -2593,7 +2635,7 @@ function ScriptsUI(p: LookupModeProps) {
 		setRunning(output);
 	}, [script]);
 
-	const source = p.partial.source;
+	const source = ctx.source;
 	if (!source) { throw new Error("trying to render modelbrowser without source loaded"); }
 	const SelectedScript = uiScripts[script as keyof typeof uiScripts];
 	return (
@@ -2607,18 +2649,16 @@ function ScriptsUI(p: LookupModeProps) {
 						<p>The script runner allows you to run some of the CLI scripts directly from the browser.</p>
 					</React.Fragment>
 				)}
-				{SelectedScript && <SelectedScript source={source} onRun={onRun} initialArgs={initialscript == script ? (initialargs ?? "") : ""} ctx={p.partial} />}
+				{SelectedScript && <SelectedScript onRun={onRun} initialArgs={initialscript == script ? (initialargs ?? "") : ""} />}
 				<h2>Script output</h2>
-				<OutputUI output={running} ctx={p.partial} />
+				<OutputUI output={running} />
 			</div>
 		</React.Fragment>
 	);
 }
 
 type LookupModeProps = {
-	initialId: unknown,
-	ctx: UIContextReady | null,
-	partial: UIContext
+	initialId: unknown
 }
 
 const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {

@@ -7,8 +7,8 @@ import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
 
-import { UIScriptFile, UIScriptFS } from "./scriptsui";
-import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache, UIOpenedFile } from "./maincomponents";
+import { UIScriptFile, UIScriptFS, useEmitterProperty, useForceUpdate } from "./scriptsui";
+import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext } from "./maincomponents";
 import classNames from "classnames";
 import { cliApi, CliApiContext } from "../clicommands";
 import { CLIScriptOutput } from "../scriptrunner";
@@ -26,7 +26,11 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 
 	let ctx = new UIContext(rootelement, serviceworker ?? false);
 	let root = ReactDOM.createRoot(rootelement);
-	root.render(<App ctx={ctx} />);
+	root.render(
+		<UIRootContext.Provider value={ctx}>
+			<App />
+		</UIRootContext.Provider>
+	);
 
 	globalThis.cli = async (args: string) => {
 		let cliconsole = new CLIScriptOutput();
@@ -55,41 +59,25 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 	return root;
 }
 
-class App extends React.Component<{ ctx: UIContext }, { openedFile: UIOpenedFile | null }> {
-	constructor(p) {
-		super(p);
-		this.state = {
-			openedFile: this.props.ctx.openedfile
-		};
-		(async () => {
-			try {
-				let c = await Promise.race([
-					datastore.get<SavedCacheSource>("openedcache"),
-					new Promise<never>((d, f) => setTimeout(f, 1000))
-				]);
-				if (c) { this.openCache(c); }
-			} catch (e) {
-				console.log("failed to open indexedDB openedcache, fallback to localStorage (without webfs support)");
-				try {
-					let cache = JSON.parse(localStorage.rsmv_openedcache!);
-					this.openCache(cache);
-				} catch (e) { }
-			};
-		})();
-	}
 
-	@boundMethod
-	async openCache(source: SavedCacheSource) {
+function App(p: {}) {
+	let ctx = React.useContext(UIRootContext);
+
+	let initCnv = React.useCallback((cnv: HTMLCanvasElement | null) => {
+		ctx.setRenderer(cnv ? new ThreeJsRenderer(cnv) : null);
+	}, []);
+
+	let openCache = React.useCallback(async (source: SavedCacheSource) => {
 		let cache = await openSavedCache(source, true);
 		if (cache) {
 			globalThis.source = cache;
-			this.props.ctx.setCacheSource(cache);
+			ctx.setCacheSource(cache);
 
 			try {
 				let engine = await EngineCache.create(cache);
 				console.log("engine loaded", cache.getBuildNr());
 				let scene = await ThreejsSceneCache.create(engine);
-				this.props.ctx.setSceneCache(scene);
+				ctx.setSceneCache(scene);
 
 				globalThis.sceneCache = scene;
 				globalThis.engine = engine;
@@ -98,79 +86,75 @@ class App extends React.Component<{ ctx: UIContext }, { openedFile: UIOpenedFile
 				console.error(e);
 			}
 		};
-	}
+	}, [ctx]);
 
-	@boundMethod
-	initCnv(cnv: HTMLCanvasElement | null) {
-		this.props.ctx.setRenderer(cnv ? new ThreeJsRenderer(cnv) : null);
-	}
-
-	@boundMethod
-	closeCache() {
+	let closeCache = React.useCallback(() => {
 		datastore.del("openedcache");
 		localStorage.rsmv_openedcache = "";
 		navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
-		this.props.ctx.source?.close();
-		this.props.ctx.setCacheSource(null);
-		this.props.ctx.setSceneCache(null);
-	}
+		ctx.source?.close();
+		ctx.setCacheSource(null);
+		ctx.setSceneCache(null);
+	}, [ctx]);
 
-	@boundMethod
-	stateChanged() {
-		this.forceUpdate();
-	}
+	React.useEffect(() => {
+		(async () => {
+			try {
+				let c = await Promise.race([
+					datastore.get<SavedCacheSource>("openedcache"),
+					new Promise<never>((d, f) => setTimeout(f, 1000))
+				]);
+				if (c) { openCache(c); }
+			} catch (e) {
+				console.log("failed to open indexedDB openedcache, fallback to localStorage (without webfs support)");
+				try {
+					let cache = JSON.parse(localStorage.rsmv_openedcache!);
+					openCache(cache);
+				} catch (e) { }
+			};
+		})()
+	}, []);
 
-	@boundMethod
-	resized() {
-		this.forceUpdate();
-	}
+	let redraw = useForceUpdate();
+	React.useEffect(() => {
+		ctx.on("statechange", redraw);
+		ctx.on("openfile", redraw);
+		window.addEventListener("resize", redraw);
+		return () => {
+			ctx.off("statechange", redraw);
+			ctx.off("openfile", redraw);
+			window.removeEventListener("resize", redraw);
+		}
+	}, [ctx]);
 
-	componentDidMount() {
-		this.props.ctx.on("openfile", this.openFile);
-		this.props.ctx.on("statechange", this.stateChanged);
-		window.addEventListener("resize", this.resized);
-	}
+	let width = ctx.rootElement.clientWidth;
+	let vertical = width < 550;
 
-	componentWillUnmount() {
-		this.props.ctx.off("openfile", this.openFile);
-		this.props.ctx.off("statechange", this.stateChanged);
-		window.removeEventListener("resize", this.resized);
-		this.closeCache();
-	}
-
-	@boundMethod
-	openFile(file: UIOpenedFile | null) {
-		this.setState({ openedFile: file });
-	}
-
-	render() {
-		let width = this.props.ctx.rootElement.clientWidth;
-		let vertical = width < 550;
-
-		let cachemeta = this.props.ctx.source?.getCacheMeta();
-		return (
-			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
-				<canvas className="mv-canvas" ref={this.initCnv} style={{ display: this.state.openedFile ? "none" : "block" }}></canvas>
-				{this.state.openedFile && <FileViewer file={this.state.openedFile} onSelectFile={this.props.ctx.openFile} />}
-				<div className="mv-sidebar">
-					{!this.props.ctx.source && (
-						<React.Fragment>
-							<CacheSelector onOpen={this.openCache} />
-							<div style={{ flex: "1" }} />
-							<div style={{ textAlign: "center" }}>
-								Go to <a href="https://runeapps.org/modelviewer_about">RuneApps</a> for more info. Source code hosted at <a href="https://github.com/skillbert/rsmv" target="_blank">github.com/skillbert/rsmv</a>
-							</div>
-						</React.Fragment>
-					)}
-					{cachemeta && (
-						<React.Fragment>
-							<input type="button" className="sub-btn" onClick={this.closeCache} value={`Close ${cachemeta.name}`} title={cachemeta.descr} />
-							<RendererControls ctx={this.props.ctx} />
-							<ModelBrowser ctx={this.props.ctx} />
-						</React.Fragment>
-					)}
-				</div>
-			</div >
-		);
-	}
+	let cachemeta = ctx.source?.getCacheMeta();
+	return (
+		<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
+			<canvas className="mv-canvas" ref={initCnv} style={{ display: ctx.openedfile ? "none" : "block" }}></canvas>
+			{ctx.openedfile && <FileViewer file={ctx.openedfile} onSelectFile={ctx.openFile} />}
+			<div className="mv-sidebar">
+				{!ctx.source && (
+					<React.Fragment>
+						<CacheSelector onOpen={openCache} />
+						<div style={{ flex: "1" }} />
+						<div style={{ textAlign: "center" }}>
+							Go to <a href="https://runeapps.org/modelviewer_about">RuneApps</a> for more info. Source code hosted at <a href="https://github.com/skillbert/rsmv" target="_blank">github.com/skillbert/rsmv</a>
+						</div>
+					</React.Fragment>
+				)}
+				{cachemeta && (
+					<React.Fragment>
+						<UIEngineContext.Provider value={ctx.renderable}>
+							<input type="button" className="sub-btn" onClick={closeCache} value={`Close ${cachemeta.name}`} title={cachemeta.descr} />
+							<RendererControls />
+							<ModelBrowser />
+						</UIEngineContext.Provider>
+					</React.Fragment>
+				)}
+			</div>
+		</div >
+	);
 }

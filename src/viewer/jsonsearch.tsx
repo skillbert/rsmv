@@ -1,10 +1,9 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
-import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput } from "./commoncontrols";
-import { JSONSchema6Definition, JSONSchema6, JSONSchema6TypeName } from "json-schema";
+import { EngineCache } from "../3d/modeltothree";
+import { JsonDisplay } from "./commoncontrols";
+import { JSONSchema6TypeName } from "json-schema";
 import { cacheFileJsonModes } from "../scripts/filetypes";
-import { UIContext, UIContextReady } from "./maincomponents";
 
 function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, maxWidth: string, onClose: () => void }) {
 	return (
@@ -22,14 +21,14 @@ function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, maxW
 	)
 }
 
-export function selectEntity(ctx: UIContextReady, mode: keyof typeof cacheFileJsonModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = []) {
+export function selectEntity(engine: EngineCache | undefined, mode: keyof typeof cacheFileJsonModes, callback: (id: number) => void, initialFilters: JsonSearchFilter[] = []) {
 	let onselect = (id: number, obj: object) => {
 		modal.close();
 		callback(id);
 	}
 
 	let modal = showModal({ title: "Select item" }, (
-		<JsonSearchPreview cache={ctx.sceneCache.engine} mode={mode} onSelect={onselect} initialFilters={initialFilters} />
+		<JsonSearchPreview cache={engine} mode={mode} onSelect={onselect} initialFilters={initialFilters} />
 	));
 }
 
@@ -56,7 +55,7 @@ export function showModal(config: { title: string, maxWidth?: string }, children
 	return { close };
 }
 
-export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
+export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache | undefined, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
 	let [selid, setSelid] = React.useState(-1);
 	let [selobj, setSelobj] = React.useState<object | null>(null);
 
@@ -80,7 +79,7 @@ export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, ca
 
 export type JsonSearchFilter = { path: string[], search: string };
 
-export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
+export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache | undefined, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {
 
 	let initfilters = p.initialFilters
 	// if (p.initialFilters.length == 0 && typeof schema == "object") {
@@ -118,8 +117,8 @@ export function JsonSearch(p: { mode: keyof typeof cacheFileJsonModes, cache: En
 	)
 }
 
-export function useJsonCacheSearch(cache: EngineCache, mode: keyof typeof cacheFileJsonModes, filters: JsonSearchFilter[], dryrun = false) {
-	const searchmeta = (dryrun ? null : cache.getJsonSearchData(mode));
+export function useJsonCacheSearch(cache: EngineCache | undefined, mode: keyof typeof cacheFileJsonModes, filters: JsonSearchFilter[], dryrun = false) {
+	const searchmeta = (dryrun || !cache ? null : cache.getJsonSearchData(mode));
 	const [files, setFiles] = React.useState<any[] | null>(null);
 	React.useEffect(() => { !files && searchmeta?.files.then(setFiles) }, [searchmeta?.files]);
 

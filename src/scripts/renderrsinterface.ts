@@ -9,7 +9,7 @@ import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 import { parse } from "../opdecoder";
 import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
-import { UiCameraParams, updateItemCamera } from "../viewer/scenenodes";
+import { UiCameraParams } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 
 

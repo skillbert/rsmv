@@ -102,7 +102,7 @@ export function IdInput({ initialid, onChange }: { initialid?: number, onChange:
 		</form>
 	)
 }
-export function IdInputSearch(p: { cache: EngineCache, mode: keyof typeof cacheFileJsonModes, initialid?: number, onChange: (id: number) => void }) {
+export function IdInputSearch(p: { cache: EngineCache | undefined, mode: keyof typeof cacheFileJsonModes, initialid?: number, onChange: (id: number) => void }) {
 	let [search, setSearch] = React.useState("" + (p.initialid ?? ""));
 	let [id, setidstate] = React.useState(p.initialid ?? 0);
 	let [searchopen, setSearchopen] = React.useState(false);
