@@ -163,14 +163,16 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			return r;
 		},
 		getJsonSchema() {
+			let propschema: Record<string, jsonschema.JSONSchema6Definition> = {};
+			for (let prop of map.values()) {
+				if (prop.key.startsWith("$")) { continue; }
+				propschema[prop.key] = { oneOf: [prop.parser.getJsonSchema(), { type: "null" }] };
+				propschema[prop.key]["x-rsmv-type"] = prop.rstype;
+			}
+
 			return {
 				type: "object",
-				properties: Object.fromEntries([...map.values()]
-					.filter(prop => !(prop.key as string).startsWith("$"))
-					.map((prop) => {
-						return [prop.key, { oneOf: [prop.parser.getJsonSchema(), { type: "null" }] }];
-					})
-				)
+				properties: propschema,
 			}
 		}
 	}
@@ -194,24 +196,27 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 	}
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	let opcodetype = buildParser(null, (chunkdef["$opcode"] ?? "unsigned byte"), typedef);
-	let opts: Record<string, { op: number, parser: ChunkParser }> = {};
+	let opts: Record<string, { op: number, parser: ChunkParser, rstype: string }> = {};
 	for (let key in chunkdef) {
 		if (key.startsWith("$")) { continue; }
 		let op = chunkdef[key];
 		if (typeof op != "object" || !op) { throw new Error("op name expected"); }
 		let opname = op["name"];
 		if (typeof opname != "string") { throw new Error("op name expected"); }
+		let optype = op["type"] ?? "";
+		if (typeof optype != "string") { throw new Error("op type expected"); }
 		if (opts[opname]) { throw new Error("duplicate opcode key " + opname); }
 		opts[opname] = {
 			op: parseInt(key),
-			parser: buildParser(resolveReference.bind(null, key), op["read"], typedef)
+			parser: buildParser(resolveReference.bind(null, key), op["read"], typedef),
+			rstype: optype
 		};
 	}
 
-	let map = new Map<number, { key: string, parser: ChunkParser }>();
+	let map = new Map<number, { key: string, parser: ChunkParser, rstype: string }>();
 	for (let key in opts) {
 		let opt = opts[key];
-		map.set(opt.op, { key: key, parser: opt.parser });
+		map.set(opt.op, { key: key, parser: opt.parser, rstype: opt.rstype });
 	}
 	let hasexplicitnull = !!map.get(0);
 
@@ -349,13 +354,19 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 			return r;
 		},
 		getJsonSchema() {
+			let propschema: Record<string, jsonschema.JSONSchema6Definition> = {};
+			for (let prop in props) {
+				if (prop.startsWith("$")) { continue; }
+				propschema[prop] = (props[prop] as ChunkParser).getJsonSchema();
+				let proptype = proptypes[prop];
+				if (proptype) {
+					propschema[prop]["x-rsmv-type"] = proptype;
+				}
+			}
 			return {
 				type: "object",
-				properties: Object.fromEntries([...Object.entries(props)]
-					.filter(([key]) => !key.startsWith("$"))
-					.map(([key, prop]) => [key, (prop as ChunkParser).getJsonSchema()])
-				),
-				required: keys.filter(k => !k.startsWith("$"))
+				properties: propschema,
+				required: Object.keys(propschema)
 			}
 		}
 	}
@@ -379,11 +390,13 @@ function structParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 	}
 
 	let props = {};
+	let proptypes = {};
 	for (let propdef of args) {
-		if (!Array.isArray(propdef) || propdef.length != 2) { throw new Error("each struct args should be a [name,type] pair"); }
+		if (!Array.isArray(propdef) || (propdef.length != 2 && propdef.length != 3)) { throw new Error("each struct args should be a [name,type] pair"); }
 		if (typeof propdef[0] != "string") { throw new Error("prop name should be string"); }
 		if (props[propdef[0]]) { throw new Error("duplicate struct prop " + propdef[0]); }
 		props[propdef[0]] = buildParser(resolveReference.bind(null, propdef[0]), propdef[1], typedef);
+		proptypes[propdef[0]] = propdef[2] ?? "";
 	}
 	let keys = Object.keys(props);
 	return r;

@@ -11,7 +11,7 @@ import { appearanceUrl, avatarStringToBytes, bytesToAvatarString, EquipCustomiza
 import { ThreeJsRendererEvents, highlightModelGroup, ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, exportThreeJsStl, RenderCameraMode, ThreeJsRenderer } from "./threejsrender";
 import { cacheFileJsonModes, cacheFileDecodeModes, cacheFileDecodeGroups, DecodeMode } from "../scripts/filetypes";
 import { defaultTestDecodeOpts, testDecode } from "../scripts/testdecode";
-import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap, UIScriptConsole } from "./scriptsui";
+import { UIScriptOutput, OutputUI, useForceUpdate, VR360View, UIScriptFiles, UIScriptFS, DomWrap, UIScriptConsole, useAwaited } from "./scriptsui";
 import { CacheSelector, downloadBlob, openSavedCache, RenderableContext, SavedCacheSource, UIContext, UIEngineContext, UIRootContext } from "./maincomponents";
 import { tiledimensions } from "../3d/mapsquare";
 import { runMapRender } from "../map";
@@ -25,7 +25,7 @@ import { castModelInfo, itemToModel, locToModel, modelToModel, npcBodyToModel, n
 import fetch from "node-fetch";
 import { mapsquare_overlays } from '../../generated/mapsquare_overlays';
 import { mapsquare_underlays } from '../../generated/mapsquare_underlays';
-import { FileParser } from '../opdecoder';
+import { FileParser, parse } from '../opdecoder';
 import { assertSchema, customModelDefSchema, maprenderConfigSchema, parseJsonOrDefault, scenarioStateSchema } from '../jsonschemas';
 import { fileHistory } from '../scripts/filehistory';
 import { MaterialData } from '../3d/materials/jmat';
@@ -43,6 +43,7 @@ import { diffFileDependencyHash } from '../scripts/dependencydiff';
 import { depClasses } from '../scripts/dependencies';
 import { loadParams } from '../clientscript/util';
 import { subtypes } from '../clientscript/definitions';
+import { StructView } from './configview';
 
 
 type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "scripts";
@@ -59,22 +60,6 @@ function propOrDefault<T extends { [key: string]: number | string | boolean }>(v
 		}
 	}
 	return r;
-}
-
-async function paramsToJson(params: { prop: number, intvalue: number | null, stringvalue: string | null }[], source: CacheFileSource) {
-	let paramData = await loadParams(source);
-	let paramNames = await source.getInternalNameList(internalNameFiles.param);
-	return params.map(q => {
-		let paramname = paramNames.get(q.prop) ?? `param_${q.prop}`;
-		let paramdata = paramData.get(q.prop);
-		let typeid = paramdata?.type?.vartype ?? -1;
-		return {
-			name: paramname,
-			type: typeid,
-			typename: Object.entries(subtypes).find(([k, v]) => v == typeid)?.[0] ?? "unknown",
-			value: q.intvalue ?? q.stringvalue
-		}
-	});
 }
 
 type ModelBrowserState = { search: unknown, mode: LookupMode }
@@ -1309,21 +1294,6 @@ function ImageDataView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVide
 	)
 }
 
-function useAwaited<T>(fn: () => Promise<T> | null | undefined, deps: any[] = []): T | null {
-	let forceupdate = useForceUpdate();
-	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
-	let value = React.useRef<T | null>(null);
-	React.useEffect(() => {
-		let p = fn();
-		value.current = null;
-		p?.then(q => {
-			value.current = q;
-			forceupdate();
-		}).catch(err => console.error(err));
-	}, deps);
-	return value.current;
-}
-
 type AsyncModelData<ID, T> = [
 	visible: SimpleModelInfo<T, ID> | null,
 	loadedModel: RSModel | null,
@@ -1653,7 +1623,6 @@ function SceneItem(p: LookupModeProps) {
 	// let [histfs, sethistfs] = React.useState<UIScriptFS | null>(null);
 
 	let centery = (model?.loaded ? (model.loaded.modeldata.maxy + model.loaded.modeldata.miny) / 2 : 0);
-	let paramtable = useAwaited(() => ctx?.source && data?.info.extra && paramsToJson(data?.info.extra, ctx.source), [ctx, data?.info.extra]);
 
 	// let gethistory = async () => {
 	// 	if (id == null || !p.ctx) { return; }
@@ -1673,8 +1642,8 @@ function SceneItem(p: LookupModeProps) {
 				<input type="button" className="sub-btn" value={enablecam ? "exit" : "Icon Camera"} onClick={e => setenablecam(!enablecam)} />
 				{enablecam && <ItemCameraMode meta={data?.info} centery={centery} />}
 				<RawTextDisplay text={data?.assetName} />
+				<StructView data={data?.info} meta={parse.item.parser.getJsonSchema()} />
 				<JsonDisplay obj={data?.info} />
-				<JsonDisplay obj={paramtable ?? undefined} />
 			</div>
 			{/* <input type="button" className="sub-btn" value="history" onClick={gethistory} />
 			{histfs && p.ctx && <UIScriptFiles fs={histfs} ctx={p.ctx} />} */}

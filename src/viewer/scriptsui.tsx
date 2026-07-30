@@ -306,6 +306,21 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: und
 	}
 }
 
+export function useAwaited<T>(fn: () => Promise<T> | null | undefined, deps: any[] = []): T | null {
+	let forceupdate = useForceUpdate();
+	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
+	let value = React.useRef<T | null>(null);
+	React.useEffect(() => {
+		let p = fn();
+		value.current = null;
+		p?.then(q => {
+			value.current = q;
+			forceupdate();
+		}).catch(err => console.error(err));
+	}, deps);
+	return value.current;
+}
+
 function forceUpdateReducer(i: number) { return i + 1; }
 export function useForceUpdate() {
 	const [, forceUpdate] = React.useReducer(forceUpdateReducer, 0);
