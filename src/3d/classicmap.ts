@@ -2,7 +2,7 @@
 import { mapsquare_locations } from "../../generated/mapsquare_locations";
 import { mapsquare_tiles } from "../../generated/mapsquare_tiles";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
-import { objects } from "../../generated/objects";
+import { locs } from "../../generated/locs";
 import { MapRect, TileGrid, TileProps, tileshapes } from "../3d/mapsquare";
 import { ClassicConfig, classicGroups } from "../cache/classicloader";
 import { combineLegacyTexture } from "../cache/legacycache";
@@ -668,7 +668,7 @@ export function classicDecodeMaterialInt(int: number) {
 
 export function getClassicLoc(engine: EngineCache, id: number) {
     const config = engine.classicData!;
-    let locdata: objects = {};
+    let locdata: locs = {};
     if (id >= classicLocIdRoof) {
         let rawloc = config.roofs[id - classicLocIdRoof];
         locdata = {
@@ -715,7 +715,7 @@ export function getClassicLoc(engine: EngineCache, id: number) {
 }
 
 export function classicIntsToModelMods(...matints: number[]) {
-    let r: objects = {
+    let r: locs = {
         color_replacements: [],
         material_replacements: []
     };

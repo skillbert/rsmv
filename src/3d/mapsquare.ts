@@ -10,7 +10,7 @@ import { mapsquare_watertiles } from "../../generated/mapsquare_watertiles";
 import { augmentThreeJsFloorMaterial, ThreejsSceneCache, ob3ModelToThree, EngineCache, applyMaterial, ParsedMaterial, augmentZOffsetMaterial } from "./modeltothree";
 import { BufferAttribute, DataTexture, Matrix4, MeshBasicMaterial, Object3D, Quaternion, RGBAFormat, Vector3 } from "three";
 import { defaultMaterial, materialCacheKey, MaterialData } from "./materials/jmat";
-import { objects } from "../../generated/objects";
+import { locs } from "../../generated/locs";
 import { parseSprite } from "./materials/sprite";
 import * as THREE from "three";
 import { legacyMajors } from "../cache/legacycache";
@@ -1397,7 +1397,7 @@ type MapsquareLocation = {
 	extras: ModelExtrasLocation
 }
 
-export function defaultMorphId(locmeta: objects) {
+export function defaultMorphId(locmeta: locs) {
 	let newid = -1;
 	if (locmeta.morphs_1) { newid = locmeta.morphs_1.unk2[0] ?? locmeta.morphs_1.unk3; }
 	if (locmeta.morphs_2) { newid = locmeta.morphs_2.unk2; }
@@ -1413,16 +1413,16 @@ export async function resolveMorphedObject(source: EngineCache, id: number) {
 		let locdata = getClassicLoc(source, id);
 		return { rawloc: locdata, morphedloc: locdata, resolvedid };
 	} else {
-		let objectfile = await source.getGameFile("objects", id);
-		let rawloc = parse.object.read(objectfile, source);
+		let objectfile = await source.getGameFile("locs", id);
+		let rawloc = parse.loc.read(objectfile, source);
 		let morphedloc = rawloc;
 		if (rawloc.morphs_1 || rawloc.morphs_2) {
 			let newid = defaultMorphId(rawloc);
 			if (newid != -1) {
-				let newloc = await source.getGameFile("objects", newid);
+				let newloc = await source.getGameFile("locs", newid);
 				morphedloc = {
 					...rawloc,
-					...parse.object.read(newloc, source)
+					...parse.loc.read(newloc, source)
 				};
 				resolvedid = newid;
 			}
@@ -1757,7 +1757,7 @@ export type WorldLocation = {
 	plane: number,
 	locid: number,
 	resolvedlocid: number,
-	location: objects,
+	location: locs,
 	sizex: number,
 	sizez: number,
 	placement: mapsquare_locations["locations"][number]["uses"][number]["extra"],

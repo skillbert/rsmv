@@ -9,7 +9,7 @@ export const cacheMajors = {
 	clientscript: 12,
 	fontmetricsOld: 13,
 	sounds: 14,
-	objects: 16,
+	locs: 16,
 	enums: 17,
 	npcs: 18,
 	items: 19,

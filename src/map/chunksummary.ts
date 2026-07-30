@@ -1,5 +1,5 @@
 import { BufferAttribute, Group, Matrix4, Vector3 } from "three";
-import { objects } from "../../generated/objects";
+import { locs } from "../../generated/locs";
 import { ChunkData, getTileHeight, MapRect, ModelExtras, PlacedMesh, rs2ChunkSize, tiledimensions, TileGrid, transformVertexPositions, WorldLocation } from "../3d/mapsquare";
 import { ob3ModelToThree, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBuilder } from "../3d/meshes/meshutils";
@@ -58,7 +58,7 @@ function getLocCenter(grid: TileGrid, model: PlacedMesh[]) {
 }
 
 export function chunkSummary(grid: TileGrid, locdefs: Map<WorldLocation, PlacedMesh[]>, rect: MapRect) {
-	let locids = new Map<number, objects>();
+	let locids = new Map<number, locs>();
 	let locs: { id: number, x: number, z: number, l: number, r: number, h: number, center: number[] }[] = [];
 	let hashes = new Map<number, { center: number[], locdata: WorldLocation }>();
 	for (let [locdata, model] of locdefs) {

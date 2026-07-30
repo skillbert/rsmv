@@ -783,7 +783,7 @@ export class SceneScenario extends React.Component<LookupModeProps, ScenarioInte
 		} else if (this.state.addModelType == "item") {
 			selectEntity(this.props.ctx, "items", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
 		} else if (this.state.addModelType == "loc") {
-			selectEntity(this.props.ctx, "objects", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
+			selectEntity(this.props.ctx, "locs", id => this.addComp("" + id), [{ path: ["name"], search: "" }])
 		}
 	}
 
@@ -1501,7 +1501,7 @@ function SceneLocation(p: LookupModeProps) {
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
-			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="objects" onChange={setId} initialid={initid} />}
+			{p.ctx && <IdInputSearch cache={p.ctx.sceneCache.engine} mode="locs" onChange={setId} initialid={initid} />}
 			{id == null && (
 				<React.Fragment>
 					<p>Enter a location id or search by name.</p>

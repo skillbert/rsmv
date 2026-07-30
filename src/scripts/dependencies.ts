@@ -11,7 +11,7 @@ import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
-import { objects } from "../../generated/objects";
+import { locs } from "../../generated/locs";
 
 export const depClasses = arrayEnum(["material", "model", "item", "loc", "mapsquare", "sequence", "skeleton", "frameset", "animgroup", "npc", "framebase", "texture", "enum", "overlay", "underlay"]);
 const depidmap = Object.fromEntries(depClasses.map((q, i) => [q, i]));
@@ -140,7 +140,7 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 	}
 }
 
-function locationMetaHash(loc: objects) {
+function locationMetaHash(loc: locs) {
 	// only hash properties that affect rendering of a loc (3d and minimap)
 	// can ignore dependencies like models since they are already hashed on their own
 	let hash = 0;
@@ -178,8 +178,8 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 			}
 		}
 	} else {
-		for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.objects)) {
-			let loc = parse.object.read(file, cache);
+		for await (let { id, file } of iterateConfigFiles(cache, cacheMajors.locs)) {
+			let loc = parse.loc.read(file, cache);
 			// addHash("loc", id, crc32(file), 0);
 			addHash("loc", id, locationMetaHash(loc), 0);
 			if (loc.probably_animation) {

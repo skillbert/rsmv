@@ -50,7 +50,7 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 		cacheMajors.materials,//works up to different material system in 2013
 		cacheMajors.items,//~2012
 		cacheMajors.npcs,//2008
-		cacheMajors.objects,//~2016, breaks on morphs
+		cacheMajors.locs,//~2016, breaks on morphs
 		cacheMajors.mapsquares,
 		cacheMajors.models,//not used before 2018
 		cacheMajors.oldmodels//~2015

@@ -654,7 +654,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	npcs: { parser: parse.npc, namefile: internalNameFiles.npc, lookup: chunkedIndex(cacheMajors.npcs) },
 	soundjson: { parser: parse.audio, namefile: internalNameFiles.sound, lookup: blacklistIndex(standardIndex(cacheMajors.sounds), [{ major: cacheMajors.sounds, minor: 0 }]) },
 	musicjson: { parser: parse.audio, lookup: blacklistIndex(standardIndex(cacheMajors.music), [{ major: cacheMajors.music, minor: 0 }]) },
-	objects: { parser: parse.object, namefile: internalNameFiles.loc, lookup: chunkedIndex(cacheMajors.objects) },
+	locs: { parser: parse.loc, namefile: internalNameFiles.loc, lookup: chunkedIndex(cacheMajors.locs) },
 	achievements: { parser: parse.achievement, namefile: internalNameFiles.achievement, lookup: chunkedIndex(cacheMajors.achievements) },
 	structs: { parser: parse.structs, namefile: internalNameFiles.struct, lookup: chunkedIndex(cacheMajors.structs) },
 	sequences: { parser: parse.sequences, namefile: internalNameFiles.seq, lookup: chunkedIndex(cacheMajors.sequences) },

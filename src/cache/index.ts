@@ -217,7 +217,7 @@ export const mappedFileIds = {
 	[cacheMajors.npcs]: 128,
 	[cacheMajors.structs]: 32,
 	[cacheMajors.enums]: 256,
-	[cacheMajors.objects]: 256,
+	[cacheMajors.locs]: 256,
 	[cacheMajors.sequences]: 128,
 	[cacheMajors.spotanims]: 256,
 	[cacheMajors.achievements]: 128,
@@ -227,7 +227,7 @@ export const mappedFileIds = {
 export const oldConfigMaps = {
 	[cacheMajors.items]: cacheConfigPages.items_old,
 	[cacheMajors.npcs]: cacheConfigPages.npcs_old,
-	[cacheMajors.objects]: cacheConfigPages.locs_old,
+	[cacheMajors.locs]: cacheConfigPages.locs_old,
 	[cacheMajors.spotanims]: cacheConfigPages.spotanim_old
 }
 

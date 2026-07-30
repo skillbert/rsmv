@@ -395,7 +395,7 @@ export async function* iterateConfigFiles(cache: EngineCache, major: number) {
 		let files: Buffer[] | null = null;
 		if (major == cacheMajors.items) { files = cache.legacyData.items; }
 		else if (major == cacheMajors.npcs) { files = cache.legacyData.npcs; }
-		else if (major == cacheMajors.objects) { files = cache.legacyData.objects; }
+		else if (major == cacheMajors.locs) { files = cache.legacyData.locs; }
 		else if (major == cacheMajors.spotanims) { files = cache.legacyData.spotanims; }
 		if (!files) { throw new Error(`cache major ${major} can not be iterated`); }
 		yield* files.map((file, id) => ({ id, file }));

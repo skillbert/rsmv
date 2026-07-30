@@ -66,7 +66,7 @@ export function parseLegacyArchive(file: Buffer, major: number, isclassic: boole
 }
 
 type Mapinfo = Map<number, { map: number, loc: number, crc: number, version: number }>;
-type LegacyKeys = "items" | "objects" | "overlays" | "underlays" | "npcs" | "spotanims";
+type LegacyKeys = "items" | "locs" | "overlays" | "underlays" | "npcs" | "spotanims";
 export type LegacyData = Record<LegacyKeys, Buffer[]> & {
     mapmeta: Mapinfo
 }
@@ -76,7 +76,7 @@ export async function legacyPreload(engine: EngineCache) {
     let configgroup = await engine.getArchiveById(legacyMajors.data, legacyGroups.config);
     let r: LegacyData = {
         items: readLegacySubGroup(configgroup, "OBJ"),
-        objects: readLegacySubGroup(configgroup, "LOC"),
+        locs: readLegacySubGroup(configgroup, "LOC"),
         overlays: readLegacySubGroup(configgroup, "FLO"),
         npcs: readLegacySubGroup(configgroup, "NPC"),
         // spotanims: readLegacySubGroup(configgroup, "SPOT")

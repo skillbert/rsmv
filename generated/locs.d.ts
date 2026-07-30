@@ -1,8 +1,8 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\objects.jsonc'
+// This source data is located at '..\src\opcodes\locs.jsonc'
 // run `npm run filetypes` to rebuild
 
-export type objects = {
+export type locs = {
 	models?: ({
 			type: number,
 			values: (number|number)[],

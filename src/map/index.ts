@@ -207,7 +207,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		//and newer game updates rarely update build nr
 		//do a quick search of common cache indices
 		let maxtime = 0;
-		for (let major of [cacheMajors.mapsquares, cacheMajors.items, cacheMajors.npcs, cacheMajors.objects, cacheMajors.config]) {
+		for (let major of [cacheMajors.mapsquares, cacheMajors.items, cacheMajors.npcs, cacheMajors.locs, cacheMajors.config]) {
 			let index = await filesource.getCacheIndex(major);
 			for (let entry of index) {
 				if (entry && entry.version > maxtime) {

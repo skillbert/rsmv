@@ -103,7 +103,7 @@ function allParsers() {
 		cacheIndex: FileParser.fromJson<import("../generated/cacheindex").cacheindex>(require("./opcodes/cacheindex.json")),
 		npc: FileParser.fromJson<import("../generated/npcs").npcs>(require("./opcodes/npcs.jsonc")),
 		item: FileParser.fromJson<import("../generated/items").items>(require("./opcodes/items.jsonc")),
-		object: FileParser.fromJson<import("../generated/objects").objects>(require("./opcodes/objects.jsonc")),
+		loc: FileParser.fromJson<import("../generated/locs").locs>(require("./opcodes/locs.jsonc")),
 		achievement: FileParser.fromJson<import("../generated/achievements").achievements>(require("./opcodes/achievements.jsonc")),
 		mapsquareTiles: FileParser.fromJson<import("../generated/mapsquare_tiles").mapsquare_tiles>(require("./opcodes/mapsquare_tiles.jsonc")),
 		mapsquareTilesNxt: FileParser.fromJson<import("../generated/mapsquare_tiles_nxt").mapsquare_tiles_nxt>(require("./opcodes/mapsquare_tiles_nxt.jsonc")),

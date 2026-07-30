@@ -49,7 +49,7 @@ let configmap: Record<number, FileAction> = {
 }
 
 let majormap: Record<number, FileAction | ((major: number, minor: number) => FileAction)> = {
-	[cacheMajors.objects]: { name: "loc", comparesubfiles: true, parser: parse.object, outputType: "json", getFileName: chunkedIndexName },
+	[cacheMajors.locs]: { name: "loc", comparesubfiles: true, parser: parse.loc, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.items]: { name: "item", comparesubfiles: true, parser: parse.item, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.npcs]: { name: "npc", comparesubfiles: true, parser: parse.npc, outputType: "json", getFileName: chunkedIndexName },
 	[cacheMajors.structs]: { name: "structs", comparesubfiles: true, parser: parse.structs, outputType: "json", getFileName: chunkedIndexName },
