@@ -1,6 +1,6 @@
 {
-	"0x01": { "name":                           "model", "read": "varuint" },
-	"0x02": { "name":                        "sequence", "read": "varuint" },
+	"0x01": { "name":                           "model", "read": "varuint", "type": "model" },
+	"0x02": { "name":                        "sequence", "read": "varuint", "type": "seq" },
 	"0x04": { "name":                          "scaleX", "read": "ushort" },
 	"0x05": { "name":                       "scaleYorZ", "read": "ushort" },
 	"0x06": { "name":                        "rotation", "read": "ushort" },

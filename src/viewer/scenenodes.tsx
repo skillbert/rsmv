@@ -1366,7 +1366,6 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 
 	let overlay: mapsquare_overlays | null = null;
 	let underlay: mapsquare_underlays | null = null;
-	let assetName: string | undefined = undefined;
 	if (reqid.mode == "overlay") {
 		overlay = sceneCache.engine.mapOverlays[reqid.id];
 		if (overlay.material) { matid = overlay.material; }
@@ -1376,7 +1375,6 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 		if (underlay.material) { matid = underlay.material; }
 		if (underlay.color) { color = underlay.color; }
 	} else if (reqid.mode == "material") {
-		assetName = await sceneCache.engine.rawsource.getInternalName(internalNameFiles.material, reqid.id);
 		matid = reqid.id;
 	} else if (reqid.mode == "texture") {
 		await addtex("diffuse", "original", reqid.id, false);
@@ -1384,6 +1382,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 	} else {
 		throw new Error("invalid materialish mode");
 	}
+	let materialname = await sceneCache.engine.rawsource.getInternalName(internalNameFiles.material, matid);
 
 	let assetid = constModelsIds.materialCube;
 	let mods: ModelModifications = {
@@ -1405,7 +1404,7 @@ async function materialIshToModel(sceneCache: ThreejsSceneCache, reqid: Material
 	return castModelInfo({
 		models: models,
 		anims: {},
-		info: { overlay, underlay, texs, obj: json },
+		info: { overlay, underlay, texs, obj: json, materialname },
 		id: reqid,
 		assetName: undefined,
 		name: `${reqid.mode}:${reqid.id}`
@@ -1448,9 +1447,9 @@ function SceneMaterialIsh(p: LookupModeProps) {
 						<ImageDataView img={img.img0} />
 					</div>
 				))}
-				{data?.assetName && <RawTextDisplay text={data?.assetName} />}
 				{data?.info.overlay && <JsonDisplay obj={data?.info.overlay} />}
 				{data?.info.underlay && <JsonDisplay obj={data?.info.underlay} />}
+				{data?.info.materialname && <RawTextDisplay text={data?.info.materialname} />}
 				<JsonDisplay obj={data?.info.obj} />
 			</div>
 		</React.Fragment>
@@ -1499,7 +1498,7 @@ function SceneLocation(p: LookupModeProps) {
 			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
 			<div className="mv-sidebar-scroll">
 				<RawTextDisplay text={data?.assetName} />
-				<JsonDisplay obj={data?.info} />
+				<StructView data={data?.info} meta={parse.loc.parser.getJsonSchema()} />
 			</div>
 		</React.Fragment>
 	)
@@ -1643,7 +1642,6 @@ function SceneItem(p: LookupModeProps) {
 				{enablecam && <ItemCameraMode meta={data?.info} centery={centery} />}
 				<RawTextDisplay text={data?.assetName} />
 				<StructView data={data?.info} meta={parse.item.parser.getJsonSchema()} />
-				<JsonDisplay obj={data?.info} />
 			</div>
 			{/* <input type="button" className="sub-btn" value="history" onClick={gethistory} />
 			{histfs && p.ctx && <UIScriptFiles fs={histfs} ctx={p.ctx} />} */}
@@ -1673,7 +1671,7 @@ function SceneNpc(p: LookupModeProps) {
 			)}
 			<div className="mv-sidebar-scroll">
 				<RawTextDisplay text={data?.assetName} />
-				<JsonDisplay obj={data?.info} />
+				<StructView data={data?.info} meta={parse.npc.parser.getJsonSchema()} />
 			</div>
 		</React.Fragment>
 	)
@@ -1694,7 +1692,7 @@ function SceneSpotAnim(p: LookupModeProps) {
 			)}
 			<div className="mv-sidebar-scroll">
 				<RawTextDisplay text={data?.assetName} />
-				<JsonDisplay obj={data?.info} />
+				<StructView data={data?.info} meta={parse.spotAnims.parser.getJsonSchema()} />
 			</div>
 		</React.Fragment>
 	)

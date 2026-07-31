@@ -3,10 +3,10 @@
 	"0x01": { "name":                              "models", "read":["match","buildnr",{
 																">=582":["array","ubyte",["struct",
 																	["type","ubyte"],
-																	["values",["array","ubyte","item_modelid"]]
+																	["values",["array","ubyte","item_modelid","model"]]
 																]],
 																"other":["array","ubyte",["struct",
-																	["values",["array",1,"item_modelid"]],
+																	["values",["array",1,"item_modelid","model"]],
 																	["type","ubyte"]
 																]]}]},
 	"0x02": { "name":                                "name", "read": "string" },
@@ -16,14 +16,14 @@
 																">=582":["struct",
 																	["models", ["array","ubyte",["struct",
 																		["type","ubyte"],
-																		["values",["array","ubyte","item_modelid"]]
+																		["values",["array","ubyte","item_modelid","model"]]
 																	]]],
-																	["unktail",["array","ubyte",["tuple","item_modelid","item_modelid"]]]],
+																	["unktail",["array","ubyte",["array",2,"item_modelid","model"]]]],
 																"other":["struct",
 																	["models",["array",1,["struct",
 																		["type",10],
-																		["values",["array","ubyte","item_modelid"]],
-																		["unktail",["array",0,["tuple","item_modelid","item_modelid"]]]
+																		["values",["array","ubyte","item_modelid","model"]],
+																		["unktail",["array",0,["array",2,"item_modelid","model"]]]
 																	]]]]
 																}]},
 	"0x0E": { "name":                               "width", "read": "unsigned byte" },
@@ -34,7 +34,7 @@
 	"0x15": { "name":                 "probably_morphFloor", "read": "true" },
 	"0x16": { "name":                          "unknown_16", "read": "true" },
 	"0x17": { "name":                          "occludes_1", "read": "false" },
-	"0x18": { "name":                  "probably_animation", "read": "variable unsigned int" },
+	"0x18": { "name":                  "probably_animation", "read": "variable unsigned int", "type":"seq" },
 	"0x1B": { "name":               "maybe_blocks_movement", "read": "true" },
 	"0x1C": { "name":                  "wallkit_related_1C", "read": "unsigned byte" },
 	"0x1D": { "name":                             "ambient", "read": "ubyte" },
@@ -69,8 +69,8 @@
 	"0x4B": { "name":                          "unknown_4B", "read": "unsigned byte" },
 	"0x4D": { "name":                            "morphs_1", "read": [ "struct",
 																["unk1", "unsigned int"],
-																["unk2", [ "array",["match","buildnr",{">=910":"varushort",">=0":"ubyte"}],"item_modelid"]],
-																["unk3", "item_modelid"] ] },
+																["unk2", [ "array",["match","buildnr",{">=910":"varushort",">=0":"ubyte"}],"item_modelid","loc"]],
+																["unk3", "item_modelid", "loc"] ] },
 	"0x4E": { "name":             "light_source_related_4E", "read": [ "struct", ["maybe_color", "unsigned short"], ["maybe_radius", "unsigned byte"] ] },
 	"0x4F": { "name":                          "unknown_4F", "read": [ "struct", ["unknown_1", "unsigned short"], ["unknown_2", "unsigned short"], ["unknown_3", "unsigned byte"], ["unknown_4", ["array", "unsigned short"]] ] },
 	"0x51": { "name":                          "unknown_51", "read": "unsigned byte" },
@@ -81,9 +81,9 @@
 	"0x5B": { "name":                           "isMembers", "read": "true" },
 	"0x5C": { "name":                            "morphs_2", "read": [ "struct",
 																["unk1", "unsigned int"],
-																["unk2", "item_modelid"],
-																["unk3", [ "array", ["match","buildnr",{">=910":"varushort",">=0":"ubyte"}],"item_modelid"]],
-																["unk4", "item_modelid"] ] },
+																["unk2", "item_modelid", "loc"],
+																["unk3", [ "array", ["match","buildnr",{">=910":"varushort",">=0":"ubyte"}],"item_modelid","loc"]],
+																["unk4", "item_modelid", "loc"] ] },
 	"0x5D": { "name":                             "tilt_xz", "read": [ "tuple", "byte", "byte"] },
 	"0x5E": { "name":                         "under_water", "read": "true" },
 	"0x5F": { "name":         "probably_morphCeilingOffset", "read": ["match","buildnr",{">=596":"short","other":0}]},//TODO buildnr somewhere between 580-728
@@ -142,5 +142,5 @@
 	"0xCC": { "name":						   "unknown_CC", "read": ["array","ubyte",["buffer",27,"hex"]] },
 	"0xCD": { "name":						   "unknown_CD", "read": "modelmorphs" },
 	"0xCE": { "name":                          "unknown_CE", "read": [ "array", "ushort", "ubyte" ] },
-	"0xF9": { "name":                               "extra", "read": "extrasmap" }
+	"0xF9": { "name":                               "extra", "read": "extrasmap", "type": "params" }
 }

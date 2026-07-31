@@ -50,5 +50,5 @@
                                                                     ] },
 	"0x1c": { "name":                          "unknown_1c", "read": "ubyte" },
 	"0x1e": { "name":                          "unknown_1e", "read": "ubyte" },
-	"0xF9": { "name":                               "extra", "read": "extrasmap" }
+	"0xF9": { "name":                               "extra", "read": "extrasmap", "type": "params" }
 }

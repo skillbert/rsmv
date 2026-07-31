@@ -22,5 +22,5 @@
     "0x0E": { "name": "skill_requirements", "read": [ "array", "ubyte", ["tuple", "unsigned byte", "unsigned byte"] ]},
     "0x0F": { "name": "quest_point_req", "read": "unsigned short" },
     "0x11": { "name": "quest_item_sprite", "read": "variable unsigned int" },
-    "0xF9": { "name": "extra", "read": "extrasmap" }
+    "0xF9": { "name": "extra", "read": "extrasmap", "type": "params" }
 }
