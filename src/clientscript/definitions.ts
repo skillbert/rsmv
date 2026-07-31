@@ -164,7 +164,7 @@ export const subtypes = {
     type_54: 54,
     mapsceneicon: 55,
     clanforumqfc: 56,
-    vorbis: 57,
+    sound: 57,
     verify_object: 58,
     mapelement: 59,
     categorytype: 60,

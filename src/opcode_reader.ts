@@ -766,9 +766,11 @@ function arrayParser(args: unknown[], parent: ChunkParentCallback, typedef: Type
 			return `${subtype.getTypescriptType(indent)}[]`;
 		},
 		getJsonSchema() {
+			let itemtype = subtype.getJsonSchema();
+			itemtype["x-rsmv-type"] = displaytype;
 			return {
 				type: "array",
-				items: subtype.getJsonSchema()
+				items: itemtype
 			}
 		}
 	};
@@ -803,6 +805,7 @@ function arrayParser(args: unknown[], parent: ChunkParentCallback, typedef: Type
 	let sizearg = (args.length >= 2 ? args[0] : "variable unsigned short");
 	let lengthtype = buildParser(resolveLengthReference, sizearg, typedef);
 	let subtype = buildParser(resolvePropReference, args[args.length >= 2 ? 1 : 0], typedef);
+	let displaytype = args[2];
 	return r;
 }
 

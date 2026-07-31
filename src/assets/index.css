@@ -348,11 +348,19 @@
 	user-select: text;
 }
 
-.mv-proptable * {
+.mv-proptable__value {
 	overflow: hidden;
 	padding: 0px 3px;
 }
 
+.mv-proptable__entry {
+	overflow: hidden;
+	padding: 0px 3px;
+	grid-column: span 2;
+}
+
 .mv-proptable__name {
 	font-weight: bold;
+	overflow: hidden;
+	padding: 0px 3px;
 }

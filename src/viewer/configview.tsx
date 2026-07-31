@@ -9,63 +9,29 @@ import { loadParams } from "../clientscript/util";
 import { CacheFileSource } from "../cache";
 import { subtypes } from "../clientscript/definitions";
 
+type PropTypes = keyof typeof subtypes | "unknown" | "params";
 
-function getRSType(meta: JSONSchema6 | null) {
-    return meta?.["x-rsmv-type"] ?? "unknown";
+type DeepLinkElement = {
+    rsmvtype: PropTypes,
+    name: string,
+    valuename?: string | undefined,
+    primitive?: string | number | boolean | null,
+    children?: DeepLinkElement[]
 }
 
-function StringView(p: { value: string, meta: JSONSchema6 | null }) {
-    return <span>{p.value} ({getRSType(p.meta)})</span>;
+async function deepLinkParamtable(value: any[], source: CacheFileSource) {
+    let paramData = await loadParams(source);
+    let paramNames = await source.getInternalNameList(internalNameFiles.param);
+    return Promise.all(value.map<Promise<DeepLinkElement>>(q => {
+        let paramname = paramNames.get(q.prop) ?? `param_${q.prop}`;
+        let paramdata = paramData.get(q.prop);
+        let typeid = paramdata?.type?.vartype ?? -1;
+        let typename = Object.entries(subtypes).find(([k, v]) => v == typeid)?.[0] ?? "unknown"
+        return deepLinkJson(paramname, q.intvalue ?? q.stringvalue, { "x-rsmv-type": typename } as any, source);
+    }));
 }
 
-function NumberView(p: { value: number, meta: JSONSchema6 | null }) {
-    return <span>{p.value} ({getRSType(p.meta)})</span>;
-}
-
-function BooleanView(p: { value: boolean, meta: JSONSchema6 | null }) {
-    return <span>{p.value ? "true" : "false"} ({getRSType(p.meta)})</span>;
-}
-
-async function paramsToJson(params: { prop: number, intvalue: number | null, stringvalue: string | null }[], source: CacheFileSource) {
-
-}
-
-
-function ParamView(p: { value: { prop: number, intvalue: number | null, stringvalue: string | null }[], meta: JSONSchema6 | null }) {
-    let ctx = React.useContext(UIEngineContext);
-    let paramtable = useAwaited(async () => {
-        if (!ctx) { return; }
-        let paramData = await loadParams(ctx.source);
-        let paramNames = await ctx.source.getInternalNameList(internalNameFiles.param);
-        return p.value.map(q => {
-            let paramname = paramNames.get(q.prop) ?? `param_${q.prop}`;
-            let paramdata = paramData.get(q.prop);
-            let typeid = paramdata?.type?.vartype ?? -1;
-            return {
-                name: paramname,
-                type: typeid,
-                typename: Object.entries(subtypes).find(([k, v]) => v == typeid)?.[0] ?? "unknown",
-                value: q.intvalue ?? q.stringvalue
-            }
-        });
-    }, [ctx, p.value]);
-
-    return (
-        <table>
-            <tbody>
-                {paramtable?.map((q, i) => <tr key={i}>
-                    <td><strong>{q.name}</strong></td>
-                    <td><StructView data={q.value} meta={{ "x-rsmv-type": q.typename } as any} /></td>
-                </tr>)}
-            </tbody>
-        </table>
-    );
-}
-
-export function StructView(p: { data: any, meta: JSONSchema6Definition | null }) {
-    let data = p.data;
-    let meta = p.meta;
-
+async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition | null, source: CacheFileSource): Promise<DeepLinkElement> {
     if (typeof meta == "boolean") { meta = null; }
     let rsmvtype = getRSType(meta);
     // strip nullable type from schema
@@ -73,23 +39,17 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null })
         meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
     }
 
-    if (typeof data == "string") {
-        return <StringView value={data} meta={meta} />;
-    }
     if (typeof data == "number") {
-        return <NumberView value={data} meta={meta} />;
-    }
-    if (typeof data == "boolean") {
-        return <BooleanView value={data} meta={meta} />;
-    }
-    if (typeof data == "undefined" || data == null) {
-        return <span>null</span>;
-    }
-    if (Array.isArray(data)) {
+        let namegroup = internalNameFiles[rsmvtype];
+        let valuename = (namegroup != undefined ? await source.getInternalName(namegroup, data) : undefined);
+        return { name, rsmvtype, valuename, primitive: data };
+    } else if (typeof data == "string" || typeof data == "boolean" || data == null) {
+        return { name, rsmvtype, primitive: data };
+    } else if (Array.isArray(data)) {
         if (rsmvtype == "params") {
-            return <ParamView value={data} meta={meta} />;
+            return { name, rsmvtype: "params", children: await deepLinkParamtable(data, source) };
         }
-        let subs: JSX.Element[] = [];
+        let subs: DeepLinkElement[] = [];
         for (let i = 0; i < data.length; i++) {
             let itemmeta: JSONSchema6Definition | null = null;
             if (meta && meta.items) {
@@ -99,33 +59,36 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null })
                     itemmeta = meta.items;
                 }
             }
-            subs.push(<StructView key={i} data={data[i]} meta={itemmeta} />);
+            subs.push(await deepLinkJson("", data[i], itemmeta, source));
         }
-        return <span>{subs}</span>;
-    }
-    if (typeof data == "object") {
-        let subs: JSX.Element[] = [];
+        return { name, rsmvtype, children: subs };
+    } else if (typeof data == "object") {
+        let subs: DeepLinkElement[] = [];
         for (let key in data) {
             let itemmeta: JSONSchema6Definition | null = null;
             if (meta && meta.properties && meta.properties[key]) {
                 itemmeta = meta.properties[key];
             }
-            subs.push(
-                <tr key={key}>
-                    <td><strong>{key}</strong></td>
-                    <td><StructView data={data[key]} meta={itemmeta} /></td>
-                </tr>
-            );
+            let subtype = getRSType(itemmeta);
+            if (subtype == "params") {
+                subs.push(...await deepLinkParamtable(data[key], source));
+                continue;
+            }
+
+            subs.push(await deepLinkJson(key, data[key], itemmeta, source));
         }
-        return <table>
-            <tbody>
-                {subs}
-            </tbody>
-        </table>;
+        return { name, rsmvtype, children: subs };
+    } else {
+        throw new Error(`Unsupported data type: ${typeof data}`);
     }
 }
 
-export function SpriteView(p: { id: number }) {
+
+function getRSType(meta: JSONSchema6Definition | null): PropTypes {
+    return meta?.["x-rsmv-type"] ?? "unknown";
+}
+
+function SpriteView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
     let imgurl = useAwaited(async () => {
         if (!enginectx) { return; }
@@ -135,4 +98,42 @@ export function SpriteView(p: { id: number }) {
     }, [p.id]);
 
     return <img src={imgurl ?? undefined} />;
+}
+
+export function StructView(p: { data: any, meta: JSONSchema6Definition | null }) {
+    let source = React.useContext(UIEngineContext)?.source;
+    let data = useAwaited(async () => source && deepLinkJson("root", p.data, p.meta, source), [p.data, p.meta, source]);
+
+    let handlenode = (prop: DeepLinkElement) => {
+        if (prop.primitive !== undefined) {
+            if (prop.valuename) {
+                return <span>{prop.valuename} ({prop.rsmvtype}_{prop.primitive})</span>;
+            } else {
+                return <span>{prop.primitive} ({prop.rsmvtype})</span>;
+            }
+        }
+        if (prop.children) {
+            return <div className="mv-proptable">
+                {prop.children.map((q, i) => {
+                    if (q.name == "") {
+                        return <div key={i} className="mv-proptable__entry">{handlenode(q)}</div>;
+                    } else {
+                        return (
+                            <React.Fragment key={i}>
+                                <div className="mv-proptable__name">{q.name}</div>
+                                <div className="mv-proptable__value">{handlenode(q)}</div>
+                            </React.Fragment>
+                        );
+                    }
+                })}
+            </div>;
+        }
+        return null;
+    }
+
+    return (
+        <div>
+            {data ? handlenode(data) : <span>Loading...</span>}
+        </div>
+    );
 }
