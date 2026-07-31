@@ -1,17 +1,17 @@
-import { cacheConfigPages } from "../constants";
+import { cacheConfigPages, internalNameFiles } from "../constants";
 import { rs3opnames } from "./opnames";
 
 export const variableSources = {
-    player: { key: 0, index: cacheConfigPages.varplayer },
-    npc: { key: 1, index: cacheConfigPages.varnpc },
-    client: { key: 2, index: cacheConfigPages.varclient },
-    world: { key: 3, index: cacheConfigPages.varworld },
-    region: { key: 4, index: cacheConfigPages.varregion },
-    object: { key: 5, index: cacheConfigPages.varobject },
-    clan: { key: 6, index: cacheConfigPages.varclan },
-    clansettings: { key: 7, index: cacheConfigPages.varclansettings },
+    player: { key: 0, index: cacheConfigPages.varplayer, namefile: internalNameFiles.var_player },
+    npc: { key: 1, index: cacheConfigPages.varnpc, namefile: internalNameFiles.var_npc },
+    client: { key: 2, index: cacheConfigPages.varclient, namefile: internalNameFiles.var_client },
+    world: { key: 3, index: cacheConfigPages.varworld, namefile: -1 },
+    region: { key: 4, index: cacheConfigPages.varregion, namefile: -1 },
+    object: { key: 5, index: cacheConfigPages.varobject, namefile: internalNameFiles.var_object },
+    clan: { key: 6, index: cacheConfigPages.varclan, namefile: internalNameFiles.var_clan },
+    clansettings: { key: 7, index: cacheConfigPages.varclansettings, namefile: internalNameFiles.var_clan_setting },
     // campaign: { key: 8, index: cacheConfigPages.varcampaign },//seems incorrect after 30oct2023
-    playergroup: { key: 9, index: cacheConfigPages.varplayergroup }//not sure about 75
+    playergroup: { key: 9, index: cacheConfigPages.varplayergroup, namefile: internalNameFiles.var_player_group }//not sure about 75
 };
 export const namedClientScriptOps = {
     //old caches only

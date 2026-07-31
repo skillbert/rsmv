@@ -9,7 +9,7 @@ import { Openrs2CacheSource } from "../cache/openrs2loader";
 import * as fs from "fs/promises";
 import { crc32, crc32addInt } from "../libs/crc32util";
 import { params } from "../../generated/params";
-import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, namedClientScriptOps, variableSources, typeToPrimitive, getOpName, knownClientScriptOpNames } from "./definitions";
+import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, namedClientScriptOps, variableSources, typeToPrimitive, getOpName, knownClientScriptOpNames, PrimitiveType } from "./definitions";
 import { dbtables } from "../../generated/dbtables";
 import { reverseHashes } from "../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst, parseClientScriptIm } from "./ast";
@@ -32,6 +32,25 @@ type OpreadInstance = {
 export type StackDiffEquation = {
     section: CodeBlockNode,
     unknowns: Set<OpcodeInfo>
+}
+
+type ClientVarMeta = {
+    varid: number,
+    type: PrimitiveType,
+    fulltype: number,
+    varname: string
+}
+
+type VarbitMeta = {
+    varid: number,
+    bits: [number, number],
+    varname: string
+}
+
+type ClientVarGroup = {
+    name: string,
+    maxid: number,
+    vars: Map<number, ClientVarMeta>
 }
 
 //TODO move to file
@@ -273,8 +292,8 @@ export class ClientscriptObfuscation {
     opidcounter = 10000;
     source: CacheFileSource;
     dbtables = new Map<number, dbtables>();
-    varmeta: Map<number, { name: string, maxid: number, vars: Map<number, typeof varInfoParser extends FileParser<infer T> ? T : never> }> = new Map();
-    varbitmeta: Map<number, typeof varbitInfoParser extends FileParser<infer T> ? T : never> = new Map();
+    varmeta: Map<number, ClientVarGroup> = new Map();
+    varbitmeta: Map<number, VarbitMeta> = new Map();
     parammeta = new Map<number, params>();
     scriptargs = new Map<number, { scriptname: string, stack: StackInOut }>();
     candidates = new Map<number, ScriptCandidate>();
@@ -397,10 +416,22 @@ export class ClientscriptObfuscation {
     }
 
     async preloadData() {
-        let loadVars = async (subid: number) => {
-            let archieve = await this.source.getArchiveById(cacheMajors.config, subid);
+        let loadVars = async (groupname: string, group: typeof variableSources[keyof typeof variableSources]) => {
+            let varnames = (group.namefile == -1 ? new Map() : await this.source.getInternalNameList(group.namefile));
+            let archieve = await this.source.getArchiveById(cacheMajors.config, group.index);
             let last = archieve.at(-1)?.fileid ?? 0;
-            return { last, vars: new Map(archieve.map(q => [q.fileid, varInfoParser.read(q.buffer, this.source)])) };
+            return {
+                last,
+                vars: new Map(archieve.map(q => {
+                    let parsed = varInfoParser.read(q.buffer, this.source);
+                    return [q.fileid, {
+                        varid: q.fileid,
+                        type: typeToPrimitive(parsed.type),
+                        fulltype: parsed.type,
+                        varname: varnames.get(q.fileid),
+                    } satisfies ClientVarMeta];
+                }))
+            };
         }
 
         let dbtables = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.dbtables);
@@ -408,13 +439,27 @@ export class ClientscriptObfuscation {
 
         //only tested on current 932 caches
         if (this.source.getBuildNr() > 900) {
-            this.varmeta = new Map(await Promise.all(Object.entries(variableSources).map(async q => {
-                let vardata = await loadVars(q[1].index);
-                return [q[1].key, { name: q[0], vars: vardata.vars, maxid: vardata.last }] as const;
+            this.varmeta = new Map(await Promise.all(Object.entries(variableSources).map(async ([varname, val]) => {
+                let vardata = await loadVars(varname, val);
+                return [val.key, {
+                    name: varname,
+                    vars: vardata.vars,
+                    maxid: vardata.last
+                }] as [number, ClientVarGroup];
             })));
 
             let varbitarchieve = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.varbits);
-            this.varbitmeta = new Map(varbitarchieve.map(q => [q.fileid, varbitInfoParser.read(q.buffer, this.source)]));
+            this.varbitmeta = new Map(varbitarchieve.map(q => {
+                let parsed = varbitInfoParser.read(q.buffer, this.source);
+                return [
+                    q.fileid,
+                    {
+                        varid: parsed.varid,
+                        bits: parsed.bits,
+                        varname: this.getClientVarName(parsed.varid)
+                    } satisfies VarbitMeta
+                ];
+            }));
 
             this.parammeta = await loadParams(this.source);
         }
@@ -590,15 +635,27 @@ export class ClientscriptObfuscation {
 
         return { opcode: res.id, imm: imm.imm, imm_obj: imm.imm_obj, opname } satisfies ClientScriptOp;
     }
+    getClientVarbitName(varbit: number, target: number) {
+        let varbitmeta = this.varbitmeta.get(varbit);
+        if (!varbitmeta) {
+            return `varbit_${varbit}${target != 0 ? `[${target}]` : ""}`;
+        }
+        return `${varbitmeta.varname}_bit${varbitmeta.bits[0]}_${varbitmeta.bits[1]}${target != 0 ? `[${target}]` : ""}`;
+    }
+    getClientVarName(varint: number) {
+        let groupid = (varint >> 24) & 0xff;
+        let varid = (varint >> 8) & 0xffff;
+        let varmeta = this.getClientVarMeta(varint);
+        if (!varmeta?.varname) {
+            return `var${this.varmeta.get(groupid)?.name ?? "unk"}_${varid}`;
+        }
+        return varmeta.varname;
+    }
     getClientVarMeta(varint: number) {
         let groupid = (varint >> 24) & 0xff;
         let varid = (varint >> 8) & 0xffff;
         let group = this.varmeta.get(groupid);
-        let varmeta = group?.vars.get(varid);
-        if (!group || !varmeta) { return null; }
-        let fulltype = varmeta.type;
-        let type = typeToPrimitive(fulltype);
-        return { name: group.name, varid, type, fulltype };
+        return group?.vars.get(varid);
     }
     getNamedOp(id: number) {
         let opinfo = this.decodedMappings.get(id);
@@ -1042,12 +1099,22 @@ function callibrateOperants(calli: ClientscriptObfuscation, candidates: Map<numb
                 op.opinfo.stackChangeConstraints.add(eq);
             }
         }
-        testSection(eq);
-        pendingEquations.push(eq);
+        try {
+            testSection(eq);
+            pendingEquations.push(eq);
+        } catch (e) {
+            console.error("Error testing section", e);
+            eq.section.dump();
+        }
     }
     for (let i = 0; i < 3; i++) {
         for (let eq of pendingEquations) {
-            testSection(eq);
+            try {
+                testSection(eq);
+            } catch (e) {
+                console.error("Error testing section", e);
+                eq.section.dump()
+            }
         }
         let total = 0;
         let partial = 0;

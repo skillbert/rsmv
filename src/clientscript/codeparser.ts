@@ -928,16 +928,17 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
 
 export function writeClientVarFile(calli: ClientscriptObfuscation) {
     let res = "";
-    for (let domain of calli.varmeta.values()) {
+    for (let [domainid, domain] of calli.varmeta) {
         res += `// ===== ${domain.name} =====\n`;
         for (let [id, meta] of domain.vars) {
-            res += `declare var var${domain.name}_${id}: ${subtypeToTs(meta.type)};\n`;
+            let varid = domainid | (id << 8);
+            res += `declare var ${calli.getClientVarName(varid)}: ${meta.type};\n`;
         }
     }
     res += `// ===== varbits =====\n`;
     for (let [id, meta] of calli.varbitmeta) {
-        let groupmeta = calli.varmeta.get(meta.varid >> 16);
-        res += `declare var varbit${groupmeta?.name ?? "unk"}_${id}: number;\n`;
+        let name = calli.getClientVarbitName(id, 0);
+        res += `declare var ${name}: number;\n`;
     }
     return res;
 }

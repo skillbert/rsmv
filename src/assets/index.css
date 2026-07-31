@@ -193,8 +193,7 @@
 	margin: 0px auto;
 }
 
-.map-grid-placeholder {
-}
+.map-grid-placeholder {}
 
 .map-grid-placeholder:hover {
 	background-color: #5555;
@@ -340,4 +339,20 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.mv-proptable {
+	display: grid;
+	grid-template-columns: 1fr 2fr;
+	max-width: 100%;
+	user-select: text;
+}
+
+.mv-proptable * {
+	overflow: hidden;
+	padding: 0px 3px;
+}
+
+.mv-proptable__name {
+	font-weight: bold;
 }

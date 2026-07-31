@@ -105,22 +105,11 @@ function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
     } else if (op.opcode == namedClientScriptOps.popdiscardint || op.opcode == namedClientScriptOps.popdiscardlong || op.opcode == namedClientScriptOps.popdiscardstring) {
         return "";
     } else if (op.opcode == namedClientScriptOps.popvar || op.opcode == namedClientScriptOps.pushvar) {
-        let varmeta = calli.getClientVarMeta(op.imm);
-        if (varmeta) {
-            return `var${varmeta.name}_${varmeta.varid}`;
-        } else {
-            return `varunk_${op.imm}`;
-        }
+        return calli.getClientVarName(op.imm);
     } else if (op.opcode == namedClientScriptOps.popvarbit || op.opcode == namedClientScriptOps.pushvarbit) {
         let id = op.imm >> 8;
         let optarget = (op.imm & 0xff);
-        let varbitmeta = calli.varbitmeta.get(id);
-        if (typeof varbitmeta?.varid != "number") {
-            return `varbitunk_${op.imm}`;
-        } else {
-            let groupmeta = calli.varmeta.get(varbitmeta.varid >> 16);
-            return `varbit${groupmeta?.name ?? "unk"}_${id}${optarget == 0 ? "" : `[${optarget}]`}`;//TODO this is currently not supported in the parser
-        }
+        return calli.getClientVarbitName(id, optarget);
     }
     return getOpName(op.opcode);
 }
@@ -275,7 +264,7 @@ addWriter(CodeBlockNode, (node, ctx) => {
         if (node.parent instanceof SwitchStatementNode && node.branchEndNode != null) {
             code += `${ctx.codeIndent()}break;\n`;
         }
-        if (node.deadcodeSuccessor) { 
+        if (node.deadcodeSuccessor) {
             code += ctx.getCode(node.deadcodeSuccessor);
         }
         ctx.popIndent();

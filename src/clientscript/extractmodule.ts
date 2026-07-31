@@ -204,8 +204,8 @@ export class IsolatedCS2Module {
         }
 
         for (let varid of [...allvars].sort((a, b) => a - b)) {
+            let varname = this.deob.getClientVarName(varid);
             let varmeta = this.deob.getClientVarMeta(varid);
-            let varname = (varmeta ? `var${varmeta.name}_${varmeta.varid}` : `varunk_${varid}`);
             res += `var ${varname}`;
             res += `: ${varmeta ? subtypeToTs(varmeta.fulltype) : "any"}`;
             res += `\n`;
@@ -214,19 +214,8 @@ export class IsolatedCS2Module {
         for (let varid of [...allvarbits].sort((a, b) => a - b)) {
             let id = varid >> 8;
             let optarget = (varid & 0xff);
-            let varbitmeta = this.deob.varbitmeta.get(id);
-            let varname = "";
-            let comment = "unknown";
-            if (typeof varbitmeta?.varid != "number") {
-                varname = `varbitunk_${varid}`;
-            } else {
-                let groupmeta = this.deob.varmeta.get(varbitmeta.varid >> 16);
-                varname = `varbit${groupmeta?.name ?? "unk"}_${id}${optarget == 0 ? "" : `[${optarget}]`}`;
-                comment = `${varbitmeta.bits[1] - varbitmeta.bits[0] + 1}`;
-            }
-            res += `var ${varname}`;
-            res += `: int`;
-            res += `; //${comment}\n`;
+            let varname = this.deob.getClientVarbitName(id, optarget);
+            res += `var ${varname}: int;\n`;
         }
         res += "\n";
         return res;
