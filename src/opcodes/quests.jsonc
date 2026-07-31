@@ -1,0 +1,26 @@
+{
+    "0x01": { "name": "name", "read": "paddedstring" },
+    "0x02": { "name": "quest_list_name", "read": "paddedstring" },
+    "0x03": { "name": "varps", "read": ["array", "ubyte",["struct", 
+                                            ["varp", "unsigned short"],
+                                            ["startvalue", "int"],
+                                            ["endvalue", "int"]
+                                        ]]},
+    "0x04": { "name": "varbits", "read": ["array", "ubyte", ["struct", 
+                                            ["varbit", "unsigned short"],
+                                            ["startvalue", "int"],
+                                            ["endvalue", "int"]
+                                        ]]},
+    "0x05": { "name": "subquest_of", "read": "unsigned short" },
+    "0x06": { "name": "discontinued_status", "read": "unsigned byte" },
+    "0x07": { "name": "quest_difficulty", "read": "unsigned byte" },
+    "0x08": { "name": "members", "read": "true" },
+    "0x09": { "name": "quest_points", "read": "unsigned byte" },
+    "0x0A": { "name": "start_location_path", "read": ["array", "ubyte", "int"]},
+    "0x0C": { "name": "alternate_quest_start", "read": "int" },
+    "0x0D": { "name": "required_quests", "read": ["array", "ubyte", "unsigned short"]},
+    "0x0E": { "name": "skill_requirements", "read": [ "array", "ubyte", ["tuple", "unsigned byte", "unsigned byte"] ]},
+    "0x0F": { "name": "quest_point_req", "read": "unsigned short" },
+    "0x11": { "name": "quest_item_sprite", "read": "variable unsigned int" },
+    "0xF9": { "name": "extra", "read": "extrasmap" }
+}

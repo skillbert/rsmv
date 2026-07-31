@@ -665,6 +665,7 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	quickchatlines: { parser: parse.quickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
 	dbtables: { parser: parse.dbtables, namefile: internalNameFiles.dbtable, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables) },
 	dbrows: { parser: parse.dbrows, namefile: internalNameFiles.dbrow, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows) },
+	quests: { parser: parse.quest, namefile: internalNameFiles.quest, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.quests) },
 
 	overlays: { parser: parse.mapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
 	identitykit: { parser: parse.identitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },

@@ -128,6 +128,7 @@ function allParsers() {
 		skeletalAnim: FileParser.fromJson<import("../generated/skeletalanim").skeletalanim>(require("./opcodes/skeletalanim.jsonc")),
 		materials: FileParser.fromJson<import("../generated/materials").materials>(require("./opcodes/materials.jsonc")),
 		oldmaterials: FileParser.fromJson<import("../generated/oldmaterials").oldmaterials>(require("./opcodes/oldmaterials.jsonc")),
+		quest: FileParser.fromJson<import("../generated/quests").quests>(require("./opcodes/quests.jsonc")),
 		quickchatCategories: FileParser.fromJson<import("../generated/quickchatcategories").quickchatcategories>(require("./opcodes/quickchatcategories.jsonc")),
 		quickchatLines: FileParser.fromJson<import("../generated/quickchatlines").quickchatlines>(require("./opcodes/quickchatlines.jsonc")),
 		environments: FileParser.fromJson<import("../generated/environments").environments>(require("./opcodes/environments.jsonc")),

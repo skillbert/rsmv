@@ -109,6 +109,7 @@ export const cacheConfigPages = {
 	environments: 29,
 	animgroups: 32,
 	mapscenes: 34,
+	quests: 35,
 	maplabels: 36,
 	dbtables: 40,
 	dbrows: 41,

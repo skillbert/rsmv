@@ -12,6 +12,8 @@ export type npcs = {
 	unk_0D?: number | null
 	unk_0E?: number | null
 	unk_11?: number[] | null
+	unk_1A?: number | null
+	unk_1B?: number | null
 	actions_0?: string | null
 	actions_1?: string | null
 	actions_2?: string | null
