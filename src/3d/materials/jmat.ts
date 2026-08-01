@@ -86,12 +86,12 @@ export function convertMaterial(data: Buffer, materialid: number, source: CacheF
 			mat.baseColor = (raw.extra.baseColor == 0 ? [1, 1, 1] : HSL2RGBfloat(packedHSL2HSL(raw.extra.baseColor)));
 		}
 		mat.stripDiffuseAlpha = (mat.alphamode == "opaque");
-	} else if (rawparsed.v1 || rawparsed.v2) {
+	} else if (rawparsed.v1_or_v2) {
 		// currently v1 and v2 have the same structure
-		let raw = (rawparsed.v1 || rawparsed.v2)!;
+		let raw = rawparsed.v1_or_v2!;
 		//this is very wrong
 		mat.alphamode = (raw.opaque_2 && !raw.hasUVanimU ? "cutoff" : "blend");
-		mat.baseColorFraction = 1;
+		mat.baseColorFraction = (raw.textureMultiply ? 1 : 0);
 		if (raw.diffuse) { mat.textures.diffuse = raw.diffuse.texture; }
 		if (raw.normal) { mat.textures.normal = raw.normal.texture; }
 		if (raw.compound) { mat.textures.compound = raw.compound.texture; }
