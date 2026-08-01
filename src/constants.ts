@@ -63,6 +63,7 @@ export const internalNameFiles = {
 	interface: 24,
 	inv: 25,
 	loc: 28,
+	maplabel: 29,
 	material: 32,
 	model: 34,
 	npc: 35,
