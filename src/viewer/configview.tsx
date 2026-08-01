@@ -8,15 +8,18 @@ import { useAwaited } from "./scriptsui";
 import { loadParams } from "../clientscript/util";
 import { CacheFileSource } from "../cache";
 import { subtypes } from "../clientscript/definitions";
+import classNames from "classnames";
+import { HSL2RGB, packedHSL2HSL } from "../utils";
 
-type PropTypes = keyof typeof subtypes | "unknown" | "params";
+type PropTypes = keyof typeof subtypes | "unknown" | "params" | "color";
 
 type DeepLinkElement = {
     rsmvtype: PropTypes,
     name: string,
     valuename?: string | undefined,
     primitive?: string | number | boolean | null,
-    children?: DeepLinkElement[]
+    items?: DeepLinkElement[],
+    array?: DeepLinkElement[]
 }
 
 async function deepLinkParamtable(value: any[], source: CacheFileSource) {
@@ -38,6 +41,9 @@ async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition
     if (meta?.oneOf) {
         meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
     }
+    if (meta?.anyOf) {
+        meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+    }
 
     if (typeof data == "number") {
         let namegroup = internalNameFiles[rsmvtype];
@@ -47,7 +53,7 @@ async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition
         return { name, rsmvtype, primitive: data };
     } else if (Array.isArray(data)) {
         if (rsmvtype == "params") {
-            return { name, rsmvtype: "params", children: await deepLinkParamtable(data, source) };
+            return { name, rsmvtype: "params", items: await deepLinkParamtable(data, source) };
         }
         let subs: DeepLinkElement[] = [];
         for (let i = 0; i < data.length; i++) {
@@ -61,7 +67,7 @@ async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition
             }
             subs.push(await deepLinkJson("", data[i], itemmeta, source));
         }
-        return { name, rsmvtype, children: subs };
+        return { name, rsmvtype, array: subs };
     } else if (typeof data == "object") {
         let subs: DeepLinkElement[] = [];
         for (let key in data) {
@@ -70,14 +76,14 @@ async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition
                 itemmeta = meta.properties[key];
             }
             let subtype = getRSType(itemmeta);
-            if (subtype == "params") {
-                subs.push(...await deepLinkParamtable(data[key], source));
-                continue;
-            }
+            // if (subtype == "params") {
+            //     subs.push(...await deepLinkParamtable(data[key], source));
+            //     continue;
+            // }
 
             subs.push(await deepLinkJson(key, data[key], itemmeta, source));
         }
-        return { name, rsmvtype, children: subs };
+        return { name, rsmvtype, items: subs };
     } else {
         throw new Error(`Unsupported data type: ${typeof data}`);
     }
@@ -104,36 +110,72 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null })
     let source = React.useContext(UIEngineContext)?.source;
     let data = useAwaited(async () => source && deepLinkJson("root", p.data, p.meta, source), [p.data, p.meta, source]);
 
-    let handlenode = (prop: DeepLinkElement) => {
-        if (prop.primitive !== undefined) {
+    let handlenode = (prop: DeepLinkElement, isroot = false): { isbig: boolean, el: JSX.Element } => {
+        if (typeof prop.primitive == "number") {
+            if (prop.rsmvtype == "color") {
+                let hsl = packedHSL2HSL(prop.primitive);
+                let color = HSL2RGB(hsl);
+                let title = `RS HSL: ${hsl[0] * 63}, ${hsl[1] * 7}, ${hsl[2] * 127}\nRGB: ${color[0]}, ${color[1]}, ${color[2]}`;
+                return {
+                    isbig: false,
+                    el: <span title={title}>
+                        <span className="mv-proptable__color" style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }} />
+                        color: {prop.primitive}
+                    </span>
+                };
+            }
             if (prop.valuename) {
-                return <span>{prop.valuename} ({prop.rsmvtype}_{prop.primitive})</span>;
+                return { isbig: false, el: <span>{prop.valuename} ({prop.rsmvtype}_{prop.primitive})</span> };
             } else {
-                return <span>{prop.primitive} ({prop.rsmvtype})</span>;
+                return { isbig: false, el: <span>{prop.primitive} ({prop.rsmvtype})</span> };
             }
         }
-        if (prop.children) {
-            return <div className="mv-proptable">
-                {prop.children.map((q, i) => {
-                    if (q.name == "") {
-                        return <div key={i} className="mv-proptable__entry">{handlenode(q)}</div>;
+        if (typeof prop.primitive == "string") {
+            return { isbig: false, el: <span>{prop.primitive}</span> };
+        }
+        if (typeof prop.primitive == "boolean") {
+            return { isbig: false, el: <span>{prop.primitive}</span> };
+        }
+        if (prop.array) {
+            let isbig = false;
+            let el = <div className="mv-proptable mv-proptable--array">
+                {prop.array.map((q, i) => {
+                    let child = handlenode(q);
+                    isbig ||= child.isbig;
+                    return <div key={i} className="mv-proptable__entry">{child.el}</div>;
+                })}
+            </div>;
+            return { isbig, el };
+        }
+        if (prop.items) {
+            let el = <div className={classNames({ "mv-proptable": true, "mv-proptable--nested": !isroot })}>
+                {prop.items.map((q, i) => {
+                    let child = handlenode(q);
+                    if (child.isbig) {
+                        return (
+                            <div key={i} className="mv-proptable__entry">
+                                <div className="mv-proptable__name">{q.name}</div>
+                                {child.el}
+                            </div>
+                        );
                     } else {
                         return (
                             <React.Fragment key={i}>
                                 <div className="mv-proptable__name">{q.name}</div>
-                                <div className="mv-proptable__value">{handlenode(q)}</div>
+                                <div className="mv-proptable__value">{child.el}</div>
                             </React.Fragment>
                         );
                     }
                 })}
-            </div>;
+            </div>
+            return { isbig: true, el };
         }
-        return null;
+        return { isbig: false, el: <span>Parse Error</span> };
     }
 
     return (
         <div>
-            {data ? handlenode(data) : <span>Loading...</span>}
+            {data ? handlenode(data, true).el : <span>Loading...</span>}
         </div>
     );
 }

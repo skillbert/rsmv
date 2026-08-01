@@ -70,46 +70,46 @@ export type items = {
 	dummyItem?: number | null
 	noteData_old?: number | null
 	noteTemplate_old?: number | null
-	stack_info_old_0?: [
-		number,
-		number,
-	] | null
-	stack_info_old_1?: [
-		number,
-		number,
-	] | null
-	stack_info_old_2?: [
-		number,
-		number,
-	] | null
-	stack_info_old_3?: [
-		number,
-		number,
-	] | null
-	stack_info_old_4?: [
-		number,
-		number,
-	] | null
-	stack_info_old_5?: [
-		number,
-		number,
-	] | null
-	stack_info_old_6?: [
-		number,
-		number,
-	] | null
-	stack_info_old_7?: [
-		number,
-		number,
-	] | null
-	stack_info_old_8?: [
-		number,
-		number,
-	] | null
-	stack_info_old_9?: [
-		number,
-		number,
-	] | null
+	stack_info_old_0?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_1?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_2?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_3?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_4?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_5?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_6?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_7?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_8?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_old_9?: {
+		icon: number,
+		count: number,
+	} | null
 	scale_0?: number | null
 	scale_1?: number | null
 	scale_2?: number | null
@@ -176,46 +176,46 @@ export type items = {
 		number,
 	] | null
 	noteDataIcon?: number | null
-	stack_info_0?: [
-		number,
-		number,
-	] | null
-	stack_info_1?: [
-		number,
-		number,
-	] | null
-	stack_info_2?: [
-		number,
-		number,
-	] | null
-	stack_info_3?: [
-		number,
-		number,
-	] | null
-	stack_info_4?: [
-		number,
-		number,
-	] | null
-	stack_info_5?: [
-		number,
-		number,
-	] | null
-	stack_info_6?: [
-		number,
-		number,
-	] | null
-	stack_info_7?: [
-		number,
-		number,
-	] | null
-	stack_info_8?: [
-		number,
-		number,
-	] | null
-	stack_info_9?: [
-		number,
-		number,
-	] | null
+	stack_info_0?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_1?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_2?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_3?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_4?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_5?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_6?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_7?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_8?: {
+		icon: number,
+		count: number,
+	} | null
+	stack_info_9?: {
+		icon: number,
+		count: number,
+	} | null
 	noteData?: number | null
 	noteTemplate?: number | null
 	loanId?: number | null

@@ -17,18 +17,12 @@ export type locs = {
 				type: number,
 				values: (number|number)[],
 			}[],
-			unktail: [
-				(number|number),
-				(number|number),
-			][],
+			unktail: (number|number)[][],
 		}|{
 			models: {
 				type: 10,
 				values: (number|number)[],
-				unktail: [
-					(number|number),
-					(number|number),
-				][],
+				unktail: (number|number)[][],
 			}[],
 		}) | null
 	width?: number | null
@@ -79,13 +73,14 @@ export type locs = {
 	unknown_4A?: true | null
 	unknown_4B?: number | null
 	morphs_1?: {
-		unk1: number,
-		unk2: (number|number)[],
-		unk3: (number|number),
+		varbit: number,
+		varp: number,
+		options: (number|number)[],
+		default: (number|number),
 	} | null
 	light_source_related_4E?: {
-		maybe_color: number,
-		maybe_radius: number,
+		color: number,
+		radius: number,
 	} | null
 	unknown_4F?: {
 		unknown_1: number,
@@ -100,10 +95,11 @@ export type locs = {
 	unknown_5A?: true | null
 	isMembers?: true | null
 	morphs_2?: {
-		unk1: number,
+		varbit: number,
+		varp: number,
 		unk2: (number|number),
-		unk3: (number|number)[],
-		unk4: (number|number),
+		options: (number|number)[],
+		default: (number|number),
 	} | null
 	tilt_xz?: [
 		number,

@@ -1399,7 +1399,7 @@ type MapsquareLocation = {
 
 export function defaultMorphId(locmeta: locs) {
 	let newid = -1;
-	if (locmeta.morphs_1) { newid = locmeta.morphs_1.unk2[0] ?? locmeta.morphs_1.unk3; }
+	if (locmeta.morphs_1) { newid = locmeta.morphs_1.options[0] ?? locmeta.morphs_1.default; }
 	if (locmeta.morphs_2) { newid = locmeta.morphs_2.unk2; }
 	if (newid == (1 << 15) - 1) { newid = -1; }//new caches with varuint
 	if (newid == (1 << 16) - 1) { newid = -1; }//old caches which use ushort

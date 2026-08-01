@@ -41,9 +41,11 @@ export type npcs = {
 	head_icon_data?: number | null
 	unknown_67?: number | null
 	morphs_1?: {
-		unk1: number,
-		unk2: number[],
-		unk3: (number|number),
+		varbit: number,
+		varp: number,
+		options: number[],
+		default: number,
+		unk5: (number|null),
 	} | null
 	unknown_6B?: false | null
 	slowWalk?: false | null
@@ -61,10 +63,12 @@ export type npcs = {
 		number,
 	] | null
 	morphs_2?: {
-		unk1: number,
+		varbit: number,
+		varp: number,
 		unk2: number,
-		unk3: number[],
-		unk4: number,
+		options: number[],
+		default: number,
+		unk5: number,
 	} | null
 	movementCapabilities?: number | null
 	unknown_78?: [

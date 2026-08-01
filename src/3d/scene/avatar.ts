@@ -342,7 +342,7 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 		let npc = parse.npc.read(file, engine.rawsource);
 		let mods: ModelModifications = {
 			replaceColors: npc.color_replacements ?? [],
-			replaceMaterials: npc.color_replacements ?? []
+			replaceMaterials: npc.material_replacements ?? []
 		};
 		let models: SimpleModelDef = [];
 		if (!head) {

@@ -1631,6 +1631,8 @@ function SceneItem(p: LookupModeProps) {
 	// 	await output.run(fileHistory, fs, "items", [id], p.ctx.source);
 	// }
 
+	data?.info
+
 	return (
 		<React.Fragment>
 			<IdInputSearch cache={ctx?.sceneCache.engine} mode="items" onChange={setId} initialid={initid} />
@@ -1639,9 +1641,9 @@ function SceneItem(p: LookupModeProps) {
 			)}
 			<div className="mv-sidebar-scroll">
 				<input type="button" className="sub-btn" value={enablecam ? "exit" : "Icon Camera"} onClick={e => setenablecam(!enablecam)} />
-				{enablecam && <ItemCameraMode meta={data?.info} centery={centery} />}
+				{enablecam && <ItemCameraMode meta={data?.info.modelitem} centery={centery} />}
 				<RawTextDisplay text={data?.assetName} />
-				<StructView data={data?.info} meta={parse.item.parser.getJsonSchema()} />
+				<StructView data={data?.info.item} meta={parse.item.parser.getJsonSchema()} />
 			</div>
 			{/* <input type="button" className="sub-btn" value="history" onClick={gethistory} />
 			{histfs && p.ctx && <UIScriptFiles fs={histfs} ctx={p.ctx} />} */}

@@ -223,51 +223,71 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 	return r;
 }
 
-function tuppleParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
-	let r: ChunkParser = {
-		read(state) {
-			let r: any[] = [];
-			for (let prop of props) {
-				let v = prop.read(state);
-				r.push(v);
+
+function tupleParserFactory(istyped: boolean) {
+	return (args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) => {
+		let r: ChunkParser = {
+			read(state) {
+				let r: any[] = [];
+				for (let prop of props) {
+					let v = prop.read(state);
+					r.push(v);
+				}
+				return r;
+			},
+			write(state, value) {
+				if (!Array.isArray(value)) { throw new Error("array expected"); }
+				for (let [i, prop] of props.entries()) {
+					prop.write(state, value[i]);
+				}
+			},
+			getTypescriptType(indent) {
+				let r = "[\n";
+				let newindent = indent + "\t";
+				for (let prop of props) { r += newindent + prop.getTypescriptType(newindent) + ",\n"; }
+				r += indent + "]";
+				return r;
+			},
+			getJsonSchema() {
+				let items = props.map((prop, i) => {
+					let res = prop.getJsonSchema();
+					res["x-rsmv-type"] = proptypes[i];
+					return res;
+				});
+				return {
+					type: "array",
+					items: items,
+					minItems: Object.keys(props).length,
+					maxItems: Object.keys(props).length
+				};
 			}
-			return r;
-		},
-		write(state, value) {
-			if (!Array.isArray(value)) { throw new Error("array expected"); }
-			for (let [i, prop] of props.entries()) {
-				prop.write(state, value[i]);
-			}
-		},
-		getTypescriptType(indent) {
-			let r = "[\n";
-			let newindent = indent + "\t";
-			for (let prop of props) { r += newindent + prop.getTypescriptType(newindent) + ",\n"; }
-			r += indent + "]";
-			return r;
-		},
-		getJsonSchema() {
-			return {
-				type: "array",
-				items: Object.entries(props).map(([k, v]: [string, ChunkParser]) => v.getJsonSchema()),
-				minItems: Object.keys(props).length,
-				maxItems: Object.keys(props).length
-			};
+		};
+
+		const resolveReference = function (index: number, name: string, child: ResolvedReference) {
+			return buildReference(name, parent, {
+				stackdepth: child.stackdepth,
+				resolve(v, old) {
+					if (!Array.isArray(v)) { throw new Error("Array expected"); }
+					return child.resolve(v[index], old)
+				}
+			})
 		}
-	};
-
-	const resolveReference = function (index: number, name: string, child: ResolvedReference) {
-		return buildReference(name, parent, {
-			stackdepth: child.stackdepth,
-			resolve(v, old) {
-				if (!Array.isArray(v)) { throw new Error("Array expected"); }
-				return child.resolve(v[index], old)
+		let props: ChunkParser[] = [];
+		let proptypes: string[] = [];
+		for (let arg of args) {
+			let parsearg = null as unknown;
+			let type = "";
+			if (istyped) {
+				if (!Array.isArray(arg) || arg.length != 2) { throw new Error("typed tuple args should be [type, vartype]"); }
+				[parsearg, type] = arg;
+			} else {
+				parsearg = arg;
 			}
-		})
+			props.push(buildParser(resolveReference.bind(null, props.length), parsearg, typedef));
+			proptypes.push(type);
+		}
+		return r;
 	}
-
-	let props = args.map((d, i) => buildParser(resolveReference.bind(null, i), d, typedef));
-	return r;
 }
 
 export function buildReference(name: string, container: ChunkParentCallback | null, startingpoint: ResolvedReference) {
@@ -687,9 +707,22 @@ function bufferParser(args: unknown[], parent: ChunkParentCallback, typedef: Typ
 				flipBufferEndianness(bytes, type.constr.BYTES_PER_ELEMENT);
 			}
 			let array = (scalartype == "buffer" ? bytes : new type.constr(backing));
-			if (scalartype == "hex") { (array as any).toJSON = () => bytes.toString("hex"); }
-			else if (state.args.keepBufferJson === true) { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`; }
-			else { (array as any).toJSON = () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[]{${[...array].join(",")}}` }
+			if (scalartype == "hex") {
+				Object.defineProperty(array, "toJSON", {
+					value: () => bytes.toString("hex"),
+					enumerable: false
+				});
+			} else if (state.args.keepBufferJson === true) {
+				Object.defineProperty(array, "toJSON", {
+					value: () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[${len}]`,
+					enumerable: false
+				});
+			} else {
+				Object.defineProperty(array, "toJSON", {
+					value: () => `buffer ${scalartype}${vectorLength != 1 ? `[${vectorLength}]` : ""}[]{${[...array].join(",")}}`,
+					enumerable: false
+				});
+			}
 			return array;
 		},
 		write(state, rawvalue) {
@@ -1711,7 +1744,8 @@ const parserFunctions = {
 	nullarray: arrayNullTerminatedParser,
 	array: arrayParser,
 	struct: structParser,
-	tuple: tuppleParser,
+	tuple: tupleParserFactory(false),
+	typedtuple: tupleParserFactory(true),
 
 	...hardcodes,
 	...parserPrimitives

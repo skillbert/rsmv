@@ -161,24 +161,25 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	let item = parse.item.read(await cache.engine.getGameFile("items", id), cache.engine.rawsource);
 	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.obj, id);
+	let modelitem = item;
 	if (!item.baseModel && item.noteTemplate) {
-		item = parse.item.read(await cache.engine.getGameFile("items", item.noteTemplate), cache.engine.rawsource);
+		modelitem = parse.item.read(await cache.engine.getGameFile("items", item.noteTemplate), cache.engine.rawsource);
 	}
 	let mods: ModelModifications = {};
-	if (item.color_replacements) { mods.replaceColors = item.color_replacements; }
-	if (item.material_replacements) { mods.replaceMaterials = item.material_replacements; }
+	if (modelitem.color_replacements) { mods.replaceColors = modelitem.color_replacements; }
+	if (modelitem.material_replacements) { mods.replaceMaterials = modelitem.material_replacements; }
 	let models: SimpleModelDef = [];
-	if (item.baseModel) {
-		models.push({ modelid: item.baseModel, mods });
+	if (modelitem.baseModel) {
+		models.push({ modelid: modelitem.baseModel, mods });
 	}
-	if (item.baseModelList) {
-		models.push(...item.baseModelList.map(q => ({ modelid: q, mods })));
+	if (modelitem.baseModelList) {
+		models.push(...modelitem.baseModelList.map(q => ({ modelid: q, mods })));
 	}
 
 	return castModelInfo({
 		models,
 		anims: {},
-		info: item,
+		info: { item, modelitem },
 		id,
 		assetName,
 		name: item.name ?? `item:${id}`
