@@ -1,0 +1,26 @@
+["struct",
+	["squares",["array","unsigned short",["struct",
+		["original_plane", "unsigned byte"],
+		["n_planes", "unsigned byte"],
+		["original_regionX", "unsigned short"],
+		["original_regionY", "unsigned short"],
+		["new_plane", "unsigned byte"],
+		["new_regionX", "unsigned short"],
+		["new_regionY", "unsigned short"]
+	]]],
+	["chunks",["array","unsigned short",["struct",
+		["original_plane", "unsigned byte"],
+		["n_planes", "unsigned byte"],
+		["original_regionX", "unsigned short"],
+		["original_regionY", "unsigned short"],
+		["original_chunkX", "unsigned byte"],
+		["original_chunkY", "unsigned byte"],
+		["new_plane", "unsigned byte"],
+		["new_regionX", "unsigned short"],
+		["new_regionY", "unsigned short"],
+		["new_chunkX", "unsigned byte"],
+		["new_chunkY", "unsigned byte"]
+	]]],
+	["width", "unsigned byte"],
+	["height", "unsigned byte"]
+]

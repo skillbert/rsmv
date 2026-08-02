@@ -1,0 +1,5 @@
+["array","ushort",["struct",
+    ["location", "uint", "coordgrid"],
+    ["labelId", "ushort", "maplabel"],
+    ["val0", "ubyte"]
+]]

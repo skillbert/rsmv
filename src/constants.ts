@@ -21,6 +21,7 @@ export const cacheMajors = {
 	particles: 27,
 	worldmap: 23,
 	music: 40,
+	maplabellocations: 42,
 	models: 47,
 	frames: 48,
 
