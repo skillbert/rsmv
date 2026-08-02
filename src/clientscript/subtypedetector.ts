@@ -1,6 +1,7 @@
 import { ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "./ast";
 import { ClientscriptObfuscation, ScriptCandidate } from "./callibrator";
-import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps, subtypes } from "./definitions";
+import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps } from "./definitions";
+import { vartypes } from "../constants";
 
 //to test
 //await cli("extract --mode clientscript -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
@@ -20,9 +21,9 @@ const looseOps = [
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
     dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
-    knownDependency(subtypes.unknown_int),
-    knownDependency(subtypes.unknown_long),
-    knownDependency(subtypes.unknown_string),
+    knownDependency(vartypes.unknown_int),
+    knownDependency(vartypes.unknown_long),
+    knownDependency(vartypes.unknown_string),
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
 ];
@@ -33,7 +34,7 @@ export class ClientScriptSubtypeSolver {
     uuidcounter = 1;
 
     constructor() {
-        for (let subtype of Object.values(subtypes)) {
+        for (let subtype of Object.values(vartypes)) {
             let key = knownDependency(subtype);
             this.knowntypes.set(key, subtype);
         }
@@ -129,7 +130,7 @@ export class ClientScriptSubtypeSolver {
                             this.knowntypes.set(link, known);
                         } else if (prevknown != known) {
                             globalThis.testkey = [key, link];
-                            throw new Error(`conflicting types old:${Object.entries(subtypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(subtypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
+                            throw new Error(`conflicting types old:${Object.entries(vartypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(vartypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
                         }
                     }
                 }
@@ -254,31 +255,31 @@ export function assignKnownTypes(calli: ClientscriptObfuscation, knowntypes: Map
         if (!op.stackinfo.initializedthrough) { continue; }
         let exactin = new ExactStack();
         let diffin = op.stackinfo.in.getStackdiff();
-        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
-        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
-        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("int", i)) ?? vartypes.unknown_int); }
+        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("long", i)) ?? vartypes.unknown_long); }
+        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("opin", op.id) | dependencyIndex("string", i)) ?? vartypes.unknown_string); }
         op.stackinfo.exactin = exactin;
 
         let exactout = new ExactStack();
         let diffout = op.stackinfo.out.getStackdiff();
-        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
-        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
-        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("int", i)) ?? vartypes.unknown_int); }
+        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("long", i)) ?? vartypes.unknown_long); }
+        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("opout", op.id) | dependencyIndex("string", i)) ?? vartypes.unknown_string); }
         op.stackinfo.exactout = exactout;
     }
     for (let [id, func] of calli.scriptargs) {
         let exactin = new ExactStack();
         let diffin = func.stack.in.getStackdiff();
-        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
-        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
-        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
+        for (let i = 0; i < diffin.int; i++) { exactin.int.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("int", i)) ?? vartypes.unknown_int); }
+        for (let i = 0; i < diffin.long; i++) { exactin.long.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("long", i)) ?? vartypes.unknown_long); }
+        for (let i = 0; i < diffin.string; i++) { exactin.string.push(knowntypes.get(dependencyGroup("scriptargvar", id) | dependencyIndex("string", i)) ?? vartypes.unknown_string); }
         func.stack.exactin = exactin;
 
         let exactout = new ExactStack();
         let diffout = func.stack.out.getStackdiff();
-        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("int", i)) ?? subtypes.unknown_int); }
-        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("long", i)) ?? subtypes.unknown_long); }
-        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("string", i)) ?? subtypes.unknown_string); }
+        for (let i = 0; i < diffout.int; i++) { exactout.int.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("int", i)) ?? vartypes.unknown_int); }
+        for (let i = 0; i < diffout.long; i++) { exactout.long.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("long", i)) ?? vartypes.unknown_long); }
+        for (let i = 0; i < diffout.string; i++) { exactout.string.push(knowntypes.get(dependencyGroup("scriptret", id) | dependencyIndex("string", i)) ?? vartypes.unknown_string); }
         func.stack.exactout = exactout;
     }
     return knowntypes;

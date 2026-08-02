@@ -2,9 +2,10 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibrator";
 import { debugAst } from "./codewriter";
-import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, subtypes, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, getOpName, makeop } from "./definitions";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, getOpName, makeop } from "./definitions";
 import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
+import { vartypes } from "../constants";
 
 /**
  * known issues
@@ -684,7 +685,7 @@ export function translateAst(ast: CodeBlockNode) {
                     ast.remove(postpushx);
                     op.internalOps.push(postpushx);
                 }
-                op.knownStackDiff = StackInOut.fromExact([], [subtypes.int]);
+                op.knownStackDiff = StackInOut.fromExact([], [vartypes.int]);
             }
         }
     }
@@ -1010,7 +1011,7 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
             let column = table?.unk01?.columndata.find(q => q.id == columnid) ?? table?.unk02?.columndata.find(q => q.id == columnid);
             if (column) {
                 node.knownStackDiff = StackInOut.fromExact(
-                    [subtypes.dbrow, subtypes.int, subtypes.int],
+                    [vartypes.dbrow, vartypes.int, vartypes.int],
                     (subfield != 0 ? [column.columns[subfield - 1].type] : column.columns.map(q => q.type))
                 )
             }
@@ -1039,7 +1040,7 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
         let intypeid = consts?.values.at(-4);
         if (typeof outtypeid == "number" && typeof intypeid == "number") {
             node.knownStackDiff = StackInOut.fromExact(
-                [subtypes.int, subtypes.int, subtypes.enum, intypeid],
+                [vartypes.int, vartypes.int, vartypes.enum, intypeid],
                 [outtypeid],
             )
         }

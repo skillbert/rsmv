@@ -2,8 +2,9 @@ import { boundMethod } from "autobind-decorator";
 import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType, isNamedOp, RewriteCursor } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
-import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, int32MathOps, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs, subtypes } from "./definitions";
+import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, int32MathOps, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs } from "./definitions";
 import { getOrInsert } from "../utils";
+import { vartypes } from "../constants";
 
 /**
  * known compiler differences
@@ -331,8 +332,8 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         let gettypecast = () => {
             if (!ctx.typescript) { return ""; }
             if (exacttype == -1) { return ""; }
-            if (exacttype == subtypes.int || exacttype == subtypes.string || exacttype == subtypes.long) { return ""; }
-            if (exacttype == subtypes.unknown_int || exacttype == subtypes.unknown_string || exacttype == subtypes.unknown_long) { return ""; }
+            if (exacttype == vartypes.int || exacttype == vartypes.string || exacttype == vartypes.long) { return ""; }
+            if (exacttype == vartypes.unknown_int || exacttype == vartypes.unknown_string || exacttype == vartypes.unknown_long) { return ""; }
             return ` as ${subtypeToTs(exacttype)}`;
         }
         if (typeof node.op.imm_obj == "string") {
@@ -340,7 +341,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         } else if (Array.isArray(node.op.imm_obj)) {
             return `${longJsonToBigInt(node.op.imm_obj)}n${gettypecast()}`;
         } else if (typeof node.op.imm_obj == "number") {
-            if (exacttype == subtypes.component) {
+            if (exacttype == vartypes.component) {
                 let intf = node.op.imm_obj >> 16;
                 let sub = node.op.imm_obj & 0xffff;
                 if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
@@ -349,12 +350,12 @@ addWriter(RawOpcodeNode, (node, ctx) => {
                     return `comp(${intf}, ${sub})`;
                 }
             }
-            if (exacttype == subtypes.coordgrid && node.op.imm_obj != -1) {
+            if (exacttype == vartypes.coordgrid && node.op.imm_obj != -1) {
                 let v = node.op.imm_obj;
                 //plane,chunkx,chunkz,subx,subz
                 return `pos(${(v >> 28) & 3},${(v >> 20) & 0xff},${(v >> 6) & 0xff},${(v >> 12) & 0x3f},${v & 0x3f})`;
             }
-            if (exacttype == subtypes.boolean) {
+            if (exacttype == vartypes.boolean) {
                 return (node.op.imm_obj == 1 ? "true" : "false");
             }
             return `${node.op.imm_obj}${gettypecast()}`;

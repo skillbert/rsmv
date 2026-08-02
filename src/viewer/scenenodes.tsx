@@ -42,7 +42,6 @@ import { RSModel } from '../3d/scene/model';
 import { diffFileDependencyHash } from '../scripts/dependencydiff';
 import { depClasses } from '../scripts/dependencies';
 import { loadParams } from '../clientscript/util';
-import { subtypes } from '../clientscript/definitions';
 import { StructView } from './configview';
 
 

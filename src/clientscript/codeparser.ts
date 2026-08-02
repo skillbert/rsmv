@@ -2,13 +2,14 @@ import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparse
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff, ControlStatementNode } from "./ast";
 import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypes, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
 import { parse as opdecoder } from "../opdecoder";
 import { CacheFileSource } from "../cache";
 import { prepareClientScript } from ".";
 import { astToImJson, intrinsics } from "./jsonwriter";
 import { ClientScriptInterpreter } from "./interpreter";
+import { vartypes } from "../constants";
 
 function* whitespace() {
     while (true) {
@@ -50,12 +51,12 @@ class ParseContext {
             let res = this.vars[varname];
             if (res.stacktype != typeToPrimitive(type)) { throw new Error(`tried to redeclare var ${varname} with incompatible stack type (was: ${res.stacktype} new: ${typeToPrimitive(type)})`); }
             if (res.type != type) {
-                if (res.type == subtypes.unknown_int) { res.type = type; }
-                else if (type == subtypes.unknown_int) { /*nop*/ }
-                else if (res.type == subtypes.unknown_int) { res.type = type; }
-                else if (type == subtypes.unknown_int) {/*nop*/ }
-                else if (res.type == subtypes.unknown_int) { res.type = type; }
-                else if (type == subtypes.unknown_int) { /*nop*/ }
+                if (res.type == vartypes.unknown_int) { res.type = type; }
+                else if (type == vartypes.unknown_int) { /*nop*/ }
+                else if (res.type == vartypes.unknown_int) { res.type = type; }
+                else if (type == vartypes.unknown_int) {/*nop*/ }
+                else if (res.type == vartypes.unknown_int) { res.type = type; }
+                else if (type == vartypes.unknown_int) { /*nop*/ }
                 else { throw new Error(`Tried to redeclare var ${varname} with incompatible subtype (was: ${subtypeToTs(res.type)}, new: ${subtypeToTs(type)})`) }
             }
             return res;
@@ -97,7 +98,7 @@ function scriptContext(ctx: ParseContext) {
             islocal = true;
         } else if (match) {
             if (match[1] == "script") {
-                vartype = subtypes.scriptref;
+                vartype = vartypes.scriptref;
                 varid = +match[4];
             } else if (match[3]) {
                 if (match[2] == "bit") {
@@ -106,7 +107,7 @@ function scriptContext(ctx: ParseContext) {
                     // let meta = deob.varbitmeta.get(varid);
                     readopid = namedClientScriptOps.pushvarbit;
                     writeopid = namedClientScriptOps.popvarbit;
-                    vartype = subtypes.unknown_int;
+                    vartype = vartypes.unknown_int;
                 } else {
                     let source = variableSources[match[3]];
                     if (!source) { throw new Error("unknown var source"); }
@@ -638,7 +639,7 @@ function scriptContext(ctx: ParseContext) {
         if (!preop) {
             postop = yield ["++", "--", ""];
         }
-        if (vartype == subtypes.scriptref) {
+        if (vartype == vartypes.scriptref) {
             //used in callback
             return makeIntConst(varid, "");
         }
@@ -647,7 +648,7 @@ function scriptContext(ctx: ParseContext) {
             let writeop = getopinfo(writeopid);
             let operationop = getopinfo(postop == "++" || preop == "++" ? namedClientScriptOps.plus : namedClientScriptOps.minus);
             let combined = new ComposedOp(-1, (preop == "--" ? "--x" : preop == "++" ? "++x" : postop == "--" ? "x--" : "x++"));
-            combined.knownStackDiff = StackInOut.fromExact([], [subtypes.int]);
+            combined.knownStackDiff = StackInOut.fromExact([], [vartypes.int]);
             if (postop) { combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop)); }
             combined.internalOps.push(new RawOpcodeNode(-1, { opcode: readop.id, imm: varid, imm_obj: null }, readop));
             combined.internalOps.push(makeIntConst(1, "int"));
@@ -899,7 +900,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     }
     res += "\n";
     res += `// Clientscript types\n`;
-    for (let type of Object.values(subtypes)) {
+    for (let type of Object.values(vartypes)) {
         let prim = typeToPrimitive(type);
         let name = subtypeToTs(type);
         if (name == "string") { continue; }
