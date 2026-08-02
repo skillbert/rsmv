@@ -132,29 +132,29 @@ function App(p: {}) {
 
 	let cachemeta = ctx.source?.getCacheMeta();
 	return (
-		<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
-			<canvas className="mv-canvas" ref={initCnv} style={{ display: ctx.openedfile ? "none" : "block" }}></canvas>
-			{ctx.openedfile && <FileViewer file={ctx.openedfile} onSelectFile={ctx.openFile} />}
-			<div className="mv-sidebar">
-				{!ctx.source && (
-					<React.Fragment>
-						<CacheSelector onOpen={openCache} />
-						<div style={{ flex: "1" }} />
-						<div style={{ textAlign: "center" }}>
-							Go to <a href="https://runeapps.org/modelviewer_about">RuneApps</a> for more info. Source code hosted at <a href="https://github.com/skillbert/rsmv" target="_blank">github.com/skillbert/rsmv</a>
-						</div>
-					</React.Fragment>
-				)}
-				{cachemeta && (
-					<React.Fragment>
-						<UIEngineContext.Provider value={ctx.renderable}>
+		<UIEngineContext.Provider value={ctx.renderable}>
+			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
+				<canvas className="mv-canvas" ref={initCnv} style={{ display: ctx.openedfile ? "none" : "block" }}></canvas>
+				{ctx.openedfile && <FileViewer file={ctx.openedfile} onSelectFile={ctx.openFile} />}
+				<div className="mv-sidebar">
+					{!ctx.source && (
+						<React.Fragment>
+							<CacheSelector onOpen={openCache} />
+							<div style={{ flex: "1" }} />
+							<div style={{ textAlign: "center" }}>
+								Go to <a href="https://runeapps.org/modelviewer_about">RuneApps</a> for more info. Source code hosted at <a href="https://github.com/skillbert/rsmv" target="_blank">github.com/skillbert/rsmv</a>
+							</div>
+						</React.Fragment>
+					)}
+					{cachemeta && (
+						<React.Fragment>
 							<input type="button" className="sub-btn" onClick={closeCache} value={`Close ${cachemeta.name}`} title={cachemeta.descr} />
 							<RendererControls />
 							<ModelBrowser />
-						</UIEngineContext.Provider>
-					</React.Fragment>
-				)}
-			</div>
-		</div >
+						</React.Fragment>
+					)}
+				</div>
+			</div >
+		</UIEngineContext.Provider>
 	);
 }

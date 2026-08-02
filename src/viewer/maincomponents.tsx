@@ -8,7 +8,7 @@ import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { InputCommitted, StringInput, JsonDisplay, IdInput, LabeledInput, TabStrip, CanvasView, BlobImage, BlobAudio, CopyButton } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
-import { DomWrap, UIScriptFile } from "./scriptsui";
+import { DomWrap, UIScriptFile, useAwaited } from "./scriptsui";
 import { DecodeErrorJson } from "../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { delay, findParentElement, TypedEmitter } from "../utils";
@@ -23,6 +23,8 @@ import { drawTexture } from "../imgutils";
 import { RsUIViewer } from "./rsuiviewer";
 import { ClientScriptViewer } from "./cs2viewer";
 import { RsFontViewer } from "./fontviewer";
+import { JSONSchema6Definition } from "json-schema";
+import { StructView } from "./configview";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -588,6 +590,40 @@ function UnknownFileViewer(p: { data: Buffer, ext: string }) {
 	)
 }
 
+function JsonViewer(p: { data: string, file: UIOpenedFile }) {
+	let [rawjson, setrawjson] = React.useState(false);
+
+	let parsed = useAwaited(async () => {
+		if (rawjson) { return null; }
+		let obj = null as any;
+		let err = "";
+		let schema = null as JSONSchema6Definition | null;
+		try {
+			obj = JSON.parse(p.data);
+		} catch (e) {
+			err = "" + e;
+		}
+		if (typeof obj == "object" && obj?.$schema) {
+			let schemafile = await p.file.fs.readFileText(obj.$schema);
+			try {
+				schema = JSON.parse(schemafile);
+			} catch (e) {
+				err = "" + e;
+			}
+		}
+		return { obj, err, schema }
+	}, [p.data, p.file, rawjson]);
+
+	return (
+		<React.Fragment>
+			<input type="button" className="sub-btn" value={rawjson ? "View parsed" : "View raw"} onClick={e => setrawjson(!rawjson)} />
+			<CopyButton text={p.data} />
+			{!rawjson && <StructView data={parsed?.obj} meta={parsed?.schema} />}
+			{rawjson && <SimpleTextViewer file={p.data} />}
+		</React.Fragment>
+	)
+}
+
 
 function TrivialHexViewer(p: { data: Buffer }) {
 	let { resulthex, resultchrs } = bufToHexView(p.data);
@@ -705,6 +741,8 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
 		el = <RsFontViewer data={JSON.parse(fileText())} />
 	} else if (ext == "cs2.json") {
 		el = <ClientScriptViewer data={fileText()} />
+	} else if (ext == "json") {
+		el = <JsonViewer data={fileText()} file={p.file} />
 	} else if (ext == "html") {
 		el = <iframe srcDoc={fileText()} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
 	} else if (ext == "rstex") {

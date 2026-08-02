@@ -38,50 +38,50 @@
 	],
 	"modelmorphs":      ["struct",
 		["unk0","ushort"],
-		["varbit","ushort"],
-		["varp","ushort"],
-		["flags","ubyte"],
-		["multimodel",["opt","flags&1",["array","ubyte",["struct",
+		["varbit","ushort","varbit"],
+		["varp","ushort","var_player"],
+		["$flags","ubyte"],
+		["multimodel",["opt","$flags&1",["array","ubyte",["struct",
 			["value","ubyte"],
 			["models",["array","ubyte",["struct",
 				["unk1","ushort"],
 				["unk2","ushort"],
-				["unk3","varuint"],
+				["model","varuint","model"],
 				["extracount","ubyte"],
 				["extra1",["opt","extracount>=1","ubyte"]],
 				["extra2",["opt","extracount>=2","ubyte"]],
 				["extra3",["opt","extracount>=3","ubyte"]]
 			]]]
 		]]]],
-		["multiheadmodel",["opt","flags&2",["array","ubyte",["struct",
+		["multiheadmodel",["opt","$flags&2",["array","ubyte",["struct",
 			["value","ubyte"],
 			["models",["array","ubyte",["struct",
 				["unk1","ushort"],
 				["unk2","ushort"],
-				["unk3","varuint"]
+				["model","varuint","model"]
 			]]]
 		]]]],
-		["multiretex",["opt","flags&4",["array","ubyte",["struct",
+		["multiretex",["opt","$flags&4",["array","ubyte",["struct",
 			["value","ubyte"],
-			["models",["array","ubyte",["struct",
+			["entries",["array","ubyte",["struct",
 				["unk1","ushort"],
 				["unk2","ushort"],
-				["unk3","ushort"],
-				["unk4","ushort"]
+				["unk3","ushort","material"],
+				["unk4","ushort","material"]
 			]]]
 		]]]],
-		["multirecol",["opt","flags&8",["array","ubyte",["struct",
+		["multirecol",["opt","$flags&8",["array","ubyte",["struct",
 			["value","ubyte"],
-			["models",["array","ubyte",["struct",
+			["entries",["array","ubyte",["struct",
 				["unk1","ushort"],
 				["unk2","ushort"],
-				["unk3","ushort"],
-				["unk4","ushort"]
+				["unk3","ushort","color"],
+				["unk4","ushort","color"]
 			]]]
 		]]]],
-		["multiretint",["opt","flags&16",["array","ubyte",["struct",
+		["multiretint",["opt","$flags&16",["array","ubyte",["struct",
 			["value","ubyte"],
-			["models",["array","ubyte",["struct",
+			["entries",["array","ubyte",["struct",
 				["unk1","ushort"],
 				["unk2","ushort"],
 				["unk3","uint"]

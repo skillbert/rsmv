@@ -674,10 +674,13 @@ export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
 	mapscenes: { parser: parse.mapscenes, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes) },
 	environments: { parser: parse.environments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
 	animgroupconfigs: { parser: parse.animgroupConfigs, namefile: internalNameFiles.bas, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
+	cursors: { parser: parse.cursors, namefile: internalNameFiles.cursor, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.cursors) },
 	maplabels: { parser: parse.maplabels, namefile: internalNameFiles.maplabel, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
 	maplabellocations: { parser: parse.maplabellocations, lookup: standardIndex(cacheMajors.maplabellocations) },
 	mapzones: { parser: parse.mapZones, lookup: singleMinorIndex(cacheMajors.worldmap, 0) },
 	mappastes: { parser: parse.mapPastes, lookup: singleMinorIndex(cacheMajors.worldmap, 1) },
+	mapzones_sub3: { parser: parse.mapZonesSub3, lookup: singleMinorIndex(cacheMajors.worldmap, 3) },
+	mapzones_sub4: { parser: parse.mapZonesSub4, lookup: singleMinorIndex(cacheMajors.worldmap, 4) },
 	cutscenes: { parser: parse.cutscenes, namefile: internalNameFiles.ui_anim, lookup: noArchiveIndex(cacheMajors.cutscenes) },
 
 	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },

@@ -1,0 +1,4 @@
+{
+    "0x01":{"name":"cursor","read":"varuint","type":"graphic"},
+    "0x02":{"name":"maybe_offset","read":["tuple","ubyte","byte"]}
+}

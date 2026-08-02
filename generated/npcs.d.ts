@@ -155,13 +155,12 @@ export type npcs = {
 		unk0: number,
 		varbit: number,
 		varp: number,
-		flags: number,
 		multimodel: {
 			value: number,
 			models: {
 				unk1: number,
 				unk2: number,
-				unk3: number,
+				model: number,
 				extracount: number,
 				extra1: number | null,
 				extra2: number | null,
@@ -173,12 +172,12 @@ export type npcs = {
 			models: {
 				unk1: number,
 				unk2: number,
-				unk3: number,
+				model: number,
 			}[],
 		}[] | null,
 		multiretex: {
 			value: number,
-			models: {
+			entries: {
 				unk1: number,
 				unk2: number,
 				unk3: number,
@@ -187,7 +186,7 @@ export type npcs = {
 		}[] | null,
 		multirecol: {
 			value: number,
-			models: {
+			entries: {
 				unk1: number,
 				unk2: number,
 				unk3: number,
@@ -196,7 +195,7 @@ export type npcs = {
 		}[] | null,
 		multiretint: {
 			value: number,
-			models: {
+			entries: {
 				unk1: number,
 				unk2: number,
 				unk3: number,
