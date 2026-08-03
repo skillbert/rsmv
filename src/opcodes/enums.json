@@ -1,14 +1,20 @@
 {
-	"0x01": { "name":                           "key_type1", "read": "unsigned byte" },
-	"0x02": { "name":                         "value_type1", "read": "unsigned byte" },
-	"0x65": { "name":                           "key_type2", "read": "unsigned byte" },
-	"0x66": { "name":                         "value_type2", "read": "unsigned byte" },
-	"0x03": { "name":                         "stringValue", "read": "string" },
-	"0x04": { "name":                            "intValue", "read": "int" },
-	"0x05": { "name":                   "stringArrayValue1", "read": ["array","unsigned short",["tuple","int","string"]] },
-	"0x06": { "name":                      "intArrayValue1", "read": ["array","unsigned short",["tuple","int","int"]] },
-	"0x07": { "name":                   "stringArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["tuple","unsigned short","string"]]]] },
-	"0x08": { "name":                      "intArrayValue2", "read": ["struct",["max","unsigned short"],["values",["array","unsigned short",["tuple","unsigned short","int"]]]] },
+	"0x01": { "name":                           "key_type1", "read": "ubyte", "type": "type" },
+	"0x02": { "name":                         "value_type1", "read": "ubyte", "type": "type" },
+	"0x65": { "name":                           "key_type2", "read": "ubyte", "type": "type" },
+	"0x66": { "name":                         "value_type2", "read": "ubyte", "type": "type" },
+	"0x03": { "name":                         "stringValue", "read": "string", "type": "enumvalue" },
+	"0x04": { "name":                            "intValue", "read": "int", "type": "enumvalue" },
+	"0x05": { "name":                   "stringArrayValue1", "read": ["array","ushort",["typedtuple",["int","enumkey"],["string","enumvalue"]]] },
+	"0x06": { "name":                      "intArrayValue1", "read": ["array","ushort",["typedtuple",["int","enumkey"],["int","enumvalue"]]] },
+	"0x07": { "name":                   "stringArrayValue2", "read": ["struct",
+																["max","ushort"],
+																["values",["array","ushort",["typedtuple",["ushort","enumkey"],["string","enumvalue"]]]
+															]] },
+	"0x08": { "name":                      "intArrayValue2", "read": ["struct",
+																["max","ushort"],
+																["values",["array","ushort",["typedtuple",["ushort","enumkey"],["int","enumvalue"]]]
+															]] },
 	"0x83": { "name":                          "unknown_83", "read": "true" },
 	"0xd1": { "name":                          "unknown_d1", "read": "true" }
 }

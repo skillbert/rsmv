@@ -1,20 +1,22 @@
 import * as React from "react";
 import { UIEngineContext } from "./maincomponents";
-import { cacheConfigPages, cacheMajors, internalNameFiles } from "../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles, vartypes } from "../constants";
 import { parseSprite } from "../3d/materials/sprite";
 import { pixelsToDataUrl } from "../imgutils";
 import { JSONSchema6, JSONSchema6Definition } from "json-schema";
 import { useAwaited } from "./scriptsui";
 import { loadParams } from "../clientscript/util";
 import { CacheFileSource } from "../cache";
-import { subtypes } from "../clientscript/definitions";
 import classNames from "classnames";
 import { HSL2RGB, packedHSL2HSL, RGB2HSL } from "../utils";
 import { BlobImage } from "./commoncontrols";
 import { parseMusic } from "../scripts/musictrack";
 import { parse } from "../opdecoder";
+import { cacheFileJsonModes, JsonBasedFile } from "../scripts/filetypes";
+import { variableSources } from "../clientscript/definitions";
 
-type PropTypes = keyof typeof subtypes | "unknown" | "params" | "color" | "imagefile" | "rgb" | "argb" | "type";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "varbit";
+type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
 
 type DeepLinkElement = {
     rsmvtype: PropTypes,
@@ -25,21 +27,60 @@ type DeepLinkElement = {
     array?: DeepLinkElement[]
 }
 
-async function deepLinkParamtable(value: any[], source: CacheFileSource) {
-    let paramData = await loadParams(source);
-    let paramNames = await source.getInternalNameList(internalNameFiles.param);
+type DeepLinkContext = {
+    source: CacheFileSource,
+    rootobj: any
+}
+
+export async function getFileJson<T extends keyof typeof cacheFileJsonModes>(source: CacheFileSource, mode: T, id: number | number[])
+    : Promise<typeof cacheFileJsonModes[T] extends JsonBasedFile<infer Q> ? Q : never> {
+
+    let modefn = cacheFileJsonModes[mode];
+    let logicalid = Array.isArray(id) ? id : [id];
+    let fileid = modefn.lookup.logicalToFile(source, logicalid);
+    let file: Buffer | undefined = undefined;
+    if (modefn.lookup.usesArchieves) {
+        let arch = await source.getArchiveById(fileid.major, fileid.minor);
+        let entry = arch.find(q => q.fileid == fileid.subid);
+        if (!entry) { throw new Error(`Logical file ${mode}_${logicalid.join(".")} not found at ${fileid.major}.${fileid.minor}.${fileid.subid}`); }
+        file = entry?.buffer;
+    } else {
+        file = await source.getFileById(fileid[0], fileid[1]);
+    }
+    let json = modefn.parser.read(file, source);
+    json.$fileid = logicalid.length == 1 ? logicalid[0] : logicalid;
+    json.$decoder = mode;
+    return json;
+}
+globalThis.getFileJson = getFileJson;
+
+async function deepLinkParamtable(ctx: DeepLinkContext, value: any[]) {
+    let paramData = await loadParams(ctx.source);
+    let paramNames = await ctx.source.getInternalNameList(internalNameFiles.param);
     return Promise.all(value.map<Promise<DeepLinkElement>>(q => {
         let paramname = paramNames.get(q.prop) ?? `param_${q.prop}`;
         let paramdata = paramData.get(q.prop);
         let typeid = paramdata?.type?.vartype ?? -1;
-        let typename = Object.entries(subtypes).find(([k, v]) => v == typeid)?.[0] ?? "unknown"
-        return deepLinkJson(paramname, q.intvalue ?? q.stringvalue, { "x-rsmv-type": typename } as any, source);
+        let typename = Object.entries(vartypes).find(([k, v]) => v == typeid)?.[0] ?? "unknown"
+        return deepLinkJson(ctx, paramname, q.intvalue ?? q.stringvalue, { "x-rsmv-type": typename } as any);
     }));
 }
 
-async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition | null | undefined, source: CacheFileSource): Promise<DeepLinkElement> {
+async function deepLinkJson(ctx: DeepLinkContext, name: string, data: any, meta: JSONSchema6Definition | null | undefined): Promise<DeepLinkElement> {
     if (typeof meta == "boolean") { meta = null; }
+
+    // === find expected type ===
     let rsmvtype = getRSType(meta);
+    if (rsmvtype == "enumkey") {
+        let keyint = ctx.rootobj?.key_type1 ?? ctx.rootobj?.key_type2;
+        rsmvtype = Object.entries(vartypes).find(([k, v]) => v == keyint)?.[0] as any ?? "unknown";
+    }
+    if (rsmvtype == "enumvalue") {
+        let valueint = ctx.rootobj?.value_type1 ?? ctx.rootobj?.value_type2;
+        rsmvtype = Object.entries(vartypes).find(([k, v]) => v == valueint)?.[0] as any ?? "unknown";
+    }
+
+    // === fix schema location ===
     // strip nullable type from schema
     if (meta?.oneOf) {
         meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
@@ -48,21 +89,38 @@ async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition
         meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
     }
 
+    // === handle data type ===
     if (ArrayBuffer.isView(data)) {
         // we were handed a typed array, which is only possible if our object hasn't been serialized to JSON yet
         // force it into a string to simulate json roundtrip
         data = "" + data;
     }
 
+    // === render data ===
     if (typeof data == "number") {
+        let valuename: string | undefined = undefined;
+        if (rsmvtype == "type") {
+            valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
+        } else if (rsmvtype == "varbit") {
+            let meta = await getFileJson(ctx.source, "varbits", data);
+            let varint = meta.varid ?? 0;
+            let domain = (varint >> 16) & 0xff;
+            let varid = varint & 0xffff;
+            let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
+            if (group && group[1].namefile != -1) {
+                let varname = await ctx.source.getInternalName(group[1].namefile, varid);
+                valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
+            }
+        }
         let namegroup = internalNameFiles[rsmvtype];
-        let valuename = (namegroup != undefined ? await source.getInternalName(namegroup, data) : undefined);
+        valuename ??= (namegroup != undefined ? await ctx.source.getInternalName(namegroup, data) : undefined);
+
         return { name, rsmvtype, valuename, primitive: data };
     } else if (typeof data == "string" || typeof data == "boolean" || data == null) {
         return { name, rsmvtype, primitive: data };
     } else if (Array.isArray(data)) {
         if (rsmvtype == "params") {
-            return { name, rsmvtype: "params", items: await deepLinkParamtable(data, source) };
+            return { name, rsmvtype: "params", items: await deepLinkParamtable(ctx, data) };
         }
         let subs: DeepLinkElement[] = [];
         for (let i = 0; i < data.length; i++) {
@@ -74,17 +132,18 @@ async function deepLinkJson(name: string, data: any, meta: JSONSchema6Definition
                     itemmeta = meta.items;
                 }
             }
-            subs.push(await deepLinkJson("", data[i], itemmeta, source));
+            subs.push(await deepLinkJson(ctx, "", data[i], itemmeta));
         }
         return { name, rsmvtype, array: subs };
     } else if (typeof data == "object") {
         let subs: DeepLinkElement[] = [];
         for (let key in data) {
+            if (key.startsWith("$")) { continue; } // skip internal properties
             let itemmeta: JSONSchema6Definition | null = null;
             if (meta && meta.properties && meta.properties[key]) {
                 itemmeta = meta.properties[key];
             }
-            subs.push(await deepLinkJson(key, data[key], itemmeta, source));
+            subs.push(await deepLinkJson(ctx, key, data[key], itemmeta));
         }
         return { name, rsmvtype, items: subs };
     } else {
@@ -101,7 +160,7 @@ function SpriteView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
     let imgurl = useAwaited(async () => {
         if (!enginectx) { return; }
-        let file = await enginectx.sceneCache.engine.getFileById(cacheMajors.sprites, p.id);
+        let file = await enginectx.source.getFileById(cacheMajors.sprites, p.id);
         let img = parseSprite(file);
         return pixelsToDataUrl(img[0].img);
     }, [p.id]);
@@ -113,10 +172,7 @@ function CursorView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
     let spriteid = useAwaited(async () => {
         if (!enginectx) { return; }
-        let arch = await enginectx.source.getArchiveById(cacheMajors.config, cacheConfigPages.cursors);
-        let file = arch.find(q => q.fileid == p.id);
-        if (!file) { return; }
-        let parsed = parse.cursors.read(file.buffer, enginectx.source);
+        let parsed = await getFileJson(enginectx.source, "cursors", p.id);
         return parsed.cursor;
     }, [p.id, enginectx]);
     return <SpriteView id={spriteid ?? 0} />;
@@ -183,7 +239,7 @@ function CoordGridView(p: { value: number }) {
 export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
     let source = React.useContext(UIEngineContext)?.source;
-    let data = useAwaited(async () => source && deepLinkJson("root", p.data, p.meta, source), [p.data, p.meta, source]);
+    let data = useAwaited(async () => source && deepLinkJson({ source, rootobj: p.data }, "root", p.data, p.meta), [p.data, p.meta, source]);
 
     let handlenode = (prop: DeepLinkElement, isroot = false): { isbig: boolean, el: JSX.Element } => {
         if (typeof prop.primitive == "number") {
@@ -266,8 +322,13 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
         return { isbig: false, el: <span>NULL</span> };
     }
 
+    let decoder = p.data?.$decoder ?? "unknown";
+    let fileidstring = (p.data?.$fileid ? (Array.isArray(p.data.$fileid) ? p.data.$fileid.join(".") : p.data.$fileid) : "");
+    let filename = p.data?.$filename ?? "";
+
     return (
         <div>
+            <h3>{decoder}_{fileidstring} - {filename}</h3>
             {data ? handlenode(data, true).el : <span>Loading...</span>}
         </div>
     );

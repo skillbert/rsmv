@@ -1,0 +1,7 @@
+{
+    "0x03": { "name": "type", "read": "ubyte" },
+    "0x04": { "name": "lifetime", "read": "ubyte" },
+    "0x07": { "name": "domaindefault", "read": true },
+    "0x08": { "name": "wikisync", "read": true },
+    "0x6e": { "name": "clientcode", "read": "ushort" }
+}

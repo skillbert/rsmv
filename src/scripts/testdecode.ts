@@ -132,7 +132,7 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 	}
 }
 
-export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile, ranges: FileRange[], opts: ReturnType<typeof defaultTestDecodeOpts>) {
+export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, mode: JsonBasedFile<any>, ranges: FileRange[], opts: ReturnType<typeof defaultTestDecodeOpts>) {
 	const { skipMinorAfterError, skipFilesizeAfterError, memlimit, orderBySize } = opts;
 	let memuse = 0;
 	let errminors: number[] = [];

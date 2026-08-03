@@ -153,6 +153,8 @@ function allParsers() {
 		clientscriptdata: FileParser.fromJson<import("../generated/clientscriptdata").clientscriptdata>(require("./opcodes/clientscriptdata.jsonc")),
 		interfaces: FileParser.fromJson<import("../generated/interfaces").interfaces>(require("./opcodes/interfaces.jsonc")),
 		dbtables: FileParser.fromJson<import("../generated/dbtables").dbtables>(require("./opcodes/dbtables.jsonc")),
-		dbrows: FileParser.fromJson<import("../generated/dbrows").dbrows>(require("./opcodes/dbrows.jsonc"))
+		dbrows: FileParser.fromJson<import("../generated/dbrows").dbrows>(require("./opcodes/dbrows.jsonc")),
+		vars: FileParser.fromJson<import("../generated/vars").vars>(require("./opcodes/vars.jsonc")),
+		varbits: FileParser.fromJson<import("../generated/varbits").varbits>(require("./opcodes/varbits.jsonc")),
 	}
 }

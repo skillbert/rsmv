@@ -53,21 +53,6 @@ type ClientVarGroup = {
     vars: Map<number, ClientVarMeta>
 }
 
-//TODO move to file
-let varInfoParser = new FileParser<{ type: number }>({
-    "0x03": { "name": "type", "read": "ubyte" },
-    "0x04": { "name": "lifetime", "read": "ubyte" },
-    "0x07": { "name": "domaindefault", "read": true },
-    "0x08": { "name": "wikisync", "read": true },
-    "0x6e": { "name": "clientcode", "read": "ushort" },
-});
-
-var varbitInfoParser = new FileParser<{ varid: number, bits: [number, number] }>({
-    "0x01": { "name": "varid", "read": "utribyte" },//[8bit domain][16bit id] read as tribyte since thats also how we read pushvar/popvar imm
-    "0x02": { "name": "bits", "read": ["tuple", "ubyte", "ubyte"] },
-    "0x10": { "name": "wikisync", "read": true },
-});
-
 export class OpcodeInfo {
     scrambledid: number;
     id: number;
@@ -423,11 +408,11 @@ export class ClientscriptObfuscation {
             return {
                 last,
                 vars: new Map(archieve.map(q => {
-                    let parsed = varInfoParser.read(q.buffer, this.source);
+                    let parsed = parse.vars.read(q.buffer, this.source);
                     return [q.fileid, {
                         varid: q.fileid,
-                        type: typeToPrimitive(parsed.type),
-                        fulltype: parsed.type,
+                        type: typeToPrimitive(parsed.type!),
+                        fulltype: parsed.type!,
                         varname: varnames.get(q.fileid),
                     } satisfies ClientVarMeta];
                 }))
@@ -450,13 +435,13 @@ export class ClientscriptObfuscation {
 
             let varbitarchieve = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.varbits);
             this.varbitmeta = new Map(varbitarchieve.map(q => {
-                let parsed = varbitInfoParser.read(q.buffer, this.source);
+                let parsed = parse.varbits.read(q.buffer, this.source);
                 return [
                     q.fileid,
                     {
-                        varid: parsed.varid,
-                        bits: parsed.bits,
-                        varname: this.getClientVarName(parsed.varid)
+                        varid: parsed.varid!,
+                        bits: parsed.bits!,
+                        varname: this.getClientVarName(parsed.varid!)
                     } satisfies VarbitMeta
                 ];
             }));

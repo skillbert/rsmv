@@ -159,6 +159,7 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	});
 }
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
+	// let item = await getJson(cache.engine, "items", id);
 	let item = parse.item.read(await cache.engine.getGameFile("items", id), cache.engine.rawsource);
 	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.obj, id);
 	let modelitem = item;

@@ -270,7 +270,7 @@ function rootindexfileIndex(): DecodeLookup {
 	}
 }
 
-function standardFile(mode: JsonBasedFile): DecodeModeFactory {
+function standardFile(mode: JsonBasedFile<any>, decodername: string): DecodeModeFactory {
 	let constr = ((args: Record<string, string>) => {
 		let singleschemaurl = "";
 		let batchschemaurl = "";
@@ -311,6 +311,7 @@ function standardFile(mode: JsonBasedFile): DecodeModeFactory {
 				let filename = ctx?.get(id[0]);
 				if (filename) { obj.$filename = filename; }
 				obj.$fileid = (id.length == 1 ? id[0] : id);
+				obj.$decoder = decodername;
 				if (!args.batched) {
 					obj.$schema = singleschemaurl;
 				}
@@ -340,7 +341,7 @@ type DecodeLookup = {
 	major: number | undefined,
 	minor: number | undefined,
 	logicalDimensions: number,
-	usesArchieves: boolean;
+	usesArchieves: boolean,
 	logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
 	fileToLogical(source: CacheFileSource, major: number, minor: number, subfile: number): LogicalIndex,
 	logicalToFile(source: CacheFileSource, id: LogicalIndex): FileId
@@ -639,78 +640,94 @@ const decodeMeshHash: DecodeModeFactory = () => {
 }
 
 
-export type JsonBasedFile = {
-	parser: FileParser<any>,
+export type JsonBasedFile<T> = {
+	parser: FileParser<T>,
 	lookup: DecodeLookup,
 	namefile?: number,
 	prepareParser?: (source: CacheFileSource) => Promise<void> | void,
 	prepareDump?: (source: CacheFileSource) => Promise<void> | void
 }
 
-export const cacheFileJsonModes = constrainedMap<JsonBasedFile>()({
-	framemaps: { parser: parse.framemaps, lookup: chunkedIndex(cacheMajors.framemaps) },
-	items: { parser: parse.item, namefile: internalNameFiles.obj, lookup: chunkedIndex(cacheMajors.items) },
-	enums: { parser: parse.enums, namefile: internalNameFiles.enum, lookup: chunkedIndex(cacheMajors.enums) },
-	npcs: { parser: parse.npc, namefile: internalNameFiles.npc, lookup: chunkedIndex(cacheMajors.npcs) },
-	soundjson: { parser: parse.audio, namefile: internalNameFiles.sound, lookup: blacklistIndex(standardIndex(cacheMajors.sounds), [{ major: cacheMajors.sounds, minor: 0 }]) },
-	musicjson: { parser: parse.audio, lookup: blacklistIndex(standardIndex(cacheMajors.music), [{ major: cacheMajors.music, minor: 0 }]) },
-	locs: { parser: parse.loc, namefile: internalNameFiles.loc, lookup: chunkedIndex(cacheMajors.locs) },
-	achievements: { parser: parse.achievement, namefile: internalNameFiles.achievement, lookup: chunkedIndex(cacheMajors.achievements) },
-	structs: { parser: parse.structs, namefile: internalNameFiles.struct, lookup: chunkedIndex(cacheMajors.structs) },
-	sequences: { parser: parse.sequences, namefile: internalNameFiles.seq, lookup: chunkedIndex(cacheMajors.sequences) },
-	spotanims: { parser: parse.spotAnims, lookup: chunkedIndex(cacheMajors.spotanims) },
-	materials: { parser: parse.materials, namefile: internalNameFiles.material, lookup: chunkedIndex(cacheMajors.materials) },
-	oldmaterials: { parser: parse.oldmaterials, lookup: singleMinorIndex(cacheMajors.materials, 0) },
-	quickchatcats: { parser: parse.quickchatCategories, lookup: singleMinorIndex(cacheMajors.quickchat, 0) },
-	quickchatlines: { parser: parse.quickchatLines, lookup: singleMinorIndex(cacheMajors.quickchat, 1) },
-	dbtables: { parser: parse.dbtables, namefile: internalNameFiles.dbtable, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables) },
-	dbrows: { parser: parse.dbrows, namefile: internalNameFiles.dbrow, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows) },
-	quests: { parser: parse.quest, namefile: internalNameFiles.quest, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.quests) },
+function JsonBasedFile<T>(parser: FileParser<T>, lookup: DecodeLookup, namefile?: number, prepareParser?: JsonBasedFile<T>["prepareParser"], prepareDump?: JsonBasedFile<T>["prepareDump"]): JsonBasedFile<T> {
+	return { parser, lookup, namefile, prepareParser, prepareDump };
+}
 
-	overlays: { parser: parse.mapsquareOverlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays) },
-	identitykit: { parser: parse.identitykit, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit) },
-	params: { parser: parse.params, namefile: internalNameFiles.param, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.params) },
-	underlays: { parser: parse.mapsquareUnderlays, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays) },
-	mapscenes: { parser: parse.mapscenes, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes) },
-	environments: { parser: parse.environments, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.environments) },
-	animgroupconfigs: { parser: parse.animgroupConfigs, namefile: internalNameFiles.bas, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups) },
-	cursors: { parser: parse.cursors, namefile: internalNameFiles.cursor, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.cursors) },
-	maplabels: { parser: parse.maplabels, namefile: internalNameFiles.maplabel, lookup: singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels) },
-	maplabellocations: { parser: parse.maplabellocations, lookup: standardIndex(cacheMajors.maplabellocations) },
-	mapzones: { parser: parse.mapZones, lookup: singleMinorIndex(cacheMajors.worldmap, 0) },
-	mappastes: { parser: parse.mapPastes, lookup: singleMinorIndex(cacheMajors.worldmap, 1) },
-	mapzones_sub3: { parser: parse.mapZonesSub3, lookup: singleMinorIndex(cacheMajors.worldmap, 3) },
-	mapzones_sub4: { parser: parse.mapZonesSub4, lookup: singleMinorIndex(cacheMajors.worldmap, 4) },
-	cutscenes: { parser: parse.cutscenes, namefile: internalNameFiles.ui_anim, lookup: noArchiveIndex(cacheMajors.cutscenes) },
+export const cacheFileJsonModes = {
+	framemaps: JsonBasedFile(parse.framemaps, chunkedIndex(cacheMajors.framemaps)),
+	items: JsonBasedFile(parse.item, chunkedIndex(cacheMajors.items), internalNameFiles.obj),
+	enums: JsonBasedFile(parse.enums, chunkedIndex(cacheMajors.enums), internalNameFiles.enum),
+	npcs: JsonBasedFile(parse.npc, chunkedIndex(cacheMajors.npcs), internalNameFiles.npc),
+	soundjson: JsonBasedFile(parse.audio, blacklistIndex(standardIndex(cacheMajors.sounds), [{ major: cacheMajors.sounds, minor: 0 }]), internalNameFiles.sound),
+	musicjson: JsonBasedFile(parse.audio, blacklistIndex(standardIndex(cacheMajors.music), [{ major: cacheMajors.music, minor: 0 }])),
+	locs: JsonBasedFile(parse.loc, chunkedIndex(cacheMajors.locs), internalNameFiles.loc),
+	achievements: JsonBasedFile(parse.achievement, chunkedIndex(cacheMajors.achievements), internalNameFiles.achievement),
+	structs: JsonBasedFile(parse.structs, chunkedIndex(cacheMajors.structs), internalNameFiles.struct),
+	sequences: JsonBasedFile(parse.sequences, chunkedIndex(cacheMajors.sequences), internalNameFiles.seq),
+	spotanims: JsonBasedFile(parse.spotAnims, chunkedIndex(cacheMajors.spotanims)),
+	materials: JsonBasedFile(parse.materials, chunkedIndex(cacheMajors.materials), internalNameFiles.material),
+	oldmaterials: JsonBasedFile(parse.oldmaterials, singleMinorIndex(cacheMajors.materials, 0)),
+	quickchatcats: JsonBasedFile(parse.quickchatCategories, singleMinorIndex(cacheMajors.quickchat, 0)),
+	quickchatlines: JsonBasedFile(parse.quickchatLines, singleMinorIndex(cacheMajors.quickchat, 1)),
+	dbtables: JsonBasedFile(parse.dbtables, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables), internalNameFiles.dbtable),
+	dbrows: JsonBasedFile(parse.dbrows, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows), internalNameFiles.dbrow),
+	quests: JsonBasedFile(parse.quest, singleMinorIndex(cacheMajors.config, cacheConfigPages.quests), internalNameFiles.quest),
+	
+	varbits: JsonBasedFile(parse.varbits, singleMinorIndex(cacheMajors.config, cacheConfigPages.varbits)),
+	var_player: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varplayer), internalNameFiles.var_player),
+	var_npc: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varnpc), internalNameFiles.var_npc),
+	var_client: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varclient), internalNameFiles.var_client),
+	var_world: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varworld)),
+	var_region: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varregion)),
+	var_object: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varobject), internalNameFiles.var_object),
+	var_clan: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varclan), internalNameFiles.var_clan),
+	var_clansetting: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varclansettings), internalNameFiles.var_clan_setting),
+	var_campaign: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varcampaign)),
+	var_player_group: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varplayergroup), internalNameFiles.var_player_group),
 
-	particles0: { parser: parse.particles_0, lookup: singleMinorIndex(cacheMajors.particles, 0) },
-	particles1: { parser: parse.particles_1, lookup: singleMinorIndex(cacheMajors.particles, 1) },
+	overlays: JsonBasedFile(parse.mapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
+	identitykit: JsonBasedFile(parse.identitykit, singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit)),
+	params: JsonBasedFile(parse.params, singleMinorIndex(cacheMajors.config, cacheConfigPages.params), internalNameFiles.param),
+	underlays: JsonBasedFile(parse.mapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
+	mapscenes: JsonBasedFile(parse.mapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
+	environments: JsonBasedFile(parse.environments, singleMinorIndex(cacheMajors.config, cacheConfigPages.environments)),
+	animgroupconfigs: JsonBasedFile(parse.animgroupConfigs, singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups), internalNameFiles.bas),
+	cursors: JsonBasedFile(parse.cursors, singleMinorIndex(cacheMajors.config, cacheConfigPages.cursors), internalNameFiles.cursor),
+	maplabels: JsonBasedFile(parse.maplabels, singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels), internalNameFiles.maplabel),
+	maplabellocations: JsonBasedFile(parse.maplabellocations, standardIndex(cacheMajors.maplabellocations)),
+	mapzones: JsonBasedFile(parse.mapZones, singleMinorIndex(cacheMajors.worldmap, 0)),
+	mappastes: JsonBasedFile(parse.mapPastes, singleMinorIndex(cacheMajors.worldmap, 1)),
+	mapzones_sub3: JsonBasedFile(parse.mapZonesSub3, singleMinorIndex(cacheMajors.worldmap, 3)),
+	mapzones_sub4: JsonBasedFile(parse.mapZonesSub4, singleMinorIndex(cacheMajors.worldmap, 4)),
+	cutscenes: JsonBasedFile(parse.cutscenes, noArchiveIndex(cacheMajors.cutscenes), internalNameFiles.ui_anim),
 
-	maptiles: { parser: parse.mapsquareTiles, lookup: worldmapIndex(cacheMapFiles.squares) },
-	maptiles_nxt: { parser: parse.mapsquareTilesNxt, lookup: worldmapIndex(cacheMapFiles.square_nxt) },
-	maplocations: { parser: parse.mapsquareLocations, lookup: worldmapIndex(cacheMapFiles.locations) },
-	mapenvs: { parser: parse.mapsquareEnvironment, lookup: worldmapIndex(cacheMapFiles.env) },
-	maptiles_old: { parser: parse.mapsquareTiles, lookup: oldWorldmapIndex("m") },
-	maplocations_old: { parser: parse.mapsquareLocations, lookup: oldWorldmapIndex("l") },
+	particles0: JsonBasedFile(parse.particles_0, singleMinorIndex(cacheMajors.particles, 0)),
+	particles1: JsonBasedFile(parse.particles_1, singleMinorIndex(cacheMajors.particles, 1)),
 
-	frames: { parser: parse.frames, lookup: standardIndex(cacheMajors.frames) },
-	models: { parser: parse.models, namefile: internalNameFiles.model, lookup: noArchiveIndex(cacheMajors.models) },
-	oldmodels: { parser: parse.oldmodels, lookup: noArchiveIndex(cacheMajors.oldmodels) },
-	skeletons: { parser: parse.skeletalAnim, lookup: noArchiveIndex(cacheMajors.skeletalAnims) },
-	proctextures: { parser: parse.proctexture, lookup: noArchiveIndex(cacheMajors.texturesOldPng) },
-	oldproctextures: { parser: parse.oldproctexture, lookup: singleMinorIndex(cacheMajors.texturesOldPng, 0) },
-	interfaces: { parser: parse.interfaces, namefile: internalNameFiles.interface, lookup: standardIndex(cacheMajors.interfaces) },
-	fontmetrics: { parser: parse.fontmetrics, namefile: internalNameFiles.fontmetrics, lookup: standardIndex(cacheMajors.fontmetrics) },
+	maptiles: JsonBasedFile(parse.mapsquareTiles, worldmapIndex(cacheMapFiles.squares)),
+	maptiles_nxt: JsonBasedFile(parse.mapsquareTilesNxt, worldmapIndex(cacheMapFiles.square_nxt)),
+	maplocations: JsonBasedFile(parse.mapsquareLocations, worldmapIndex(cacheMapFiles.locations)),
+	mapenvs: JsonBasedFile(parse.mapsquareEnvironment, worldmapIndex(cacheMapFiles.env)),
+	maptiles_old: JsonBasedFile(parse.mapsquareTiles, oldWorldmapIndex("m")),
+	maplocations_old: JsonBasedFile(parse.mapsquareLocations, oldWorldmapIndex("l")),
 
-	classicmodels: { parser: parse.classicmodels, lookup: singleMinorIndex(0, classicGroups.models) },
+	frames: JsonBasedFile(parse.frames, standardIndex(cacheMajors.frames)),
+	models: JsonBasedFile(parse.models, noArchiveIndex(cacheMajors.models), internalNameFiles.model),
+	oldmodels: JsonBasedFile(parse.oldmodels, noArchiveIndex(cacheMajors.oldmodels)),
+	skeletons: JsonBasedFile(parse.skeletalAnim, noArchiveIndex(cacheMajors.skeletalAnims)),
+	proctextures: JsonBasedFile(parse.proctexture, noArchiveIndex(cacheMajors.texturesOldPng)),
+	oldproctextures: JsonBasedFile(parse.oldproctexture, singleMinorIndex(cacheMajors.texturesOldPng, 0)),
+	interfaces: JsonBasedFile(parse.interfaces, standardIndex(cacheMajors.interfaces), internalNameFiles.interface),
+	fontmetrics: JsonBasedFile(parse.fontmetrics, standardIndex(cacheMajors.fontmetrics), internalNameFiles.fontmetrics),
 
-	indices: { parser: parse.cacheIndex, lookup: indexfileIndex() },
-	rootindex: { parser: parse.rootCacheIndex, lookup: rootindexfileIndex() },
+	classicmodels: JsonBasedFile(parse.classicmodels, singleMinorIndex(0, classicGroups.models)),
 
-	test: { parser: FileParser.fromJson(`["struct",\n  \n]`), lookup: anyFileIndex() },
+	indices: JsonBasedFile(parse.cacheIndex, indexfileIndex()),
+	rootindex: JsonBasedFile(parse.rootCacheIndex, rootindexfileIndex()),
 
-	clientscriptops: { parser: parse.clientscript, lookup: noArchiveIndex(cacheMajors.clientscript), prepareParser: source => prepareClientScript(source).then(() => undefined) },
-});
+	test: JsonBasedFile(FileParser.fromJson(`["struct",\n  \n]`), anyFileIndex()),
+
+	clientscriptops: JsonBasedFile(parse.clientscript, noArchiveIndex(cacheMajors.clientscript), undefined, source => prepareClientScript(source).then(() => undefined)),
+} satisfies Record<string, JsonBasedFile<any>>;
 
 const npcmodels: DecodeModeFactory = function () {
 	return {
@@ -779,7 +796,7 @@ const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({
 });
 
 const cacheFileDecodersJson = (Object.fromEntries(Object.entries(cacheFileJsonModes)
-	.map(([k, v]) => [k, standardFile(v)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 
 export const cacheFileDecodeGroups = {
 	image: cacheFileDecodersImage,
