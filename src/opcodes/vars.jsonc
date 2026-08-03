@@ -1,5 +1,5 @@
 {
-    "0x03": { "name": "type", "read": "ubyte" },
+    "0x03": { "name": "type", "read": "ubyte", "type":"type" },
     "0x04": { "name": "lifetime", "read": "ubyte" },
     "0x07": { "name": "domaindefault", "read": true },
     "0x08": { "name": "wikisync", "read": true },

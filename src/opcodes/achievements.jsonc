@@ -3,14 +3,22 @@
 {
 	"0x01": { "name":                           "name", "read": "paddedstring"},
 	"0x02": { "name":                    "description", "read": ["struct",
-		["hasironman", "unsigned byte"],
-		["unk0","unsigned byte"],
-		["descr","paddedstring"],
-		["unk1",["opt",["hasironman",2],"unsigned byte"]],
-		["descr_ironman",["opt",["hasironman",2],"paddedstring"]]
+		["textvariants", "unsigned byte"],
+		["unk0",["opt",["textvariants",0,"bitflag"],"unsigned byte"]],
+		["descr",["opt",["textvariants",0,"bitflag"],"paddedstring"]],
+		["unk1",["opt",["textvariants",1,"bitflag"],"unsigned byte"]],
+		["descr_ironman",["opt",["textvariants",1,"bitflag"],"paddedstring"]],
+		["gimcount2",["opt",["textvariants",2,"bitflag"],"ubyte"]],
+		["descr_gim2",["opt",["textvariants",2,"bitflag"],"paddedstring"]],
+		["gimcount3",["opt",["textvariants",2,"bitflag"],"ubyte"]],
+		["descr_gim3",["opt",["textvariants",2,"bitflag"],"paddedstring"]],
+		["gimcount4",["opt",["textvariants",2,"bitflag"],"ubyte"]],
+		["descr_gim4",["opt",["textvariants",2,"bitflag"],"paddedstring"]],
+		["gimcount5",["opt",["textvariants",2,"bitflag"],"ubyte"]],
+		["descr_gim5",["opt",["textvariants",2,"bitflag"],"paddedstring"]]
 	]},
-	"0x03": { "name":                       "category", "read": "unsigned short"},
-	"0x04": { "name":                       "spriteId", "read": "variable unsigned int"},
+	"0x03": { "name":                       "category", "read": "unsigned short","type":"category"},
+	"0x04": { "name":                       "spriteId", "read": "variable unsigned int","type":"graphic"},
 	"0x05": { "name":                      "runescore", "read": "unsigned byte"},
 	"0x06": { "name":                   "unknown_0x06", "read": "unsigned short"},
 	"0x07": { "name":                     "rewardtext", "read": "paddedstring"},
@@ -27,14 +35,14 @@
 		["value","variable unsigned int"],
 		["name","paddedstring"],
 		["stepsize","unsigned byte"],
-		["varbit","unsigned short"]
+		["varbit","unsigned short","varbit"]
 	]]},
 	"0x0A": { "name":           "varbit_partial_state", "read": ["array", ["struct",
 		["type","unsigned byte"],
 		["value","variable unsigned int"],
 		["name","paddedstring"],
 		["stepsize","unsigned byte"],
-		["varbit","unsigned short"]
+		["varbit","unsigned short","varbit"]
 	]]},
 	"0x0B": { "name":          "previous_achievements", "read": ["array", "unsigned tribyte"]},
 	"0x0C": { "name":                   "skill_reqs_2", "read": ["array", "variable unsigned short", ["struct",
@@ -48,19 +56,19 @@
 		["unk0","unsigned byte"],
 		["value","variable unsigned int"],
 		["name","paddedstring"],
-		["varbits",["array","unsigned short"]]
+		["varbits",["array","varushort","unsigned short","varbit"]]
 	]]},
 	"0x0D": { "name":                        "subreqs", "read": ["array", "variable unsigned short", ["struct",
 		["unk0","unsigned byte"],
 		["value","variable unsigned int"],
 		["name","paddedstring"],
-		["varbits",["array","unsigned short"]]
+		["varbits",["array","varushort","unsigned short","varbit"]]
 	]]},
 	"0x0F": { "name":               "sub_achievements", "read": ["array", "variable unsigned short", ["struct",
 		["unk0","unsigned byte"],
-		["achievement","unsigned short"]
+		["achievement","unsigned short","achievement"]
 	]]},
-	"0x10": { "name":                    "subcategory", "read": "unsigned short"},
+	"0x10": { "name":                    "subcategory", "read": "unsigned short","type":"category"},
 	//only used for subachievements of "find all the hidden Zygomites on Anachronia."
 	"0x11": { "name":                        "unk0x11", "read": "true"},
 	"0x12": { "name":                         "hidden", "read": "unsigned byte"},
@@ -69,7 +77,7 @@
 	"0x15": { "name":                      "quest_ids", "read": ["array", "unsigned tribyte"]},
 	"0x17": { "name":                         "reqs23", "read": ["array", "variable unsigned short",["struct",
 		["type","unsigned byte"],
-		["varbit","unsigned short"],
+		["varbit","unsigned short","varbit"],
 		["stepsize","unsigned byte"],
 		["name",["opt",["type",0],"paddedstring"]],
 		["requirement",["opt",["type",1],"unsigned short"]],
@@ -77,13 +85,14 @@
 	]]},
 	"0x19": { "name":                         "reqs25", "read": ["array", "variable unsigned short",["struct",
 		["type","unsigned byte"],
-		["varbit","unsigned short"],
+		["varbit","unsigned short","varbit"],
 		["value","unsigned byte"],
 		["name",["opt",["type",0],"paddedstring"]],
 		["requirement",["opt",["type",1],"unsigned short"]],
 		["subbit","unsigned byte"]
 	]]},
-	"0x1B": { "name":                   "unknown_0x13", "read": "true"},
+	"0x1A": { "name":                   "unknown_0x1A", "read": "ushort"},
+	"0x1B": { "name":                   "unknown_0x1B", "read": "true"},
 	"0x1C": { "name":                "skill_req_count", "read": ["array", "unsigned byte"]},
 	"0x1D": { "name":                   "unknown_0x1D", "read": "unsigned byte"},
 	"0x1E": { "name":                   "subreq_count", "read": ["array", "variable unsigned short"]},

@@ -2,7 +2,7 @@
     ["type","ubyte"],
     ["sprite",["opt","type!=2",["struct",
         ["complexkerning","ubyte"],
-        ["sourceid",["match",["ref","type"],{"1":"int","other":-1}]],
+        ["sourceid",["match",["ref","type"],{"1":"int","other":-1}],"graphic"],
         ["chars",["chunkedarray",256,[
             ["width","ubyte"]
         ],[

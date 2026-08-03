@@ -11,11 +11,10 @@ import classNames from "classnames";
 import { HSL2RGB, packedHSL2HSL, RGB2HSL } from "../utils";
 import { BlobImage } from "./commoncontrols";
 import { parseMusic } from "../scripts/musictrack";
-import { parse } from "../opdecoder";
 import { cacheFileJsonModes, JsonBasedFile } from "../scripts/filetypes";
 import { variableSources } from "../clientscript/definitions";
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "varbit";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "varbit";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
 
 type DeepLinkElement = {
@@ -31,6 +30,39 @@ type DeepLinkContext = {
     source: CacheFileSource,
     rootobj: any
 }
+
+const skillNames = [
+    "ATTACK",
+    "DEFENCE",
+    "STRENGTH",
+    "HITPOINTS",
+    "RANGING",
+    "PRAYER",
+    "MAGIC",
+    "COOKING",
+    "WOODCUTTING",
+    "FLETCHING",
+    "FISHING",
+    "FIREMAKING",
+    "CRAFTING",
+    "SMITHING",
+    "MINING",
+    "HERBLORE",
+    "AGILITY",
+    "THIEVING",
+    "SLAYER",
+    "FARMING",
+    "RUNECRAFTING",
+    "HUNTING",
+    "CONSTRUCTION",
+    "SUMMONING",
+    "DUNGEONEERING",
+    "DIVINATION",
+    "INVENTION",
+    "ARCHAEOLOGY",
+    "NECROMANCY"
+];
+
 
 export async function getFileJson<T extends keyof typeof cacheFileJsonModes>(source: CacheFileSource, mode: T, id: number | number[])
     : Promise<typeof cacheFileJsonModes[T] extends JsonBasedFile<infer Q> ? Q : never> {
@@ -79,6 +111,10 @@ async function deepLinkJson(ctx: DeepLinkContext, name: string, data: any, meta:
         let valueint = ctx.rootobj?.value_type1 ?? ctx.rootobj?.value_type2;
         rsmvtype = Object.entries(vartypes).find(([k, v]) => v == valueint)?.[0] as any ?? "unknown";
     }
+    if (rsmvtype == "paramvalue") {
+        let paramint = ctx.rootobj?.type?.vartype;
+        rsmvtype = Object.entries(vartypes).find(([k, v]) => v == paramint)?.[0] as any ?? "unknown";
+    }
 
     // === fix schema location ===
     // strip nullable type from schema
@@ -111,6 +147,16 @@ async function deepLinkJson(ctx: DeepLinkContext, name: string, data: any, meta:
                 let varname = await ctx.source.getInternalName(group[1].namefile, varid);
                 valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
             }
+        } else if (rsmvtype == "var_reference") {
+            let domain = (data >> 16) & 0xff;
+            let varid = data & 0xffff;
+            let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
+            if (group && group[1].namefile != -1) {
+                let varname = await ctx.source.getInternalName(group[1].namefile, varid);
+                valuename = `ref_var_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
+            }
+        } else if (rsmvtype == "stat") {
+            valuename = skillNames[data];
         }
         let namegroup = internalNameFiles[rsmvtype];
         valuename ??= (namegroup != undefined ? await ctx.source.getInternalName(namegroup, data) : undefined);

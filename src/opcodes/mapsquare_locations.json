@@ -1,7 +1,7 @@
 ["struct",
 	["$idcounter","-1"],
 	["locations",["nullarray","tailed unsigned short",["struct",
-		["id",["accum","$idcounter",["ref","$opcode"]]],
+		["id",["accum","$idcounter",["ref","$opcode"]],"loc"],
 		["$location","0"],
 		["uses",["nullarray","variable unsigned short",["struct",
 			["$loc",["accum","$location",["ref","$opcode"],"add-1"]],

@@ -1,5 +1,5 @@
 {
-    "0x01": { "name": "varid", "read": "utribyte" },//[8bit domain][16bit id] read as tribyte since thats also how we read pushvar/popvar imm
+    "0x01": { "name": "varid", "read": "utribyte","type":"var_reference" },//[8bit domain][16bit id] read as tribyte since thats also how we read pushvar/popvar imm
     "0x02": { "name": "bits", "read": ["tuple", "ubyte", "ubyte"] },
     "0x10": { "name": "wikisync", "read": true }
 }

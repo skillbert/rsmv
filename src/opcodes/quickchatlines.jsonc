@@ -1,20 +1,29 @@
 {
 	"0x01": { "name":               "text", "read": "string" },
-	"0x02": { "name":            "replies", "read": ["array","ubyte","ushort"]},
+	"0x02": { "name":            "replies", "read": ["array","ubyte","ushort","quickchat"]},
 	"0x03": { "name":            "inserts", "read": ["array","ubyte",["struct",
 		["type","ushort"],
-		["pickEnum",["opt",["type",0],"ushort"]],
-		["pickTtem",["opt",["type",1],"true"]],
-		["skillLevel",["opt",["type",4],"ushort"]],
-		["varplayerEnum",["opt",["type",6],["struct",["enum","ushort"],["varbit","ushort"]]]],
-		["varplayer",["opt",["type",8],"ushort"]],
-		["varbit",["opt",["type",9],"ushort"]],
+		["pickEnum",["opt",["type",0],"ushort"],"enum"],
+		["pickTtem",["opt",["type",1],"true"],"obj"],
+		["skillLevel",["opt",["type",4],"ushort"],"stat"],
+		["varplayerEnum",["opt",["type",6],["struct",
+			["enum","ushort","enum"],
+			["varbit","ushort","varbit"]
+		]]],
+		["varplayer",["opt",["type",8],"ushort"],"var_player"],
+		["varbit",["opt",["type",9],"ushort"],"varbit"],
 		["pickTradeableItem",["opt",["type",10],"true"]],
-		["skillLevelEnum",["opt",["type",11],["struct",["enum","ushort"],["skill","ushort"]]]],
+		["skillLevelEnum",["opt",["type",11],["struct",
+			["enum","ushort","enum"],
+			["skill","ushort","stat"]
+		]]],
 		["friendsChatCount",["opt",["type",12],"true"]],
-		["varWorld",["opt",["type",14],"ushort"]],
+		["varWorld",["opt",["type",14],"ushort"],"var_world"],
 		["combatlevel",["opt",["type",15],"true"]],
-		["varbitEnumstring",["opt",["type",16],["struct",["enum","ushort"],["varbit","ushort"]]]]
+		["varbitEnumstring",["opt",["type",16],["struct",
+			["enum","ushort","enum"],
+			["varbit","ushort","varbit"]
+		]]]
 	]]},
 	"0x04": { "name":      "nonsearchable", "read": "true" }
 }
