@@ -28,7 +28,7 @@
 		["text","paddedstring"],
 		["unk_0","unsigned byte"],
 		["unk_1","unsigned byte"],
-		["skill","unsigned byte"]
+		["skill","unsigned byte","stat"]
 	]]},
 	"0x09": { "name":                 "subach_varbits", "read": ["array", ["struct",
 		["type","unsigned byte"],
@@ -44,13 +44,13 @@
 		["stepsize","unsigned byte"],
 		["varbit","unsigned short","varbit"]
 	]]},
-	"0x0B": { "name":          "previous_achievements", "read": ["array", "unsigned tribyte"]},
+	"0x0B": { "name":          "previous_achievements", "read": ["array", "varushort", "unsigned tribyte","achievement"]},
 	"0x0C": { "name":                   "skill_reqs_2", "read": ["array", "variable unsigned short", ["struct",
 		["unk0","unsigned byte"],
 		["level","unsigned byte"],
 		["name","paddedstring"],
 		["unk1","unsigned byte"],
-		["skill","unsigned short"]
+		["skill","unsigned short","stat"]
 	]]},
 	"0x0E": { "name":                "progress_states", "read": ["array", "variable unsigned short", ["struct",
 		["unk0","unsigned byte"],
@@ -69,13 +69,12 @@
 		["achievement","unsigned short","achievement"]
 	]]},
 	"0x10": { "name":                    "subcategory", "read": "unsigned short","type":"category"},
-	//only used for subachievements of "find all the hidden Zygomites on Anachronia."
-	"0x11": { "name":                        "unk0x11", "read": "true"},
+	"0x11": { "name":                        "removed", "read": "true"},
 	"0x12": { "name":                         "hidden", "read": "unsigned byte"},
 	"0x13": { "name":                            "f2p", "read": "true"},
-	"0x14": { "name":       "quest_req_for_miniquests", "read": ["array", "unsigned tribyte"]},
-	"0x15": { "name":                      "quest_ids", "read": ["array", "unsigned tribyte"]},
-	"0x17": { "name":                         "reqs23", "read": ["array", "variable unsigned short",["struct",
+	"0x14": { "name":       "quest_req_for_miniquests", "read": ["array","varushort","unsigned tribyte","quest"]},
+	"0x15": { "name":                      "quest_ids", "read": ["array","varushort","unsigned tribyte","quest"]},
+	"0x17": { "name":                         "reqs23", "read": ["array","varushort",["struct",
 		["type","unsigned byte"],
 		["varbit","unsigned short","varbit"],
 		["stepsize","unsigned byte"],
@@ -91,14 +90,11 @@
 		["requirement",["opt",["type",1],"unsigned short"]],
 		["subbit","unsigned byte"]
 	]]},
-	"0x1A": { "name":                   "unknown_0x1A", "read": "ushort"},
+	"0x1A": { "name":                          "dbrow", "read": "ushort","type":"dbrow"},
 	"0x1B": { "name":                   "unknown_0x1B", "read": "true"},
 	"0x1C": { "name":                "skill_req_count", "read": ["array", "unsigned byte"]},
 	"0x1D": { "name":                   "unknown_0x1D", "read": "unsigned byte"},
 	"0x1E": { "name":                   "subreq_count", "read": ["array", "variable unsigned short"]},
 	"0x1F": { "name":                   "unknown_0x1F", "read": "unsigned byte"},
-	"0x20": { "name":                   "unknown_0x20", "read": "unsigned tribyte"},
-	"0x23": { "name":                   "unknown_0x23", "read": "true"},
-	"0x25": { "name":                   "unknown_0x25", "read": "unsigned byte"},
-	"0x26": { "name":                   "unknown_0x26", "read": "true"}
+	"0x20": { "name":                   "unknown_0x20", "read": "unsigned tribyte"}//only 0x10000 and 0x20000
 }

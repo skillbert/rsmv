@@ -10,8 +10,8 @@
 	"0x09": { "name":                            "toggle_1", "read": ["struct",
                                                                         ["varbit","ushort","varbit"],
                                                                         ["varp","ushort","var_player"],
-                                                                        ["lower","uint","maplabel"],
-                                                                        ["upper","uint","maplabel"]
+                                                                        ["lower","uint"],
+                                                                        ["upper","uint"]
                                                                     ] },
     "0x0a": { "name":                        "rightclick_1", "read": "string" },
     "0x0b": { "name":                          "unktext_0b", "read": "string" },
@@ -35,8 +35,8 @@
 	"0x14": { "name":                            "toggle_2", "read": ["struct",
                                                                         ["varbit","ushort","varbit"],
                                                                         ["varp","ushort","var_player"],
-                                                                        ["lower","uint","maplabel"],
-                                                                        ["upper","uint","maplabel"]
+                                                                        ["lower","uint"],
+                                                                        ["upper","uint"]
                                                                     ] },
 	"0x15": { "name":                          "unknown_15", "read": "int" },
 	"0x16": { "name":                          "unknown_16", "read": "int" },
@@ -48,7 +48,7 @@
                                                                         ["default_ref","ushort","maplabel"],
                                                                         ["legacy_ref","ushort","maplabel"]
                                                                     ] },
-	"0x1c": { "name":                          "unknown_1c", "read": "ubyte" },
+	"0x1c": { "name":                          "unknown_1c", "read": "ubyte" },//maybe scale (50/75/100)
 	"0x1e": { "name":                          "unknown_1e", "read": "ubyte" },
 	"0xF9": { "name":                               "extra", "read": "extrasmap", "type": "params" }
 }

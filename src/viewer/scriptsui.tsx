@@ -310,12 +310,22 @@ export function useAwaited<T>(fn: () => Promise<T> | null | undefined, deps: any
 	let forceupdate = useForceUpdate();
 	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
 	let value = React.useRef<T | null>(null);
+	let generation = React.useRef(0);
 	React.useEffect(() => {
 		let p = fn();
 		value.current = null;
+		generation.current++;
+		let gen = generation.current;
+		// prevent showing stale data for too long
+		let timeout = setTimeout(() => {
+			if (value.current == null && gen == generation.current) { forceupdate(); }
+		}, 200);
 		p?.then(q => {
-			value.current = q;
-			forceupdate();
+			clearTimeout(timeout);
+			if (gen == generation.current) {
+				value.current = q;
+				forceupdate();
+			}
 		}).catch(err => console.error(err));
 	}, deps);
 	return value.current;

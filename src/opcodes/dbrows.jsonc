@@ -10,8 +10,8 @@
                 //in theory there are about 10 possible non-int types (either string or long), but only these are observed
                 "0x24":"string",
                 "other":"int"
-            }]]]]
+            }],"dbvalue"]]]
         ]]
     ]]},
-    "0x04":{"name":"table","read":"varushort"}
+    "0x04":{"name":"table","read":["flipped varushort"],"type":"dbtable"}
 }

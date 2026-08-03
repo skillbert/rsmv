@@ -4,8 +4,6 @@ import { parse } from "../opdecoder";
 import { cacheFilenameHash } from "../utils";
 import { parseLegacyArchive } from "./legacycache";
 
-globalThis.ignoreCache = false;
-
 export type SubFile = {
 	offset: number,
 	size: number,

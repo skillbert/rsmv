@@ -14,7 +14,7 @@ import { parseMusic } from "../scripts/musictrack";
 import { cacheFileJsonModes, JsonBasedFile } from "../scripts/filetypes";
 import { variableSources } from "../clientscript/definitions";
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "varbit";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "varbit";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
 
 type DeepLinkElement = {
@@ -26,9 +26,12 @@ type DeepLinkElement = {
     array?: DeepLinkElement[]
 }
 
-type DeepLinkContext = {
-    source: CacheFileSource,
-    rootobj: any
+class DeepLinkContext {
+    source: CacheFileSource;
+    objstack: any[] = [];
+    constructor(source: CacheFileSource) {
+        this.source = source;
+    }
 }
 
 const skillNames = [
@@ -84,7 +87,7 @@ export async function getFileJson<T extends keyof typeof cacheFileJsonModes>(sou
     json.$decoder = mode;
     return json;
 }
-globalThis.getFileJson = getFileJson;
+
 
 async function deepLinkParamtable(ctx: DeepLinkContext, value: any[]) {
     let paramData = await loadParams(ctx.source);
@@ -98,102 +101,115 @@ async function deepLinkParamtable(ctx: DeepLinkContext, value: any[]) {
     }));
 }
 
-async function deepLinkJson(ctx: DeepLinkContext, name: string, data: any, meta: JSONSchema6Definition | null | undefined): Promise<DeepLinkElement> {
-    if (typeof meta == "boolean") { meta = null; }
 
-    // === find expected type ===
-    let rsmvtype = getRSType(meta);
-    if (rsmvtype == "enumkey") {
-        let keyint = ctx.rootobj?.key_type1 ?? ctx.rootobj?.key_type2;
-        rsmvtype = Object.entries(vartypes).find(([k, v]) => v == keyint)?.[0] as any ?? "unknown";
-    }
-    if (rsmvtype == "enumvalue") {
-        let valueint = ctx.rootobj?.value_type1 ?? ctx.rootobj?.value_type2;
-        rsmvtype = Object.entries(vartypes).find(([k, v]) => v == valueint)?.[0] as any ?? "unknown";
-    }
-    if (rsmvtype == "paramvalue") {
-        let paramint = ctx.rootobj?.type?.vartype;
-        rsmvtype = Object.entries(vartypes).find(([k, v]) => v == paramint)?.[0] as any ?? "unknown";
-    }
+async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, data: any, meta: JSONSchema6Definition | null | undefined): Promise<DeepLinkElement> {
+    let name = typeof nameorindex == "number" ? "" : nameorindex;
+    ctx.objstack.push(data);
+    try {
+        if (typeof meta == "boolean") { meta = null; }
 
-    // === fix schema location ===
-    // strip nullable type from schema
-    if (meta?.oneOf) {
-        meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
-    }
-    if (meta?.anyOf) {
-        meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
-    }
-
-    // === handle data type ===
-    if (ArrayBuffer.isView(data)) {
-        // we were handed a typed array, which is only possible if our object hasn't been serialized to JSON yet
-        // force it into a string to simulate json roundtrip
-        data = "" + data;
-    }
-
-    // === render data ===
-    if (typeof data == "number") {
-        let valuename: string | undefined = undefined;
-        if (rsmvtype == "type") {
-            valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
-        } else if (rsmvtype == "varbit") {
-            let meta = await getFileJson(ctx.source, "varbits", data);
-            let varint = meta.varid ?? 0;
-            let domain = (varint >> 16) & 0xff;
-            let varid = varint & 0xffff;
-            let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
-            if (group && group[1].namefile != -1) {
-                let varname = await ctx.source.getInternalName(group[1].namefile, varid);
-                valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
-            }
-        } else if (rsmvtype == "var_reference") {
-            let domain = (data >> 16) & 0xff;
-            let varid = data & 0xffff;
-            let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
-            if (group && group[1].namefile != -1) {
-                let varname = await ctx.source.getInternalName(group[1].namefile, varid);
-                valuename = `ref_var_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
-            }
-        } else if (rsmvtype == "stat") {
-            valuename = skillNames[data];
+        // === find expected type ===
+        let rsmvtype = getRSType(meta);
+        if (rsmvtype == "enumkey") {
+            let keyint = ctx.objstack.at(0)?.key_type1 ?? ctx.objstack.at(0)?.key_type2;
+            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == keyint)?.[0] as any ?? "unknown";
         }
-        let namegroup = internalNameFiles[rsmvtype];
-        valuename ??= (namegroup != undefined ? await ctx.source.getInternalName(namegroup, data) : undefined);
-
-        return { name, rsmvtype, valuename, primitive: data };
-    } else if (typeof data == "string" || typeof data == "boolean" || data == null) {
-        return { name, rsmvtype, primitive: data };
-    } else if (Array.isArray(data)) {
-        if (rsmvtype == "params") {
-            return { name, rsmvtype: "params", items: await deepLinkParamtable(ctx, data) };
+        if (rsmvtype == "enumvalue") {
+            let valueint = ctx.objstack.at(0)?.value_type1 ?? ctx.objstack.at(0)?.value_type2;
+            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == valueint)?.[0] as any ?? "unknown";
         }
-        let subs: DeepLinkElement[] = [];
-        for (let i = 0; i < data.length; i++) {
-            let itemmeta: JSONSchema6Definition | null = null;
-            if (meta && meta.items) {
-                if (Array.isArray(meta.items)) {
-                    itemmeta = meta.items[i];
-                } else {
-                    itemmeta = meta.items;
+        if (rsmvtype == "paramvalue") {
+            let paramint = ctx.objstack.at(0)?.type?.vartype;
+            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == paramint)?.[0] as any ?? "unknown";
+        }
+        if (rsmvtype == "dbvalue") {
+            let fieldtype = ctx.objstack.at(-1)?.type ?? ctx.objstack.at(-4)?.subtypes?.[nameorindex];
+            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == fieldtype)?.[0] as any ?? "unknown";
+        }
+
+        // === fix schema location ===
+        // strip nullable type from schema
+        if (meta?.oneOf) {
+            meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+        }
+        if (meta?.anyOf) {
+            meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+        }
+
+        // === handle data type ===
+        if (ArrayBuffer.isView(data)) {
+            // we were handed a typed array, which is only possible if our object hasn't been serialized to JSON yet
+            // force it into a string to simulate json roundtrip
+            data = "" + data;
+        }
+
+        // === render data ===
+        if (typeof data == "number") {
+            let valuename: string | undefined = undefined;
+            if (rsmvtype == "type") {
+                valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
+            } else if (rsmvtype == "varbit") {
+                if (data != 0xffff) {
+                    let meta = await getFileJson(ctx.source, "varbits", data);
+                    let varint = meta.varid ?? 0;
+                    let domain = (varint >> 16) & 0xff;
+                    let varid = varint & 0xffff;
+                    let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
+                    if (group && group[1].namefile != -1) {
+                        let varname = await ctx.source.getInternalName(group[1].namefile, varid);
+                        valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
+                    }
                 }
+            } else if (rsmvtype == "var_reference") {
+                let domain = (data >> 16) & 0xff;
+                let varid = data & 0xffff;
+                let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
+                if (group && group[1].namefile != -1) {
+                    let varname = await ctx.source.getInternalName(group[1].namefile, varid);
+                    valuename = `ref_var_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
+                }
+            } else if (rsmvtype == "stat") {
+                valuename = skillNames[data];
             }
-            subs.push(await deepLinkJson(ctx, "", data[i], itemmeta));
-        }
-        return { name, rsmvtype, array: subs };
-    } else if (typeof data == "object") {
-        let subs: DeepLinkElement[] = [];
-        for (let key in data) {
-            if (key.startsWith("$")) { continue; } // skip internal properties
-            let itemmeta: JSONSchema6Definition | null = null;
-            if (meta && meta.properties && meta.properties[key]) {
-                itemmeta = meta.properties[key];
+            let namegroup = internalNameFiles[rsmvtype];
+            valuename ??= (namegroup != undefined ? await ctx.source.getInternalName(namegroup, data) : undefined);
+
+            return { name, rsmvtype, valuename, primitive: data };
+        } else if (typeof data == "string" || typeof data == "boolean" || data == null) {
+            return { name, rsmvtype, primitive: data };
+        } else if (Array.isArray(data)) {
+            if (rsmvtype == "params") {
+                return { name, rsmvtype: "params", items: await deepLinkParamtable(ctx, data) };
             }
-            subs.push(await deepLinkJson(ctx, key, data[key], itemmeta));
+            let subs: DeepLinkElement[] = [];
+            for (let i = 0; i < data.length; i++) {
+                let itemmeta: JSONSchema6Definition | null = null;
+                if (meta && meta.items) {
+                    if (Array.isArray(meta.items)) {
+                        itemmeta = meta.items[i];
+                    } else {
+                        itemmeta = meta.items;
+                    }
+                }
+                subs.push(await deepLinkJson(ctx, i, data[i], itemmeta));
+            }
+            return { name, rsmvtype, array: subs };
+        } else if (typeof data == "object") {
+            let subs: DeepLinkElement[] = [];
+            for (let key in data) {
+                if (key.startsWith("$")) { continue; } // skip internal properties
+                let itemmeta: JSONSchema6Definition | null = null;
+                if (meta && meta.properties && meta.properties[key]) {
+                    itemmeta = meta.properties[key];
+                }
+                subs.push(await deepLinkJson(ctx, key, data[key], itemmeta));
+            }
+            return { name, rsmvtype, items: subs };
+        } else {
+            throw new Error(`Unsupported data type: ${typeof data}`);
         }
-        return { name, rsmvtype, items: subs };
-    } else {
-        throw new Error(`Unsupported data type: ${typeof data}`);
+    } finally {
+        ctx.objstack.pop();
     }
 }
 
@@ -209,6 +225,17 @@ function SpriteView(p: { id: number }) {
         let file = await enginectx.source.getFileById(cacheMajors.sprites, p.id);
         let img = parseSprite(file);
         return pixelsToDataUrl(img[0].img);
+    }, [p.id]);
+
+    return <img src={imgurl ?? undefined} />;
+}
+
+function TextureView(p: { id: number }) {
+    let enginectx = React.useContext(UIEngineContext);
+    let imgurl = useAwaited(async () => {
+        if (!enginectx) { return; }
+        let file = await enginectx.sceneCache.getTextureFile("diffuse", p.id, false);
+        return pixelsToDataUrl(await file.toImageData());
     }, [p.id]);
 
     return <img src={imgurl ?? undefined} />;
@@ -285,7 +312,7 @@ function CoordGridView(p: { value: number }) {
 export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
     let source = React.useContext(UIEngineContext)?.source;
-    let data = useAwaited(async () => source && deepLinkJson({ source, rootobj: p.data }, "root", p.data, p.meta), [p.data, p.meta, source]);
+    let data = useAwaited(async () => source && deepLinkJson({ source, objstack: [] }, "root", p.data, p.meta), [p.data, p.meta, source]);
 
     let handlenode = (prop: DeepLinkElement, isroot = false): { isbig: boolean, el: JSX.Element } => {
         if (typeof prop.primitive == "number") {
@@ -300,6 +327,9 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
             }
             if (prop.rsmvtype == "graphic") {
                 return { isbig: false, el: <><div>{rawtext}</div><SpriteView id={prop.primitive} /></> };
+            }
+            if (prop.rsmvtype == "texture") {
+                return { isbig: false, el: <><div>{rawtext}</div><TextureView id={prop.primitive} /></> };
             }
             if (prop.rsmvtype == "cursor") {
                 return { isbig: false, el: <><div>{rawtext}</div><CursorView id={prop.primitive} /></> };

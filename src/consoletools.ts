@@ -1,0 +1,146 @@
+import { CacheFileSource } from "./cache";
+import { cliApi, CliApiContext } from "./clicommands";
+import * as cmdts from "cmd-ts";
+import { cacheConfigPages, internalNameFiles, cacheMajors, vartypes } from "./constants";
+import { dumpTexture } from "./imgutils";
+import { parse } from "./opdecoder";
+import { CLIScriptOutput } from "./scriptrunner";
+import { cacheFilenameHash, HSL2RGB, packedHSL2HSL } from "./utils";
+import { getFileJson } from "./viewer/configview";
+import prettyJson from "json-stringify-pretty-compact";
+import { UIScriptFS } from "./viewer/scriptsui";
+import { EngineCache } from "./3d/modeltothree";
+import { cacheFileJsonModes } from "./scripts/filetypes";
+
+// exposes various tools into the global scope to use in the console for debugging and testing
+export function exposeDebugToolsInGlobal() {
+    globalThis.cacheMajors = cacheMajors;
+    globalThis.cacheConfigPages = cacheConfigPages;
+    globalThis.internalNameFiles = internalNameFiles;
+    globalThis.vartypes = vartypes;
+    globalThis.dumpjson = dumpjson;
+    globalThis.bin = bin;
+    globalThis.binarr = binarr;
+    globalThis.findnames = findnames;
+    globalThis.allnames = allnames;
+    globalThis.getFileJson = getFileJson;
+    globalThis.dumptex = dumpTexture;
+    globalThis.cacheFilenameHash = cacheFilenameHash;
+    globalThis.hsl = (v: number) => HSL2RGB(packedHSL2HSL(v));
+    globalThis.coordgrid = coordgrid;
+    globalThis.prettyjson = prettyJson;
+    globalThis.cli = cli;
+    globalThis.getFileCounts = getFileCounts;
+    globalThis.getConfigCount = getConfigCount;
+}
+
+function coordgrid(coord: number) {
+    let plane = (coord >> 28) & 0x3;
+    let x = (coord >> 14) & 0x3FFF;
+    let z = coord & 0x3FFF;
+    return `${plane}_${x}_${z}`;
+}
+
+async function cli(args: string) {
+    let source = globalThis.source as CacheFileSource;
+    let cliconsole = new CLIScriptOutput();
+    let outputs: Record<string, any> = {};
+
+    let clictx: CliApiContext = {
+        getConsole() { return cliconsole; },
+        getFs(name: string) { return outputs[name] ??= new UIScriptFS(null); },
+        getDefaultCache() { return source; }
+    }
+    let api = cliApi(clictx);
+    let res = await cmdts.runSafely(api.subcommands, args.split(/\s+/g));
+    if (cliconsole.state == "running") {
+        cliconsole.setState(res._tag == "error" ? "error" : "done");
+    }
+    if (res._tag == "error") {
+        console.error(res.error.config.message);
+        outputs.code = res.error.config.exitCode;
+    } else {
+        outputs.code = 0;
+        // console.log("cmd completed", res.value);
+    }
+    return outputs;
+}
+
+async function getFileCounts() {
+    let source = globalThis.source as CacheFileSource;
+    let res: Record<string, any> = {};
+    for (let modename in cacheFileJsonModes) {
+        let mode = cacheFileJsonModes[modename as keyof typeof cacheFileJsonModes];
+        try {
+            let fileids = await mode.lookup.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
+
+            let lastfile = fileids.at(-1);
+            if (lastfile) {
+                let lastindex = mode.lookup.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subindex);
+                res[modename] = (Array.isArray(lastindex) && lastindex.length == 1 ? lastindex[0] : lastindex);
+            }
+        } catch (e) {
+            res[modename] = e;
+        }
+    }
+    return res;
+}
+
+async function getConfigCount() {
+    let source = globalThis.source as CacheFileSource;
+    let w = await source.getCacheIndex(2)
+    return w.map(q => ({ id: q.minor, count: q.subindexcount, max: q.subindices.at(-1), name: Object.entries(cacheConfigPages).find(w => w[1] == q.minor)?.[0] }))
+}
+
+async function dumpjson(mode: string) {
+    let engine = globalThis.engine as EngineCache;
+    let res = await engine.getJsonSearchData(mode).files;
+    let remapped: any[] = [];
+    for (let f of res) {
+        remapped[f.$fileid] = f;
+    }
+    return remapped;
+}
+
+function bin(arr: any[]) {
+    let bins = {};
+    for (let i = 0; i < arr.length; i++) {
+        let key = arr[i];
+        if (!bins[key]) { bins[key] = []; }
+        bins[key].push(i);
+    }
+    return bins;
+}
+
+function binarr(arr: any[][]) {
+    let bins = {};
+    for (let i = 0; i < arr.length; i++) {
+        let sub = arr[i];
+        for (let j = 0; j < sub.length; j++) {
+            let key = sub[j];
+            if (!bins[key]) { bins[key] = []; }
+            bins[key].push(i);
+        }
+    }
+    return bins;
+}
+
+async function findnames(id: number) {
+    let source = globalThis.source as CacheFileSource;
+    let names: Record<string, string | undefined> = {};
+    for (let group in internalNameFiles) {
+        names[group] = await source.getInternalName(internalNameFiles[group], id);
+    }
+    return names;
+}
+
+async function allnames() {
+    let source = globalThis.source as CacheFileSource;
+    let res: Record<number, any> = {};
+    let index = await source.getCacheIndex(cacheMajors.filenames);
+    for (let entry of index) {
+        if (!entry) { continue; }
+        res[entry.minor] = await source.getInternalNameList(entry.minor);
+    }
+    return res;
+}

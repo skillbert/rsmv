@@ -156,5 +156,6 @@ function allParsers() {
 		dbrows: FileParser.fromJson<import("../generated/dbrows").dbrows>(require("./opcodes/dbrows.jsonc")),
 		vars: FileParser.fromJson<import("../generated/vars").vars>(require("./opcodes/vars.jsonc")),
 		varbits: FileParser.fromJson<import("../generated/varbits").varbits>(require("./opcodes/varbits.jsonc")),
+		config83: FileParser.fromJson<import("../generated/config83").config83>(require("./opcodes/config83.jsonc")),
 	}
 }

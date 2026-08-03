@@ -6,9 +6,21 @@ export type mapzones_sub4 = {
 	img: Uint8Array,
 	data: {
 		unk0: number,
-		unk1: number,
-		unk2: Uint8Array,
-		unk3: Uint8Array,
-		unk4: number,
+		x: number,
+		z: number,
+		unk2: [
+			number,
+			number,
+			number,
+			number,
+		],
+		unk3: [
+			number,
+			number,
+			number,
+			number,
+		],
+		xextra: number,
+		zextra: number,
 	}[],
 };

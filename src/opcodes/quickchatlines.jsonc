@@ -1,10 +1,10 @@
 {
 	"0x01": { "name":               "text", "read": "string" },
-	"0x02": { "name":            "replies", "read": ["array","ubyte","ushort","quickchat"]},
+	"0x02": { "name":            "replies", "read": ["array","ubyte","ushort","chatphrase"]},
 	"0x03": { "name":            "inserts", "read": ["array","ubyte",["struct",
 		["type","ushort"],
 		["pickEnum",["opt",["type",0],"ushort"],"enum"],
-		["pickTtem",["opt",["type",1],"true"],"obj"],
+		["pickTtem",["opt",["type",1],"true"]],
 		["skillLevel",["opt",["type",4],"ushort"],"stat"],
 		["varplayerEnum",["opt",["type",6],["struct",
 			["enum","ushort","enum"],

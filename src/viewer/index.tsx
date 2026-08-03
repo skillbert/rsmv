@@ -2,17 +2,16 @@
 import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-import { boundMethod } from "autobind-decorator";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
-
-import { UIScriptFile, UIScriptFS, useEmitterProperty, useForceUpdate } from "./scriptsui";
+import { useForceUpdate } from "./scriptsui";
 import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext } from "./maincomponents";
 import classNames from "classnames";
-import { cliApi, CliApiContext } from "../clicommands";
-import { CLIScriptOutput } from "../scriptrunner";
-import * as cmdts from "cmd-ts";
+import { exposeDebugToolsInGlobal } from "../consoletools";
+
+
+exposeDebugToolsInGlobal();
 
 export function unload(root: ReactDOM.Root) {
 	root.unmount();
@@ -31,30 +30,6 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 			<App />
 		</UIRootContext.Provider>
 	);
-
-	globalThis.cli = async (args: string) => {
-		let cliconsole = new CLIScriptOutput();
-		let outputs: Record<string, any> = {};
-
-		let clictx: CliApiContext = {
-			getConsole() { return cliconsole; },
-			getFs(name: string) { return outputs[name] ??= new UIScriptFS(null); },
-			getDefaultCache() { return ctx.source!; }
-		}
-		let api = cliApi(clictx);
-		let res = await cmdts.runSafely(api.subcommands, args.split(/\s+/g));
-		if (cliconsole.state == "running") {
-			cliconsole.setState(res._tag == "error" ? "error" : "done");
-		}
-		if (res._tag == "error") {
-			console.error(res.error.config.message);
-			outputs.code = res.error.config.exitCode;
-		} else {
-			outputs.code = 0;
-			// console.log("cmd completed", res.value);
-		}
-		return outputs;
-	}
 
 	return root;
 }

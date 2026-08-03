@@ -13,7 +13,7 @@
                 ["default",["opt","$opcode&0x80",["match",["ref","type"],{
                     "0x24":"string",
                     "other":"int"
-                }]]]
+                }]],"dbvalue"]
             ]]]
         ]]]
     ]},
@@ -33,8 +33,10 @@
                 ["hasdefault",["accum","$default",["match",{"$colindex==1":"ubyte","other":0}]]]
             ],[
                 ["unk1",["opt","hasdefault&0x02 && $colindex==1","ubyte"]],//this is dumb, there is currently no way to read a byte between chunkedarray chunks
-                ["defaultint",["opt","hasdefault&0x02 && type!=0x24","int"]],
-                ["defaultstring",["opt","hasdefault&0x02 && type==0x24","string"]],
+                ["default",["opt","hasdefault&0x02",["match",["ref","type"],{
+                    "0x24":"string",
+                    "other":"int"
+                }]],"dbvalue"],
                 ["unk2",["opt","hasdefault&0x02 && $colindex==1","ubyte"]]
             ]]]
         ]]]

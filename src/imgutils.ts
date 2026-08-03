@@ -230,9 +230,6 @@ export function dumpTexture(img: ImageData | Texture | CanvasImage, flip = false
 	return cnv;
 }
 
-globalThis.dumptex = dumpTexture;
-
-
 export function drawTexture(ctx: CanvasRenderingContext2D, img: ImageData | Texture | CanvasImage) {
 	const cnv = ctx.canvas;
 	if ("data" in img) {

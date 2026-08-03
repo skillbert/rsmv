@@ -589,6 +589,15 @@ function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typede
 			return r;
 		},
 		getJsonSchema() {
+			let propschema: Record<string, jsonschema.JSONSchema6Definition> = {};
+			for (let prop in fullobj) {
+				if (prop.startsWith("$")) { continue; }
+				propschema[prop] = fullobj[prop].getJsonSchema();
+				let proptype = proptypes[prop];
+				if (proptype) {
+					propschema[prop]["x-rsmv-type"] = proptype;
+				}
+			}
 			return {
 				type: "array",
 				items: {
@@ -636,15 +645,17 @@ function chunkedArrayParser(args: unknown[], parent: ChunkParentCallback, typede
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	let fullobj: Record<string, ChunkParser> = {};
 	let chunktypes: Record<string, ChunkParser>[] = [];
+	let proptypes: Record<string, string> = {};
 	for (let chunk of rawchunks) {
 		if (!Array.isArray(chunk)) { throw new Error("each argument for composed chunk should be an array") }
 		let group: Record<string, ChunkParser> = {};
 		chunktypes.push(group);
 		for (let propdef of chunk as unknown[]) {
-			if (!Array.isArray(propdef) || propdef.length != 2 || typeof propdef[0] != "string") { throw new Error("each composedchunk should be a [name,type] pair"); }
+			if (!Array.isArray(propdef) || (propdef.length != 2 && propdef.length != 3) || typeof propdef[0] != "string") { throw new Error("each composedchunk should be a [name,type,type?] pair"); }
 			let p = buildParser(resolveReference.bind(null, propdef[0]), propdef[1], typedef);
 			group[propdef[0]] = p;
 			fullobj[propdef[0]] = p;
+			proptypes[propdef[0]] = propdef[2] ?? "";
 		}
 	}
 
@@ -1384,6 +1395,36 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			getJsonSchema() {
 				return subtype.getJsonSchema();
 			},
+		}
+	},
+	"flipped varushort": function (args, parent, typedef) {
+		// same as varushort, but flips bytes for some reason
+		// idk why this exists, but its used by dbrows table id field
+		// TODO i remember this existing in skeletal anims as well, merge implementations
+		return {
+			read(state) {
+				let byte0 = state.buffer.readUint8(state.scan++);
+				if ((byte0 & 0x80) == 0) {
+					return byte0;
+				}
+				let byte1 = state.buffer.readUint8(state.scan++);
+				return (byte0 | (byte1 << 8)) - 0x100;
+			},
+			write(state, v) {
+				if (typeof v != "number") { throw new Error("number expected"); }
+				if (v < 0x80) {
+					state.buffer.writeUint8(v, state.scan++);
+				} else {
+					state.buffer.writeUint8((v & 0x7f) | 0x80, state.scan++);
+					state.buffer.writeUint8((v + 0x100) >> 8, state.scan++);
+				}
+			},
+			getTypescriptType(indent) {
+				return "number";
+			},
+			getJsonSchema() {
+				return { type: "number" };
+			}
 		}
 	},
 	"tailed varushort": function (args, parent, typedef) {

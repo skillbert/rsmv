@@ -1,0 +1,5 @@
+["nullarray",["struct",
+	["op2",["opt","$opcode=2",["tuple","ubyte","ubyte","ubyte"]],"color"],
+	["op3",["opt","$opcode=3",["buffer",8,"hex"]]],
+	["op4",["opt","$opcode=4",["buffer",8,"hex"]]]
+]]

@@ -6,5 +6,5 @@ export type environments = {
 	unk01?: number | null
 	unk04?: boolean | null
 	model?: number | null
-	unk06?: number | null
+	material?: number | null
 };

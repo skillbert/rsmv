@@ -5,11 +5,19 @@
 export type achievements = {
 	name?: string | null
 	description?: {
-		hasironman: number,
-		unk0: number,
-		descr: string,
+		textvariants: number,
+		unk0: number | null,
+		descr: string | null,
 		unk1: number | null,
 		descr_ironman: string | null,
+		gimcount2: number | null,
+		descr_gim2: string | null,
+		gimcount3: number | null,
+		descr_gim3: string | null,
+		gimcount4: number | null,
+		descr_gim4: string | null,
+		gimcount5: number | null,
+		descr_gim5: string | null,
 	} | null
 	category?: number | null
 	spriteId?: number | null
@@ -63,7 +71,7 @@ export type achievements = {
 		achievement: number,
 	}[] | null
 	subcategory?: number | null
-	unk0x11?: true | null
+	removed?: true | null
 	hidden?: number | null
 	f2p?: true | null
 	quest_req_for_miniquests?: number[] | null
@@ -84,13 +92,11 @@ export type achievements = {
 		requirement: number | null,
 		subbit: number,
 	}[] | null
-	unknown_0x13?: true | null
+	dbrow?: number | null
+	unknown_0x1B?: true | null
 	skill_req_count?: number[] | null
 	unknown_0x1D?: number | null
 	subreq_count?: number[] | null
 	unknown_0x1F?: number | null
 	unknown_0x20?: number | null
-	unknown_0x23?: true | null
-	unknown_0x25?: number | null
-	unknown_0x26?: true | null
 };

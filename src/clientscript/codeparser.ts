@@ -24,7 +24,6 @@ const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
 const binaryops = [...binaryOpSymbols.values()];
 const binaryopsoremtpy = binaryops.concat("");
 
-globalThis.prettyjson = prettyJson;
 
 type Varslot = { stacktype: PrimitiveType, type: number, slot: number, name: string };
 class ParseContext {

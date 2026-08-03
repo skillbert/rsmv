@@ -240,7 +240,7 @@ const animgroupDeps: DepCollector = async (cache, addDep, addHash) => {
 	for (let file of animgroupfiles) {
 		addHash("animgroup", file.fileid, crc32(file.buffer), 0);
 		let animgroup = parse.animgroupConfigs.read(file.buffer, cache);
-		let anim = animgroup.unknown_26 ?? animgroup.baseAnims?.idle;
+		let anim = animgroup.baseAnims?.idle;
 		if (anim) {
 			addDep("sequence", anim, "animgroup", file.fileid);
 		}

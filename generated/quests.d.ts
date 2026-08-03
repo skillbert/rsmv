@@ -23,10 +23,10 @@ export type quests = {
 	start_location_path?: number[] | null
 	alternate_quest_start?: number | null
 	required_quests?: number[] | null
-	skill_requirements?: [
-		number,
-		number,
-	][] | null
+	skill_requirements?: {
+		skill: number,
+		level: number,
+	}[] | null
 	quest_point_req?: number | null
 	quest_item_sprite?: number | null
 	extra?: {

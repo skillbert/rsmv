@@ -26,7 +26,7 @@ export class CachingFileSource extends CacheFileSource {
 
     fetchCachedObject<T>(map: Map<number, CachedObject<T>>, id: number, create: () => Promise<T>, getSize: (obj: T) => number) {
         let bucket = map.get(id);
-        if (!bucket || globalThis.ignoreCache) {
+        if (!bucket) {
             let data = create();
             bucket = {
                 promise: data,

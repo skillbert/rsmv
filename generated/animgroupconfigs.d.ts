@@ -20,11 +20,11 @@ export type animgroupconfigs = {
 		number,
 	] | null
 	unknown_1b?: (number|number) | null
-	unknown_26?: (number|number) | null
-	unknown_27?: (number|number) | null
-	unknown_28?: (number|number) | null
-	unknown_29?: (number|number) | null
-	unknown_2a?: (number|number) | null
+	turnonspot1?: (number|number) | null
+	turnonspot2?: (number|number) | null
+	walk_back?: (number|number) | null
+	walk_left?: (number|number) | null
+	walk_right?: (number|number) | null
 	unknown_2b?: (number|number) | null
 	unknown_2c?: (number|number) | null
 	unknown_2d?: (number|number) | null

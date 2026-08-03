@@ -5,5 +5,5 @@
 export type maplabellocations = {
 	location: number,
 	labelId: number,
-	val0: number,
+	conditional: boolean,
 }[];

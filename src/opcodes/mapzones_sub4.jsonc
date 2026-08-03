@@ -2,10 +2,13 @@
 ["struct",
 	["img",["buffer","uint","hex"],"imagefile"],
 	["data",["nullarray",["bytesleft"],["struct",
-		["unk0","ushort"],
-		["unk1","ushort"],
-		["unk2",["buffer",4,"hex"]],
-		["unk3",["buffer",4,"hex"]],
-		["unk4","ushort"]
+		["unk0","ushort","mapscene"],
+		["x","ubyte"],
+		["z","ubyte"],
+		["unk2",["tuple","ubyte","ubyte","ubyte","ubyte"],"rgb"],
+		["unk3",["tuple","ubyte","ubyte","ubyte","ubyte"],"rgb"],
+		["$unk4","ushort"],
+		["xextra",["ref","$unk4",[0,6]]],
+		["zextra",["ref","$unk4",[6,6]]]
 	]]]
 ]

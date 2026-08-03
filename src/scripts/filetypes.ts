@@ -103,7 +103,7 @@ function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 			for (let x = start[0]; x <= Math.min(end[0], 100); x++) {
 				for (let z = start[1]; z <= Math.min(end[1], 200); z++) {
 					let namehash = cacheFilenameHash(`${key}${x}_${z}`, source.getBuildNr() <= lastLegacyBuildnr);
-					let file = index.find(q => q.name == namehash);
+					let file = index.find(q => q && q.name == namehash);
 					if (file) { res.push({ index: file, subindex: 0 }); }
 				}
 			}
@@ -671,7 +671,7 @@ export const cacheFileJsonModes = {
 	dbtables: JsonBasedFile(parse.dbtables, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables), internalNameFiles.dbtable),
 	dbrows: JsonBasedFile(parse.dbrows, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows), internalNameFiles.dbrow),
 	quests: JsonBasedFile(parse.quest, singleMinorIndex(cacheMajors.config, cacheConfigPages.quests), internalNameFiles.quest),
-	
+
 	varbits: JsonBasedFile(parse.varbits, singleMinorIndex(cacheMajors.config, cacheConfigPages.varbits)),
 	var_player: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varplayer), internalNameFiles.var_player),
 	var_npc: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varnpc), internalNameFiles.var_npc),
@@ -693,7 +693,7 @@ export const cacheFileJsonModes = {
 	animgroupconfigs: JsonBasedFile(parse.animgroupConfigs, singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups), internalNameFiles.bas),
 	cursors: JsonBasedFile(parse.cursors, singleMinorIndex(cacheMajors.config, cacheConfigPages.cursors), internalNameFiles.cursor),
 	maplabels: JsonBasedFile(parse.maplabels, singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels), internalNameFiles.maplabel),
-	maplabellocations: JsonBasedFile(parse.maplabellocations, standardIndex(cacheMajors.maplabellocations)),
+	maplabellocations: JsonBasedFile(parse.maplabellocations, noArchiveIndex(cacheMajors.maplabellocations)),
 	mapzones: JsonBasedFile(parse.mapZones, singleMinorIndex(cacheMajors.worldmap, 0)),
 	mappastes: JsonBasedFile(parse.mapPastes, singleMinorIndex(cacheMajors.worldmap, 1)),
 	mapzones_sub3: JsonBasedFile(parse.mapZonesSub3, singleMinorIndex(cacheMajors.worldmap, 3)),
@@ -718,6 +718,9 @@ export const cacheFileJsonModes = {
 	oldproctextures: JsonBasedFile(parse.oldproctexture, singleMinorIndex(cacheMajors.texturesOldPng, 0)),
 	interfaces: JsonBasedFile(parse.interfaces, standardIndex(cacheMajors.interfaces), internalNameFiles.interface),
 	fontmetrics: JsonBasedFile(parse.fontmetrics, standardIndex(cacheMajors.fontmetrics), internalNameFiles.fontmetrics),
+
+	config83: JsonBasedFile(parse.config83, singleMinorIndex(cacheMajors.config, 83)),
+
 
 	classicmodels: JsonBasedFile(parse.classicmodels, singleMinorIndex(0, classicGroups.models)),
 
