@@ -101,7 +101,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		throw new Error("animation has no frames");
 	}
 
-	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.frameidhi);
+	let framearch = await loader.engine.getArchiveById(cacheMajors.frames, secframe0.framefile);
 
 	//some animations seem to use index instead of id, this seems to fix anim on npc 182
 	// let frames = Object.fromEntries(framearch.map((q, i) => [i + 1, parse.frames.read(q.buffer, loader.engine.rawsource)]));
@@ -116,12 +116,12 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 	let orderedframes: frames[] = [];
 	for (let i = 0; i < sequenceframes.length; i++) {
 		let seqframe = sequenceframes[i];
-		if (frames[seqframe.frameidlow]) {
+		if (frames[seqframe.frameindex]) {
 			keyframetimeslist.push(endtime);
 			endtime += seqframe.framelength * 0.020;
-			orderedframes.push(frames[seqframe.frameidlow]);
+			orderedframes.push(frames[seqframe.frameindex]);
 		} else {
-			console.log(`missing animation frame ${seqframe.frameidlow} in sequence ${seqframe.frameidhi}`)
+			console.log(`missing animation frame ${seqframe.frameindex} in frame file ${seqframe.framefile}`)
 		}
 	}
 

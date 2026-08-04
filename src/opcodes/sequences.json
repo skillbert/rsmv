@@ -1,8 +1,8 @@
 {
 	"0x01": { "name":                              "frames", "read": ["chunkedarray","unsigned short",
 																[["framelength","unsigned short"]],
-																[["frameidlow","unsigned short"]],
-																[["frameidhi","unsigned short"]]
+																[["frameindex","unsigned short"]],
+																[["framefile","unsigned short"]]
 															]},
 	"0x02": { "name":                          "unknown_02", "read": "ushort" },
 	"0x03": { "name":                          "unknown_03", "read": ["array","ubyte","ubyte"] },

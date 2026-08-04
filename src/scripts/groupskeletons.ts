@@ -49,7 +49,7 @@ export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, 
             let seq = parse.sequences.read(sub.buffer, source);
             let mapid: number | null | undefined = null;
             if (seq.frames && seq.frames.length != 0) {
-                mapid = frametoframemap.get(seq.frames[0].frameidhi);
+                mapid = frametoframemap.get(seq.frames[0].framefile);
             }
             if (seq.skeletal_animation != null) {
                 mapid = skeletaltoframemap.get(seq.skeletal_animation);

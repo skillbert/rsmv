@@ -5,8 +5,8 @@
 export type sequences = {
 	frames?: {
 		framelength: number,
-		frameidlow: number,
-		frameidhi: number,
+		frameindex: number,
+		framefile: number,
 	}[] | null
 	unknown_02?: number | null
 	unknown_03?: number[] | null

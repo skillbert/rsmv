@@ -134,7 +134,7 @@ const sequenceDeps: DepCollector = async (cache, addDep, addHash) => {
 				addDep("skeleton", seq.skeletal_animation, "sequence", id);
 			}
 			if (seq.frames && seq.frames.length != 0) {
-				addDep("frameset", seq.frames[0].frameidhi, "sequence", id);
+				addDep("frameset", seq.frames[0].framefile, "sequence", id);
 			}
 		}
 	}

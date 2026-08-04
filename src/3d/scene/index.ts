@@ -92,8 +92,11 @@ export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, hea
 	let modelids = (id.head ? npc.headModels : npc.models) ?? [];
 	if (!id.head && npc.animation_group) {
 		let arch = await cache.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
-		let animgroup = parse.animgroupConfigs.read(arch[npc.animation_group].buffer, cache.engine.rawsource);
-		anims = serializeAnimset(animgroup);
+		let file = arch.find(q => q.fileid == npc.animation_group);
+		if (file) {
+			let animgroup = parse.animgroupConfigs.read(file.buffer, cache.engine.rawsource);
+			anims = serializeAnimset(animgroup);
+		}
 	}
 	let mods: ModelModifications = {};
 	if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
