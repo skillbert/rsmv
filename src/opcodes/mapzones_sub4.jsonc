@@ -1,14 +1,15 @@
 
+// seems to be broken
+// contains a preview image of the mapzone and probably data to draw wall lines or tile when overlays and underlays blend
+// it doesn't seem to support mapzones more than 128 tiles wide
 ["struct",
-	["img",["buffer","uint","hex"],"imagefile"],
-	["data",["nullarray",["bytesleft"],["struct",
-		["unk0","ushort","mapscene"],
-		["x","ubyte"],
-		["z","ubyte"],
-		["unk2",["tuple","ubyte","ubyte","ubyte","ubyte"],"rgb"],
-		["unk3",["tuple","ubyte","ubyte","ubyte","ubyte"],"rgb"],
-		["$unk4","ushort"],
-		["xextra",["ref","$unk4",[0,6]]],
-		["zextra",["ref","$unk4",[6,6]]]
+	["img",["buffer","uint","hex"],"imagefile"],//png image file
+	["pixeldata",["nullarray",["bytesleft"],["struct",
+		["pos","uint"],//x=(pos & 0x3f), y=(pos % imagewidth), the bits in between x and y in larger images seem to be bugged
+		["overlay",["tuple","ubyte","ubyte","ubyte","ubyte"],"rgb"],
+		["underlay",["tuple","ubyte","ubyte","ubyte","ubyte"],"rgb"],
+		["unk4","ushort"],
+		["extra",["ref","unk4",[0,6]]],
+		["orientation",["ref","unk4",[6,6]]]
 	]]]
 ]

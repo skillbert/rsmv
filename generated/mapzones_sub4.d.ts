@@ -4,23 +4,22 @@
 
 export type mapzones_sub4 = {
 	img: Uint8Array,
-	data: {
-		unk0: number,
-		x: number,
-		z: number,
-		unk2: [
+	pixeldata: {
+		pos: number,
+		overlay: [
 			number,
 			number,
 			number,
 			number,
 		],
-		unk3: [
+		underlay: [
 			number,
 			number,
 			number,
 			number,
 		],
-		xextra: number,
-		zextra: number,
+		unk4: number,
+		extra: number,
+		orientation: number,
 	}[],
 };
