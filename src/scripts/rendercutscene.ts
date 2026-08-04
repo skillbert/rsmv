@@ -4,7 +4,7 @@ import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { pixelsToDataUrl } from "../imgutils";
 import { crc32 } from "../libs/crc32util";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { escapeHTML } from "../utils";
 import { parseMusic } from "./musictrack";
 

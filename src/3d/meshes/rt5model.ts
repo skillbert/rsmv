@@ -1,6 +1,6 @@
 import { Stream, packedHSL2HSL, HSL2RGBfloat, flipEndian16 } from "../../utils";
 import * as THREE from "three";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import type { CacheFileSource } from "../../cache";
 import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, LatheGeometry, Matrix3, Matrix4, Mesh, PlaneGeometry, SphereGeometry, Vector2, Vector3 } from "three";
 import { oldmodels } from "../../../generated/oldmodels";

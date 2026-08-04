@@ -1,6 +1,6 @@
 import { cacheMajors } from "../../constants";
 import { CacheFileSource, SubFile } from "../../cache";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { AnimationClip, Bone, BufferGeometry, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, Euler, InterpolateSmooth, InterpolationModes, KeyframeTrack, Matrix3, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkeletonHelper, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { skeletalanim } from "../../../generated/skeletalanim";
 import { framemaps } from "../../../generated/framemaps";

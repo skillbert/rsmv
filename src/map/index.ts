@@ -3,7 +3,7 @@ import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, MapRect, worldStride, parseMapsquare } from "../3d/mapsquare";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";

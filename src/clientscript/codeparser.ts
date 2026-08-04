@@ -4,7 +4,7 @@ import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
 import { TsWriterContext } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "./definitions";
 import prettyJson from "json-stringify-pretty-compact";
-import { parse as opdecoder } from "../opdecoder";
+import { parse as opdecoder } from "../parser/jsondecoders";
 import { CacheFileSource } from "../cache";
 import { prepareClientScript } from ".";
 import { astToImJson, intrinsics } from "./jsonwriter";

@@ -1,5 +1,5 @@
 import { CacheFileSource } from "../cache";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 
 export async function parseMusic(source: CacheFileSource, major: number, id: number, firstchunk: Buffer | null, allowdownload = false) {
 

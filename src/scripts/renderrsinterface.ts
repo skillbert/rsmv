@@ -7,7 +7,7 @@ import { prepareClientScript } from "../clientscript";
 import { ClientScriptInterpreter } from "../clientscript/interpreter";
 import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
 import { UiCameraParams } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";

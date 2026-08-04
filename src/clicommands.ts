@@ -1,6 +1,6 @@
 import { ReadCacheSource, filerange } from "./cliparser";
 import { command, option, flag } from "cmd-ts";
-import { cacheFileDecodeModes, cacheFileJsonModes } from "./scripts/filetypes";
+import { cacheFileDecodeModes } from "./parser/filetypes";
 import { CLIScriptFS, ScriptFS, ScriptOutput } from "./scriptrunner";
 import { defaultTestDecodeOpts, testDecode, testDecodeHistoric } from "./scripts/testdecode";
 import { extractCacheFiles, writeCacheFiles } from "./scripts/extractfiles";
@@ -19,6 +19,7 @@ import fs from "fs/promises";
 import { extractClientModuleCode, IsolatedCS2Module } from "./clientscript/extractmodule";
 import { diffFileDependencyHash } from "./scripts/dependencydiff";
 import { EngineCache } from "./3d/modeltothree";
+import { cacheFileJsonModes } from "./parser/jsondecoders";
 
 
 export type CliApiContext = {

@@ -3,8 +3,8 @@ import { boundMethod } from "autobind-decorator";
 import prettyJson from "json-stringify-pretty-compact";
 import classNames from "classnames";
 import { EngineCache } from "3d/modeltothree";
-import { cacheFileJsonModes } from "scripts/filetypes";
-import { JsonSearch, JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
+import { JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
+import { cacheFileJsonModes } from "../parser/jsondecoders";
 
 
 export function CanvasView(p: { canvas: HTMLCanvasElement | null, fillHeight?: boolean }) {

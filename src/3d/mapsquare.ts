@@ -1,6 +1,6 @@
 import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod, getOrInsert } from "../utils";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_locations } from "../../generated/mapsquare_locations";

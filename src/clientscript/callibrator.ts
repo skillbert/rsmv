@@ -1,8 +1,8 @@
 import { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
-import { FileParser, parse } from "../opdecoder";
+import { FileParser, parse } from "../parser/jsondecoders";
 import { posmod, trickleTasksTwoStep } from "../utils";
-import { DecodeState, EncodeState } from "../opcode_reader";
+import { DecodeState, EncodeState } from "../parser/opcode_reader";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { clientscript } from "../../generated/clientscript";
 import { Openrs2CacheSource } from "../cache/openrs2loader";

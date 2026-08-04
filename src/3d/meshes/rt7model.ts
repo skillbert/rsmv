@@ -1,7 +1,7 @@
 import { packedHSL2HSL, HSL2RGB, ushortToHalf } from "../../utils";
 import * as THREE from "three";
 import { CacheFileSource } from "../../cache";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { ModelData, ModelMeshData } from "../modeldata";
 
 export type BoneCenter = {

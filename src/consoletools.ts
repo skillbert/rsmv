@@ -3,14 +3,13 @@ import { cliApi, CliApiContext } from "./clicommands";
 import * as cmdts from "cmd-ts";
 import { cacheConfigPages, internalNameFiles, cacheMajors, vartypes } from "./constants";
 import { dumpTexture } from "./imgutils";
-import { parse } from "./opdecoder";
 import { CLIScriptOutput } from "./scriptrunner";
 import { cacheFilenameHash, HSL2RGB, packedHSL2HSL } from "./utils";
 import { getFileJson } from "./viewer/configview";
 import prettyJson from "json-stringify-pretty-compact";
 import { UIScriptFS } from "./viewer/scriptsui";
 import { EngineCache } from "./3d/modeltothree";
-import { cacheFileJsonModes } from "./scripts/filetypes";
+import { cacheFileJsonModes } from "./parser/jsondecoders";
 
 // exposes various tools into the global scope to use in the console for debugging and testing
 export function exposeDebugToolsInGlobal() {

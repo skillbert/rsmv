@@ -1,7 +1,7 @@
 import { prepareClientScript, writeOpcodeFile } from ".";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { AstNode, ClientScriptFunction, CodeBlockNode, isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor, FunctionBindNode } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { TsWriterContext } from "./codewriter";

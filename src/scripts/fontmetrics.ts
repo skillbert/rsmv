@@ -2,7 +2,7 @@ import { parseSprite, spriteHash } from "../3d/materials/sprite";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { pixelsToDataUrl, sliceImage } from "../imgutils";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 
 export type FontCharacterJson = {
     chr: string,

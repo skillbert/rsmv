@@ -1,5 +1,5 @@
 import { cacheMajors } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { CacheFileSource } from "../cache";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 

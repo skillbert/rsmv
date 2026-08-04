@@ -1,6 +1,6 @@
 import { BufferAttribute, Vector3 } from "three";
 import { CacheFileSource } from "../../cache";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { WorkingSubmesh } from "./rt5model";
 import { ModelData, ModelMeshData } from "../modeldata";
 

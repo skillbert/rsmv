@@ -1,4 +1,4 @@
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { appearanceUrl, avatarStringToBytes, avatarToModel } from "./avatar";
 import { ThreejsSceneCache, constModelsIds } from '../modeltothree';
 import { ModelModifications } from '../../utils';

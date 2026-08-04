@@ -1,6 +1,6 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { cacheFilenameHash } from "../utils";
 import { parseLegacyArchive } from "./legacycache";
 

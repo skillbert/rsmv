@@ -8,11 +8,10 @@ import * as THREE from "three";
 import { CacheFileSource, CacheIndex, mappedFileIds, oldConfigMaps, SubFile } from "../cache";
 import { CachedObject, CachingFileSource } from "../cache/memorycache";
 import { Bone, BufferAttribute, Mesh, Object3D, Skeleton, SkinnedMesh } from "three";
-import { parse } from "../opdecoder";
+import { cacheFileJsonModes, parse } from "../parser/jsondecoders";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
-import { cacheFileJsonModes } from "../scripts/filetypes";
 import { JSONSchema6Definition } from "json-schema";
 import { models } from "../../generated/models";
 import { crc32, CrcBuilder } from "../libs/crc32util";
@@ -356,7 +355,7 @@ export class EngineCache extends CachingFileSource {
 			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
 				await mode.prepareDump?.(this);
-				let namelist = (typeof mode.namefile == "number" ? await this.getInternalNameList(mode.namefile) : null);
+				let namelist = (typeof mode.lookup.internalNamefile == "number" ? await this.getInternalNameList(mode.lookup.internalNamefile) : null);
 				let allfiles = await mode.lookup.logicalRangeToFiles(this, [0, 0], [Infinity, Infinity]);
 				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 				let files: any[] = [];

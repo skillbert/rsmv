@@ -4,7 +4,7 @@ import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructio
 import { rs3opnames } from "./opnames";
 import { CS2Api, MAGIC_CONST_CURRENTCOMP, UiRenderContext } from "../scripts/renderrsinterface";
 import { cacheMajors } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { getEnumInt, getStructInt, loadEnum, loadStruct } from "./util";
 
 

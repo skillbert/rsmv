@@ -1,6 +1,6 @@
 import { Stream } from "../../utils";
 import { cacheMajors } from "../../constants";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { AnimationClip, AnimationMixer, Bone, BufferGeometry, Euler, KeyframeTrack, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { framemaps } from "../../../generated/framemaps";
 import { ThreejsSceneCache } from "../modeltothree";

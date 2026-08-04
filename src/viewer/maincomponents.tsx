@@ -14,7 +14,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { delay, findParentElement, TypedEmitter } from "../utils";
 import { ParsedTexture } from "../3d/materials/textures";
 import { CacheDownloader } from "../cache/downloader";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import * as path from "path";
 import classNames from "classnames";
 import { selectFsCache } from "../cache/autocache";
@@ -613,6 +613,11 @@ function JsonViewer(p: { data: string, file: UIOpenedFile }) {
 		}
 		return { obj, err, schema }
 	}, [p.data, p.file, rawjson]);
+
+	React.useEffect(() => {
+		globalThis.filejson = parsed?.obj;
+		return () => { globalThis.filejson = null; }
+	}, [parsed?.obj]);
 
 	return (
 		<React.Fragment>

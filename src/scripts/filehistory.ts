@@ -3,7 +3,7 @@ import { Openrs2CacheSource, openrs2GetEffectiveBuildnr, validOpenrs2Caches } fr
 import { cacheMajors } from "../constants";
 import { FileRange } from "../utils";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
-import { cacheFileDecodeModes } from "./filetypes";
+import { cacheFileDecodeModes } from "../parser/filetypes";
 import { testDecodeFile } from "./testdecode";
 
 

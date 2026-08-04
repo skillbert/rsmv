@@ -1,6 +1,6 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import { quickchatcategories } from "../../generated/quickchatcategories";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { quickchatlines } from "../../generated/quickchatlines";
 import prettyJson from "json-stringify-pretty-compact";
 import { CLIScriptOutput, ScriptFS, ScriptOutput } from "../scriptrunner";

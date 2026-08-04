@@ -1,7 +1,7 @@
 // import { filesource, cliArguments } from "../cliparser";
 // import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { archiveToFileId } from "../cache";
 import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/materials/jmat";

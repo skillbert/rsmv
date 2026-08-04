@@ -1,6 +1,6 @@
 import { CacheFileSource } from "../../cache";
 import { cacheConfigPages, cacheMajors } from "../../constants";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { HSL2packHSL, HSL2RGB, ModelModifications, packedHSL2HSL, RGB2HSL } from "../../utils";
 import { avataroverrides } from "../../../generated/avataroverrides";
 import { avatars } from "../../../generated/avatars";

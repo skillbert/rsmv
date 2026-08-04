@@ -1,5 +1,5 @@
 import { cacheMajors } from "../../constants";
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import { AnimationClip, Bone, KeyframeTrack, Matrix4, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack } from "three";
 import { framemaps } from "../../../generated/framemaps";
 import { ThreejsSceneCache } from "../modeltothree";

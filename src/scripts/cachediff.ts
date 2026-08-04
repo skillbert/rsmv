@@ -1,5 +1,5 @@
 import { cacheConfigPages, cacheMajors } from "../constants";
-import { parse, FileParser } from "../opdecoder";
+import { parse, FileParser } from "../parser/jsondecoders";
 import { archiveToFileId, CacheFileSource, CacheIndexFile } from "../cache";
 import prettyJson from "json-stringify-pretty-compact";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";

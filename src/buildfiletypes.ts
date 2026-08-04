@@ -1,8 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as opcode_reader from "./opcode_reader";
+import * as opcode_reader from "./parser/opcode_reader";
 import * as commentjson from "comment-json";
-import { maprenderConfigSchema } from "./jsonschemas";
+import { maprenderConfigSchema } from "./parser/jsonschemas";
 
 async function buildFileTypes() {
 	let basedir = path.resolve("./src/opcodes");

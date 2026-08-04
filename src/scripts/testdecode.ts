@@ -1,13 +1,11 @@
-import { DecodeState, getDebug } from "../opcode_reader";
+import { DecodeState, getDebug } from "../parser/opcode_reader";
 import { CacheFileSource, CacheIndex, SubFile } from "../cache";
-import { JsonBasedFile } from "./filetypes";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
-import { FileParser } from "../opdecoder";
+import { FileParser, JsonBasedFile } from "../parser/jsondecoders";
 import { compareCacheMajors } from "./cachediff";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { cacheMajors } from "../constants";
 import { FileRange } from "../utils";
-import { EngineCache } from "../3d/modeltothree";
 
 
 export type DecodeErrorJson = {

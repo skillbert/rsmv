@@ -3,7 +3,7 @@ import { decompress } from "./compression";
 import * as net from "net";
 import fetch from "node-fetch";
 import { crc32 } from "../libs/crc32util";
-import { FileParser } from "../opdecoder";
+import { FileParser } from "../parser/jsondecoders";
 import { CallbackPromise, delay } from "../utils";
 import { cacheMajors } from "../constants";
 

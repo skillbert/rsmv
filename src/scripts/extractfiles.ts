@@ -2,7 +2,7 @@ import { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { GameCacheLoader } from "../cache/sqlite";
 import { FileRange, getOrInsert } from "../utils";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
-import { cacheFileDecodeModes, DecodeMode, DecodeModeFactory } from "./filetypes";
+import { cacheFileDecodeModes, DecodeMode, DecodeModeFactory } from "../parser/filetypes";
 
 export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, args: { batched: boolean, batchlimit: number, mode: string, files: FileRange[], edit: boolean, skipread: boolean }, decoderflags: Record<string, string>) {
 	let modeconstr: DecodeModeFactory = cacheFileDecodeModes[args.mode];

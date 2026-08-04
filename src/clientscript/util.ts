@@ -3,7 +3,7 @@ import { params } from "../../generated/params";
 import { structs } from "../../generated/structs";
 import { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors } from "../constants";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 
 export async function loadParams(source: CacheFileSource) {
     let paramindex = await source.getArchiveById(cacheMajors.config, cacheConfigPages.params);

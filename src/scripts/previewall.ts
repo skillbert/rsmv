@@ -1,7 +1,7 @@
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
-import { cacheFileDecodeModes } from "./filetypes";
+import { cacheFileDecodeModes } from "../parser/filetypes";
 
 export async function previewAllFileTypes(output: ScriptOutput, fs: ScriptFS, source: CacheFileSource, filespermode = 10) {
     let majors = await source.getCacheIndex(cacheMajors.index);

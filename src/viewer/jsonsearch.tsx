@@ -3,7 +3,7 @@ import * as ReactDOM from "react-dom/client";
 import { EngineCache } from "../3d/modeltothree";
 import { JsonDisplay } from "./commoncontrols";
 import { JSONSchema6TypeName } from "json-schema";
-import { cacheFileJsonModes } from "../scripts/filetypes";
+import { cacheFileJsonModes } from "../parser/jsondecoders";
 
 function ModalFrame(p: { children: React.ReactNode, title: React.ReactNode, maxWidth: string, onClose: () => void }) {
 	return (

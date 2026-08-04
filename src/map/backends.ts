@@ -1,7 +1,7 @@
 import { Mapconfig } from ".";
 import { AwsClient } from "aws4fetch"
 import { ScriptFS, naiveDirname } from "../scriptrunner";
-import { assertSchema, maprenderConfigSchema } from "../jsonschemas";
+import { assertSchema, maprenderConfigSchema } from "../parser/jsonschemas";
 import * as commentjson from "comment-json";
 
 export type VersionFilter = {

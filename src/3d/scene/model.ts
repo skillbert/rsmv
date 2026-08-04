@@ -1,4 +1,4 @@
-import { parse } from "../../opdecoder";
+import { parse } from "../../parser/jsondecoders";
 import * as THREE from "three";
 import { ThreejsSceneCache, mergeModelDatas, ob3ModelToThree, mergeBoneids } from '../modeltothree';
 import { TypedEmitter, CallbackPromise } from '../../utils';

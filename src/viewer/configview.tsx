@@ -11,8 +11,8 @@ import classNames from "classnames";
 import { HSL2RGB, packedHSL2HSL, RGB2HSL } from "../utils";
 import { BlobImage } from "./commoncontrols";
 import { parseMusic } from "../scripts/musictrack";
-import { cacheFileJsonModes, JsonBasedFile } from "../scripts/filetypes";
 import { variableSources } from "../clientscript/definitions";
+import { cacheFileJsonModes, JsonBasedFile } from "../parser/jsondecoders";
 
 type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "varbit";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";

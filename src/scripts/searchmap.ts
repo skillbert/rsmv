@@ -2,7 +2,7 @@ import { filesource, cliArguments } from "../cliparser";
 import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles } from "../constants";
 import prettyJson from "json-stringify-pretty-compact";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 
 
 var worldStride = 128;

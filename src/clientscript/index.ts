@@ -3,7 +3,7 @@ import { parseClientScriptIm } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { CacheFileSource } from "../cache";
 import { parseClientscriptTs } from "../clientscript/codeparser";
-import { parse } from "../opdecoder";
+import { parse } from "../parser/jsondecoders";
 import { astToImJson } from "./jsonwriter";
 import { clientscript } from "../../generated/clientscript";
 import { crc32, crc32addInt } from "../libs/crc32util";
