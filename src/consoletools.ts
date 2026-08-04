@@ -5,7 +5,6 @@ import { cacheConfigPages, internalNameFiles, cacheMajors, vartypes } from "./co
 import { dumpTexture } from "./imgutils";
 import { CLIScriptOutput } from "./scriptrunner";
 import { cacheFilenameHash, HSL2RGB, packedHSL2HSL } from "./utils";
-import { getFileJson } from "./viewer/configview";
 import prettyJson from "json-stringify-pretty-compact";
 import { UIScriptFS } from "./viewer/scriptsui";
 import { EngineCache } from "./3d/modeltothree";
@@ -22,7 +21,6 @@ export function exposeDebugToolsInGlobal() {
     globalThis.binarr = binarr;
     globalThis.findnames = findnames;
     globalThis.allnames = allnames;
-    globalThis.getFileJson = getFileJson;
     globalThis.dumptex = dumpTexture;
     globalThis.cacheFilenameHash = cacheFilenameHash;
     globalThis.hsl = (v: number) => HSL2RGB(packedHSL2HSL(v));

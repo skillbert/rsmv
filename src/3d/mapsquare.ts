@@ -1100,9 +1100,7 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 		fogColor = mainchunk.extra.unk00.unk20.slice(1);
 	}
 	if (mainchunk?.extra.unk80) {
-		let envarch = await scene.engine.getArchiveById(cacheMajors.config, cacheConfigPages.environments);
-		let envfile = envarch.find(q => q.fileid == mainchunk.extra!.unk80!.environment)!;
-		let env = parse.environments.read(envfile.buffer, scene.engine.rawsource);
+		let env = await scene.engine.getObject("environments", mainchunk.extra.unk80.environment);
 		if (typeof env.model == "number") {
 			skyboxModelid = env.model;
 			skybox = await ob3ModelToThree(scene, await scene.getModelData(env.model));
@@ -1413,16 +1411,15 @@ export async function resolveMorphedObject(source: EngineCache, id: number) {
 		let locdata = getClassicLoc(source, id);
 		return { rawloc: locdata, morphedloc: locdata, resolvedid };
 	} else {
-		let objectfile = await source.getGameFile("locs", id);
-		let rawloc = parse.loc.read(objectfile, source);
+		let rawloc = await source.getObject("locs", id);
 		let morphedloc = rawloc;
 		if (rawloc.morphs_1 || rawloc.morphs_2) {
 			let newid = defaultMorphId(rawloc);
 			if (newid != -1) {
-				let newloc = await source.getGameFile("locs", newid);
+				let newloc = await source.getObject("locs", newid);
 				morphedloc = {
 					...rawloc,
-					...parse.loc.read(newloc, source)
+					...newloc
 				};
 				resolvedid = newid;
 			}

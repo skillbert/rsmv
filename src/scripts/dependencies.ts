@@ -2,12 +2,12 @@
 // import { run, command, number, option, string, boolean, Type, flag, oneOf } from "cmd-ts";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../parser/jsondecoders";
-import { archiveToFileId } from "../cache";
+import { archiveToFileId, mappedFileIds, oldConfigMaps } from "../cache";
 import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/materials/jmat";
 import { crc32, crc32addInt } from "../libs/crc32util";
 import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
-import { EngineCache, iterateConfigFiles } from "../3d/modeltothree";
+import { EngineCache } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -29,18 +29,26 @@ type DepCallback = (holdertype: DepTypes, holderId: number, deptType: DepTypes, 
 type HashCallback = (depType: DepTypes, depId: number, hash: number, version: number) => void;
 type DepCollector = (cache: EngineCache, addDep: DepCallback, addHash: HashCallback, args: DepArgs) => Promise<void>;
 
-const mapsquareDeps: DepCollector = async (cache, addDep, addHash) => {
-	let mapsquareindices = await cache.getCacheIndex(cacheMajors.mapsquares);
-	for (let square of mapsquareindices) {
-		if (!square) { continue; }
-		let locsconfig = square.subindices.indexOf(cacheMapFiles.locations);
-		addHash("mapsquare", square.minor, square.crc, square.version);
-		if (locsconfig != -1) {
-			let arch = await cache.getFileArchive(square);
-			let locs = parse.mapsquareLocations.read(arch[locsconfig].buffer, cache);
-			for (let loc of locs.locations) {
-				addDep("loc", loc.id, "mapsquare", square.minor);
-			}
+
+async function* iterateConfigFiles(cache: EngineCache, major: number) {
+	if (cache.legacyData) {
+		let files: Buffer[] | null = null;
+		if (major == cacheMajors.items) { files = cache.legacyData.items; }
+		else if (major == cacheMajors.npcs) { files = cache.legacyData.npcs; }
+		else if (major == cacheMajors.locs) { files = cache.legacyData.locs; }
+		else if (major == cacheMajors.spotanims) { files = cache.legacyData.spotanims; }
+		if (!files) { throw new Error(`cache major ${major} can not be iterated`); }
+		yield* files.map((file, id) => ({ id, file }));
+	} else if (cache.getBuildNr() <= 488) {
+		let arch = await cache.getArchiveById(cacheMajors.config, oldConfigMaps[major]);
+		yield* arch.map(q => ({ id: q.fileid, file: q.buffer }));
+	} else {
+		let locindices = await cache.getCacheIndex(major);
+		let stride = mappedFileIds[major];
+		for (let index of locindices) {
+			if (!index) { continue; }
+			let arch = await cache.getFileArchive(index);
+			yield* arch.map(q => ({ id: index.minor * stride + q.fileid, file: q.buffer }));
 		}
 	}
 }
@@ -328,8 +336,7 @@ const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
 	for (let skelindex of skelindices) {
 		if (!skelindex) { continue; }
 		addHash("skeleton", skelindex.minor, skelindex.crc, skelindex.version);
-		let file = await cache.getFile(skelindex.major, skelindex.minor, skelindex.crc);
-		let skel = parse.skeletalAnim.read(file, cache);
+		let skel = await cache.getObject("skeletons", skelindex.minor);
 		addDep("framebase", skel.framebase, "skeleton", skelindex.minor);
 	}
 }

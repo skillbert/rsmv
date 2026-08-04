@@ -1,7 +1,6 @@
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 import { CacheFileSource } from "../cache";
-import prettyJson from "json-stringify-pretty-compact";
-import { getEnumInt, getEnumIntPairs, getEnumString, getStructInt, getStructString, loadEnum, loadParams, loadStruct } from "../clientscript/util";
+import { getEnumInt, getEnumIntPairs, getEnumString, getStructInt, getStructString, loadParams } from "../clientscript/util";
 import { structs } from "../../generated/structs";
 import { cacheMajors } from "../constants";
 import { expandSprite, parseSprite } from "../3d/materials/sprite";
@@ -47,10 +46,10 @@ export async function getGameInterfaces(output: ScriptOutput, outdir: ScriptFS, 
     let params = await loadParams(source);
     let imgids: number[] = [];
     // list of interfaces that the game iterates
-    let panelids = getEnumIntPairs(await loadEnum(source, 7717)).map(q => "" + q[1]);
-    let panelcollisionorder = getEnumIntPairs(await loadEnum(source, 7718)).map(q => "" + q[1]);
-    let defaultlayoutsenum = await loadEnum(source, 7709)
-    let layoutnames = await loadEnum(source, 7711);
+    let panelids = getEnumIntPairs(await source.getObject("enums", 7717)).map(q => "" + q[1]);
+    let panelcollisionorder = getEnumIntPairs(await source.getObject("enums", 7718)).map(q => "" + q[1]);
+    let defaultlayoutsenum = await source.getObject("enums", 7709)
+    let layoutnames = await source.getObject("enums", 7711);
 
     // hardcoded ref to layout 1 used to load default panel sizes
     let rootdefaultlayoutid = 1;
@@ -63,9 +62,9 @@ export async function getGameInterfaces(output: ScriptOutput, outdir: ScriptFS, 
         defaultlayouts[name] = data;
         if (layoutid == rootdefaultlayoutid) { rootdefault = data; }
 
-        let structs = getEnumIntPairs(await loadEnum(source, layoutstruct));
+        let structs = getEnumIntPairs(await source.getObject("enums", layoutstruct));
         for (let [ui, structid] of structs) {
-            let struct = await loadStruct(source, structid);
+            let struct = await source.getObject("structs", structid);
             data[ui] = {
                 x: getStructInt(params, struct, 3482),
                 y: getStructInt(params, struct, 3483),
@@ -80,15 +79,15 @@ export async function getGameInterfaces(output: ScriptOutput, outdir: ScriptFS, 
         }
     }
 
-    let panelstructsenum = await loadEnum(source, 7716);
+    let panelstructsenum = await source.getObject("enums", 7716);
     let panelmeta: Record<number, PanelMeta> = {};
     for (let panelid of panelids) {
         let def = rootdefault?.[panelid];
         let structid = getEnumInt(panelstructsenum, +panelid);
         if (structid == -1) { continue; }
-        let struct: structs | null = await loadStruct(source, structid);
+        let struct: structs | null = await source.getObject("structs", structid);
         let limitstructid = getStructInt(params, struct, 3494);
-        let limitstruct = (limitstructid != -1 ? await loadStruct(source, limitstructid) : null);
+        let limitstruct = (limitstructid != -1 ? await source.getObject("structs", limitstructid) : null);
         let sizeable = getStructInt(params, struct, 3527);
         let iconid = getStructInt(params, struct, 3495);
         imgids.push(iconid);

@@ -389,29 +389,6 @@ export class EngineCache extends CachingFileSource {
 	}
 }
 
-export async function* iterateConfigFiles(cache: EngineCache, major: number) {
-	if (cache.legacyData) {
-		let files: Buffer[] | null = null;
-		if (major == cacheMajors.items) { files = cache.legacyData.items; }
-		else if (major == cacheMajors.npcs) { files = cache.legacyData.npcs; }
-		else if (major == cacheMajors.locs) { files = cache.legacyData.locs; }
-		else if (major == cacheMajors.spotanims) { files = cache.legacyData.spotanims; }
-		if (!files) { throw new Error(`cache major ${major} can not be iterated`); }
-		yield* files.map((file, id) => ({ id, file }));
-	} else if (cache.getBuildNr() <= 488) {
-		let arch = await cache.getArchiveById(cacheMajors.config, oldConfigMaps[major]);
-		yield* arch.map(q => ({ id: q.fileid, file: q.buffer }));
-	} else {
-		let locindices = await cache.getCacheIndex(major);
-		let stride = mappedFileIds[major];
-		for (let index of locindices) {
-			if (!index) { continue; }
-			let arch = await cache.getFileArchive(index);
-			yield* arch.map(q => ({ id: index.minor * stride + q.fileid, file: q.buffer }));
-		}
-	}
-}
-
 export async function detectTextureMode(source: CacheFileSource) {
 	let detectmajor = async (major: number) => {
 		let lastfile = -1;

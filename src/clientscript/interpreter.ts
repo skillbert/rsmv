@@ -3,9 +3,7 @@ import { ClientscriptObfuscation } from "./callibrator";
 import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
 import { rs3opnames } from "./opnames";
 import { CS2Api, MAGIC_CONST_CURRENTCOMP, UiRenderContext } from "../scripts/renderrsinterface";
-import { cacheMajors } from "../constants";
-import { parse } from "../parser/jsondecoders";
-import { getEnumInt, getStructInt, loadEnum, loadStruct } from "./util";
+import { getEnumInt, getStructInt } from "./util";
 
 
 type ScriptScope = {
@@ -64,8 +62,8 @@ export class ClientScriptInterpreter {
         return comp.api;
     }
     async callscriptid(id: number) {
-        let data = await this.calli.source.getFileById(cacheMajors.clientscript, id);
-        this.callscript(parse.clientscript.read(data, this.calli.source), id);
+        let script = await this.calli.source.getObject("clientscriptops", id);
+        this.callscript(script, id);
     }
     async runToEnd() {
         while (true) {
@@ -301,7 +299,7 @@ implementedops.set(namedClientScriptOps.enum_getvalue, async inter => {
     let keytype = inter.popint();
 
     let outprim = typeToPrimitive(outtype);
-    let enumjson = await loadEnum(inter.calli.source, enumid);
+    let enumjson = await inter.calli.source.getObject("enums", enumid);
 
     if (outprim != "int") { throw new Error("enum_getvalue can only look up int values"); }
 
@@ -312,7 +310,7 @@ implementedops.set(namedClientScriptOps.struct_getparam, async inter => {
     let param = inter.popint();
     let structid = inter.popint();
 
-    let json = await loadStruct(inter.calli.source, structid).catch(q => null);
+    let json = await inter.calli.source.getObject("structs", structid).catch(q => null);
     let res = getStructInt(inter.calli.parammeta, json, param);
     inter.pushint(res);
 });
@@ -429,7 +427,7 @@ namedimplementations.set("INT_TO_LONG", inter => inter.pushlong(BigInt(inter.pop
 namedimplementations.set("OPENURLRAW", inter => inter.log(`CS2 OPENURLRAW: ${inter.popint()}, ${inter.popstring()}`));
 
 namedimplementations.set("ENUM_GETOUTPUTCOUNT", async inter => {
-    let json = await loadEnum(inter.calli.source, inter.popint());
+    let json = await inter.calli.source.getObject("enums", inter.popint());
     inter.pushint((json.intArrayValue1 ?? json.intArrayValue2?.values ?? json.stringArrayValue1 ?? json.stringArrayValue2?.values)?.length ?? 0);
 });
 

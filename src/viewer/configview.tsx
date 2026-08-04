@@ -66,29 +66,6 @@ const skillNames = [
     "NECROMANCY"
 ];
 
-
-export async function getFileJson<T extends keyof typeof cacheFileJsonModes>(source: CacheFileSource, mode: T, id: number | number[])
-    : Promise<typeof cacheFileJsonModes[T] extends JsonBasedFile<infer Q> ? Q : never> {
-
-    let modefn = cacheFileJsonModes[mode];
-    let logicalid = Array.isArray(id) ? id : [id];
-    let fileid = modefn.lookup.logicalToFile(source, logicalid);
-    let file: Buffer | undefined = undefined;
-    if (modefn.lookup.usesArchieves) {
-        let arch = await source.getArchiveById(fileid.major, fileid.minor);
-        let entry = arch.find(q => q.fileid == fileid.subid);
-        if (!entry) { throw new Error(`Logical file ${mode}_${logicalid.join(".")} not found at ${fileid.major}.${fileid.minor}.${fileid.subid}`); }
-        file = entry?.buffer;
-    } else {
-        file = await source.getFileById(fileid[0], fileid[1]);
-    }
-    let json = modefn.parser.read(file, source);
-    json.$fileid = logicalid.length == 1 ? logicalid[0] : logicalid;
-    json.$decoder = mode;
-    return json;
-}
-
-
 async function deepLinkParamtable(ctx: DeepLinkContext, value: any[]) {
     let paramData = await loadParams(ctx.source);
     let paramNames = await ctx.source.getInternalNameList(internalNameFiles.param);
@@ -150,7 +127,7 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
                 valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
             } else if (rsmvtype == "varbit") {
                 if (data != 0xffff) {
-                    let meta = await getFileJson(ctx.source, "varbits", data);
+                    let meta = await ctx.source.getObject("varbits", data);
                     let varint = meta.varid ?? 0;
                     let domain = (varint >> 16) & 0xff;
                     let varid = varint & 0xffff;
@@ -245,7 +222,7 @@ function CursorView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
     let spriteid = useAwaited(async () => {
         if (!enginectx) { return; }
-        let parsed = await getFileJson(enginectx.source, "cursors", p.id);
+        let parsed = await enginectx.source.getObject("cursors", p.id);
         return parsed.cursor;
     }, [p.id, enginectx]);
     return <SpriteView id={spriteid ?? 0} />;

@@ -89,10 +89,8 @@ let kitcolors: Record<"feet" | "skin" | "hair" | "clothes", Record<number, numbe
 async function loadKitData(source: CacheFileSource) {
 	if (!kitcolors) {
 		let mapcolorenum = async (enumid: number, mappingid: number) => {
-			let colorfile = await source.getFileById(cacheMajors.enums, enumid);
-			let colordata = parse.enums.read(colorfile, source);
-			let orderfile = await source.getFileById(cacheMajors.enums, mappingid);
-			let orderdata = parse.enums.read(orderfile, source);
+			let colordata = await source.getObject("enums", enumid);
+			let orderdata = await source.getObject("enums", mappingid);
 			return Object.fromEntries(orderdata.intArrayValue2!.values.map(q => {
 				let col = colordata.intArrayValue2!.values.find(w => w[0] == q[0])![1];
 				return [
@@ -190,10 +188,8 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 		//have to do some guessing here since the format overflowed and is corrupted
 		let itemid = (slot - 0x4000) & 0xffff;
 		let iswrapped = (slot < 0x4000);
-		let file = await engine.getGameFile("items", itemid).catch(() => null);
-		if (file) {
-			let item = parse.item.read(file, engine.rawsource);
-
+		let item = await engine.getObject("items", itemid).catch(() => null);
+		if (item) {
 			let animStruct = item.extra?.find(q => q.prop == 686)?.intvalue ?? -1;
 
 			let models: number[] = [];
@@ -294,8 +290,7 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 			let animgroup = 2699;
 			let animslot = slots.find(q => q && q.animStruct != -1);
 			if (animslot) {
-				let file = await engine.getFileById(cacheMajors.structs, animslot.animStruct);
-				let animfile = parse.structs.read(file, engine.rawsource);
+				let animfile = await engine.getObject("structs", animslot.animStruct);
 				//2954 for combat stance
 				let noncombatset = animfile.extra?.find(q => q.prop == 2954);
 				if (noncombatset) { animgroup = noncombatset.intvalue!; }
@@ -338,8 +333,7 @@ export async function avatarToModel(engine: EngineCache, buffer: Buffer, head: b
 	let npcbuzz = buffer.readUint16BE(1);
 	if (npcbuzz == 0xffff) {
 		let npcid = buffer.readUint16BE(3);
-		let file = await engine.getGameFile("npcs", npcid);
-		let npc = parse.npc.read(file, engine.rawsource);
+		let npc = await engine.getObject("npcs", npcid);
 		let mods: ModelModifications = {
 			replaceColors: npc.color_replacements ?? [],
 			replaceMaterials: npc.material_replacements ?? []
@@ -415,10 +409,7 @@ export function writeAvatar(avatar: avataroverrides | null, gender: number, npc:
 }
 
 async function animGroupToAnims(engine: EngineCache, groupid: number) {
-	let animsetarch = await engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
-	let animsetfile = animsetarch[groupid];
-	let animset = parse.animgroupConfigs.read(animsetfile.buffer, engine.rawsource);
-
+	let animset = await engine.getObject("animgroupconfigs", groupid);
 	return serializeAnimset(animset);
 }
 

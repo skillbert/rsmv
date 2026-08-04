@@ -1,6 +1,6 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
 import { cacheConfigPages, cacheMajors, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
-import { parse } from "../parser/jsondecoders";
+import { cacheFileJsonModes, JsonBasedFile, parse } from "../parser/jsondecoders";
 import { cacheFilenameHash } from "../utils";
 import { parseLegacyArchive } from "./legacycache";
 
@@ -349,6 +349,26 @@ export abstract class CacheFileSource {
 		let match = files.find(q => q.fileid == holderindex.subid);
 		if (!match) { throw new Error(`File ${fileid} in major ${major} not found, (redirected to ${holderindex.major}.${holderindex.minor}.${holderindex.subid})`); }
 		return match.buffer;
+	}
+
+	async getObject<T extends keyof typeof cacheFileJsonModes>(mode: T, id: number | number[])
+		: Promise<typeof cacheFileJsonModes[T] extends JsonBasedFile<infer U> ? U : never> {
+		let modefn = cacheFileJsonModes[mode];
+		let logicalid = Array.isArray(id) ? id : [id];
+		let fileid = modefn.lookup.logicalToFile(this, logicalid);
+		let file: Buffer;
+		if (modefn.lookup.usesArchieves) {
+			let arch = await this.getArchiveById(fileid.major, fileid.minor);
+			let entry = arch.find(q => q.fileid == fileid.subid);
+			if (!entry) { throw new Error(`Logical file ${mode}_${logicalid.join(".")} not found at ${fileid.major}.${fileid.minor}.${fileid.subid}`); }
+			file = entry.buffer;
+		} else {
+			file = await this.getFileById(fileid[0], fileid[1]);
+		}
+		let json = modefn.parser.read(file, this);
+		json.$fileid = logicalid.length == 1 ? logicalid[0] : logicalid;
+		json.$decoder = mode;
+		return json;
 	}
 
 	async findFileByName(major: number, name: string) {

@@ -131,9 +131,7 @@ export class RSModel extends TypedEmitter<{ loaded: undefined, animchanged: numb
         this.anims[animid] = {
             clip: null,
             prom: (async () => {
-                let seqfile = await this.cache.engine.getFileById(cacheMajors.sequences, animid);
-
-                let seq = parse.sequences.read(seqfile, this.cache.engine.rawsource);
+                let seq = await this.cache.engine.getObject("sequences", animid);
 
                 let clip: AnimationClip;
                 if (seq.skeletal_animation) {

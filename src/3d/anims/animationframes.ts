@@ -129,7 +129,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		orderedframes.push(orderedframes[0]);
 		keyframetimeslist.push(endtime);
 	}
-	let framebase = parse.framemaps.read(await loader.engine.getFileById(cacheMajors.framemaps, orderedframes[0].probably_framemap_id), loader.engine.rawsource);
+	let framebase = await loader.engine.getObject("framemaps", orderedframes[0].probably_framemap_id);
 
 	// let { bones } = buildFramebaseSkeleton(framebase);
 	let keyframetimes = new Float32Array(keyframetimeslist);

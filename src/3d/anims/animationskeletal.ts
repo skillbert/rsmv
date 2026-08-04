@@ -171,7 +171,7 @@ function sampleInverseBezierSection(x0: number, x1: number, x2: number, x3: numb
 }
 
 export async function mountSkeletalSkeleton(rootnode: Object3D, cache: ThreejsSceneCache, framebaseid: number) {
-	let base = parse.framemaps.read(await cache.engine.getFileById(cacheMajors.framemaps, framebaseid), cache.engine.rawsource);
+	let base = await cache.engine.getObject("framemaps", framebaseid);
 	if (!base.skeleton) {
 		throw new Error("framebase does not have skeleton");
 	}
@@ -257,7 +257,7 @@ function debugkeyframes(data: number[], times: number[], axis: number) {
 }
 
 export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: number) {
-	let anim = parse.skeletalAnim.read(await cache.engine.getFileById(cacheMajors.skeletalAnims, animid), cache.engine.rawsource);
+	let anim = await cache.engine.getObject("skeletons", animid);
 
 	let convertedtracks: KeyframeTrack[] = [];
 

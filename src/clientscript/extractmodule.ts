@@ -1,13 +1,10 @@
 import { prepareClientScript, writeOpcodeFile } from ".";
 import { CacheFileSource } from "../cache";
-import { cacheMajors } from "../constants";
-import { parse } from "../parser/jsondecoders";
-import { AstNode, ClientScriptFunction, CodeBlockNode, isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor, FunctionBindNode } from "./ast";
+import { ClientScriptFunction, CodeBlockNode, isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor, FunctionBindNode } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { TsWriterContext } from "./codewriter";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";
 import { namedClientScriptOps, StackConstants, subtypeToTs } from "./definitions";
-import { loadEnum, loadStruct } from "./util";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
 
 
@@ -109,9 +106,7 @@ export class IsolatedCS2Module {
     async addscript(id: number) {
         if (this.scripts.has(id)) { return null; }
         if (this.mockscripts.has(id)) { return null; }
-
-        let filebuf = await this.source.getFileById(cacheMajors.clientscript, id);
-        let script = parse.clientscript.read(filebuf, this.source);
+        let script = await this.source.getObject("clientscriptops", id);
         let { rootfunc, sections, typectx } = parseClientScriptIm(this.deob, script, id);
         let fn: CS2Script = {
             func: rootfunc,
@@ -167,10 +162,10 @@ export class IsolatedCS2Module {
         }
         res += "\n";
 
-        res += `var structatble = new Map<number, Struct>();\n`;
+        res += `var structtable = new Map<number, Struct>();\n`;
         for (let structid of allstructs) {
-            let struct = await loadStruct(this.source, structid);
-            res += `structtable.set(${structid}, new Map([\n`
+            let struct = await this.source.getObject("structs", structid);
+            res += `structtable.set(${structid}, new Map([\n`;
             for (let val of struct.extra ?? []) {
                 res += `\t[${val.prop}, ${val.intvalue ?? `"${(val.stringvalue ?? "").replace(/\\/g, "\\\\").replace(/"/, "\\\"")}"`}],\n`;
             }
@@ -180,7 +175,7 @@ export class IsolatedCS2Module {
 
         res += `var enumtable = new Map<number, Enum>();\n`;
         for (let enumsid of allenums) {
-            let enumdata = await loadEnum(this.source, enumsid);
+            let enumdata = await this.source.getObject("enums", enumsid);
             let intarr = enumdata.intArrayValue1 ?? enumdata.intArrayValue2?.values;
             let stringarr = enumdata.stringArrayValue1 ?? enumdata.stringArrayValue2?.values;
             let arr = intarr ?? stringarr;

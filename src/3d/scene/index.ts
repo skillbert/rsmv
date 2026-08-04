@@ -42,7 +42,7 @@ export async function modelToModel(cache: ThreejsSceneCache, id: number) {
 		let major = (cache.engine.legacyData ? legacyMajors.oldmodels : cacheMajors.oldmodels);
 		info = parse.oldmodels.read(await cache.engine.getFileById(major, id), cache.engine.rawsource);
 	} else if (cache.modelType == "nxt") {
-		info = parse.models.read(await cache.engine.getFileById(cacheMajors.models, id), cache.engine.rawsource);
+		info = await cache.engine.getObject("models", id);
 	}
 	return castModelInfo({
 		models: [{ modelid: id, mods: {} }],
@@ -86,17 +86,13 @@ export async function npcBodyToModel(cache: ThreejsSceneCache, id: number) {
 }
 
 export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, head: boolean }) {
-	let npc = parse.npc.read(await cache.engine.getGameFile("npcs", id.id), cache.engine.rawsource);
+	let npc = await cache.engine.getObject("npcs", id.id);
 	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.npc, id.id);
 	let anims: Record<string, number> = {};
 	let modelids = (id.head ? npc.headModels : npc.models) ?? [];
 	if (!id.head && npc.animation_group) {
-		let arch = await cache.engine.getArchiveById(cacheMajors.config, cacheConfigPages.animgroups);
-		let file = arch.find(q => q.fileid == npc.animation_group);
-		if (file) {
-			let animgroup = parse.animgroupConfigs.read(file.buffer, cache.engine.rawsource);
-			anims = serializeAnimset(animgroup);
-		}
+		let animgroup = await cache.engine.getObject("animgroupconfigs", npc.animation_group);
+		anims = serializeAnimset(animgroup);
 	}
 	let mods: ModelModifications = {};
 	if (npc.color_replacements) { mods.replaceColors = npc.color_replacements; }
@@ -113,7 +109,7 @@ export async function npcToModel(cache: ThreejsSceneCache, id: { id: number, hea
 }
 
 export async function spotAnimToModel(cache: ThreejsSceneCache, id: number) {
-	let animdata = parse.spotAnims.read(await cache.engine.getGameFile("spotanims", id), cache.engine.rawsource);
+	let animdata = await cache.engine.getObject("spotanims", id);
 
 	let mods: ModelModifications = {};
 	if (animdata.replace_colors) { mods.replaceColors = animdata.replace_colors; }
@@ -163,11 +159,11 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 }
 export async function itemToModel(cache: ThreejsSceneCache, id: number) {
 	// let item = await getJson(cache.engine, "items", id);
-	let item = parse.item.read(await cache.engine.getGameFile("items", id), cache.engine.rawsource);
+	let item = await cache.engine.getObject("items", id);
 	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.obj, id);
 	let modelitem = item;
 	if (!item.baseModel && item.noteTemplate) {
-		modelitem = parse.item.read(await cache.engine.getGameFile("items", item.noteTemplate), cache.engine.rawsource);
+		modelitem = await cache.engine.getObject("items", item.noteTemplate);
 	}
 	let mods: ModelModifications = {};
 	if (modelitem.color_replacements) { mods.replaceColors = modelitem.color_replacements; }

@@ -141,8 +141,7 @@ async function mapAreaPreset(filesource: CacheFileSource, areaArgument: string) 
 		if (areaArgument == "main") {
 
 			//enums 708 seems to be the map select dropdown in-game
-			let file = await filesource.getFileById(cacheMajors.enums, 708);
-			let mapenum = parse.enums.read(file, filesource);
+			let mapenum = await filesource.getObject("enums", 708);
 
 			let files = await filesource.getArchiveById(cacheMajors.worldmap, 0);
 			mask = mapenum.intArrayValue2!.values

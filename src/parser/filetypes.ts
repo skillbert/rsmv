@@ -129,8 +129,7 @@ const decodeMusic: DecodeModeFactory = () => {
 		fileToLogical(source, major, minor, subfile) { return [minor]; },
 		logicalToFile(source, id) { return { major: cacheMajors.music, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let enumfile = await source.getFileById(cacheMajors.enums, 1351);
-			let enumdata = parse.enums.read(enumfile, source);
+			let enumdata = await source.getObject("enums", 1351);
 			let indexfile = await source.getCacheIndex(cacheMajors.music);
 			return enumdata.intArrayValue2!.values
 				.filter(q => q[1] >= start[0] && q[1] <= end[0])
