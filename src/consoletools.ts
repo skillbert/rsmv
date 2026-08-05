@@ -1,4 +1,5 @@
 import { CacheFileSource } from "./cache";
+import { unpackCoordgrid } from "./utils";
 import { cliApi, CliApiContext } from "./clicommands";
 import * as cmdts from "cmd-ts";
 import { cacheConfigPages, internalNameFiles, cacheMajors, vartypes } from "./constants";
@@ -32,10 +33,8 @@ export function exposeDebugToolsInGlobal() {
 }
 
 function coordgrid(coord: number) {
-    let plane = (coord >> 28) & 0x3;
-    let x = (coord >> 14) & 0x3FFF;
-    let z = coord & 0x3FFF;
-    return `${plane}_${x}_${z}`;
+    let { level, x, z } = unpackCoordgrid(coord);
+    return `${level}_${x}_${z}`;
 }
 
 async function cli(args: string) {

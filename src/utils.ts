@@ -418,6 +418,19 @@ export function packedHSL2HSL(hsl: number) {
 	return [h, s, l];
 }
 
+export type Coord = {
+	x: number,
+	z: number,
+	level: number
+};
+
+export function unpackCoordgrid(coord: number) {
+	let level = (coord >> 28) & 0x3;
+	let x = (coord >> 14) & 0x3FFF;
+	let z = coord & 0x3FFF;
+	return { level, x, z };
+}
+
 export class TypedEmitter<T extends Record<string, any>> {
 	protected listeners: { [key in keyof T]?: Set<(v: T[key]) => void> } = {};
 	on<K extends keyof T>(event: K, listener: (v: T[K]) => void) {

@@ -8,7 +8,7 @@ import { useAwaited } from "./scriptsui";
 import { loadParams } from "../clientscript/util";
 import { CacheFileSource } from "../cache";
 import classNames from "classnames";
-import { HSL2RGB, packedHSL2HSL, RGB2HSL } from "../utils";
+import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../utils";
 import { BlobImage } from "./commoncontrols";
 import { parseMusic } from "../scripts/musictrack";
 import { variableSources } from "../clientscript/definitions";
@@ -280,10 +280,8 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
 }
 
 function CoordGridView(p: { value: number }) {
-    let plane = (p.value >> 28) & 0x3;
-    let x = (p.value >> 14) & 0x3FFF;
-    let z = p.value & 0x3FFF;
-    return <span>coord: {plane}_{x}_{z}</span>;
+    let { level, x, z } = unpackCoordgrid(p.value);
+    return <span>coord: {level}_{x}_{z}</span>;
 }
 
 export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
