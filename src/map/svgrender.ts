@@ -81,10 +81,10 @@ export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect
 
 		if (loc.effectiveLevel == -1 || (!loc.forceVisible && loc.effectiveLevel > maplevel)) { continue; }
 
-		if (loc.location.mapFunction) {
-			let group = maplabels.get(loc.location.mapFunction);
+		if (loc.location.maplabel) {
+			let group = maplabels.get(loc.location.maplabel);
 			if (!group) {
-				let maplabel = engine.mapMaplabels[loc.location.mapFunction];
+				let maplabel = engine.mapMaplabels[loc.location.maplabel];
 				if (maplabel.legacy_switch) {
 					maplabel = engine.mapMaplabels[maplabel.legacy_switch.default_ref];
 				}
@@ -99,7 +99,7 @@ export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect
 					height = sprite[0].img.height;
 				}
 				group = { src: src, width, height, uses: [] };
-				maplabels.set(loc.location.mapFunction, group);
+				maplabels.set(loc.location.maplabel, group);
 			}
 			group.uses.push({ x: loc.x - rect.x, z: loc.z - rect.z });
 		}
@@ -235,10 +235,10 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 
 		if (wallsonly && loc.effectiveLevel != maplevel) { occluded = true; }
 
-		if (drawicons && loc.effectiveLevel == maplevel && loc.location.mapFunction) {
-			let group = maplabels.get(loc.location.mapFunction);
+		if (drawicons && loc.effectiveLevel == maplevel && loc.location.maplabel) {
+			let group = maplabels.get(loc.location.maplabel);
 			if (!group) {
-				let maplabel = engine.mapMaplabels[loc.location.mapFunction];
+				let maplabel = engine.mapMaplabels[loc.location.maplabel];
 				if (maplabel.legacy_switch) {
 					maplabel = engine.mapMaplabels[maplabel.legacy_switch.default_ref];
 				}
@@ -253,7 +253,7 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 					height = sprite[0].img.height;
 				}
 				group = { src: src, width, height, uses: [] };
-				maplabels.set(loc.location.mapFunction, group);
+				maplabels.set(loc.location.maplabel, group);
 			}
 			group.uses.push({ x: loc.x - rect.x, z: loc.z - rect.z });
 		}

@@ -8,7 +8,7 @@ import { cacheFilenameHash, HSL2RGB, packedHSL2HSL } from "./utils";
 import prettyJson from "json-stringify-pretty-compact";
 import { UIScriptFS } from "./viewer/scriptsui";
 import { EngineCache } from "./3d/modeltothree";
-import { cacheFileJsonModes } from "./parser/jsondecoders";
+import { cacheFileDecodeModes } from "./parser/filetypes";
 
 // exposes various tools into the global scope to use in the console for debugging and testing
 export function exposeDebugToolsInGlobal() {
@@ -66,14 +66,15 @@ async function cli(args: string) {
 async function getFileCounts() {
     let source = globalThis.source as CacheFileSource;
     let res: Record<string, any> = {};
-    for (let modename in cacheFileJsonModes) {
-        let mode = cacheFileJsonModes[modename as keyof typeof cacheFileJsonModes];
+    for (let modename in cacheFileDecodeModes) {
+        let modefactory = cacheFileDecodeModes[modename as keyof typeof cacheFileDecodeModes];
         try {
-            let fileids = await mode.lookup.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
+            let mode = modefactory({});
+            let fileids = await mode.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
 
             let lastfile = fileids.at(-1);
             if (lastfile) {
-                let lastindex = mode.lookup.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subindex);
+                let lastindex = mode.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subindex);
                 res[modename] = (Array.isArray(lastindex) && lastindex.length == 1 ? lastindex[0] : lastindex);
             }
         } catch (e) {
@@ -113,10 +114,12 @@ function binarr(arr: any[][]) {
     let bins = {};
     for (let i = 0; i < arr.length; i++) {
         let sub = arr[i];
-        for (let j = 0; j < sub.length; j++) {
-            let key = sub[j];
-            if (!bins[key]) { bins[key] = []; }
-            bins[key].push(i);
+        if (sub) {
+            for (let j = 0; j < sub.length; j++) {
+                let key = sub[j];
+                if (!bins[key]) { bins[key] = []; }
+                bins[key].push(i);
+            }
         }
     }
     return bins;

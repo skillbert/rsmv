@@ -1625,21 +1625,21 @@ export function mapsquareObjectModels(cache: CacheFileSource, inst: WorldLocatio
 			rotation.premultiply(rot);
 		}
 	}
-	let linkabove = typeof objectmeta.probably_morphCeilingOffset != "undefined";
-	let followfloor = linkabove || !!objectmeta.probably_morphFloor;
+	let linkabove = typeof objectmeta.morphCeilingOffset != "undefined";
+	let followfloor = linkabove || !!objectmeta.morphFloor;
 
 	let morph: FloorMorph = {
 		translate, rotation, scale,
 		level: inst.plane,
 		placementMode: (linkabove ? "followfloorceiling" : followfloor ? "followfloor" : "simple"),
-		scaleModelHeightOffset: objectmeta.probably_morphCeilingOffset ?? 0,
+		scaleModelHeightOffset: objectmeta.morphCeilingOffset ?? 0,
 		originx, originz
 	};
 
 	let extras: ModelExtrasLocation = {
 		modeltype: "location",
 		isclickable: false,
-		modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid && inst.location.probably_animation == undefined ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
+		modelgroup: (minimap ? `mini_objects${inst.resolvedlocid == inst.locid && inst.location.animation == undefined ? inst.visualLevel : 0}` : `objects${inst.visualLevel}`),
 		locationid: inst.locid,
 		worldx: inst.x,
 		worldz: inst.z,
@@ -1821,7 +1821,7 @@ export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, loca
 				12, 13, 14, 15, 16, 17, 18, 19, 20, 21//roof types, only some are confirmed
 			]
 
-			if (collision && !rawloc.probably_nocollision) {
+			if (collision && !rawloc.walkable) {
 				for (let dz = 0; dz < sizez; dz++) {
 					for (let dx = 0; dx < sizex; dx++) {
 						let tile = grid.getTile(inst.x + originx + dx, inst.y + originz + dz, callingtile.effectiveLevel);
@@ -1829,29 +1829,29 @@ export async function mapsquareObjects(engine: EngineCache, grid: TileGrid, loca
 							let col = tile.effectiveCollision!;
 							//TODO check for other loc types
 							//22 should block, 4 should not
-							if (inst.type == 22 && rawloc.maybe_blocks_movement) {
+							if (inst.type == 22 && rawloc.blocks_movement) {
 								col.walk[0] = true;
 							}
 							if (inst.type == 0) {
 								col.walk[1 + inst.rotation] = true;
-								if (!rawloc.maybe_allows_lineofsight) {
+								if (!rawloc.allows_lineofsight) {
 									col.sight[1 + inst.rotation] = true;
 								}
 							} else if (inst.type == 2) {
 								col.walk[1 + inst.rotation] = true;
 								col.walk[1 + (inst.rotation + 1) % 4] = true;
-								if (!rawloc.maybe_allows_lineofsight) {
+								if (!rawloc.allows_lineofsight) {
 									col.sight[1 + inst.rotation] = true;
 									col.sight[1 + (inst.rotation + 1) % 4] = true;
 								}
 							} else if (inst.type == 1 || inst.type == 3) {
 								col.walk[5 + inst.rotation] = true;
-								if (!rawloc.maybe_allows_lineofsight) {
+								if (!rawloc.allows_lineofsight) {
 									col.sight[5 + inst.rotation] = true;
 								}
 							} else if (fullcollisiontypes.includes(inst.type)) {
 								col.walk[0] = true;
-								if (!rawloc.maybe_allows_lineofsight) {
+								if (!rawloc.allows_lineofsight) {
 									col.sight[0] = true;
 								}
 							}

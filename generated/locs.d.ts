@@ -27,14 +27,14 @@ export type locs = {
 		}) | null
 	width?: number | null
 	length?: number | null
-	probably_nocollision?: true | null
-	maybe_allows_lineofsight?: true | null
+	walkable?: true | null
+	allows_lineofsight?: true | null
 	deletable?: boolean | null
-	probably_morphFloor?: true | null
+	morphFloor?: true | null
 	unknown_16?: true | null
 	occludes_1?: false | null
-	probably_animation?: number | null
-	maybe_blocks_movement?: true | null
+	animation?: number | null
+	blocks_movement?: true | null
 	wallkit_related_1C?: number | null
 	ambient?: number | null
 	actions_0?: string | null
@@ -71,7 +71,7 @@ export type locs = {
 	translateZ?: number | null
 	unknown_49?: true | null
 	unknown_4A?: true | null
-	unknown_4B?: number | null
+	unknown_4B?: boolean | null
 	morphs_1?: {
 		varbit: number,
 		varp: number,
@@ -82,11 +82,11 @@ export type locs = {
 		color: number,
 		radius: number,
 	} | null
-	unknown_4F?: {
+	background_sound?: {
 		unknown_1: number,
 		unknown_2: number,
 		unknown_3: number,
-		unknown_4: number[],
+		sounds: number[],
 	} | null
 	unknown_51?: number | null
 	unknown_52?: true | null
@@ -106,7 +106,7 @@ export type locs = {
 		number,
 	] | null
 	under_water?: true | null
-	probably_morphCeilingOffset?: (number|0) | null
+	morphCeilingOffset?: (number|0) | null
 	unknown_60?: true | null
 	ground_decoration_related_61?: true | null
 	has_animated_texture?: true | null
@@ -123,11 +123,11 @@ export type locs = {
 	occludes_2?: false | null
 	interactable_related_68?: number | null
 	invertMapScene?: true | null
-	headModels?: {
-		model: number,
-		unknown_2: number,
+	animVariations?: {
+		animid: number,
+		probability: number,
 	}[] | null
-	mapFunction?: number | null
+	maplabel?: number | null
 	unknown_6C?: true | null
 	unknown_6D?: true | null
 	unknown_6E?: true | null

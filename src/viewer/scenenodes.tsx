@@ -1483,7 +1483,6 @@ function SceneLocation(p: LookupModeProps) {
 	const ctx = React.useContext(UIEngineContext);
 	const [data, model, id, setId] = useAsyncModelData(ctx, locToModel);
 	const forceUpdate = useForceUpdate();
-	const anim = data?.anims.default ?? -1;
 	let initid = id ?? (typeof p.initialId == "number" ? p.initialId : 0);
 	return (
 		<React.Fragment>
@@ -1494,7 +1493,13 @@ function SceneLocation(p: LookupModeProps) {
 					<p>Locations make up just about everything in the world that isn't a player or NPC.</p>
 				</React.Fragment>
 			)}
-			{anim != -1 && <label><input type="checkbox" checked={!model || model.targetAnimId == anim} onChange={e => { model?.setAnimation(e.currentTarget.checked ? anim : -1); forceUpdate(); }} />Animate</label>}
+			{model && data?.anims && (
+				<LabeledInput label="Animation">
+					<select onChange={e => { model.setAnimation(+e.currentTarget.value); forceUpdate() }} value={model.targetAnimId}>
+						{Object.entries(data.anims).map(([k, v]) => <option key={k} value={v}>{k}</option>)}
+					</select>
+				</LabeledInput>
+			)}
 			<div className="mv-sidebar-scroll">
 				<RawTextDisplay text={data?.assetName} />
 				<StructView data={data?.info} meta={parse.loc.parser.getJsonSchema()} />

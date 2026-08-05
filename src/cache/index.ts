@@ -363,7 +363,7 @@ export abstract class CacheFileSource {
 			if (!entry) { throw new Error(`Logical file ${mode}_${logicalid.join(".")} not found at ${fileid.major}.${fileid.minor}.${fileid.subid}`); }
 			file = entry.buffer;
 		} else {
-			file = await this.getFileById(fileid[0], fileid[1]);
+			file = await this.getFileById(fileid.major, fileid.minor);
 		}
 		let json = modefn.parser.read(file, this);
 		json.$fileid = logicalid.length == 1 ? logicalid[0] : logicalid;

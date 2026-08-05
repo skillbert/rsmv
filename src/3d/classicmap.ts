@@ -690,7 +690,7 @@ export function getClassicLoc(engine: EngineCache, id: number) {
         let rawloc = config.wallobjects[id - classicLocIdWall];
         locdata = {
             name: rawloc.name,
-            probably_morphFloor: true,
+            morphFloor: true,
             models: [
                 { type: 0, values: [constModelsIds.classicWall] },
                 { type: 9, values: [constModelsIds.classicWallDiag] }

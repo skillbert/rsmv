@@ -131,7 +131,7 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 	let { morphedloc } = await resolveMorphedObject(cache.engine, id);
 	let assetName = await cache.engine.rawsource.getInternalName(internalNameFiles.loc, id);
 	let mods: ModelModifications = {};
-	let anims: Record<string, number> = {};
+	let anims: Record<string, number> = { none: -1 };
 	let models: SimpleModelDef = [];
 	if (morphedloc) {
 		if (morphedloc.color_replacements) { mods.replaceColors = morphedloc.color_replacements; }
@@ -145,8 +145,14 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 			...morphedloc.models_05?.models.flatMap(m => m.values).map(q => ({ modelid: q, mods })) ?? []
 		];
 	}
-	if (morphedloc?.probably_animation) {
-		anims.default = morphedloc.probably_animation;
+	if (morphedloc?.animation) {
+		anims.default = morphedloc.animation;
+	}
+	if (morphedloc.animVariations) {
+		let totalchance = morphedloc.animVariations.reduce((a, v) => a + v.probability, 0);
+		for (let [i, variation] of morphedloc.animVariations.entries()) {
+			anims[`variant_${i}_${variation.probability}/${totalchance}`] = variation.animid;
+		}
 	}
 	return castModelInfo({
 		models,

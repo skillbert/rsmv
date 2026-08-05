@@ -153,18 +153,18 @@ function locationMetaHash(loc: locs) {
 	// can ignore dependencies like models since they are already hashed on their own
 	let hash = 0;
 	// collision
-	hash = crc32addInt(+!!loc.probably_nocollision, hash);
-	hash = crc32addInt(+!!loc.maybe_blocks_movement, hash);
-	hash = crc32addInt(+!!loc.maybe_allows_lineofsight, hash);
+	hash = crc32addInt(+!!loc.walkable, hash);
+	hash = crc32addInt(+!!loc.blocks_movement, hash);
+	hash = crc32addInt(+!!loc.allows_lineofsight, hash);
 	// minimap
-	hash = crc32addInt(loc.mapFunction ?? 0, hash);
+	hash = crc32addInt(loc.maplabel ?? 0, hash);
 	hash = crc32addInt(loc.mapscene ?? 0, hash);
 	hash = crc32addInt(+!!loc.deletable, hash);
 	// placement
 	hash = crc32addInt(loc.width ?? 1, hash);
 	hash = crc32addInt(loc.length ?? 1, hash);
 	// anim - currently not rendered, but shouldnt be expensive
-	hash = crc32addInt(loc.probably_animation ?? 0, hash);
+	hash = crc32addInt(loc.animation ?? 0, hash);
 	// name and rightclicks - not rendered, but are included in other layers
 	hash = crc32(Buffer.from(loc.name ?? "", "utf8"), hash);
 	hash = crc32(Buffer.from(loc.actions_0 ?? "", "utf8"), hash);
@@ -190,8 +190,11 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 			let loc = parse.loc.read(file, cache);
 			// addHash("loc", id, crc32(file), 0);
 			addHash("loc", id, locationMetaHash(loc), 0);
-			if (loc.probably_animation) {
-				addDep("sequence", loc.probably_animation, "loc", id);
+			if (loc.animation) {
+				addDep("sequence", loc.animation, "loc", id);
+			}
+			if (loc.animVariations && loc.animVariations.length >= 1) {
+				addDep("sequence", loc.animVariations[0].animid, "loc", id);
 			}
 			if (loc.models) {
 				for (let group of loc.models) {
