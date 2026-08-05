@@ -80,7 +80,9 @@ module.exports = {
 	plugins: [
 		new CopyWebpackPlugin({
 			patterns: [
-				{ from: 'src/assets', to: "assets" }
+				{ from: 'src/assets', to: "assets" },
+				// special case for sql.js wasm, webpack is choking on it otherwise
+				{ from: 'node_modules/sql.js/dist/sql-wasm-workerfs.wasm', to: "generated/sql-wasm-workerfs.wasm" }
 			]
 		}),
 		new ProvidePlugin({
