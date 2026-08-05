@@ -129,7 +129,7 @@ export async function parseAnimationSequence4(loader: ThreejsSceneCache, sequenc
 		orderedframes.push(orderedframes[0]);
 		keyframetimeslist.push(endtime);
 	}
-	let framebase = await loader.engine.getObject("framemaps", orderedframes[0].probably_framemap_id);
+	let framebase = await loader.engine.getObject("framemaps", orderedframes[0].framemap_id);
 
 	// let { bones } = buildFramebaseSkeleton(framebase);
 	let keyframetimes = new Float32Array(keyframetimeslist);
@@ -340,7 +340,7 @@ export function getFrameClips(framebase: framemaps, framesparsed: frames[]) {
 			flags: framedata.flags,
 			animdata: framedata.animdata,
 			dataindex: 0,
-			baseid: framedata.probably_framemap_id,
+			baseid: framedata.framemap_id,
 			stream: new Stream(Buffer.from(framedata.animdata))
 		};
 	});

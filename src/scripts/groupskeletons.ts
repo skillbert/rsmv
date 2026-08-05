@@ -16,7 +16,7 @@ export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, 
         let frame0 = arch[0];
         if (frame0) {
             let frame = parse.frames.read(frame0.buffer, source);
-            frametoframemap.set(frameid.minor, frame.probably_framemap_id);
+            frametoframemap.set(frameid.minor, frame.framemap_id);
         }
     }
     output.log(`completed frames`);

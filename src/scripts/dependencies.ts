@@ -352,7 +352,7 @@ const framesetDeps: DepCollector = async (cache, addDep, addHash) => {
 		let arch = await cache.getFileArchive(index);
 		if (arch.length != 0) {
 			let frame0 = parse.frames.read(arch[0].buffer, cache);
-			addDep("framebase", frame0.probably_framemap_id, "frameset", index.minor);
+			addDep("framebase", frame0.framemap_id, "frameset", index.minor);
 		}
 	}
 }

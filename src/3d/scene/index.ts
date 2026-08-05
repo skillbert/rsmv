@@ -149,9 +149,9 @@ export async function locToModel(cache: ThreejsSceneCache, id: number) {
 		anims.default = morphedloc.animation;
 	}
 	if (morphedloc.animVariations) {
-		let totalchance = morphedloc.animVariations.reduce((a, v) => a + v.probability, 0);
+		let totalweight = morphedloc.animVariations.reduce((a, v) => a + v.weight, 0);
 		for (let [i, variation] of morphedloc.animVariations.entries()) {
-			anims[`variant_${i}_${variation.probability}/${totalchance}`] = variation.animid;
+			anims[`variant_${i}_${variation.weight}/${totalweight}`] = variation.animid;
 		}
 	}
 	return castModelInfo({

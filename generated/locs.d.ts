@@ -78,11 +78,11 @@ export type locs = {
 		options: (number|number)[],
 		default: (number|number),
 	} | null
-	light_source_related_4E?: {
-		color: number,
-		radius: number,
+	sound?: {
+		sound: number,
+		unk: number,
 	} | null
-	background_sound?: {
+	background_sounds?: {
 		unknown_1: number,
 		unknown_2: number,
 		unknown_3: number,
@@ -125,7 +125,7 @@ export type locs = {
 	invertMapScene?: true | null
 	animVariations?: {
 		animid: number,
-		probability: number,
+		weight: number,
 	}[] | null
 	maplabel?: number | null
 	unknown_6C?: true | null
@@ -137,14 +137,9 @@ export type locs = {
 	members_action_3?: string | null
 	members_action_4?: string | null
 	members_action_5?: string | null
-	unknown_A0?: number[] | null
+	quests?: number[] | null
 	singleuse_A2?: number | null
-	unknown_A3?: {
-		unknown_1: number,
-		unknown_2: number,
-		unknown_3: number,
-		unknown_4: number,
-	} | null
+	unknown_A3?: Uint8Array | null
 	singleuse_A4?: number | null
 	singleuse_A5?: number | null
 	singleuse_A6?: number | null
@@ -153,12 +148,12 @@ export type locs = {
 	unused_a9?: true | null
 	wallkit_related_AA?: number | null
 	possibly_wallkit_skew_AB?: number | null
-	lightsource_related_AD?: {
+	sound_related_AD?: {
 		unknown_1: number,
 		unknown_2: number,
 	} | null
 	can_change_color?: true | null
-	unknown_B2?: number | null
+	sound_related_B2?: number | null
 	unknown_BA?: number | null
 	dummy_bc?: true | null
 	treerockordoor_BD?: true | null
@@ -236,7 +231,10 @@ export type locs = {
 		}[] | null,
 		default: number,
 	} | null
-	unknown_CE?: number[] | null
+	unknown_CE?: {
+		bytelength: number,
+		elements: Uint8Array[],
+	} | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,
