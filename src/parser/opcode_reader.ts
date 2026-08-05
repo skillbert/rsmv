@@ -173,6 +173,7 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 			return {
 				type: "object",
 				properties: propschema,
+				"x-rsmv-type": roottype
 			}
 		}
 	}
@@ -197,8 +198,12 @@ function opcodesParser(chunkdef: {}, parent: ChunkParentCallback, typedef: TypeD
 	let refs: Record<string, ResolvedReference[] | undefined> = {};
 	let opcodetype = buildParser(null, (chunkdef["$opcode"] ?? "unsigned byte"), typedef);
 	let opts: Record<string, { op: number, parser: ChunkParser, rstype: string }> = {};
+	let roottype = "";
 	for (let key in chunkdef) {
-		if (key.startsWith("$")) { continue; }
+		if (key.startsWith("$")) {
+			if (key == "$type") { roottype = chunkdef[key]; }
+			continue;
+		}
 		let op = chunkdef[key];
 		if (typeof op != "object" || !op) { throw new Error("op name expected"); }
 		let opname = op["name"];

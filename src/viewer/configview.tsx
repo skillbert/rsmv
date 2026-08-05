@@ -12,9 +12,8 @@ import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../utils";
 import { BlobImage } from "./commoncontrols";
 import { parseMusic } from "../scripts/musictrack";
 import { variableSources } from "../clientscript/definitions";
-import { cacheFileJsonModes, JsonBasedFile } from "../parser/jsondecoders";
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "varbit";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
 
 type DeepLinkElement = {
@@ -273,7 +272,7 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     let title = `RS HSL: ${hsl[0] * 63}, ${hsl[1] * 7}, ${hsl[2] * 127}\nRGB: ${color[0]}, ${color[1]}, ${color[2]}`;
     return (
         <span title={title}>
-            <span className="mv-proptable__color" style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }} />
+            <span className="mv-proplist__color" style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }} />
             color: {colorstring}
         </span>
     );
@@ -284,57 +283,123 @@ function CoordGridView(p: { value: number }) {
     return <span>coord: {level}_{x}_{z}</span>;
 }
 
+function DBRowsView(p: { data: DeepLinkElement }) {
+    let data = p.data;
+
+    let rowsroot = data.items?.find(q => q.name == "rows");
+    let tableid = data.items?.find(q => q.name == "table");
+
+    let tablesprop = rowsroot?.items?.find(q => q.name == "columndata");
+    if (!tablesprop || !tablesprop.array) {
+        return <span>no tables</span>;
+    }
+
+    let restables: JSX.Element[] = [];
+    for (let tableindex = 0; tableindex < tablesprop.array.length; tableindex++) {
+        let subtable = tablesprop.array[tableindex];
+        let subtypesprop = subtable.items?.find(q => q.name == "subtypes");
+        let rowsprop = subtable.items?.find(q => q.name == "rows");
+        if (!subtypesprop || !rowsprop || !subtypesprop.array || !rowsprop.array) {
+            restables.push(<div key={tableindex}>invalid table</div>);
+            continue;
+        }
+
+        let rows: JSX.Element[] = [];
+        rows.push(
+            <tr key="header" className="mv-proptable__head">
+                {subtypesprop.array.map((q, i) => <td key={i}>{renderPrimitive(q)?.el}</td>)}
+            </tr>
+        );
+
+        for (let rowindex = 0; rowindex < rowsprop.array.length; rowindex++) {
+            let rowprop = rowsprop.array[rowindex];
+            rows.push(
+                <tr key={rowindex} className="mv-proptable__row">
+                    {rowprop.array?.map((q, i) => <td key={i}>{renderPrimitive(q)?.el ?? "?"}</td>)}
+                </tr>
+            );
+        }
+
+        restables.push(
+            <table key={tableindex} className="mv-proptable">
+                <tbody>
+                    <tr className="mv-proptable__head"><th colSpan={subtypesprop.array.length}>Table {tableindex}</th></tr>
+                    {rows}
+                </tbody>
+            </table>
+        );
+    }
+    return <div>
+        {tableid && <>Table: {renderPrimitive(tableid)?.el ?? "?"}</>}
+        {restables}
+    </div>;
+}
+
+export function renderPrimitive(prop: DeepLinkElement) {
+    if (typeof prop.primitive == "number") {
+        let rawtext = `${prop.primitive} (${prop.rsmvtype})`;
+        if (prop.valuename) { rawtext = `${prop.valuename} (${prop.rsmvtype}_${prop.primitive})`; }
+
+        if (prop.rsmvtype == "color") {
+            return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
+        }
+        if (prop.rsmvtype == "coordgrid") {
+            return { isbig: false, el: <CoordGridView value={prop.primitive} /> };
+        }
+        if (prop.rsmvtype == "graphic") {
+            return { isbig: false, el: <><div>{rawtext}</div><SpriteView id={prop.primitive} /></> };
+        }
+        if (prop.rsmvtype == "texture") {
+            return { isbig: false, el: <><div>{rawtext}</div><TextureView id={prop.primitive} /></> };
+        }
+        if (prop.rsmvtype == "cursor") {
+            return { isbig: false, el: <><div>{rawtext}</div><CursorView id={prop.primitive} /></> };
+        }
+        if (prop.rsmvtype == "sound") {
+            return { isbig: false, el: <><div>{rawtext}</div><SoundView id={prop.primitive} /></> };
+        }
+        return { isbig: false, el: <span>{rawtext}</span> };
+    }
+    if (typeof prop.primitive == "string") {
+        if (prop.rsmvtype == "imagefile") {
+            return { isbig: false, el: <JsonImgFileView file={prop.primitive} /> };
+        } else {
+            return { isbig: false, el: <span>{prop.primitive}</span> };
+        }
+    }
+    if (typeof prop.primitive == "boolean") {
+        return { isbig: false, el: <span>{prop.primitive + ""}</span> };
+    }
+    if (prop.array) {
+        if (prop.rsmvtype == "rgb" || prop.rsmvtype == "argb") {
+            return { isbig: false, el: <ColorView rgb={prop.array.map(q => q.primitive as number)} /> };
+        }
+    }
+    if (prop.items) {
+        if (prop.rsmvtype == "dbrow_definition") {
+            return { isbig: true, el: <DBRowsView data={prop} /> };
+        }
+    }
+    return null;
+}
+
 export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
     let source = React.useContext(UIEngineContext)?.source;
     let data = useAwaited(async () => source && deepLinkJson({ source, objstack: [] }, "root", p.data, p.meta), [p.data, p.meta, source]);
 
     let handlenode = (prop: DeepLinkElement, isroot = false): { isbig: boolean, el: JSX.Element } => {
-        if (typeof prop.primitive == "number") {
-            let rawtext = `${prop.primitive} (${prop.rsmvtype})`;
-            if (prop.valuename) { rawtext = `${prop.valuename} (${prop.rsmvtype}_${prop.primitive})`; }
+        let primitive = renderPrimitive(prop);
+        if (primitive) { return primitive; }
 
-            if (prop.rsmvtype == "color") {
-                return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
-            }
-            if (prop.rsmvtype == "coordgrid") {
-                return { isbig: false, el: <CoordGridView value={prop.primitive} /> };
-            }
-            if (prop.rsmvtype == "graphic") {
-                return { isbig: false, el: <><div>{rawtext}</div><SpriteView id={prop.primitive} /></> };
-            }
-            if (prop.rsmvtype == "texture") {
-                return { isbig: false, el: <><div>{rawtext}</div><TextureView id={prop.primitive} /></> };
-            }
-            if (prop.rsmvtype == "cursor") {
-                return { isbig: false, el: <><div>{rawtext}</div><CursorView id={prop.primitive} /></> };
-            }
-            if (prop.rsmvtype == "sound") {
-                return { isbig: false, el: <><div>{rawtext}</div><SoundView id={prop.primitive} /></> };
-            }
-            return { isbig: false, el: <span>{rawtext}</span> };
-        }
-        if (typeof prop.primitive == "string") {
-            if (prop.rsmvtype == "imagefile") {
-                return { isbig: false, el: <JsonImgFileView file={prop.primitive} /> };
-            } else {
-                return { isbig: false, el: <span>{prop.primitive}</span> };
-            }
-        }
-        if (typeof prop.primitive == "boolean") {
-            return { isbig: false, el: <span>{prop.primitive + ""}</span> };
-        }
         if (prop.array) {
-            if (prop.rsmvtype == "rgb" || prop.rsmvtype == "argb") {
-                return { isbig: false, el: <ColorView rgb={prop.array.map(q => q.primitive as number)} /> };
-            }
             let isbig = false;
             let lencount = 0;
             let children: JSX.Element[] = [];
             for (let i = 0; i < prop.array.length; i++) {
                 let q = prop.array[i];
                 if (lencount >= maxarraylen) {
-                    children.push(<div key="truncated" className="mv-proptable__entry">
+                    children.push(<div key="truncated" className="mv-proplist__entry">
                         <input type="button" className="sub-btn" onClick={e => setmaxarraylen(maxarraylen * 2)} value={`Show more(${i} / ${prop.array.length})`} />
                     </div>);
                     break;
@@ -342,27 +407,27 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
                 let child = handlenode(q);
                 isbig ||= child.isbig;
                 lencount += (child.isbig ? 10 : 1);
-                children.push(<div key={i} className="mv-proptable__entry">{child.el}</div>);
+                children.push(<div key={i} className="mv-proplist__entry">{child.el}</div>);
             }
-            let el = <div className="mv-proptable mv-proptable--array">{children}</div>;
+            let el = <div className="mv-proplist mv-proplist--array">{children}</div>;
             return { isbig, el };
         }
         if (prop.items) {
-            let el = <div className={classNames({ "mv-proptable": true, "mv-proptable--nested": !isroot })}>
+            let el = <div className={classNames({ "mv-proplist": true, "mv-proplist--nested": !isroot })}>
                 {prop.items.map((q, i) => {
                     let child = handlenode(q);
                     if (child.isbig) {
                         return (
-                            <div key={i} className="mv-proptable__entry">
-                                <div className="mv-proptable__name">{q.name}</div>
+                            <div key={i} className="mv-proplist__entry">
+                                <div className="mv-proplist__name">{q.name}</div>
                                 {child.el}
                             </div>
                         );
                     } else {
                         return (
                             <React.Fragment key={i}>
-                                <div className="mv-proptable__name">{q.name}</div>
-                                <div className="mv-proptable__value">{child.el}</div>
+                                <div className="mv-proplist__name">{q.name}</div>
+                                <div className="mv-proplist__value">{child.el}</div>
                             </React.Fragment>
                         );
                     }

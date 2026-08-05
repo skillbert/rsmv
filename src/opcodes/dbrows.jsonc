@@ -1,11 +1,12 @@
 {
-    "0x03":{"name":"unk01","read":["struct",
-        ["cols","ubyte"],
+    "$type":"dbrow_definition",
+    "0x03":{"name":"rows","read":["struct",
+        ["columncount","ubyte"],
         ["columndata",["nullarray","ubyte",255,["struct",
             ["columnid",["ref","$opcode",[0,6]]],
             ["flags",["ref","$opcode",[6,2]]],
             ["subcount","ubyte"],
-            ["subtypes",["array",["ref","subcount"],"varushort"]],
+            ["subtypes",["array",["ref","subcount"],"varushort","type"]],
             ["rows",["array","varushort",["array",["ref","subcount"],["match",["ref","subtypes","$index"],{
                 //in theory there are about 10 possible non-int types (either string or long), but only these are observed
                 "0x24":"string",

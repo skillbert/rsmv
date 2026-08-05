@@ -3,8 +3,8 @@
 // run `npm run filetypes` to rebuild
 
 export type dbrows = {
-	unk01?: {
-		cols: number,
+	rows?: {
+		columncount: number,
 		columndata: {
 			columnid: number,
 			flags: number,
