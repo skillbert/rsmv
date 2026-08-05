@@ -36,7 +36,7 @@ export type animgroupconfigs = {
 	unknown_33?: (number|number) | null
 	idleVariations?: {
 		animid: (number|number),
-		probably_chance: number,
+		weight: number,
 		always0: (number|0),
 	}[] | null
 	unknown_35?: true | null

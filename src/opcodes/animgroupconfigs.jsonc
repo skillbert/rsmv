@@ -26,7 +26,7 @@
 	"0x33": { "name":                           "unknown_33", "read": "animid", "type":"seq" },//also walk
 	"0x34": { "name":                           "idleVariations", "read": ["array","ubyte",["struct",
 													["animid","animid","seq"],
-													["probably_chance","ubyte"],
+													["weight","ubyte"],
 													["always0",["match","buildnr",{">=916":"ubyte","other":0}]]
 												]] },
 	"0x35": { "name":                           "unknown_35", "read": "true" },//no shadow mesh? (the old circle thing)

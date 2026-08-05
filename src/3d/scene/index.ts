@@ -237,9 +237,9 @@ export function serializeAnimset(group: animgroupconfigs) {
 		addanim("run", group.run);
 	}
 	if (group.idleVariations) {
-		let totalchance = group.idleVariations.reduce((a, v) => a + v.probably_chance, 0);
+		let totalchance = group.idleVariations.reduce((a, v) => a + v.weight, 0);
 		for (let [i, variation] of group.idleVariations.entries()) {
-			addanim(i == 0 ? "default" : `idle${i}_${variation.probably_chance}/${totalchance}`, variation.animid);
+			addanim(i == 0 ? "default" : `idle${i}_${variation.weight}/${totalchance}`, variation.animid);
 		}
 	}
 	//TODO yikes, this object is not a map
