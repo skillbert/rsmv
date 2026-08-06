@@ -1,17 +1,16 @@
 import * as React from "react";
-import { UIEngineContext } from "./maincomponents";
-import { cacheConfigPages, cacheMajors, internalNameFiles, vartypes } from "../constants";
-import { parseSprite } from "../3d/materials/sprite";
-import { pixelsToDataUrl } from "../imgutils";
+import { UIEngineContext } from "../maincomponents";
+import { cacheConfigPages, cacheMajors, internalNameFiles, vartypes } from "../../constants";
+import { parseSprite } from "../../3d/materials/sprite";
+import { pixelsToDataUrl } from "../../imgutils";
 import { JSONSchema6, JSONSchema6Definition } from "json-schema";
-import { useAwaited } from "./scriptsui";
-import { loadParams } from "../clientscript/util";
-import { CacheFileSource } from "../cache";
+import { loadParams } from "../../clientscript/util";
+import { CacheFileSource } from "../../cache";
 import classNames from "classnames";
-import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../utils";
-import { BlobImage } from "./commoncontrols";
-import { parseMusic } from "../scripts/musictrack";
-import { variableSources } from "../clientscript/definitions";
+import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
+import { BlobImage, useAwaited } from "../commoncontrols";
+import { parseMusic } from "../../scripts/musictrack";
+import { variableSources } from "../../clientscript/definitions";
 
 type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";

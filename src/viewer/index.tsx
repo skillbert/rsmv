@@ -5,10 +5,11 @@ import * as ReactDOM from "react-dom/client";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
-import { useForceUpdate } from "./scriptsui";
-import { UIContext, SavedCacheSource, FileViewer, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext } from "./maincomponents";
+import { UIContext, SavedCacheSource, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext } from "./maincomponents";
 import classNames from "classnames";
 import { exposeDebugToolsInGlobal } from "../consoletools";
+import { useForceUpdate } from "./commoncontrols";
+import { FileViewer } from "./viewers/fileviewer";
 
 
 exposeDebugToolsInGlobal();

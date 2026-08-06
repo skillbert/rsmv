@@ -418,6 +418,16 @@ export function packedHSL2HSL(hsl: number) {
 	return [h, s, l];
 }
 
+export function hsl2hex(hsl: number) {
+    let rgb = HSL2RGB(packedHSL2HSL(hsl));
+    return `#${((rgb[0] << 16) | (rgb[1] << 8) | (rgb[2] << 0)).toString(16).padStart(6, "0")}`;
+}
+
+export function hex2hsl(hex: string) {
+    let n = parseInt(hex.replace(/^#/, ""), 16);
+    return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
+}
+
 export type Coord = {
 	x: number,
 	z: number,

@@ -1,9 +1,8 @@
 import { TypedEmitter } from "../utils";
 import { useEffect } from "react";
 import * as React from "react";
-import { TabStrip } from "./commoncontrols";
+import { DomWrap, TabStrip, useForceUpdateDebounce } from "./commoncontrols";
 import { showModal } from "./jsonsearch";
-import VR360Viewer from "../libs/vr360viewer";
 import { CLIScriptFS, ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
 import path from "path";
 import { UIRootContext } from "./maincomponents";
@@ -304,109 +303,6 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: und
 			}
 		}
 	}
-}
-
-export function useAwaited<T>(fn: () => Promise<T> | null | undefined, deps: any[] = []): T | null {
-	let forceupdate = useForceUpdate();
-	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
-	let value = React.useRef<T | null>(null);
-	let generation = React.useRef(0);
-	React.useEffect(() => {
-		let p = fn();
-		value.current = null;
-		generation.current++;
-		let gen = generation.current;
-		// prevent showing stale data for too long
-		let timeout = setTimeout(() => {
-			if (value.current == null && gen == generation.current) { forceupdate(); }
-		}, 200);
-		p?.then(q => {
-			clearTimeout(timeout);
-			if (gen == generation.current) {
-				value.current = q;
-				forceupdate();
-			}
-		}).catch(err => console.error(err));
-	}, deps);
-	return value.current;
-}
-
-function forceUpdateReducer(i: number) { return i + 1; }
-export function useForceUpdate() {
-	const [, forceUpdate] = React.useReducer(forceUpdateReducer, 0);
-	return forceUpdate;
-}
-
-export function useEmitterProperty<T extends TypedEmitter<any>, R>(emitter: T, prop: T extends TypedEmitter<infer Q> ? keyof Q : never, selector: (obj: T) => R): R {
-	const [value, setValue] = React.useState(selector(emitter));
-	React.useEffect(() => {
-		let handler = () => setValue(selector(emitter));
-		emitter.on(prop, handler);
-		return () => emitter.off(prop, handler);
-	}, [emitter, prop, selector]);
-	return value;
-}
-
-export function useForceUpdateDebounce(delay = 50) {
-	const forceUpdate = useForceUpdate();
-	let ref = React.useRef(() => { });
-	React.useMemo(() => {
-		let timer = 0;
-		let tick = () => {
-			timer = 0;
-			forceUpdate();
-		}
-		ref.current = () => {
-			if (!timer) {
-				timer = +setTimeout(tick, delay);
-			}
-		}
-		return () => {
-			clearTimeout(timer);
-			timer = 0;
-		}
-	}, [forceUpdate, ref]);
-	return ref.current;
-}
-
-export function VR360View(p: { img: string | ImageData | TexImageSource }) {
-	let viewer = React.useRef<VR360Viewer | null>(null);
-	if (!viewer.current) {
-		viewer.current = new VR360Viewer(p.img);
-		viewer.current.cnv.style.width = "100%";
-		viewer.current.cnv.style.height = "100%";
-	}
-
-	let currentimg = React.useRef(p.img);
-	if (p.img != currentimg.current) {
-		viewer.current.setImage(p.img);
-		currentimg.current = p.img;
-	}
-
-	React.useEffect(() => () => viewer.current?.free(), []);
-
-	let wrapper = React.useRef<HTMLElement | null>(null);
-	let ref = (el: HTMLElement | null) => {
-		viewer.current?.cnv && el && el.appendChild(viewer.current?.cnv);
-		wrapper.current = el;
-	}
-
-	return (
-		<React.Fragment>
-			<div>
-				<input type="button" className="sub-btn" value="Fullscreen" onClick={() => wrapper.current?.requestFullscreen()} />
-			</div>
-			<div ref={ref} style={{ position: "relative", paddingBottom: "60%" }} />
-		</React.Fragment>
-	)
-}
-
-export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefined, tagName?: "div" | "td" | "span" | "p", style?: React.CSSProperties, className?: string }) {
-	let ref = (el: HTMLElement | null) => {
-		p.el && el && el.replaceChildren(p.el);
-	}
-	let Tagname = p.tagName ?? "div";
-	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
 
 export function OutputUI(p: { output?: UIScriptOutput | null }) {

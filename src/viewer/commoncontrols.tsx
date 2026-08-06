@@ -5,6 +5,8 @@ import classNames from "classnames";
 import { EngineCache } from "3d/modeltothree";
 import { JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
 import { cacheFileJsonModes } from "../parser/jsondecoders";
+import { drawTexture } from "../imgutils";
+import { TypedEmitter } from "../utils";
 
 
 export function CanvasView(p: { canvas: HTMLCanvasElement | null, fillHeight?: boolean }) {
@@ -20,6 +22,19 @@ export function CanvasView(p: { canvas: HTMLCanvasElement | null, fillHeight?: b
 
 	return (
 		<div ref={ref} className="mv-image-preview" style={p.fillHeight ? { height: "100%" } : {}} />
+	)
+}
+
+export function TextureView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap | ImageData }) {
+	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
+		if (cnv) {
+			let ctx = cnv.getContext("2d")!;
+			drawTexture(ctx, p.img);
+		}
+	}, [p.img]);
+
+	return (
+		<canvas ref={ref} className="mv-image-preview-canvas" />
 	)
 }
 
@@ -251,4 +266,75 @@ export class InputCommitted extends React.Component<React.DetailedHTMLProps<Reac
 		let newp = { ...this.props, onChange: undefined, value: undefined, defaultValue: this.props.value };
 		return <input ref={this.ref} {...newp} />;
 	}
+}
+
+export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefined, tagName?: "div" | "td" | "span" | "p", style?: React.CSSProperties, className?: string }) {
+	let ref = (el: HTMLElement | null) => {
+		p.el && el && el.replaceChildren(p.el);
+	}
+	let Tagname = p.tagName ?? "div";
+	return <Tagname ref={ref} style={p.style} className={p.className} />;
+}
+
+export function useAwaited<T>(fn: () => Promise<T> | null | undefined, deps: any[] = []): T | null {
+    let forceupdate = useForceUpdate();
+    // needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
+    let value = React.useRef<T | null>(null);
+    let generation = React.useRef(0);
+    React.useEffect(() => {
+        let p = fn();
+        value.current = null;
+        generation.current++;
+        let gen = generation.current;
+        // prevent showing stale data for too long
+        let timeout = setTimeout(() => {
+            if (value.current == null && gen == generation.current) { forceupdate(); }
+        }, 200);
+        p?.then(q => {
+            clearTimeout(timeout);
+            if (gen == generation.current) {
+                value.current = q;
+                forceupdate();
+            }
+        }).catch(err => console.error(err));
+    }, deps);
+    return value.current;
+}
+
+function forceUpdateReducer(i: number) { return i + 1; }
+export function useForceUpdate() {
+    const [, forceUpdate] = React.useReducer(forceUpdateReducer, 0);
+    return forceUpdate;
+}
+
+export function useEmitterProperty<T extends TypedEmitter<any>, R>(emitter: T, prop: T extends TypedEmitter<infer Q> ? keyof Q : never, selector: (obj: T) => R): R {
+    const [value, setValue] = React.useState(selector(emitter));
+    React.useEffect(() => {
+        let handler = () => setValue(selector(emitter));
+        emitter.on(prop, handler);
+        return () => emitter.off(prop, handler);
+    }, [emitter, prop, selector]);
+    return value;
+}
+
+export function useForceUpdateDebounce(delay = 50) {
+    const forceUpdate = useForceUpdate();
+    let ref = React.useRef(() => { });
+    React.useMemo(() => {
+        let timer = 0;
+        let tick = () => {
+            timer = 0;
+            forceUpdate();
+        }
+        ref.current = () => {
+            if (!timer) {
+                timer = +setTimeout(tick, delay);
+            }
+        }
+        return () => {
+            clearTimeout(timer);
+            timer = 0;
+        }
+    }, [forceUpdate, ref]);
+    return ref.current;
 }

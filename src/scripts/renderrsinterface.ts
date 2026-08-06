@@ -9,8 +9,8 @@ import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 import { parse } from "../parser/jsondecoders";
 import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
-import { UiCameraParams } from "../viewer/scenenodes";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
+import { UiCameraParams } from "../viewer/tabs/simplemodes";
 
 
 export const MAGIC_CONST_MOUSE_X = 0x80000001 | 0;
