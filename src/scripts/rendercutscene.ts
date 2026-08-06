@@ -117,6 +117,7 @@ export async function renderCutscene(engine: CacheFileSource, obj: cutscenes, un
         let lastseektimestamp = Date.now();
         let lastplayrate = 1;
         let endtimeout = 0;
+        let tickinterval = 0;
 
         function getTime() {
             return lastseektime + (Date.now() - lastseektimestamp) / 1000 * lastplayrate;
@@ -145,7 +146,18 @@ export async function renderCutscene(engine: CacheFileSource, obj: cutscenes, un
             }
             if (playbackRate != 0) {
                 let timeleft = (endtime - time / playbackRate) * 1000;
-                endtimeout = +setTimeout(() => { seek(0, playbackRate); }, timeleft)
+                endtimeout = +setTimeout(() => { seek(0, playbackRate); }, timeleft);
+            }
+            if (tickinterval) {
+                clearInterval(tickinterval);
+                tickinterval = 0;
+            }
+            if (playbackRate != 0) {
+                tickinterval = +setInterval(() => {
+                    let time = getTime();
+                    let range = document.querySelector("input[type=range]") as HTMLInputElement;
+                    range.valueAsNumber = time;
+                }, 100);
             }
 
             //fix css anims
@@ -197,6 +209,7 @@ export async function renderCutscene(engine: CacheFileSource, obj: cutscenes, un
     let doc = `<!DOCTYPE html>\n`;
     doc += `<html>\n`
     doc += `<head>\n`
+    doc += `<meta charset="utf-8">\n`
     doc += `<style>\n`
     doc += css;
     doc += `</style>\n`
