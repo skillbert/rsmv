@@ -297,6 +297,7 @@ function DBRowsView(p: { data: DeepLinkElement }) {
     let restables: JSX.Element[] = [];
     for (let tableindex = 0; tableindex < tablesprop.array.length; tableindex++) {
         let subtable = tablesprop.array[tableindex];
+        let subtableid = subtable.items?.find(q => q.name == "columnid");
         let subtypesprop = subtable.items?.find(q => q.name == "subtypes");
         let rowsprop = subtable.items?.find(q => q.name == "rows");
         if (!subtypesprop || !rowsprop || !subtypesprop.array || !rowsprop.array) {
@@ -323,7 +324,7 @@ function DBRowsView(p: { data: DeepLinkElement }) {
         restables.push(
             <table key={tableindex} className="mv-proptable">
                 <tbody>
-                    <tr className="mv-proptable__head"><th colSpan={subtypesprop.array.length}>Table {tableindex}</th></tr>
+                    <tr className="mv-proptable__head"><th colSpan={subtypesprop.array.length}>Table {subtableid?.primitive ?? "?"}</th></tr>
                     {rows}
                 </tbody>
             </table>

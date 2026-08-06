@@ -1,5 +1,5 @@
 
-import { cacheMajors, internalNameFiles } from "../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles } from "../constants";
 import { parse, FileParser, JsonBasedFile, cacheFileJsonModes } from "./jsondecoders";
 import { CacheFileSource } from "../cache";
 import { constrainedMap } from "../utils";
@@ -17,6 +17,8 @@ import { UiRenderContext, renderRsInterfaceHTML } from "../scripts/renderrsinter
 import { compileClientScript, prepareClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
 import { loadFontMetrics } from "../scripts/fontmetrics";
 import { anyFileIndex, CacheFileId, chunkedIndex, DecodeLookup, LogicalIndex, noArchiveIndex, singleMinorIndex, standardIndex } from "./filelookup";
+import { crc32 } from "../libs/crc32util";
+import { renderSlideshow } from "../scripts/renderslideshow";
 
 
 export type DecodeModeFactory<T = Buffer | string, CTX = any> = (flags: Record<string, string>) => DecodeMode<T, CTX>;
@@ -156,13 +158,44 @@ const decodeSound = (major: number, allowdownload: boolean): DecodeModeFactory =
 	}
 }
 
+const decodeSlideshow: DecodeModeFactory = () => {
+	return {
+		ext: "html",
+		major: cacheMajors.config,
+		minor: cacheConfigPages.dbrows,
+		logicalDimensions: 1,
+		usesArchieves: true,
+		internalNamefile: undefined,
+		fileToLogical(source, major, minor, subfile) { return [subfile]; },
+		logicalToFile(source, id) { return { major: cacheMajors.config, minor: cacheConfigPages.dbrows, subid: id[0] }; },
+		async logicalRangeToFiles(source, start, end) {
+			let dbarch = await source.getArchiveById(cacheMajors.config, cacheConfigPages.dbrows);
+			let indexfile = await source.getCacheIndex(cacheMajors.config);
+			let ids: number[] = [];
+			for (let subfile of dbarch) {
+				if (subfile.fileid < start[0] || subfile.fileid > end[0]) { continue; }
+				let dbrow = parse.dbrows.read(subfile.buffer, source);
+				if (dbrow.table == 40) { ids.push(subfile.fileid); }
+			}
+			return ids.map(q => ({ index: indexfile[cacheConfigPages.dbrows], subindex: q }));
+		},
+		...throwOnNonSimple,
+		async read(buf, fileid, source) {
+			let res = await renderSlideshow(source, parse.dbrows.read(buf, source));
+			return res.doc;
+		},
+		description: ""
+	}
+}
+
 const decodeCutscene: DecodeModeFactory = () => {
 	return {
 		ext: "html",
 		...noArchiveIndex(cacheMajors.cutscenes),
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
-			let res = await renderCutscene(source, buf);
+			let parsed = parse.cutscenes.read(buf, source);
+			let res = await renderCutscene(source, parsed, crc32(buf) >>> 0);
 			return res.doc;
 		},
 		description: "Decodes and assembles 2d vector cutscenes (first added in 2023). These cutscenes are saved in cache without image compression so take a while to decode. Sounds effects might be missing if you use a local game cache since the game normally only downloads them on demand."
@@ -430,6 +463,7 @@ const cacheFileDecodersSound = constrainedMap<DecodeModeFactory>()({
 });
 const cacheFileDecodersInteractive = constrainedMap<DecodeModeFactory>()({
 	cutscenehtml: decodeCutscene,
+	slideshowhtml: decodeSlideshow,
 	interfacehtml: decodeInterface,
 	interfaceviewer: decodeInterface2,
 	fontviewer: fontViewer,

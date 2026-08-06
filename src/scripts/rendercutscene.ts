@@ -3,19 +3,13 @@ import { parseSprite } from "../3d/materials/sprite";
 import { CacheFileSource } from "../cache";
 import { cacheMajors } from "../constants";
 import { pixelsToDataUrl } from "../imgutils";
-import { crc32 } from "../libs/crc32util";
-import { parse } from "../parser/jsondecoders";
 import { escapeHTML } from "../utils";
 import { parseMusic } from "./musictrack";
 
-export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
-    let obj = parse.cutscenes.read(file, engine);
-    let root = document.createElement("div");
-    root.style.width = `${obj.width}px`;
-    root.style.height = `${obj.height}px`;
+export async function renderCutscene(engine: CacheFileSource, obj: cutscenes, uniqueid: number) {
     console.log(obj);
 
-    let uuid = `cutscene-${crc32(file) >>> 0}`;
+    let uuid = `cutscene-${uniqueid}`;
 
     let css = "";
     let html = "";
@@ -24,7 +18,7 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
 
     let timetopercent = (t: number) => `${Math.max(0, t / endtime * 100).toFixed(2)}%`;
 
-    let imgcache = new Map<number, string>();
+    let imgcache = new Map<number, { src: string, classname: string, width: number, height: number }>();
 
     let anim = function <T extends number[][]>(el: cutscenes["elements"][number], animname: string, frames: T, stylefn: (v: T[number]) => string) {
         css += `@keyframes ${animname}{\n`
@@ -52,6 +46,7 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
     css += `  margin:0px auto;\n`;
     css += `  padding:12px;\n`;
     css += `  border-radius:20px;\n`;
+    css += `  z-index: 1;\n`;
     css += `}\n`;
 
     for (let i = obj.elements.length - 1; i >= 0; i--) {
@@ -63,9 +58,10 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
         css += `  ${timetopercent(el.end)}{visibility:hidden}\n`
         css += `}\n`;
         html += `<div style="animation:${endtime}s step-end infinite ${visibilityanim}">\n`;
-        if (el.subtitle) {
+        if (el.hassubtitle) {
             // el.subtitle seems to refer to .name for the subtitle content, even though some cutscenes have the subtitle text in both these fields
-            html += `<div class="subtitle"><div>${escapeHTML(el.name)}</div></div>\n`;
+            let subs = el.name.split(/<br\s*\/?>/);
+            html += `<div class="subtitle"><div>${subs.map(escapeHTML).join("<br>")}</div></div>\n`;
         }
         if (el.soundid) {
             try {
@@ -79,11 +75,13 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
             if (el.graphics.length != 0) {
                 for (let imgindex = el.graphics.length - 1; imgindex >= 0; imgindex--) {
                     let img = el.graphics[imgindex]
-                    let pngfile = imgcache.get(img.spriteid);
-                    if (!pngfile) {
+                    let imginfo = imgcache.get(img.spriteid);
+                    if (!imginfo) {
                         let spritebuf = await engine.getFileById(cacheMajors.sprites, img.spriteid);
-                        pngfile = await pixelsToDataUrl(parseSprite(spritebuf)[0].img);
-                        imgcache.set(img.spriteid, pngfile);
+                        let src = await pixelsToDataUrl(parseSprite(spritebuf)[0].img);
+                        let classname = `cutscene-${uuid}-sprite-${img.spriteid}`;
+                        imginfo = { src, classname, width: img.width, height: img.height };
+                        imgcache.set(img.spriteid, imginfo);
                     }
 
                     let anims: string[] = [];
@@ -106,7 +104,7 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
                     }
 
                     let positionstyle = `position:absolute; top:0px; left:0px; transform-origin:center;margin-left:${-img.width / 2}px; margin-top:${-img.height / 2}px;`;
-                    html += `<img data-spriteid="${img.spriteid}" src="${pngfile}" width="${img.width}" height="${img.height}" style="${positionstyle} animation:${anims.join()};">\n`;
+                    html += `<div data-spriteid="${img.spriteid}" class="${imginfo.classname}" style="${positionstyle} animation:${anims.join()};"></div>\n`;
                 }
             }
             html += "</div>";
@@ -185,6 +183,15 @@ export async function renderCutscene(engine: CacheFileSource, file: Buffer) {
         }
 
         return { seek, play, pause, onRangeChange };
+    }
+
+    for (let imginfo of imgcache.values()) {
+        css += `.${imginfo.classname}{\n`;
+        css += `  background-image:url('${imginfo.src}');\n`;
+        css += `  width:${imginfo.width}px;\n`;
+        css += `  height:${imginfo.height}px;\n`;
+        css += `  background-size:cover;\n`;
+        css += `}\n`;
     }
 
     let doc = `<!DOCTYPE html>\n`;
