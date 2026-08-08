@@ -13,6 +13,7 @@ import { CacheDownloader } from "../cache/downloader";
 import * as path from "path";
 import { selectFsCache } from "../cache/autocache";
 import { CLIScriptFS, ScriptFS } from "../scriptrunner";
+import { cacheFileJsonModes } from "../parser/jsondecoders";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -335,14 +336,30 @@ function CacheDragNDropHelp() {
 	);
 }
 
-export type UIOpenedFile = { fs: ScriptFS, name: string, data: string | Buffer };
+export type BrowseModes = keyof typeof cacheFileJsonModes;
+
+export type BrowsePageId = {
+	type: "browse",
+	id: string
+}
+
+export type UIOpenedFile = {
+	type: "file",
+	fs: ScriptFS,
+	name: string,
+	data: string | Buffer
+};
+
+export type UIOpenedTab = BrowsePageId | UIOpenedFile;
+
 export type RenderableContext = { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
 
-export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, statechange: undefined }> {
+export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, statechange: undefined }> {
 	source: CacheFileSource | null = null;
 	sceneCache: ThreejsSceneCache | null = null;
 	renderer: ThreeJsRenderer | null = null;
-	openedfile: UIOpenedFile | null = null;
+	openedTabs: UIOpenedTab[] = [];
+	activeTabIndex = -1;
 	renderable: RenderableContext | null = null;
 	rootElement: HTMLElement;
 	useServiceWorker: boolean;
@@ -397,9 +414,19 @@ export class UIContext extends TypedEmitter<{ openfile: UIOpenedFile | null, sta
 	}
 
 	@boundMethod
-	openFile(file: UIOpenedFile | null) {
-		this.openedfile = file;
-		this.emit("openfile", file);
+	openFile(tab: UIOpenedTab | null, newtab = false) {
+		let tabindex = this.activeTabIndex;
+		if (tabindex == -1) {
+			tabindex = 0;
+			newtab = true;
+		}
+		if (tab) {
+			this.openedTabs.splice(tabindex, (newtab ? 0 : 1), tab);
+		} else {
+			this.openedTabs.splice(tabindex, 1);
+		}
+		this.activeTabIndex = tabindex;
+		this.emit("showTab", tab);
 	}
 }
 

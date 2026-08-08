@@ -3,7 +3,7 @@ import { boundMethod } from "autobind-decorator";
 import prettyJson from "json-stringify-pretty-compact";
 import classNames from "classnames";
 import { EngineCache } from "3d/modeltothree";
-import { JsonSearchFilter, useJsonCacheSearch } from "./jsonsearch";
+import { jsonCacheSearch, JsonSearchFilter } from "./jsonsearch";
 import { cacheFileJsonModes } from "../parser/jsondecoders";
 import { drawTexture } from "../imgutils";
 import { TypedEmitter } from "../utils";
@@ -80,7 +80,7 @@ export function BlobAudio(p: { file: Uint8Array, autoplay: boolean }) {
 	)
 }
 
-export function TabStrip<T extends string>(p: { value: T, tabs: Partial<Record<T, string>>, onChange: (v: T) => void }) {
+export function TabStrip<T extends string>(p: { value: T | null, tabs: Partial<Record<T, string>>, onChange: (v: T) => void }) {
 	const templatecols = `repeat(${Math.min(4, Object.keys(p.tabs).length)},minmax(0,1fr))`;
 	return (
 		<div className="mv-tab-strip mv-inset" style={{ gridTemplateColumns: templatecols }}>
@@ -123,10 +123,19 @@ export function IdInputSearch(p: { cache: EngineCache | undefined, mode: keyof t
 	let [searchopen, setSearchopen] = React.useState(false);
 	const friendlynamefilter: JsonSearchFilter[] = [{ path: ["name"], search: search }];
 	const internalnamefilter: JsonSearchFilter[] = [{ path: ["$filename"], search: search }];
-	let friendlyname = useJsonCacheSearch(p.cache, p.mode, friendlynamefilter, !searchopen);
-	let internalname = useJsonCacheSearch(p.cache, p.mode, internalnamefilter, !searchopen);
-	let anyloaded = friendlyname.loaded || internalname.loaded;
-	let bothloaded = friendlyname.loaded && internalname.loaded;
+	let decoder = cacheFileJsonModes[p.mode];
+	let hasinternalnames = typeof decoder.lookup.internalNamefile == "number";
+	let jsonsearch = useAwaited(() => p.cache && jsonCacheSearch(p.cache, p.mode), [p.cache, p.mode]);
+	let internalnames = useAwaited(() => (typeof decoder.lookup.internalNamefile == "number" ? p.cache?.getInternalNameList(decoder.lookup.internalNamefile) : undefined), [p.cache, decoder]);
+	let friendlyname = jsonsearch?.run(friendlynamefilter);
+	let internalname: { id: number, name: string }[] = [];
+	for (let [id, name] of internalnames ?? []) {
+		if (name.toLowerCase().includes(search.toLowerCase())) {
+			internalname.push({ id, name });
+		}
+	}
+	let anyloaded = !!jsonsearch || !!internalnames;
+	let bothloaded = !!jsonsearch && !!internalnames;
 
 	const submitid = (v: number) => {
 		setidstate(v);
@@ -158,12 +167,12 @@ export function IdInputSearch(p: { cache: EngineCache | undefined, mode: keyof t
 			)}
 			{searchopen && anyloaded && (
 				<div className="mv-sidebar-scroll">
-					{friendlyname.filtered.slice(0, 100).map((q, i) => (
+					{friendlyname?.slice(0, 100).map((q, i) => (
 						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {q.name}</div>
 					))}
 					<hr />
-					{internalname.filtered.slice(0, 100).map((q, i) => (
-						<div key={q.$fileid} onClick={e => submitid(q.$fileid)}>{q.$fileid} - {q.$filename}</div>
+					{internalname.slice(0, 100).map((q, i) => (
+						<div key={q.id} onClick={e => submitid(q.id)}>{q.id} - {q.name}</div>
 					))}
 				</div>
 			)}
@@ -177,7 +186,11 @@ export function StringInput({ initialid, onChange }: { initialid?: string, onCha
 
 	let id = (stale.current || typeof initialid == "undefined" ? idstate : initialid);
 
-	let submit = (e: React.FormEvent) => { onChange(id); e.preventDefault(); stale.current = false; };
+	let submit = (e: React.FormEvent) => {
+		onChange(id);
+		e.preventDefault();
+		stale.current = false;
+	};
 	return (
 		<form className="mv-searchbar" onSubmit={submit}>
 			<input type="text" className="mv-searchbar-input" spellCheck="false" value={id} onChange={e => { setId(e.currentTarget.value); stale.current = true; }} />
@@ -276,65 +289,71 @@ export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefin
 	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
 
-export function useAwaited<T>(fn: () => Promise<T> | null | undefined, deps: any[] = []): T | null {
-    let forceupdate = useForceUpdate();
-    // needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
-    let value = React.useRef<T | null>(null);
-    let generation = React.useRef(0);
-    React.useEffect(() => {
-        let p = fn();
-        value.current = null;
-        generation.current++;
-        let gen = generation.current;
-        // prevent showing stale data for too long
-        let timeout = setTimeout(() => {
-            if (value.current == null && gen == generation.current) { forceupdate(); }
-        }, 200);
-        p?.then(q => {
-            clearTimeout(timeout);
-            if (gen == generation.current) {
-                value.current = q;
-                forceupdate();
-            }
-        }).catch(err => console.error(err));
-    }, deps);
-    return value.current;
+export function useAwaited<T>(fn: () => Promise<T> | T | null | undefined, deps: any[] = []): T | null | undefined {
+	let forceupdate = useForceUpdate();
+	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
+	let value = React.useRef<T | null | undefined>(null);
+	let generation = React.useRef(0);
+	let prom = React.useMemo(fn, deps);
+	if (!(prom instanceof Promise)) {
+		value.current = prom;
+	}
+	React.useEffect(() => {
+		generation.current++;
+		if (!(prom instanceof Promise)) { return; }
+		value.current = null;
+		let gen = generation.current;
+		// prevent showing stale data for too long
+		let timeout = setTimeout(() => {
+			if (value.current == null && gen == generation.current) {
+				forceupdate();
+			}
+		}, 200);
+		prom?.then(q => {
+			clearTimeout(timeout);
+			if (gen == generation.current) {
+				value.current = q;
+				forceupdate();
+			}
+		}).catch(err => console.error(err));
+	}, [prom]);
+	return value.current;
 }
 
 function forceUpdateReducer(i: number) { return i + 1; }
 export function useForceUpdate() {
-    const [, forceUpdate] = React.useReducer(forceUpdateReducer, 0);
-    return forceUpdate;
+	const [, forceUpdate] = React.useReducer(forceUpdateReducer, 0);
+	return forceUpdate;
 }
 
 export function useEmitterProperty<T extends TypedEmitter<any>, R>(emitter: T, prop: T extends TypedEmitter<infer Q> ? keyof Q : never, selector: (obj: T) => R): R {
-    const [value, setValue] = React.useState(selector(emitter));
-    React.useEffect(() => {
-        let handler = () => setValue(selector(emitter));
-        emitter.on(prop, handler);
-        return () => emitter.off(prop, handler);
-    }, [emitter, prop, selector]);
-    return value;
+	const [value, setValue] = React.useState(selector(emitter));
+	React.useEffect(() => {
+		let handler = () => setValue(selector(emitter));
+		emitter.on(prop, handler);
+		return () => emitter.off(prop, handler);
+	}, [emitter, prop, selector]);
+	return value;
 }
 
 export function useForceUpdateDebounce(delay = 50) {
-    const forceUpdate = useForceUpdate();
-    let ref = React.useRef(() => { });
-    React.useMemo(() => {
-        let timer = 0;
-        let tick = () => {
-            timer = 0;
-            forceUpdate();
-        }
-        ref.current = () => {
-            if (!timer) {
-                timer = +setTimeout(tick, delay);
-            }
-        }
-        return () => {
-            clearTimeout(timer);
-            timer = 0;
-        }
-    }, [forceUpdate, ref]);
-    return ref.current;
+	const forceUpdate = useForceUpdate();
+	let ref = React.useRef(() => { });
+	React.useMemo(() => {
+		let timer = 0;
+		let tick = () => {
+			timer = 0;
+			forceUpdate();
+		}
+		ref.current = () => {
+			if (!timer) {
+				timer = +setTimeout(tick, delay);
+			}
+		}
+		return () => {
+			clearTimeout(timer);
+			timer = 0;
+		}
+	}, [forceUpdate, ref]);
+	return ref.current;
 }

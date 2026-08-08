@@ -5,11 +5,12 @@ import * as ReactDOM from "react-dom/client";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
-import { UIContext, SavedCacheSource, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext } from "./maincomponents";
+import { UIContext, SavedCacheSource, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext, downloadBlob, BrowsePageId } from "./maincomponents";
 import classNames from "classnames";
 import { exposeDebugToolsInGlobal } from "../consoletools";
 import { useForceUpdate } from "./commoncontrols";
-import { FileViewer } from "./viewers/fileviewer";
+import { FileDisplay } from "./viewers/fileviewer";
+import { BrowseDisplay } from "./tabs/browse";
 
 
 exposeDebugToolsInGlobal();
@@ -94,11 +95,11 @@ function App(p: {}) {
 	let redraw = useForceUpdate();
 	React.useEffect(() => {
 		ctx.on("statechange", redraw);
-		ctx.on("openfile", redraw);
+		ctx.on("showTab", redraw);
 		window.addEventListener("resize", redraw);
 		return () => {
 			ctx.off("statechange", redraw);
-			ctx.off("openfile", redraw);
+			ctx.off("showTab", redraw);
 			window.removeEventListener("resize", redraw);
 		}
 	}, [ctx]);
@@ -106,12 +107,15 @@ function App(p: {}) {
 	let width = ctx.rootElement.clientWidth;
 	let vertical = width < 550;
 
+	let visibletab = (ctx.activeTabIndex != -1 ? ctx.openedTabs[ctx.activeTabIndex] : null);
+
 	let cachemeta = ctx.source?.getCacheMeta();
 	return (
 		<UIEngineContext.Provider value={ctx.renderable}>
 			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
-				<canvas className="mv-canvas" ref={initCnv} style={{ display: ctx.openedfile ? "none" : "block" }}></canvas>
-				{ctx.openedfile && <FileViewer file={ctx.openedfile} onSelectFile={ctx.openFile} />}
+				<canvas className="mv-canvas" ref={initCnv} style={{ display: visibletab ? "none" : "block" }}></canvas>
+				{visibletab?.type == "file" && <FileViewer file={visibletab} onSelectFile={ctx.openFile} />}
+				{visibletab?.type == "browse" && <BrowseViewer browse={visibletab} onSelectFile={ctx.openFile} />}
 				<div className="mv-sidebar">
 					{!ctx.source && (
 						<React.Fragment>
@@ -134,3 +138,35 @@ function App(p: {}) {
 		</UIEngineContext.Provider>
 	);
 }
+
+
+export function FileViewer(p: { file: UIOpenedFile, onSelectFile: (f: UIOpenedFile | null) => void }) {
+	return (
+		<div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
+			<div className="mv-modal-head">
+				<span>{p.file.name}</span>
+				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => downloadBlob(p.file.name, new Blob([p.file.data]))}>download</span>
+				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => p.onSelectFile(null)}>x</span>
+			</div>
+			<div style={{ overflow: "auto", flex: "1", position: "relative" }}>
+				<FileDisplay file={p.file} />
+			</div>
+		</div>
+	);
+}
+
+
+export function BrowseViewer(p: { browse: BrowsePageId, onSelectFile: (f: UIOpenedFile | null) => void }) {
+	return (
+		<div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
+			<div className="mv-modal-head">
+				<span>{p.browse.id}</span>
+				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => p.onSelectFile(null)}>x</span>
+			</div>
+			<div style={{ overflow: "auto", flex: "1", position: "relative" }}>
+				<BrowseDisplay browse={p.browse} />
+			</div>
+		</div>
+	);
+}
+

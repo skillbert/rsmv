@@ -27,6 +27,10 @@
 	grid-template-rows: minmax(0, 1fr);
 }
 
+.mv-root audio {
+	height: 2em;
+}
+
 .mv-root--vertical {
 	grid-template-columns: 100%;
 	grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
@@ -59,6 +63,7 @@
 	background-repeat: no-repeat;
 	background-color: #fbcc4a;
 	border-color: #fbcc4a;
+	color: black;
 }
 
 .sub-btn.active {

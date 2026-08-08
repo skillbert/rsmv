@@ -341,20 +341,18 @@ export function OutputUI(p: { output?: UIScriptOutput | null }) {
 }
 
 export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
-	const initialMaxlist = 4000;
 	let ctx = React.useContext(UIRootContext);
-	let [maxlist, setMaxlist] = React.useState(initialMaxlist);
 	let [folder, setfolder] = React.useState("");
 	let [hasbacking, setbacking] = React.useState(false);
 	let queueRender = useForceUpdateDebounce(50);
 	let [files, folders, addfile, addfolder] = React.useMemo(() => {
-		let files = new Set<string>();
+		let files = new Map<string, string>();
 		let folders = new Set<string>();
 		let init = async () => {
 			if (p.fs) {
 				let all = await p.fs.readDir(folder);
 				for (let entry of all) {
-					if (entry.kind == "file") { files.add(entry.name); }
+					if (entry.kind == "file") { files.set(entry.name, entry.name); }
 					if (entry.kind == "directory") { folders.add(entry.name); }
 				}
 			} else {
@@ -375,7 +373,7 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
 		}
 		let addfile = (name: string) => {
 			if (name.startsWith(folder) && name.indexOf("/", folder.length + 1) == -1) {
-				files.add(name.slice(folder.length));
+				files.set(name.slice(folder.length), name.slice(folder.length));
 				queueRender();
 			}
 		}
@@ -397,36 +395,9 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
 
 	let openFile = React.useCallback(async (name: string) => {
 		let data = await p.fs!.readFileBuffer(`${folder}/${name}`);
-		ctx.openFile({ fs: p.fs!, name, data });
+		ctx.openFile({ type: "file", fs: p.fs!, name, data });
 	}, [p.fs, ctx, folder]);
 
-	let listkeydown = React.useCallback((e: React.KeyboardEvent) => {
-		if (p.fs && ctx.openedfile && (e.key == "ArrowDown" || e.key == "ArrowUp")) {
-			e.preventDefault();
-			//bit of a yikes, map behaves as a single linked list and i'm trying to not
-			//piss of the god of JIT by writing a custom iterator
-			let previous: string | null = null;
-			let match: string | null = null;
-			let grabnext = false;
-			for (let file of files) {
-				if (grabnext) {
-					match = file;
-					break;
-				} else if (file == ctx.openedfile?.name) {
-					if (e.key == "ArrowUp") {
-						match = previous;
-						break;
-					} else {
-						grabnext = true;
-					}
-				}
-				previous = file;
-			}
-			if (match) {
-				openFile(match);
-			}
-		}
-	}, [p.fs, files, openFile])
 
 	//expose the fs to script, but make sure we don't leak it after it's gone from ui
 	useEffect(() => {
@@ -451,12 +422,6 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
 				<div key={subfolder} onClick={e => setfolder(`${folder}/${subfolder}`)}>{subfolder}/</div>
 			)
 		}
-		for (let name of files) {
-			if (filelist.length > maxlist) { break; }
-			filelist.push(
-				<div key={name} onClick={e => openFile(name)} style={name == ctx.openedfile?.name ? { background: "black" } : undefined}>{name}</div>
-			);
-		}
 
 		let clicksave = async () => {
 			if (!p.fs) { return; }
@@ -474,6 +439,9 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
 			setbacking(true);
 		}
 
+		let visibleuitab = ctx.openedTabs[ctx.activeTabIndex];
+		let openedfile = (visibleuitab?.type == "file" && visibleuitab.fs == p.fs) ? visibleuitab.name : null;
+
 		//TODO file dowload counter
 		return (
 			<div>
@@ -488,14 +456,61 @@ export function UIScriptFiles(p: { fs?: UIScriptFS | null }) {
 						])}
 					</div>
 				)}
-				{files.size > maxlist && <div>Only showing first {maxlist} files</div>}
-				<div tabIndex={0} onKeyDownCapture={listkeydown}>
-					{filelist}
-					{files.size > maxlist && <input type="button" className="sub-btn" onClick={e => setMaxlist(maxlist + 4000)} value={`Show more(${maxlist} / ${files.size})`} />}
-				</div>
+				{filelist}
+				<FileListView files={files} selected={openedfile} onSelect={openFile} />
 			</div>
 		);
 	}
+}
+
+export function FileListView<T>(p: { files: Map<T, string>, selected: T | null, onSelect?: (name: T) => void }) {
+	const initialMaxlist = 4000;
+	let [maxlist, setMaxlist] = React.useState(initialMaxlist);
+
+	let listkeydown = React.useCallback((e: React.KeyboardEvent) => {
+		if (p.selected && (e.key == "ArrowDown" || e.key == "ArrowUp")) {
+			e.preventDefault();
+			//bit of a yikes, map behaves as a single linked list and i'm trying to not
+			//piss of the god of JIT by writing a custom iterator
+			let previous: T | null = null;
+			let match: T | null = null;
+			let grabnext = false;
+			for (let [key, name] of p.files) {
+				if (grabnext) {
+					match = key;
+					break;
+				} else if (key == p.selected) {
+					if (e.key == "ArrowUp") {
+						match = previous;
+						break;
+					} else {
+						grabnext = true;
+					}
+				}
+				previous = key;
+			}
+			if (match) {
+				p.onSelect?.(match);
+			}
+		}
+	}, [p.files, p.selected, p.onSelect])
+
+	let filelist: React.ReactNode[] = [];
+	let index = 0;
+	for (let [key, name] of p.files) {
+		if (filelist.length > maxlist) { break; }
+		filelist.push(
+			<div key={index++} onClick={e => p.onSelect?.(key)} style={key == p.selected ? { background: "black" } : undefined}>{name}</div>
+		);
+	}
+
+	return (<>
+		{p.files.size > maxlist && <div>Only showing first {maxlist} files</div>}
+		<div tabIndex={0} onKeyDownCapture={listkeydown}>
+			{filelist}
+			{p.files.size > maxlist && <input type="button" className="sub-btn" onClick={e => setMaxlist(maxlist + 4000)} value={`Show more(${maxlist} / ${p.files.size})`} />}
+		</div>
+	</>);
 }
 
 export function UIScriptConsole(p: { output?: UIScriptOutput | null }) {

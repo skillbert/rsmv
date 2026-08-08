@@ -34,12 +34,27 @@ export type Stream = {
 	tee(): Stream
 }
 
-export function checkObject<T extends { [key: string]: "string" | "number" | "boolean" }>(obj: unknown, props: T) {
+export function checkObject<T extends { [key: string]: "string" | "number" | "boolean" | "numberarray" }>(obj: unknown, props: T) {
 	if (!obj || typeof obj != "object") { return null; }
-	let res: { [key in keyof T]: T[key] extends "string" ? string : T[key] extends "number" ? T[key] extends "boolean" ? boolean : number : never } = {} as any;
+	let res: {
+		[key in keyof T]:
+		T[key] extends "string" ? string :
+		T[key] extends "number" ? number :
+		T[key] extends "boolean" ? boolean :
+		T[key] extends "numberarray" ? number[] :
+		never
+	} = {} as any;
 	for (let [key, type] of Object.entries(props)) {
-		if (!(key in obj) && typeof obj[key] != type) { return null; }
-		res[key as keyof T] = obj[key];
+		if (!(key in obj)) { return null; }
+		let prop = obj[key];
+		if (type == "numberarray") {
+			if (!Array.isArray(prop)) { return null; }
+			if (prop.some(v => typeof v != "number")) { return null; }
+			res[key as keyof T] = prop.slice() as any;
+		} else {
+			if (typeof prop != type) { return null; }
+			res[key as keyof T] = prop;
+		}
 	}
 	return res;
 }
@@ -419,13 +434,13 @@ export function packedHSL2HSL(hsl: number) {
 }
 
 export function hsl2hex(hsl: number) {
-    let rgb = HSL2RGB(packedHSL2HSL(hsl));
-    return `#${((rgb[0] << 16) | (rgb[1] << 8) | (rgb[2] << 0)).toString(16).padStart(6, "0")}`;
+	let rgb = HSL2RGB(packedHSL2HSL(hsl));
+	return `#${((rgb[0] << 16) | (rgb[1] << 8) | (rgb[2] << 0)).toString(16).padStart(6, "0")}`;
 }
 
 export function hex2hsl(hex: string) {
-    let n = parseInt(hex.replace(/^#/, ""), 16);
-    return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
+	let n = parseInt(hex.replace(/^#/, ""), 16);
+	return HSL2packHSL(...RGB2HSL((n >> 16) & 0xff, (n >> 8) & 0xff, (n >> 0) & 0xff));
 }
 
 export type Coord = {

@@ -6,7 +6,7 @@ import { DecodeErrorJson } from "../../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
 import { findParentElement } from "../../utils";
 import { ParsedTexture } from "../../3d/materials/textures";
-import { parse } from "../../parser/jsondecoders";
+import { cacheFileJsonModes, parse } from "../../parser/jsondecoders";
 import classNames from "classnames";
 import { drawTexture } from "../../imgutils";
 import { RsUIViewer } from "../viewers/rsuiviewer";
@@ -14,7 +14,7 @@ import { ClientScriptViewer } from "../viewers/cs2viewer";
 import { RsFontViewer } from "../viewers/fontviewer";
 import { JSONSchema6Definition } from "json-schema";
 import { StructView } from "../viewers/configview";
-import {  downloadBlob, UIOpenedFile } from "../maincomponents";
+import { BrowsePageId, downloadBlob, UIOpenedFile } from "../maincomponents";
 
 
 function bufToHexView(buf: Buffer) {
@@ -151,29 +151,32 @@ function UnknownFileViewer(p: { data: Buffer, ext: string }) {
     )
 }
 
-function JsonViewer(p: { data: string, file: UIOpenedFile }) {
+export function JsonViewer(p: { data?: string, json?: object, jsonmode: string }) {
     let [rawjson, setrawjson] = React.useState(false);
 
-    let parsed = useAwaited(async () => {
+    let filetext = React.useMemo(() => {
+        if (p.data) { return p.data; }
+        if (p.json) { return JSON.stringify(p.json, null, 2); }
+        return "";
+    }, [p.data, p.json]);
+    let parsed = React.useMemo(() => {
         if (rawjson) { return null; }
-        let obj = null as any;
+        let schema = cacheFileJsonModes[p.jsonmode as keyof typeof cacheFileJsonModes]?.parser.parser.getJsonSchema();
+        let obj: any = null;
         let err = "";
-        let schema = null as JSONSchema6Definition | null;
-        try {
-            obj = JSON.parse(p.data);
-        } catch (e) {
-            err = "" + e;
-        }
-        if (typeof obj == "object" && obj?.$schema) {
-            let schemafile = await p.file.fs.readFileText(obj.$schema);
+        if (p.json) {
+            obj = p.json;
+        } else if (p.data) {
             try {
-                schema = JSON.parse(schemafile);
+                obj = JSON.parse(p.data);
             } catch (e) {
                 err = "" + e;
             }
+        } else {
+            err = "no data";
         }
         return { obj, err, schema }
-    }, [p.data, p.file, rawjson]);
+    }, [p.data, p.json, p.jsonmode, rawjson]);
 
     React.useEffect(() => {
         globalThis.filejson = parsed?.obj;
@@ -183,9 +186,9 @@ function JsonViewer(p: { data: string, file: UIOpenedFile }) {
     return (
         <React.Fragment>
             <input type="button" className="sub-btn" value={rawjson ? "View parsed" : "View raw"} onClick={e => setrawjson(!rawjson)} />
-            <CopyButton text={p.data} />
+            <CopyButton text={filetext} />
             {!rawjson && <StructView data={parsed?.obj} meta={parsed?.schema} />}
-            {rawjson && <SimpleTextViewer file={p.data} />}
+            {rawjson && <SimpleTextViewer file={filetext} />}
         </React.Fragment>
     )
 }
@@ -308,7 +311,8 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
     } else if (ext == "cs2.json") {
         el = <ClientScriptViewer data={fileText()} />
     } else if (ext == "json") {
-        el = <JsonViewer data={fileText()} file={p.file} />
+        let jsonmode = p.file.name.match(/^(\w+)\-/);
+        el = <JsonViewer data={fileText()} jsonmode={jsonmode?.[1] ?? ""} />
     } else if (ext == "html") {
         el = <iframe srcDoc={fileText()} sandbox="allow-scripts" style={{ width: "95%", height: "95%" }} />;
     } else if (ext == "rstex") {
@@ -339,19 +343,3 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
     }
     return el;
 }
-
-export function FileViewer(p: { file: UIOpenedFile, onSelectFile: (f: UIOpenedFile | null) => void }) {
-    return (
-        <div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
-            <div className="mv-modal-head">
-                <span>{p.file.name}</span>
-                <span style={{ float: "right", marginLeft: "10px" }} onClick={e => downloadBlob(p.file.name, new Blob([p.file.data]))}>download</span>
-                <span style={{ float: "right", marginLeft: "10px" }} onClick={e => p.onSelectFile(null)}>x</span>
-            </div>
-            <div style={{ overflow: "auto", flex: "1", position: "relative" }}>
-                <FileDisplay file={p.file} />
-            </div>
-        </div>
-    );
-}
-

@@ -11,6 +11,7 @@ import { ScenePlayer } from './tabs/avatar';
 import { SceneMapModel } from './tabs/map';
 import { SceneScenario } from './tabs/scenario';
 import VR360Viewer from "../libs/vr360viewer";
+import { BrowseUI } from "./tabs/browse";
 
 
 export type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "browse" | "scripts";
@@ -283,7 +284,7 @@ export type LookupModeProps = {
 }
 
 const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {
-	browse: ScriptsUI,
+	browse: BrowseUI,
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,
