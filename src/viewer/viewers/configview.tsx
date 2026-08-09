@@ -1,6 +1,6 @@
 import * as React from "react";
-import { UIEngineContext } from "../maincomponents";
-import { cacheConfigPages, cacheMajors, internalNameFiles, vartypes } from "../../constants";
+import { UIEngineContext, UIRootContext } from "../maincomponents";
+import { cacheMajors, internalNameFiles, vartypes } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { pixelsToDataUrl } from "../../imgutils";
 import { JSONSchema6, JSONSchema6Definition } from "json-schema";
@@ -11,6 +11,8 @@ import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
 import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { variableSources } from "../../clientscript/definitions";
+import { makeFileId } from "../tabs/browse";
+import { cacheFileJsonModes } from "../../parser/jsondecoders";
 
 type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
@@ -250,6 +252,7 @@ function JsonImgFileView(p: { file: Uint8Array | string }) {
 
 function ColorView(p: { hsl?: number, rgb?: number[] }) {
     let alpha = 255;
+    let hasalpha = false;
     let color = [0, 0, 0];
     let hsl = [0, 0, 0];
     let colorstring = "";
@@ -261,6 +264,7 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     if (p.rgb !== undefined) {
         if (p.rgb.length == 4) {
             alpha = p.rgb[3];
+            hasalpha = true;
             color = p.rgb.slice(1, 4);
         } else {
             color = p.rgb.slice(0, 3);
@@ -272,7 +276,7 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     return (
         <span title={title}>
             <span className="mv-proplist__color" style={{ background: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }} />
-            color: {colorstring}
+            color: {colorstring}{hasalpha ? `, alpha: ${alpha}` : ""}
         </span>
     );
 }
@@ -335,11 +339,59 @@ function DBRowsView(p: { data: DeepLinkElement }) {
     </div>;
 }
 
+
+export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeof cacheFileJsonModes>> = {
+    achievement: "achievements",
+    bas: "animgroupconfigs",
+    chatcat: "quickchatcats",
+    chatphrase: "quickchatlines",
+    cursor: "cursors",
+    cutscene: "cutscenes",
+    dbrow: "dbrows",
+    enum: "enums",
+    idkit: "identitykit",
+    obj: "items",
+    loc: "locs",
+    model: "models",
+    fontmetrics: "fontmetrics",
+    npc: "npcs",
+    seq: "sequences",
+    spotanim: "spotanims",
+    sound: "soundjson",
+    struct: "structs",
+    quest: "quests",
+    material: "materials",
+    var_player_reference: "var_player",
+    // need to confirm
+    // mapsceneicon: "mapscenes",
+    // mapelement: "maplabels",
+    // skybox: "environments",
+    // non-json
+    // graphic: "sprites",
+    // texture: "textures",
+    // maparea: "mapareas",
+}
+
+
+
+function ObjectLink(p: { prop: DeepLinkElement }) {
+    let ctx = React.useContext(UIRootContext);
+    let match = vartypeToDecoder[p.prop.rsmvtype];
+    let fileid = makeFileId(p.prop.rsmvtype, [p.prop.primitive as number]);
+
+    let onclick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        ctx.openFile({ type: "browse", id: fileid });
+    }
+
+    return <>
+        <span className={match && "mv-filelink"} onClick={match && onclick}>{p.prop.rsmvtype}_{p.prop.primitive}</span>
+        {p.prop.valuename ? ` (${p.prop.valuename})` : null}
+    </>
+}
+
 export function renderPrimitive(prop: DeepLinkElement) {
     if (typeof prop.primitive == "number") {
-        let rawtext = `${prop.primitive} (${prop.rsmvtype})`;
-        if (prop.valuename) { rawtext = `${prop.valuename} (${prop.rsmvtype}_${prop.primitive})`; }
-
         if (prop.rsmvtype == "color") {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
         }
@@ -347,18 +399,21 @@ export function renderPrimitive(prop: DeepLinkElement) {
             return { isbig: false, el: <CoordGridView value={prop.primitive} /> };
         }
         if (prop.rsmvtype == "graphic") {
-            return { isbig: false, el: <><div>{rawtext}</div><SpriteView id={prop.primitive} /></> };
+            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><SpriteView id={prop.primitive} /></> };
         }
         if (prop.rsmvtype == "texture") {
-            return { isbig: false, el: <><div>{rawtext}</div><TextureView id={prop.primitive} /></> };
+            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><TextureView id={prop.primitive} /></> };
         }
         if (prop.rsmvtype == "cursor") {
-            return { isbig: false, el: <><div>{rawtext}</div><CursorView id={prop.primitive} /></> };
+            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><CursorView id={prop.primitive} /></> };
         }
         if (prop.rsmvtype == "sound") {
-            return { isbig: false, el: <><div>{rawtext}</div><SoundView id={prop.primitive} /></> };
+            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><SoundView id={prop.primitive} /></> };
         }
-        return { isbig: false, el: <span>{rawtext}</span> };
+        if (prop.rsmvtype == "boolean") {
+            return { isbig: false, el: <span>{prop.primitive ? true : false}</span> };
+        }
+        return { isbig: false, el: <span><ObjectLink prop={prop} /></span> };
     }
     if (typeof prop.primitive == "string") {
         if (prop.rsmvtype == "imagefile") {

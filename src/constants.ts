@@ -280,6 +280,7 @@ export const vartypes = {
 	type_207: 207,
 	type_208: 208,
 	var_reference: 209,
+	var_player_reference: 210,
 
 	//hardcoded placeholder types
 	//TODO try to remove this, no longer required but still used for unknown subtypes

@@ -7,6 +7,7 @@ import { BrowseModes, BrowsePageId, UIEngineContext, UIRootContext } from "../ma
 import { jsonCacheSearch, JsonSearchFilter } from "../jsonsearch";
 import { FileListView } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
+import { vartypeToDecoder } from "../viewers/configview";
 
 const modeOverrides: Partial<Record<keyof typeof cacheFileJsonModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -19,15 +20,25 @@ const modeNames: Partial<Record<BrowseModes, string>> = {
     ...Object.fromEntries(Object.keys(cacheFileJsonModes).map(k => [k, k]))
 }
 
-function makeFileId(mode: string, index: number[]) {
+export function makeFileId(mode: string, index: number[]) {
     return `${mode}_${index.join("_")}`;
 }
 
-function fileIdToIndex(fileid: string) {
-    let [mode, ...indexparts] = fileid.split("_");
+export function fileIdToIndex(fileid: string) {
+    let parts = fileid.split("_");
+    let mode = "";
+    let index: number[] = [];
+    for (let i = 0; i < parts.length; i++) {
+        let intvalue = parseInt(parts[i]);
+        if (isNaN(intvalue)) {
+            mode += (mode.length != 0 ? "_" : "") + parts[i];
+        } else {
+            index.push(intvalue);
+        }
+    }
+    if (mode in vartypeToDecoder) { mode = vartypeToDecoder[mode]; }
     if (!cacheFileJsonModes[mode as BrowseModes]) { return null; }
-    let index = indexparts.map(q => parseInt(q));
-    if (index.some(q => isNaN(q))) { return null; }
+    if (index.length == 0) { return null; }
     return { mode: mode as BrowseModes, index };
 }
 
@@ -151,8 +162,8 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
 
     let data = useAwaited(() => {
         let overrides = index && modeOverrides[index.mode];
-        let mode = index && cacheFileJsonModes[index.mode];
-        if (!engine || !mode || !index) { return null; }
+        let modefn = index && cacheFileJsonModes[index.mode];
+        if (!engine || !modefn || !index) { return null; }
         return engine.getObject(index.mode, index.index);
     }, [index?.mode, index?.index.join("_"), engine]);
 

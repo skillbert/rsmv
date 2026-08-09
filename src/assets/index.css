@@ -404,3 +404,9 @@
 .mv-proptable__row {
 	vertical-align: top;
 }
+
+.mv-filelink {
+	color: #438ab5;
+	text-decoration: underline;
+	cursor: pointer;
+}
