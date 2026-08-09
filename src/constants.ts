@@ -79,7 +79,7 @@ export const internalNameFiles = {
 	var_client: 57,
 	var_npc: 59,
 	var_object: 60,
-	var_player: 61,
+	packed_varp_and_varbit: 61,
 	sound: 64,
 	midi: 69,
 	var_player_group: 80,
@@ -88,6 +88,10 @@ export const internalNameFiles = {
 	stylesheet: 92,
 	ui_anim_curve: 96,
 	ui_anim: 97,
+
+	// hardcoded, extract their value from packed_varp_and_varbit
+	var_player: 1000,
+	varbit:1001
 }
 
 //represents the largest build number that this application is aware off

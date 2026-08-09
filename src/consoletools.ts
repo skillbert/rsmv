@@ -29,6 +29,7 @@ export function exposeDebugToolsInGlobal() {
     globalThis.prettyjson = prettyJson;
     globalThis.cli = cli;
     globalThis.getFileCounts = getFileCounts;
+    globalThis.getNameCounts = getNameCounts;
     globalThis.getConfigCount = getConfigCount;
 }
 
@@ -83,10 +84,36 @@ async function getFileCounts() {
     return res;
 }
 
+async function getNameCounts() {
+    let source = globalThis.source as CacheFileSource;
+    let w = await source.getCacheIndex(2)
+    return Promise.all( w.map(async q => {
+        let names = await source.getInternalNameList(q.minor);
+        let max = 0;
+        for (let k of names.keys()) {
+            if (k > max) { max = k; }
+        }
+        return {
+            id: q.minor,
+            count: names.size,
+            max: max,
+            name: Object.entries(internalNameFiles).find(w => w[1] == q.minor)?.[0],
+            names,
+        };
+    }));
+}
+
 async function getConfigCount() {
     let source = globalThis.source as CacheFileSource;
     let w = await source.getCacheIndex(2)
-    return w.map(q => ({ id: q.minor, count: q.subindexcount, max: q.subindices.at(-1), name: Object.entries(cacheConfigPages).find(w => w[1] == q.minor)?.[0] }))
+    return w.map(q => (
+        {
+            id: q.minor,
+            count: q.subindexcount,
+            max: q.subindices.at(-1),
+            name: Object.entries(cacheConfigPages).find(w => w[1] == q.minor)?.[0]
+        }
+    ));
 }
 
 async function dumpjson(mode: string) {

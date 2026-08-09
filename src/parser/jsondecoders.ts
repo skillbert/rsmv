@@ -196,7 +196,7 @@ export const cacheFileJsonModes = {
 	dbrows: JsonBasedFile(parse.dbrows, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows, internalNameFiles.dbrow)),
 	quests: JsonBasedFile(parse.quest, singleMinorIndex(cacheMajors.config, cacheConfigPages.quests, internalNameFiles.quest)),
 
-	varbits: JsonBasedFile(parse.varbits, singleMinorIndex(cacheMajors.config, cacheConfigPages.varbits)),
+	varbits: JsonBasedFile(parse.varbits, singleMinorIndex(cacheMajors.config, cacheConfigPages.varbits, internalNameFiles.varbit)),
 	var_player: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varplayer, internalNameFiles.var_player)),
 	var_npc: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varnpc, internalNameFiles.var_npc)),
 	var_client: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varclient, internalNameFiles.var_client)),

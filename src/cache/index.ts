@@ -1,5 +1,5 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
-import { cacheConfigPages, cacheMajors, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import { cacheFileJsonModes, JsonBasedFile, parse } from "../parser/jsondecoders";
 import { cacheFilenameHash } from "../utils";
 import { parseLegacyArchive } from "./legacycache";
@@ -260,6 +260,7 @@ export function parseFileNameList(buffer: Buffer) {
 	index += 4;
 	let textoffset = index + nentries * (4 + (hasexplicitindex ? 4 : 0));
 	let res = new Map<number, string>();
+	let endoffset = 0;
 	for (let i = 0; i < nentries; i++) {
 		let fileid = i;
 		if (hasexplicitindex) {
@@ -268,10 +269,13 @@ export function parseFileNameList(buffer: Buffer) {
 		}
 		let stringoffset = textoffset + buffer.readUInt32BE(index);
 		index += 4;
-		let endoffset = stringoffset;
+		endoffset = stringoffset;
 		while (endoffset < buffer.length && buffer[endoffset] != 0) { endoffset++; }
 		let name = buffer.toString("latin1", stringoffset, endoffset);
 		res.set(fileid, name);
+	}
+	if (endoffset != buffer.length - 1) {
+		console.log("warning: didn't read entire filename file, remaining: " + (buffer.length - endoffset - 1));
 	}
 	return res;
 }
@@ -283,12 +287,28 @@ export abstract class CacheFileSource {
 	async getInternalNameList(namefile: number) {
 		let names = this.nameFiles.get(namefile);
 		if (names === undefined) {
-			let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
-				console.log("failed to load filename file", namefile, e);
-				return null;
-			});
-			names = (file ? parseFileNameList(file) : new Map<number, string>());
-			this.nameFiles.set(namefile, names);
+			if (namefile == internalNameFiles.var_player || namefile == internalNameFiles.varbit) {
+				// for some dumb reason varps and varbits are stored in a single file, so we need to split them up
+				let index = await this.getCacheIndex(cacheMajors.config);
+				let sharednames = await this.getInternalNameList(internalNameFiles.packed_varp_and_varbit);
+				let lastvarp = index[cacheConfigPages.varplayer].subindices.at(-1)!;
+				let varps = new Map<number, string>();
+				let varbits = new Map<number, string>();
+				for (let [index, value] of sharednames) {
+					if (index <= lastvarp) { varps.set(index, value); }
+					else { varbits.set(index - lastvarp, value); }
+				}
+				this.nameFiles.set(internalNameFiles.var_player, varps);
+				this.nameFiles.set(internalNameFiles.varbit, varbits);
+				names = (namefile == internalNameFiles.var_player ? varps : varbits);
+			} else {
+				let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
+					console.log("failed to load filename file", namefile, e);
+					return null;
+				});
+				names = (file ? parseFileNameList(file) : new Map<number, string>());
+				this.nameFiles.set(namefile, names);
+			}
 		}
 		return names;
 	}
