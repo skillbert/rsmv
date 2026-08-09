@@ -10,11 +10,10 @@ import classNames from "classnames";
 import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
 import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
-import { variableSources } from "../../clientscript/definitions";
 import { makeFileId } from "../tabs/browse";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit" | "";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
 
 type DeepLinkElement = {
@@ -103,6 +102,21 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
             let fieldtype = ctx.objstack.at(-1)?.type ?? ctx.objstack.at(-4)?.subtypes?.[nameorindex];
             rsmvtype = Object.entries(vartypes).find(([k, v]) => v == fieldtype)?.[0] as any ?? "unknown";
         }
+        // collapse multitypes
+        if (typeof data == "number" && rsmvtype == "var_reference") {
+            let domainid = (data >> 24) & 0xff;
+            data = data & 0xffff;
+            if (domainid == 0) { rsmvtype = "var_player"; }
+            else if (domainid == 1) { rsmvtype = "varbit"; }
+            else { console.log("unknown var_reference domainid: " + domainid); }
+        }
+        if (typeof data == "number" && rsmvtype == "achievement_or_varbit") {
+            let domainid = (data >> 24) & 0xff;
+            data = data & 0xffff;
+            if (domainid == 0) { rsmvtype = "achievement"; }
+            else if (domainid == 1) { rsmvtype = "varbit"; }
+            else { console.log("unknown achievement_or_varbit domainid: " + domainid); }
+        }
 
         // === fix schema location ===
         // strip nullable type from schema
@@ -123,6 +137,7 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
         // === render data ===
         if (typeof data == "number") {
             let valuename: string | undefined = undefined;
+
             if (rsmvtype == "type") {
                 valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
             } else if (rsmvtype == "varbit") {
@@ -131,19 +146,13 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
                     let varint = meta.varid ?? 0;
                     let domain = (varint >> 16) & 0xff;
                     let varid = varint & 0xffff;
-                    let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
-                    if (group && group[1].namefile != -1) {
-                        let varname = await ctx.source.getInternalName(group[1].namefile, varid);
-                        valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
-                    }
-                }
-            } else if (rsmvtype == "var_reference") {
-                let domain = (data >> 16) & 0xff;
-                let varid = data & 0xffff;
-                let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
-                if (group && group[1].namefile != -1) {
-                    let varname = await ctx.source.getInternalName(group[1].namefile, varid);
-                    valuename = `ref_var_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
+                    let varbitname = await ctx.source.getInternalName(internalNameFiles.varbit, data);
+                    valuename = `varbit_${domain}_${varid}${varbitname ? `_${varbitname}` : ""}`;
+                    // let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
+                    // if (group && group[1].namefile != -1) {
+                    //     let varname = await ctx.source.getInternalName(group[1].namefile, varid);
+                    //     valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
+                    // }
                 }
             } else if (rsmvtype == "stat") {
                 valuename = skillNames[data];
@@ -361,7 +370,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeo
     struct: "structs",
     quest: "quests",
     material: "materials",
-    var_player_reference: "var_player",
+    var_player: "var_player",
     // need to confirm
     // mapsceneicon: "mapscenes",
     // mapelement: "maplabels",
@@ -370,6 +379,8 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeo
     // graphic: "sprites",
     // texture: "textures",
     // maparea: "mapareas",
+    component: "interfaces",//redirect this to interfaceviewer instead
+    // interface: "interfaces"
 }
 
 
@@ -377,7 +388,16 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeo
 function ObjectLink(p: { prop: DeepLinkElement }) {
     let ctx = React.useContext(UIRootContext);
     let match = vartypeToDecoder[p.prop.rsmvtype];
-    let fileid = makeFileId(p.prop.rsmvtype, [p.prop.primitive as number]);
+    if (typeof p.prop.primitive != "number") { throw new Error("Objectlink primitive type number expected"); }
+
+    let index = [p.prop.primitive];
+    if (p.prop.rsmvtype == "component") {
+        let main = (p.prop.primitive >> 16) & 0xffff;
+        let sub = (p.prop.primitive) & 0xffff;
+        index = [main, sub];
+    }
+
+    let fileid = makeFileId(p.prop.rsmvtype, index);
 
     let onclick = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -385,13 +405,17 @@ function ObjectLink(p: { prop: DeepLinkElement }) {
     }
 
     return <>
-        <span className={match && "mv-filelink"} onClick={match && onclick}>{p.prop.rsmvtype}_{p.prop.primitive}</span>
+        <span className={match && "mv-filelink"} onClick={match && onclick}>{fileid}</span>
         {p.prop.valuename ? ` (${p.prop.valuename})` : null}
     </>
 }
 
 export function renderPrimitive(prop: DeepLinkElement) {
     if (typeof prop.primitive == "number") {
+        if (prop.rsmvtype == "" || prop.rsmvtype == "unknown" || prop.rsmvtype == 'int') {
+            return { isbig: false, el: <span>{prop.primitive}</span> };
+        }
+
         if (prop.rsmvtype == "color") {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
         }
@@ -498,7 +522,7 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
     let filename = p.data?.$filename ?? "";
 
     return (
-        <div>
+        <div style={{ userSelect: "text" }}>
             <h3>{decoder}_{fileidstring} - {filename}</h3>
             {data ? handlenode(data, true).el : <span>Loading...</span>}
         </div>

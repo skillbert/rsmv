@@ -395,6 +395,7 @@
 .mv-proptable {
 	border: 1px solid;
 	margin: 1em 0;
+	user-select: text;
 }
 
 .mv-proptable__head {

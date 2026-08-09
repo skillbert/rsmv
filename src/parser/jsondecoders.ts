@@ -241,7 +241,7 @@ export const cacheFileJsonModes = {
 	proctextures: JsonBasedFile(parse.proctexture, noArchiveIndex(cacheMajors.texturesOldPng)),
 	oldproctextures: JsonBasedFile(parse.oldproctexture, singleMinorIndex(cacheMajors.texturesOldPng, 0)),
 	interfaces: JsonBasedFile(parse.interfaces, standardIndex(cacheMajors.interfaces, internalNameFiles.interface)),
-	fontmetrics: JsonBasedFile(parse.fontmetrics, standardIndex(cacheMajors.fontmetrics, internalNameFiles.fontmetrics)),
+	fontmetrics: JsonBasedFile(parse.fontmetrics, noArchiveIndex(cacheMajors.fontmetrics, internalNameFiles.fontmetrics)),
 
 	config83: JsonBasedFile(parse.config83, singleMinorIndex(cacheMajors.config, 83)),
 

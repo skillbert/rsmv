@@ -14,6 +14,7 @@ const modeOverrides: Partial<Record<keyof typeof cacheFileJsonModes, { jsonNameP
     npcs: { jsonNameProperty: "name" },
     locs: { jsonNameProperty: "name" },
     quests: { jsonNameProperty: "name" },
+    achievements: { jsonNameProperty: "name" },
 }
 
 const modeNames: Partial<Record<BrowseModes, string>> = {
@@ -42,13 +43,8 @@ export function fileIdToIndex(fileid: string) {
     return { mode: mode as BrowseModes, index };
 }
 
-const searchModes = {
-    id: "ID",
-    internalname: "Internal Name",
-    objectname: "Object Name",
-}
 
-function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string, onSearch: (search: string) => void, onFileSelect: (id: string) => void }) {
+function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string, initialMode: string, onSearch: (search: string, searchmode: string) => void, onFileSelect: (id: string) => void }) {
     let mode = cacheFileJsonModes[p.modename] ?? null;
     let overrides = modeOverrides[p.modename] ?? {};
     let ctx = useContext(UIRootContext);
@@ -58,12 +54,16 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
     let selectedfile = (activetab?.type == "browse" ? activetab.id : null);
 
     let [searchtext, setSearchText] = React.useState(p.initialValue);
-    let [searchmode, setSearchmode] = React.useState<keyof typeof searchModes>("id");
+    let [searchmode, setSearchmode] = React.useState<keyof typeof searchModes>(p.initialMode as any);
+
+
 
     let canjsonsearch = overrides.jsonNameProperty != undefined;
     let caninternalnamesearch = mode.lookup.internalNamefile != undefined;
-    if (!canjsonsearch && searchmode == "objectname") { setSearchmode("id"); }
-    if (!caninternalnamesearch && searchmode == "internalname") { setSearchmode("id"); }
+    const searchModes: Record<string, string> = { id: "ID" };
+    if (caninternalnamesearch) { searchModes.internalname = "Internal Name"; }
+    if (canjsonsearch) { searchModes.objectname = "Object Name"; }
+    if (!searchModes[searchmode]) { searchmode = "id"; }
 
     let searcher = useAwaited(async () => {
         if (searchmode == "id") {
@@ -76,7 +76,8 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
 
                 let matches = new Map<string, string>();
                 for (let file of allfiles) {
-                    let filename = makeFileId(p.modename, mode.lookup.fileToLogical(engine, file.index.major, file.index.minor, file.subindex));
+                    let subid = file.index.subindices[file.subindex];
+                    let filename = makeFileId(p.modename, mode.lookup.fileToLogical(engine, file.index.major, file.index.minor, subid));
                     matches.set(filename, filename);
                 }
                 return matches;
@@ -116,10 +117,9 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
 
     let searchresult = useAwaited(() => searcher?.(searchtext), [searchtext, searcher]);
 
-
     return (
         <React.Fragment>
-            <form className="mv-searchbar" >
+            <form className="mv-searchbar" onSubmit={e => { e.preventDefault(); p.onSearch(searchtext, searchmode); }} >
                 <input type="text" className="mv-searchbar-input" spellCheck="false" value={searchtext} onChange={e => setSearchText(e.currentTarget.value)} />
                 <input type="button" style={{ width: "25px", height: "25px" }} value="" className="sub-btn sub-btn-search" />
             </form>
@@ -129,28 +129,30 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
                 {searchmode == "id" && !searchresult && <div>Loading ids...</div>}
                 {searchmode == "internalname" && !searchresult && <div>Loading internal names...</div>}
                 {searchmode == "objectname" && !searchresult && <div>Loading object names...</div>}
-                {searchresult && <FileListView files={searchresult} selected={selectedfile} onSelect={p.onFileSelect} />}
+                {searchresult && <FileListView files={searchresult} selected={selectedfile} onSelect={v => { p.onFileSelect(v); p.onSearch(searchtext, searchmode); }} />}
             </div>
         </React.Fragment>
     );
 }
 
 export function BrowseUI(p: LookupModeProps) {
-    let [id, setId] = React.useState<{ mode: string, search: string } | null>(checkObject(p.initialId, { mode: "string", search: "string" }) ?? null);
+    let [id, setId] = React.useState<{ mode: string, search: string, searchmode: string } | null>(checkObject(p.initialId, { mode: "string", search: "string", searchmode: "string" }) ?? null);
     let ctx = useContext(UIRootContext);
 
     let onFileSelect = React.useCallback((fileid: string) => {
         ctx.openFile({ type: "browse", id: fileid });
     }, [ctx]);
 
-    let onSearch = (search: string) => {
-        setId({ mode: id?.mode ?? "", search });
+    let onSearch = (search: string, searchmode: string) => {
+        let newid = { mode: id?.mode ?? "", search, searchmode: searchmode };
+        setId(newid);
+        localStorage.rsmv_lastsearch = JSON.stringify(newid);
     };
 
     return <>
-        {!id?.mode && <TabStrip tabs={modeNames} value={id?.mode ?? null as any} onChange={mode => setId({ mode, search: "" })} />}
+        {!id?.mode && <TabStrip tabs={modeNames} value={id?.mode ?? null as any} onChange={mode => setId({ mode, search: "", searchmode: "id" })} />}
         {id?.mode && <div style={{ marginTop: "0.5em" }}>Searching in {id.mode} <input type="button" className="sub-btn" onClick={() => setId(null)} value="Back" /></div>}
-        {id?.mode && <AdvancedIdInputSearch key={id.mode} modename={id.mode as any} initialValue={id.search} onSearch={onSearch} onFileSelect={onFileSelect} />}
+        {id?.mode && <AdvancedIdInputSearch key={id.mode} modename={id.mode as any} initialValue={id.search} initialMode={id.searchmode} onSearch={onSearch} onFileSelect={onFileSelect} />}
     </>
 }
 
@@ -164,8 +166,13 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
         let overrides = index && modeOverrides[index.mode];
         let modefn = index && cacheFileJsonModes[index.mode];
         if (!engine || !modefn || !index) { return null; }
-        return engine.getObject(index.mode, index.index);
+        return engine.getObject(index.mode, index.index).then(json => {
+            return {
+                file: JSON.stringify(json),
+                mode: index.mode,
+            }
+        })
     }, [index?.mode, index?.index.join("_"), engine]);
 
-    return <JsonViewer json={data} jsonmode={index?.mode ?? ""} />
+    return <JsonViewer data={data?.file} jsonmode={data?.mode ?? ""} />
 }

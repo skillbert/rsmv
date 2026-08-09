@@ -249,7 +249,7 @@ const decodeInterface2: DecodeModeFactory = () => {
 const fontViewer: DecodeModeFactory = () => {
 	return {
 		ext: "font.json",
-		...standardIndex(cacheMajors.fontmetrics, internalNameFiles.fontmetrics),
+		...noArchiveIndex(cacheMajors.fontmetrics, internalNameFiles.fontmetrics),
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
 			return JSON.stringify(await loadFontMetrics(source, buf, fileid[0], true));

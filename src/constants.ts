@@ -45,6 +45,7 @@ export const cacheMajors = {
 	achievements: 57,
 	fontmetrics: 58,
 	vectorfonts: 59,
+	stylesheets: 60,
 	cutscenes: 66,
 	filenames: 67,
 
@@ -268,7 +269,7 @@ export const vartypes = {
 	client_type: 125,
 	telemetry_interval: 126,
 	type_127: 127,
-	type_128: 128,
+	achievement_or_varbit: 128,//first byte=0 -> achievement, first byte=1 -> varbit
 	type_129: 129,
 	type_130: 130,
 	achievement: 131,
@@ -284,7 +285,7 @@ export const vartypes = {
 	type_207: 207,
 	type_208: 208,
 	var_reference: 209,
-	var_player_reference: 210,
+	var_player: 210,
 
 	//hardcoded placeholder types
 	//TODO try to remove this, no longer required but still used for unknown subtypes
