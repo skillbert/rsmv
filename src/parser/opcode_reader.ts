@@ -1133,6 +1133,21 @@ function stringParser(prebytes: number[]): ChunkParser {
 	}
 }
 
+function typedParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef): ChunkParser {
+	let sub = buildParser(parent, args[0], typedef);
+	let type = args[1];
+	if (typeof type != "string") { throw new Error("typed parser second argument should be a type string"); }
+
+	return {
+		...sub,
+		getJsonSchema() {
+			let schema = sub.getJsonSchema();
+			schema["x-rsmv-type"] = type;
+			return schema;
+		}
+	}
+}
+
 function conditionParser(parent: ChunkParentCallback, optionstrings: string[], writegetindex?: (v: unknown) => number) {
 	type ops = "=" | "<" | "<=" | ">" | ">=" | "&" | "!&" | "!=" | "&=";
 	type cond = { op: ops, value: number, varname: string, varindex: number };
@@ -1792,6 +1807,7 @@ const parserFunctions = {
 	struct: structParser,
 	tuple: tupleParserFactory(false),
 	typedtuple: tupleParserFactory(true),
+	typed: typedParser,
 
 	...hardcodes,
 	...parserPrimitives

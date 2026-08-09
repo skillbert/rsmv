@@ -20,6 +20,73 @@ export const MAGIC_CONST_OPNR = 0x80000004 | 0;
 export const MAGIC_CONST_IF_AS_CC = 0x80000005 | 0;
 export const MAGIC_UNK06 = 0x80000006 | 0;
 
+// map props defined in stylesheets cache
+export const styleSheetImageProps = [
+    0x2bfe1f41,
+    0x2f379723,
+    0x5a74cde9,
+    0x7d112e77,
+    0x9a4bc95f,
+    0x9c1f9920,
+    0x9cd91cd3,
+    0x26db786d,
+    0x31fae633,
+    0x33aa6501,
+    0x35f700a1,
+    0x37e641ca,
+    0x57b17ed9,
+    0x77eebbf6,
+    0x238dd969,
+    0x686ee599,
+    0x407722e8,
+    0xb5392a9d,
+    0xc2c5b115,
+    0xc6a890b2,
+    0xc188b831,
+    0xcc4e8ae8,
+    0xcf56a4b5,
+    0xd8aee3b1,
+    0xd536d8e6,
+    0xe23b18f3,
+    0xe71cd326,
+    0xe99d35ec,
+    0xe5258a6b,
+    0xe24930ce,
+    0xe376315d,
+    0xeefb07f7
+];
+export const styleSheetRGBProps = [
+    0x1f5a4bc8,
+    0x5e0528ec,
+    0x5ea1beb2,
+    0x6b9b6ef9,
+    0x16c406be,
+    0x17be2fcb,
+    0x34ccc437,
+    0x4923a55a,
+    0xa586f97e,
+    0xa4324630,
+    0xb3be1847,
+    0xc38f9bdc,
+    0xd02363d6
+];
+export const styleSheetRGBAProps = [
+    0x1f81307d,
+    0x4d9cec74,
+    0x8e9f4906,
+    0x9ce28a3c,
+    0x9fa5d94c,
+    0x38f8b616,
+    0x63f955ae,
+    0x81579e23,
+    0xbeb69647,
+    0xddabbebe,
+    0xe06f2abb,
+    0xe33279cb,
+    0xe0836933,
+    0xee712164
+];
+
 type HTMLResult = string;
 export type RsInterfaceDomTree = {
     el: HTMLDivElement;

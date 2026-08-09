@@ -152,6 +152,7 @@ function allParsers() {
 		oldproctexture: FileParser.fromJson<import("../../generated/oldproctexture").oldproctexture>(require("../opcodes/oldproctexture.jsonc")),
 		maplabels: FileParser.fromJson<import("../../generated/maplabels").maplabels>(require("../opcodes/maplabels.jsonc")),
 		maplabellocations: FileParser.fromJson<import("../../generated/maplabellocations").maplabellocations>(require("../opcodes/maplabellocations.jsonc")),
+		stylesheets: FileParser.fromJson<import("../../generated/stylesheets").stylesheets>(require("../opcodes/stylesheets.jsonc")),
 		cutscenes: FileParser.fromJson<import("../../generated/cutscenes").cutscenes>(require("../opcodes/cutscenes.jsonc")),
 		clientscript: FileParser.fromJson<import("../../generated/clientscript").clientscript>(require("../opcodes/clientscript.jsonc")),
 		clientscriptdata: FileParser.fromJson<import("../../generated/clientscriptdata").clientscriptdata>(require("../opcodes/clientscriptdata.jsonc")),
@@ -222,6 +223,7 @@ export const cacheFileJsonModes = {
 	mappastes: JsonBasedFile(parse.mapPastes, singleMinorIndex(cacheMajors.worldmap, 1)),
 	mapzones_sub3: JsonBasedFile(parse.mapZonesSub3, singleMinorIndex(cacheMajors.worldmap, 3)),
 	mapzones_sub4: JsonBasedFile(parse.mapZonesSub4, singleMinorIndex(cacheMajors.worldmap, 4)),
+	stylesheets: JsonBasedFile(parse.stylesheets, noArchiveIndex(cacheMajors.stylesheets, internalNameFiles.stylesheet)),
 	cutscenes: JsonBasedFile(parse.cutscenes, noArchiveIndex(cacheMajors.cutscenes)),
 
 	particles0: JsonBasedFile(parse.particles_0, singleMinorIndex(cacheMajors.particles, 0)),

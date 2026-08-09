@@ -92,7 +92,7 @@ export const internalNameFiles = {
 
 	// hardcoded, extract their value from packed_varp_and_varbit
 	var_player: 1000,
-	varbit:1001
+	varbit: 1001
 }
 
 //represents the largest build number that this application is aware off

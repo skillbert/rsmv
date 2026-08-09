@@ -12,9 +12,10 @@ import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { makeFileId } from "../tabs/browse";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
+import { styleSheetImageProps, styleSheetRGBAProps, styleSheetRGBProps } from "../../scripts/renderrsinterface";
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit" | "";
-type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit" | "stylevalue";
+type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown" | "";
 
 type DeepLinkElement = {
     rsmvtype: PropTypes,
@@ -101,6 +102,22 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
         if (rsmvtype == "dbvalue") {
             let fieldtype = ctx.objstack.at(-1)?.type ?? ctx.objstack.at(-4)?.subtypes?.[nameorindex];
             rsmvtype = Object.entries(vartypes).find(([k, v]) => v == fieldtype)?.[0] as any ?? "unknown";
+        }
+        if (typeof data == "number" && rsmvtype == "stylevalue") {
+            let proptype = ctx.objstack.at(-2)?.prop;
+            if (proptype != null) {
+                if (styleSheetImageProps.includes(proptype)) {
+                    rsmvtype = "graphic";
+                } else if (styleSheetRGBProps.includes(proptype)) {
+                    rsmvtype = "rgb";
+                    data = [(data >> 16) & 0xff, (data >> 8) & 0xff, data & 0xff];
+                } else if (styleSheetRGBAProps.includes(proptype)) {
+                    rsmvtype = "argb";
+                    data = [(data >> 0) & 0xff, (data >> 24) & 0xff, (data >> 16) & 0xff, (data >> 8) & 0xff];
+                } else {
+                    rsmvtype = "unknown";
+                }
+            }
         }
         // collapse multitypes
         if (typeof data == "number" && rsmvtype == "var_reference") {
@@ -272,7 +289,7 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     }
     if (p.rgb !== undefined) {
         if (p.rgb.length == 4) {
-            alpha = p.rgb[3];
+            alpha = p.rgb[0];
             hasalpha = true;
             color = p.rgb.slice(1, 4);
         } else {
@@ -371,6 +388,9 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeo
     quest: "quests",
     material: "materials",
     var_player: "var_player",
+    stylesheet: "stylesheets",
+    // TODO fix these
+    ["maplabel" as any]: "maplabels",
     // need to confirm
     // mapsceneicon: "mapscenes",
     // mapelement: "maplabels",

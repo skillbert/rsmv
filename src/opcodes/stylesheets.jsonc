@@ -1,0 +1,11 @@
+["struct",
+	["parent","ushort","stylesheet"],
+	["unk2","ubyte"],
+	["data",["array","ubyte",["struct",
+		["unk0","ubyte"],
+		["prop","uint"],
+		// type based on prop (prop doesn't seem to be a name hash)
+		// attempt at decoding them in renderrsinterface.ts
+		["value","uint","stylevalue"]
+	]]]
+]
