@@ -4,7 +4,10 @@
 
 export type mapscenes = {
 	sprite_id?: number | null
-	unknown_2?: number | null
+	unknown_2?: [
+		number[],
+		number,
+	] | null
 	unknown_3?: true | null
 	unknown_4?: true | null
 	unknown_5?: true | null

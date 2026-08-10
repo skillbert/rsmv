@@ -162,6 +162,7 @@ function allParsers() {
 		vars: FileParser.fromJson<import("../../generated/vars").vars>(require("../opcodes/vars.jsonc")),
 		varbits: FileParser.fromJson<import("../../generated/varbits").varbits>(require("../opcodes/varbits.jsonc")),
 		config83: FileParser.fromJson<import("../../generated/config83").config83>(require("../opcodes/config83.jsonc")),
+		client_cutscenes: FileParser.fromJson<import("../../generated/client_cutscenes").client_cutscenes>(require("../opcodes/client_cutscenes.jsonc")),
 	}
 }
 
@@ -225,6 +226,7 @@ export const cacheFileJsonModes = {
 	mapzones_sub4: JsonBasedFile(parse.mapZonesSub4, singleMinorIndex(cacheMajors.worldmap, 4)),
 	stylesheets: JsonBasedFile(parse.stylesheets, noArchiveIndex(cacheMajors.stylesheets, internalNameFiles.stylesheet)),
 	cutscenes: JsonBasedFile(parse.cutscenes, noArchiveIndex(cacheMajors.cutscenes)),
+	client_cutscenes: JsonBasedFile(parse.client_cutscenes, noArchiveIndex(cacheMajors.client_cutscenes)),
 
 	particles0: JsonBasedFile(parse.particles_0, singleMinorIndex(cacheMajors.particles, 0)),
 	particles1: JsonBasedFile(parse.particles_1, singleMinorIndex(cacheMajors.particles, 1)),

@@ -20,6 +20,7 @@ export const cacheMajors = {
 	materials: 26,
 	particles: 27,
 	worldmap: 23,
+	client_cutscenes: 35,
 	music: 40,
 	maplabellocations: 42,
 	models: 47,
@@ -46,6 +47,7 @@ export const cacheMajors = {
 	fontmetrics: 58,
 	vectorfonts: 59,
 	stylesheets: 60,
+	// 61 vfx
 	cutscenes: 66,
 	filenames: 67,
 
@@ -122,6 +124,7 @@ export const cacheConfigPages = {
 	dbtables: 40,
 	dbrows: 41,
 
+	// 46 probly hitsplats
 	varplayer: 60,
 	varnpc: 61,
 	varclient: 62,

@@ -256,7 +256,9 @@ function tupleParserFactory(istyped: boolean) {
 			getJsonSchema() {
 				let items = props.map((prop, i) => {
 					let res = prop.getJsonSchema();
-					res["x-rsmv-type"] = proptypes[i];
+					if (istyped) {
+						res["x-rsmv-type"] = proptypes[i];
+					}
 					return res;
 				});
 				return {

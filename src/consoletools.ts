@@ -29,8 +29,9 @@ export function exposeDebugToolsInGlobal() {
     globalThis.prettyjson = prettyJson;
     globalThis.cli = cli;
     globalThis.getFileCounts = getFileCounts;
+    globalThis.getKnownCounts = getKnownCounts;
     globalThis.getNameCounts = getNameCounts;
-    globalThis.getConfigCount = getConfigCount;
+    globalThis.getConfigCounts = getConfigCounts;
 }
 
 function coordgrid(coord: number) {
@@ -63,7 +64,7 @@ async function cli(args: string) {
     return outputs;
 }
 
-async function getFileCounts() {
+async function getKnownCounts() {
     let source = globalThis.source as CacheFileSource;
     let res: Record<string, any> = {};
     for (let modename in cacheFileDecodeModes) {
@@ -87,7 +88,7 @@ async function getFileCounts() {
 async function getNameCounts() {
     let source = globalThis.source as CacheFileSource;
     let w = await source.getCacheIndex(2)
-    return Promise.all( w.map(async q => {
+    return Promise.all(w.map(async q => {
         let names = await source.getInternalNameList(q.minor);
         let max = 0;
         for (let k of names.keys()) {
@@ -103,7 +104,25 @@ async function getNameCounts() {
     }));
 }
 
-async function getConfigCount() {
+async function getFileCounts() {
+    let source = globalThis.source as CacheFileSource;
+    let w = await source.getCacheIndex(255);
+    let res: any[] = [];
+    for (let q of w) {
+        if (!q) { continue; }
+        let files = await source.getCacheIndex(q.minor);
+        res[q.minor] = {
+            id: q.minor,
+            count: files.filter(q => !!q).length,
+            max: files.at(-1)?.minor,
+            total: files.reduce((a, b) => a + (b?.subindexcount ?? 0), 0),
+            name: Object.entries(cacheMajors).find(w => w[1] == q.minor)?.[0]
+        }
+    }
+    return res;
+}
+
+async function getConfigCounts() {
     let source = globalThis.source as CacheFileSource;
     let w = await source.getCacheIndex(2)
     return w.map(q => (
