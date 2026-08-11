@@ -34,6 +34,45 @@ class DeepLinkContext {
     }
 }
 
+export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeof cacheFileJsonModes>> = {
+    achievement: "achievements",
+    bas: "animgroupconfigs",
+    chatcat: "quickchatcats",
+    chatphrase: "quickchatlines",
+    cursor: "cursors",
+    cutscene: "cutscenes",
+    dbrow: "dbrows",
+    enum: "enums",
+    idkit: "identitykit",
+    obj: "items",
+    loc: "locs",
+    model: "models",
+    fontmetrics: "fontmetrics",
+    npc: "npcs",
+    seq: "sequences",
+    spotanim: "spotanims",
+    sound: "soundjson",
+    struct: "structs",
+    quest: "quests",
+    material: "materials",
+    var_player: "var_player",
+    stylesheet: "stylesheets",
+    skybox: "skyboxes",
+    // TODO fix these
+    ["maplabel" as any]: "maplabels",
+    ["varbit" as any]: "varbits",
+    // need to confirm
+    // mapsceneicon: "mapscenes",
+    // mapelement: "maplabels",
+    // skybox: "environments",
+    // non-json
+    // graphic: "sprites",
+    // texture: "textures",
+    // maparea: "mapareas",
+    component: "interfaces",//redirect this to interfaceviewer instead
+    // interface: "interfaces"
+}
+
 const skillNames = [
     "ATTACK",
     "DEFENCE",
@@ -157,20 +196,6 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
 
             if (rsmvtype == "type") {
                 valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
-            } else if (rsmvtype == "varbit") {
-                if (data != 0xffff) {
-                    let meta = await ctx.source.getObject("varbits", data);
-                    let varint = meta.varid ?? 0;
-                    let domain = (varint >> 16) & 0xff;
-                    let varid = varint & 0xffff;
-                    let varbitname = await ctx.source.getInternalName(internalNameFiles.varbit, data);
-                    valuename = `varbit_${domain}_${varid}${varbitname ? `_${varbitname}` : ""}`;
-                    // let group = Object.entries(variableSources).find(([k, v]) => v.key == domain);
-                    // if (group && group[1].namefile != -1) {
-                    //     let varname = await ctx.source.getInternalName(group[1].namefile, varid);
-                    //     valuename = `varbit_${group[0]}_${varid}${varname ? `_${varname}` : ""}`;
-                    // }
-                }
             } else if (rsmvtype == "stat") {
                 valuename = skillNames[data];
             }
@@ -364,46 +389,6 @@ function DBRowsView(p: { data: DeepLinkElement }) {
         {restables}
     </div>;
 }
-
-
-export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeof cacheFileJsonModes>> = {
-    achievement: "achievements",
-    bas: "animgroupconfigs",
-    chatcat: "quickchatcats",
-    chatphrase: "quickchatlines",
-    cursor: "cursors",
-    cutscene: "cutscenes",
-    dbrow: "dbrows",
-    enum: "enums",
-    idkit: "identitykit",
-    obj: "items",
-    loc: "locs",
-    model: "models",
-    fontmetrics: "fontmetrics",
-    npc: "npcs",
-    seq: "sequences",
-    spotanim: "spotanims",
-    sound: "soundjson",
-    struct: "structs",
-    quest: "quests",
-    material: "materials",
-    var_player: "var_player",
-    stylesheet: "stylesheets",
-    // TODO fix these
-    ["maplabel" as any]: "maplabels",
-    // need to confirm
-    // mapsceneicon: "mapscenes",
-    // mapelement: "maplabels",
-    // skybox: "environments",
-    // non-json
-    // graphic: "sprites",
-    // texture: "textures",
-    // maparea: "mapareas",
-    component: "interfaces",//redirect this to interfaceviewer instead
-    // interface: "interfaces"
-}
-
-
 
 function ObjectLink(p: { prop: DeepLinkElement }) {
     let ctx = React.useContext(UIRootContext);

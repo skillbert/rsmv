@@ -17,10 +17,6 @@ const modeOverrides: Partial<Record<keyof typeof cacheFileJsonModes, { jsonNameP
     achievements: { jsonNameProperty: "name" },
 }
 
-const modeNames: Partial<Record<BrowseModes, string>> = {
-    ...Object.fromEntries(Object.keys(cacheFileJsonModes).map(k => [k, k]))
-}
-
 export function makeFileId(mode: string, index: number[]) {
     return `${mode}_${index.join("_")}`;
 }
@@ -61,8 +57,8 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
     let canjsonsearch = overrides.jsonNameProperty != undefined;
     let caninternalnamesearch = mode.lookup.internalNamefile != undefined;
     const searchModes: Record<string, string> = { id: "ID" };
-    if (caninternalnamesearch) { searchModes.internalname = "Internal Name"; }
     if (canjsonsearch) { searchModes.objectname = "Object Name"; }
+    if (caninternalnamesearch) { searchModes.internalname = "Internal Name"; }
     if (!searchModes[searchmode]) { searchmode = "id"; }
 
     let searcher = useAwaited(async () => {
@@ -135,6 +131,33 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
     );
 }
 
+function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => void }) {
+
+    let visited: string[] = [];
+
+    let subgroup = (groupname: string, tabids: BrowseModes[]) => {
+        let tabs = {};
+        for (let tabid of tabids) {
+            if (visited.includes(tabid)) { continue; }
+            visited.push(tabid);
+            tabs[tabid] = tabids[tabid] ?? tabid;
+        }
+        return <>
+            <div className="mv-tab-strip-header">{groupname}</div>
+            <TabStrip key={groupname} tabs={tabs} value={p.mode as any} columns={3} compact onChange={mode => p.onSelect(mode as BrowseModes)} />
+        </>
+    }
+
+    return <div className="mv-sidebar-scroll">
+        {subgroup("Game", ["items", "npcs", "locs", "spotanims"])}
+        {subgroup("Data", ["dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests"])}
+        {subgroup("UI", ["cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
+        {subgroup("Map", ["mapscenes", "maplabels", "mapzones", "mappastes", "maplabellocations"])}
+        {subgroup("Rendering", ["underlays", "overlays", "skyboxes", "identitykit", "animgroupconfigs"])}
+        {subgroup("Other", Object.keys(cacheFileJsonModes) as any)}
+    </div>
+}
+
 export function BrowseUI(p: LookupModeProps) {
     let [id, setId] = React.useState<{ mode: string, search: string, searchmode: string } | null>(checkObject(p.initialId, { mode: "string", search: "string", searchmode: "string" }) ?? null);
     let ctx = useContext(UIRootContext);
@@ -150,7 +173,7 @@ export function BrowseUI(p: LookupModeProps) {
     };
 
     return <>
-        {!id?.mode && <TabStrip tabs={modeNames} value={id?.mode ?? null as any} onChange={mode => setId({ mode, search: "", searchmode: "id" })} />}
+        {!id?.mode && <BrowseModeSelect mode={id?.mode} onSelect={mode => setId({ mode, search: "", searchmode: "id" })} />}
         {id?.mode && <div style={{ marginTop: "0.5em" }}>Searching in {id.mode} <input type="button" className="sub-btn" onClick={() => setId(null)} value="Back" /></div>}
         {id?.mode && <AdvancedIdInputSearch key={id.mode} modename={id.mode as any} initialValue={id.search} initialMode={id.searchmode} onSearch={onSearch} onFileSelect={onFileSelect} />}
     </>

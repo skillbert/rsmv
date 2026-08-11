@@ -261,9 +261,19 @@
 	flex: 1;
 }
 
+.mv-tab-strip-header {
+	text-align: center;
+	font-size: 1.2em;
+	margin-top: 0.3em;
+}
+
 .mv-tab-strip {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mv-tab-strip__shortwide {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mv-errortext {
@@ -284,6 +294,11 @@
 	justify-content: center;
 	height: 24px;
 	text-align: center;
+}
+
+.mv-icon-button__compact {
+	height: 1.7em;
+	margin: 3px;
 }
 
 .mv-icon-button.active {

@@ -80,12 +80,12 @@ export function BlobAudio(p: { file: Uint8Array, autoplay: boolean }) {
 	)
 }
 
-export function TabStrip<T extends string>(p: { value: T | null, tabs: Partial<Record<T, string>>, onChange: (v: T) => void }) {
-	const templatecols = `repeat(${Math.min(4, Object.keys(p.tabs).length)},minmax(0,1fr))`;
+export function TabStrip<T extends string>(p: { value: T | null, tabs: Partial<Record<T, string>>, onChange: (v: T) => void, compact?: boolean, columns?: number }) {
+	const templatecols = `repeat(${p.columns ?? Math.min(4, Object.keys(p.tabs).length)},minmax(0,1fr))`;
 	return (
 		<div className="mv-tab-strip mv-inset" style={{ gridTemplateColumns: templatecols }}>
 			{Object.entries(p.tabs).map(([k, v]) => (
-				<div key={k} className={classNames("mv-icon-button", { active: p.value == k as any })} onClick={() => p.onChange(k as any)}>{v as string}</div>
+				<div key={k} className={classNames("mv-icon-button", { active: p.value == k, "mv-icon-button__compact": p.compact })} onClick={() => p.onChange(k as any)}>{v as string}</div>
 			))}
 		</div>
 	)
