@@ -57,8 +57,8 @@ export type mapsquare_tiles = {
 			number,
 			number,
 		] | null
-		unk80?: {
-			environment: number,
+		skyboxdata?: {
+			skybox: number,
 			always00: Uint8Array,
 		} | null
 		unk81?: {

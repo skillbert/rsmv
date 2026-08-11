@@ -1099,8 +1099,8 @@ export async function mapsquareSkybox(scene: ThreejsSceneCache, mainchunk: Chunk
 	if (mainchunk?.extra.unk00?.unk20) {
 		fogColor = mainchunk.extra.unk00.unk20.slice(1);
 	}
-	if (mainchunk?.extra.unk80) {
-		let env = await scene.engine.getObject("environments", mainchunk.extra.unk80.environment);
+	if (mainchunk?.extra.skyboxdata) {
+		let env = await scene.engine.getObject("skyboxes", mainchunk.extra.skyboxdata.skybox);
 		if (typeof env.model == "number") {
 			skyboxModelid = env.model;
 			skybox = await ob3ModelToThree(scene, await scene.getModelData(env.model));

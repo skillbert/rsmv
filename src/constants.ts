@@ -115,7 +115,7 @@ export const cacheConfigPages = {
 	identityKit: 3,
 	mapoverlays: 4,
 	params: 11,
-	environments: 29,
+	skyboxes: 29,
 	animgroups: 32,
 	cursors: 33,
 	mapscenes: 34,

@@ -42,8 +42,8 @@
 		]]},
 		"0x02": { "name": "unk02", "read":["array",3,["match","buildnr",{">=780":"float","other":"byte"}]]},
 		"0x03": { "name": "unk03", "read":["tuple","short","float"]},
-		"0x80": { "name": "unk80", "read":["struct",
-			["environment","ushort"],
+		"0x80": { "name": "skyboxdata", "read":["struct",
+			["skybox","ushort","skybox"],
 			["always00",["buffer",8,"hex"]]
 		]},
 		"0x81": { "name": "unk81", "read":["array",4,["struct",

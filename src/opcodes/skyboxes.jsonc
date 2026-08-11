@@ -1,0 +1,6 @@
+{
+	"0x01": { "name": "box_material_low", "read":"ushort","type":"material" },
+	"0x04": { "name": "unk04", "read":"bool" },
+	"0x05": { "name": "model", "read":"varuint","type":"model" },
+	"0x06": { "name": "box_material", "read":"ushort","type":"material" }//also some times contains int 0-40
+}
