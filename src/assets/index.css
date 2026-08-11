@@ -411,3 +411,9 @@
 	text-decoration: underline;
 	cursor: pointer;
 }
+
+.mv-gridrow {
+	grid-column: 1/-1;
+	display: grid;
+	grid-template-columns: subgrid;
+}

@@ -6,7 +6,7 @@ import { WasmGameCacheLoader } from "../cache/sqlitewasm";
 import { CacheFileSource } from "../cache";
 import * as datastore from "idb-keyval";
 import { ThreejsSceneCache } from "../3d/modeltothree";
-import { StringInput, TabStrip } from "./commoncontrols";
+import { StringInput, TabStrip, useAwaited } from "./commoncontrols";
 import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { delay, TypedEmitter } from "../utils";
 import { CacheDownloader } from "../cache/downloader";
@@ -74,39 +74,44 @@ export async function downloadStream(name: string, stream: ReadableStream) {
 }
 
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
-	let [relevantcaches, setrelevantcaches] = React.useState<Openrs2CacheMeta[] | null>(null);
-	let [loading, setLoading] = React.useState(false);
-	let [relevantonly, setrelevantonly] = React.useState(true);
-	let [gameFilter, setGameFilter] = React.useState("runescape");
+	let [advanced, setAdvanced] = React.useState(false);
 	let [yearFilter, setYearfilter] = React.useState("");
+	let [gameFilter, setGameFilter] = React.useState("runescape");
+	let [envFilter, setEnvfilter] = React.useState("live");
 	let [langFilter, setLangfilter] = React.useState("en");
 
-	let openselector = React.useCallback(async () => {
-		setLoading(true);
-		setrelevantcaches(await validOpenrs2Caches());
-	}, []);
+	let relevantCaches = useAwaited(() => {
+		if (!advanced) { return null; }
+		return (async () => {
+			let relevantcaches = await validOpenrs2Caches("", "");
+			let games: string[] = [];
+			let years: string[] = [];
+			let langs: string[] = [];
+			let envs: string[] = [];
+			for (let cache of relevantcaches) {
+				if (cache.timestamp) {
+					let year = "" + new Date(cache.timestamp ?? 0).getUTCFullYear();
+					if (years.indexOf(year) == -1) { years.push(year); }
+				}
+				if (games.indexOf(cache.game) == -1) { games.push(cache.game); }
+				if (langs.indexOf(cache.language) == -1) { langs.push(cache.language); }
+				if (envs.indexOf(cache.environment) == -1) { envs.push(cache.environment); }
+			}
 
-	let games: string[] = [];
-	let years: string[] = [];
-	let langs: string[] = [];
-	for (let cache of relevantcaches ?? []) {
-		if (cache.timestamp) {
-			let year = "" + new Date(cache.timestamp ?? 0).getUTCFullYear();
-			if (years.indexOf(year) == -1) { years.push(year); }
-		}
-		if (games.indexOf(cache.game) == -1) { games.push(cache.game); }
-		if (langs.indexOf(cache.language) == -1) { langs.push(cache.language); }
-	}
+			years.sort((a, b) => (+b) - (+a));
 
-	years.sort((a, b) => (+b) - (+a));
+			let showncaches = relevantcaches.filter(cache => {
+				if (gameFilter && cache.game != gameFilter) { return false; }
+				if (langFilter && cache.language != langFilter) { return false; }
+				if (envFilter && cache.environment != envFilter) { return false; }
+				if (yearFilter && new Date(cache.timestamp ?? 0).getUTCFullYear() != +yearFilter) { return false; }
+				return true;
+			});
+			showncaches.sort((a, b) => +new Date(b.timestamp ?? 0) - +new Date(a.timestamp ?? 0));
 
-	let showncaches = (relevantcaches ?? []).filter(cache => {
-		if (gameFilter && cache.game != gameFilter) { return false; }
-		if (langFilter && cache.language != langFilter) { return false; }
-		if (yearFilter && new Date(cache.timestamp ?? 0).getUTCFullYear() != +yearFilter) { return false; }
-		return true;
-	});
-	showncaches.sort((a, b) => +new Date(b.timestamp ?? 0) - +new Date(a.timestamp ?? 0));
+			return { games, years, langs, envs, showncaches };
+		})();
+	}, [envFilter, langFilter, gameFilter, yearFilter, advanced]);
 
 	let enterCacheId = async (idstring: string) => {
 		let id = +idstring;
@@ -115,52 +120,54 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 		p.onSelect(id);
 	}
 
+	let dateformat = new Intl.DateTimeFormat('en-GB', {
+		day: 'numeric',
+		month: 'short',
+		year: 'numeric'
+	});
+
 	return (
 		<React.Fragment>
 			<StringInput initialid={p.initialid + ""} onChange={enterCacheId} />
-			{!loading && !relevantcaches && <input type="button" className="sub-btn" onClick={openselector} value="More options..." />}
-			{relevantcaches && (
+			{!advanced && <input type="button" className="sub-btn" onClick={() => setAdvanced(true)} value="More options..." />}
+			{relevantCaches && (
 				<React.Fragment>
-					<div style={{ overflowY: "auto" }}>
-						<table>
-							<thead>
-								<tr>
-									<td></td>
-									{/* <td>
-										<select value={gameFilter} onChange={e => setGameFilter(e.currentTarget.value)}>
-											<option value="">Game</option>
-											{games.map(game => <option key={game} value={game}>{game}</option>)}
-										</select>
-									</td> */}
-									{/* <td>
-										<select value={langFilter} onChange={e => setLangfilter(e.currentTarget.value)}>
-											<option value="">--</option>
-											{langs.map(lang => <option key={lang} value={lang}>{lang}</option>)}
-										</select>
-									</td> */}
-									<td>
-										<select value={yearFilter} onChange={e => setYearfilter(e.currentTarget.value)}>
-											<option value="">Date</option>
-											{years.map(year => <option key={year} value={year}>{year}</option>)}
-										</select>
-									</td>
-									<td>
-										Build
-									</td>
-								</tr>
-							</thead>
-							<tbody>
-								{showncaches.map(cache => (
-									<tr key={cache.language + cache.id}>
-										<td><input type="button" value={cache.id} className="sub-btn" onClick={p.onSelect.bind(null, cache.id)} /></td>
-										{/* <td>{cache.game}</td> */}
-										{/* <td>{cache.language}</td> */}
-										<td>{cache.timestamp ? new Date(cache.timestamp).toDateString() : ""}</td>
-										<td>{cache.builds.map(q => q.major + (q.minor ? "." + q.minor : "")).join(",")}</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
+					<div style={{ overflowY: "auto", display: "grid", gridTemplateColumns: "max-content max-content minmax(0,1fr) minmax(0,1fr)", gap: "2px", overflowX: "hidden" }}>
+						<div className="mv-gridrow">
+							<div />
+							{/* <td>
+								<select value={gameFilter} onChange={e => setGameFilter(e.currentTarget.value)}>
+									<option value="">Game</option>
+									{relevantCaches.games.map(game => <option key={game} value={game}>{game}</option>)}
+								</select>
+							</td> */}
+							<select value={yearFilter} onChange={e => setYearfilter(e.currentTarget.value)}>
+								<option value="">Date</option>
+								{relevantCaches.years.map(year => <option key={year} value={year}>{year}</option>)}
+							</select>
+							<div>
+								Build
+							</div>
+							{/* <select value={langFilter} onChange={e => setLangfilter(e.currentTarget.value)}>
+								<option value="">--</option>
+								{relevantCaches.langs.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+							</select> */}
+							<select value={envFilter} onChange={e => setEnvfilter(e.currentTarget.value)}>
+								<option value="">--</option>
+								{relevantCaches.envs.map(env => <option key={env} value={env}>{env}</option>)}
+							</select>
+						</div>
+
+						{relevantCaches.showncaches.map(cache => (
+							<div className="mv-gridrow" key={cache.language + cache.id}>
+								<div><input type="button" value={cache.id} className="sub-btn" onClick={p.onSelect.bind(null, cache.id)} /></div>
+								{/* <div>{cache.game}</div> */}
+								<div>{cache.timestamp ? dateformat.format(new Date(cache.timestamp)) : ""}</div>
+								<div>{cache.builds.map(q => q.major + (q.minor ? "." + q.minor : "")).join(",")}</div>
+								{/* <div>{cache.language}</div> */}
+								<div>{cache.environment}</div>
+							</div>
+						))}
 					</div>
 				</React.Fragment>
 			)}

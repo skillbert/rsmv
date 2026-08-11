@@ -36,7 +36,6 @@ type Openrs2XteaKey = {
 	key: [number, number, number, number]
 }
 
-var validcachelist: Promise<Openrs2CacheMeta[]> | null = null;
 var cachelist: Promise<Openrs2CacheMeta[]> | null = null;
 
 export function loadOpenrsCachelist() {
@@ -44,58 +43,64 @@ export function loadOpenrsCachelist() {
 	return cachelist;
 }
 
-export function validOpenrs2Caches() {
-	validcachelist ??= (async () => {
-		const openrs2Blacklist: number[] = [
-			//some of these might actually be fine
-			423,//osrs cache wrongly labeled as rs3?
-			623,//seems to have different builds in it
-			693,//wrong timestamp?
-			621, 619, 618, 620, 617,//wrong timestamp/osrs?
-			840,//multiple builds
-			734, 736, 733, 732, 731,//don't have items index
-			20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
+const openrs2Blacklist: number[] = [
+	//some of these might actually be fine
+	423,//osrs cache wrongly labeled as rs3?
+	623,//seems to have different builds in it
+	693,//wrong timestamp?
+	621, 619, 618, 620, 617,//wrong timestamp/osrs?
+	840,//multiple builds
+	734, 736, 733, 732, 731,//don't have items index
+	20, 19, 17, 13, 10, 9, 8, 7, 6, 5,//don't have items index
 
-			2,//missing basically everything
-			1255,//missing files and invalid compression?
+	2,//missing basically everything
+	1255,//missing files and invalid compression?
 
-			905,//missing textures
-			1256,//missing materials
-			1003,//missing materials
-			638,//missing materials
+	905,//missing textures
+	1256,//missing materials
+	1003,//missing materials
+	638,//missing materials
 
-			542,//missing models
+	542,//missing models
 
-			463,//wrong build number?
+	463,//wrong build number?
 
-			//large gaps in files according to openrs2ids command
-			621, 623, 620, 617, 618, 619,
-			734, 733, 20, 10, 9, 8, 7, 2,
-			666, 729, 730, 728,
+	//large gaps in files according to openrs2ids command
+	621, 623, 620, 617, 618, 619,
+	734, 733, 20, 10, 9, 8, 7, 2,
+	666, 729, 730, 728,
 
-			1455,//weird clientscript
+	1455,//weird clientscript
 
-			312, 286, 1420, 1421, 1530,//missing clientscripts
+	312, 286, 1420, 1421, 1530,//missing clientscripts
 
 
-			//TODO fix these or figure out whats wrong with them
-			1480,
+	//TODO fix these or figure out whats wrong with them
+	1480,
 
-			644, 257,//incomplete textures
-			1456, 1665,//missing materials
-			1479,//missing items could probably be worked around
+	644, 257,//incomplete textures
+	1456, 1665,//missing materials
+	1479,//missing items could probably be worked around
 
-			2085, 2079, 2136, 2137, 2002//probably fixable by changing parser version switch constants
-		];
-		let allcaches = await loadOpenrsCachelist();
-		let checkedcaches = allcaches.filter(q =>
-			q.language == "en" && q.environment == "live" && !openrs2Blacklist.includes(q.id)
-			&& q.game == "runescape" && q.timestamp && q.builds.length != 0
-		).sort((a, b) => b.builds[0].major - a.builds[0].major || (b.builds[0].minor ?? 0) - (a.builds[0].minor ?? 0) || +new Date(b.timestamp!) - +new Date(a.timestamp!));
+	2085, 2079, 2136, 2137, 2002//probably fixable by changing parser version switch constants
+];
 
-		return checkedcaches;
-	})();
-	return validcachelist;
+export async function validOpenrs2Caches(environment = "live", language = "en") {
+	let allcaches = await loadOpenrsCachelist();
+
+	let checkedcaches = allcaches.filter(q =>
+		(!language || q.language == language)
+		&& (!environment || q.environment == environment)
+		&& !openrs2Blacklist.includes(q.id)
+		&& q.game == "runescape"
+		&& q.timestamp
+		&& q.builds.length != 0
+	).sort((a, b) =>
+		b.builds[0].major - a.builds[0].major
+		|| (b.builds[0].minor ?? 0) - (a.builds[0].minor ?? 0)
+		|| +new Date(b.timestamp!) - +new Date(a.timestamp!)
+	);
+	return checkedcaches;
 }
 
 export function openrs2GetEffectiveBuildnr(cachemeta: Openrs2CacheMeta) {
