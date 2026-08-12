@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibration/callibrator";
 import { debugAst } from "./typescript/codewriter";
-import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, makeop } from "./definitions";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, makeop, popDiscardOps } from "./definitions";
 import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./callibration/subtypedetector";
 import { vartypes } from "../constants";
@@ -1102,6 +1102,13 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
         } else {
             throw new Error("unexpected");
         }
+    } else if (node.opinfo.id == namedClientScriptOps.popdiscardint) {
+        // need to hardcode this since we need special behavoir later to deal with unordered popdiscards
+        node.knownStackDiff = new StackInOut(new StackList(["int"]));
+    } else if (node.opinfo.id == namedClientScriptOps.popdiscardlong) {
+        node.knownStackDiff = new StackInOut(new StackList(["long"]));
+    } else if (node.opinfo.id == namedClientScriptOps.popdiscardstring) {
+        node.knownStackDiff = new StackInOut(new StackList(["string"]));
     }
 
     if (!node.knownStackDiff && dynamicOps.includes(node.op.opcode)) {
@@ -1137,6 +1144,25 @@ function addKnownStackDiff(children: AstNode[], calli: ClientscriptObfuscation) 
             }
         }
     }
+
+    // need special case for sequences of popdiscard ops, the jagex compiler mixes stacks
+    // merge the consecutive pops and attribute them to the last popdiscard as an unordered StackDiff
+    let lastpopdiscard: RawOpcodeNode | null = null;
+    for (let node of children) {
+        if (node instanceof RawOpcodeNode && popDiscardOps.includes(node.opinfo.id)) {
+            if (lastpopdiscard) {
+                let merged = new StackDiff();
+                merged.add(lastpopdiscard.knownStackDiff!.in.toStackDiff());
+                merged.add(node.knownStackDiff!.in.toStackDiff());
+                lastpopdiscard.knownStackDiff = new StackInOut();
+                node.knownStackDiff = new StackInOut(new StackList([merged]));
+            }
+            lastpopdiscard = node;
+        } else {
+            lastpopdiscard = null;
+        }
+    }
+
     return hasunknown;
 }
 
