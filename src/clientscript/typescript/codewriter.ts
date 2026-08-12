@@ -1,10 +1,13 @@
 import { boundMethod } from "autobind-decorator";
-import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType, isNamedOp, RewriteCursor } from "./ast";
-import { ClientscriptObfuscation } from "./callibrator";
-import { ClientScriptSubtypeSolver } from "./subtypedetector";
-import { ClientScriptOp, PrimitiveType, binaryOpSymbols, branchInstructionsOrJump, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, subtypeToTs } from "./definitions";
-import { getOrInsert, unpackCoordgrid } from "../utils";
-import { vartypes } from "../constants";
+import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType, isNamedOp, RewriteCursor } from "../ast";
+import { ClientscriptObfuscation } from "../callibrator";
+import { ClientScriptSubtypeSolver } from "../subtypedetector";
+import { ClientScriptOp, ExactStack, PrimitiveType, StackDiff, StackList, binaryOpSymbols, branchInstructionsOrJump, dynamicOps, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, typeToPrimitive } from "../definitions";
+import { getOrInsert, unpackCoordgrid } from "../../utils";
+import { vartypes } from "../../constants";
+import { intrinsics } from "../jsonwriter";
+import { reserved } from "./typescripthelpers";
+import { getOpcodeName, returntypeTuple, typeList, subtypeToTs, valueList, writeLeaf, WriteResult, addTypeCast, addBracketsIfNeeded } from "./writehelpers";
 
 /**
  * known compiler differences
@@ -21,11 +24,18 @@ import { vartypes } from "../constants";
  * - fix function bind arrays
  */
 
+
+const writermap = new Map<AstNode["constructor"], (node: AstNode, ctx: TsWriterContext) => WriteResult>();
+
+function addWriter<T extends new (...args: any[]) => AstNode>(type: T, writer: (node: InstanceType<T>, ctx: TsWriterContext) => WriteResult) {
+    writermap.set(type, writer as any);
+}
+
 export function debugAst(node: AstNode) {
     let writer = new TsWriterContext(globalThis.deob, new ClientScriptSubtypeSolver())
     let res = "";
     if (node instanceof CodeBlockNode) { res += `//[${node.scriptid},${node.originalindex}]\n`; }
-    res += writer.getCode(node);
+    res += writer.getCodeString(node);
     console.log(res);
 }
 globalThis.debugAst = debugAst;
@@ -108,21 +118,28 @@ export class TsWriterContext {
         return parts.join("");
     }
     @boundMethod
-    getCodeDom(node: AstNode) {
+    getCodeDom(node: AstNode, objclick?: (objectid: string) => void) {
         let root = document.createElement("div");
         root.classList.add("mv-codeview");
+        let clickevent = (e: MouseEvent) => {
+            let obj = (e.currentTarget as HTMLElement).dataset.objectid;
+            if (obj && objclick) {
+                objclick(obj);
+            }
+        }
 
         let recur = (frag: string | WriteResult, parent: DocumentFragment | HTMLElement) => {
             if (typeof frag == "string") {
                 parent.appendChild(document.createTextNode(frag));
-            } else {
-                let group: HTMLElement;
-                if (!frag.objectid) {
-                    group = document.createElement("span");
-                } else {
-                    let anchor = document.createElement("a");
-                    anchor.href = `#${frag.objectid}`;
-                    group = anchor;
+            } else if (frag.fragments.length != 0) {
+                let group = document.createElement("span");
+                if (frag.objectid) {
+                    group.classList.add(`mv-code__link`);
+                    group.dataset.objectid = frag.objectid;
+                    group.addEventListener("click", clickevent);
+                }
+                if (frag.type) {
+                    group.classList.add(`mv-code__${frag.type}`);
                 }
                 frag.fragments.forEach(q => recur(q, group));
                 parent.appendChild(group);
@@ -134,36 +151,6 @@ export class TsWriterContext {
     }
 }
 
-function getOpcodeName(calli: ClientscriptObfuscation, op: ClientScriptOp) {
-    if (op.opcode == namedClientScriptOps.poplocalint || op.opcode == namedClientScriptOps.pushlocalint) {
-        return new WriteResult(19, [`int${op.imm}`]);
-    } else if (op.opcode == namedClientScriptOps.poplocalstring || op.opcode == namedClientScriptOps.pushlocalstring) {
-        return new WriteResult(19, [`string${op.imm}`]);
-    } else if (op.opcode == namedClientScriptOps.poplocallong || op.opcode == namedClientScriptOps.pushlocallong) {
-        return new WriteResult(19, [`long${op.imm}`]);
-    } else if (op.opcode == namedClientScriptOps.popdiscardint || op.opcode == namedClientScriptOps.popdiscardlong || op.opcode == namedClientScriptOps.popdiscardstring) {
-        return new WriteResult(19, []);
-    } else if (op.opcode == namedClientScriptOps.popvar || op.opcode == namedClientScriptOps.pushvar) {
-        let name = calli.getClientVarName(op.imm);
-        return new WriteResult(19, [name], calli.getClientVarObjectId(op.imm));
-    } else if (op.opcode == namedClientScriptOps.popvarbit || op.opcode == namedClientScriptOps.pushvarbit) {
-        let id = op.imm >> 8;
-        let optarget = (op.imm & 0xff);
-        return new WriteResult(19, [calli.getClientVarbitName(id, optarget)], `varbit_${id}`);
-    }
-    return new WriteResult(19, [getOpName(op.opcode)]);
-}
-
-function valueList(elements: WriteResult[]) {
-    if (elements.length == 1) { return elements[0]; }
-    let res = new WriteResult(19, ["["]);
-    for (let i = 0; i < elements.length; i++) {
-        if (i != 0) { res.push(", "); }
-        res.push(elements[i]);
-    }
-    res.push("]");
-    return res;
-}
 
 function escapeStringLiteral(source: string, quotetype: "template" | "double" | "single") {
     return source.replace(/[`"'\\\n\r\t\b\f\x00-\x1F]|\$\{/g, m => {
@@ -204,15 +191,21 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
                 return op;
             }
         } else {
-            return new WriteResult(17, [`operator("${binarysymbol.str}"`, ...children.map(ctx.getCode).flatMap((c, i) => [", ", c]), `)`]);
+            return new WriteResult(17, [
+                writeLeaf("keyword", "operator"),
+                "(",
+                writeLeaf("keyword", `"${binarysymbol.str}"`),
+                ...children.map(ctx.getCode).flatMap((c, i) => [", ", c]),
+                ")"
+            ]);
         }
     }
     if (op.opcode == namedClientScriptOps.return) {
-        if (children.length == 0) { return new WriteResult(0, ["return"]); }
-        return new WriteResult(0, [`return `, valueList(children.map(ctx.getCode))]);
+        if (children.length == 0) { return writeLeaf("keyword", "return"); }
+        return new WriteResult(0, [writeLeaf("keyword", "return"), " ", valueList(children.map(ctx.getCode))]);
     }
     if (op.opcode == namedClientScriptOps.gosub) {
-        return writeCall(ctx, new WriteResult(19, [`script${op.imm}`], `script_${op.imm}`), children);
+        return writeCall(ctx, writeLeaf("scriptname", `script${op.imm}`, `scriptref_${op.imm}`), children);
     }
     let metastr = "";
     if (branchInstructionsOrJump.includes(op.opcode)) {
@@ -222,37 +215,10 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
     } else if (op.imm != 0) {
         metastr = `[${op.imm}]`;
     }
-    return writeCall(ctx, new WriteResult(17, [getOpcodeName(ctx.calli, op), metastr]), children);
-}
-
-class WriteResult {
-    prec: number;
-    objectid: string;
-    fragments: Array<string | WriteResult>;
-    constructor(prec: number, fragments: Array<string | WriteResult> = [], objectid = "") {
-        this.prec = prec;
-        this.fragments = fragments;
-        this.objectid = objectid;
-    }
-    push(...fragments: Array<string | WriteResult>) {
-        this.fragments.push(...fragments);
-    }
-};
-
-function addBracketsIfNeeded(slotprec: number, assoc: "left" | "right" | "none", isleft: boolean, isright: boolean, sub: WriteResult) {
-    let needbracket = sub.prec < slotprec;
-    needbracket ||= sub.prec == slotprec && isleft && assoc == "right";
-    needbracket ||= sub.prec == slotprec && isright && assoc == "left";
-    needbracket ||= sub.prec == slotprec && assoc == "none";
-    if (needbracket) {
-        return new WriteResult(18, ["(", sub, ")"]);
-    } else {
-        return sub;
-    }
+    return writeCall(ctx, new WriteResult(19, [getOpcodeName(ctx.calli, op), metastr]), children);
 }
 
 function code(prec: number, assoc: "left" | "right" | "none" = "none", slotprec = prec) {
-    // precedence based on https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Operator_precedence#precedence_and_associativity
     return (strings: TemplateStringsArray, ...values: (string | WriteResult)[]) => {
         const fragments: Array<string | WriteResult> = [];
         let slotindex = 0;
@@ -273,10 +239,79 @@ function code(prec: number, assoc: "left" | "right" | "none" = "none", slotprec 
     };
 }
 
-const writermap = new Map<AstNode["constructor"], (node: AstNode, ctx: TsWriterContext) => WriteResult>();
+export function writeOpcodeFile(calli: ClientscriptObfuscation) {
+    let res = "";
+    res += `// Need to be defined for the typescript compiler\n`;
+    res += "interface Boolean { }\n";
+    res += "interface Function { }\n";
+    res += "interface Number { }\n";
+    res += "interface Object { }\n";
+    res += "interface RegExp { }\n";
+    res += "interface String { }\n";
+    res += "interface IArguments { }\n";
+    res += "interface BigInt { }\n";
+    res += "interface Symbol { }\n";
+    res += "interface Array<T> { [Symbol.iterator](): any; }\n";
+    res += "declare var Symbol: { readonly iterator: unique symbol };\n";
+    res += "\n";
+    res += `// Language constructs\n`;
+    res += "declare class BoundFunction { }\n";
+    res += "declare function operator(op: string, ...values:any[]): any;\n";
+    res += "declare function callback(): BoundFunction;\n";
+    res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
+    res += "declare function comp(interf: number, element: number): component;\n";
+    res += "declare function comprel(interf: number, elementrel: number): component;\n"
+    res += "declare function pos(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
+    res += "declare function stack(...args: any[]): any;\n";
+    res += "\n";
+    res += `// Compiler intrinsics\n`;
+    for (let [name, intr] of intrinsics) {
+        res += `declare function ${name}(${typeList(intr.in, true, true)}): ${returntypeTuple(intr.out)};\n`;
+    }
+    res += "\n";
+    res += `// Clientscript types\n`;
+    for (let type of Object.values(vartypes)) {
+        let prim = typeToPrimitive(type);
+        let name = subtypeToTs(type);
+        if (name == "string") { continue; }
+        if (name == "boolean") { continue; }
+        res += `type ${name} = ${prim == "int" ? "number" : prim == "long" ? "BigInt" : "string"}\n`;
+    }
+    res += "\n";
+    res += `// VM opcodes\n`;
+    for (let op of calli.mappings.values()) {
+        let opname = getOpName(op.id);
+        if (reserved.includes(opname)) { continue; }
+        if (op.id == namedClientScriptOps.enum_getvalue) {
+            res += `declare function ${opname}(int0: number, int1: number, int2: number, int3: number): any;\n`;
+        } else if (op.id == namedClientScriptOps.dbrow_getfield) {
+            res += `declare function ${opname}(int0: number, int1: number, int2: number): any;\n`;
+        } else if (!dynamicOps.includes(op.id) && op.stackinfo.initializedthrough) {
+            let args = typeList(op.stackinfo.in, true, true, op.stackinfo.exactin);
+            let returns = returntypeTuple(op.stackinfo.out, op.stackinfo.exactout);
+            res += `declare function ${opname}(${args}): ${returns};\n`;
+        } else {
+            res += `declare function ${opname}(...args: any[]): any;\n`;
+        }
+    }
+    return res;
+}
 
-function addWriter<T extends new (...args: any[]) => AstNode>(type: T, writer: (node: InstanceType<T>, ctx: TsWriterContext) => WriteResult) {
-    writermap.set(type, writer as any);
+export function writeClientVarFile(calli: ClientscriptObfuscation) {
+    let res = "";
+    for (let [domainid, domain] of calli.varmeta) {
+        res += `// ===== ${domain.name} =====\n`;
+        for (let [id, meta] of domain.vars) {
+            let varid = domainid | (id << 8);
+            res += `declare var ${calli.getClientVarName(varid)}: ${meta.type};\n`;
+        }
+    }
+    res += `// ===== varbits =====\n`;
+    for (let [id, meta] of calli.varbitmeta) {
+        let name = calli.getClientVarbitName(id, 0);
+        res += `declare var ${name}: number;\n`;
+    }
+    return res;
 }
 
 addWriter(ComposedOp, (node, ctx) => {
@@ -296,7 +331,7 @@ addWriter(ComposedOp, (node, ctx) => {
         }
     }
     if (node.type == "stack") {
-        return writeCall(ctx, new WriteResult(19, ["stack"]), node.children);
+        return writeCall(ctx, writeLeaf("keyword", "stack"), node.children);
     }
     throw new Error("unknown composed op type");
 });
@@ -342,7 +377,7 @@ addWriter(VarAssignNode, (node, ctx) => {
                     res.push(ctx.codeIndent());
                 }
             } else {
-                res.push("var ");
+                res.push(writeLeaf("keyword", "var"), " ");
             }
         }
         res.push(valueList(varnames));
@@ -363,7 +398,7 @@ addWriter(CodeBlockNode, (node, ctx) => {
     }
     if (node.parent) {
         if (node.parent instanceof SwitchStatementNode && node.branchEndNode != null) {
-            code.push(ctx.codeIndent(), `break;\n`);
+            code.push(ctx.codeIndent(), writeLeaf("keyword", "break"), ";\n");
         }
         if (node.deadcodeSuccessor) {
             code.push(ctx.getCode(node.deadcodeSuccessor));
@@ -378,15 +413,15 @@ addWriter(BranchingStatement, (node, ctx) => {
 });
 addWriter(WhileLoopStatementNode, (node, ctx) => {
     let res = new WriteResult(0);
-    res.push(`while (`, ctx.getCode(node.statement), `) `, ctx.getCode(node.body));
+    res.push(writeLeaf("keyword", "while"), " (", ctx.getCode(node.statement), `) `, ctx.getCode(node.body));
     return res;
 });
 addWriter(SwitchStatementNode, (node, ctx) => {
     let res = new WriteResult(0);
-    res.push(`switch (`, node.valueop ? ctx.getCode(node.valueop) : "", `) {\n`);
+    res.push(writeLeaf("keyword", "switch"), " (", node.valueop ? ctx.getCode(node.valueop) : "", `) {\n`);
     ctx.pushIndent(false);
     for (let [i, branch] of node.branches.entries()) {
-        res.push(ctx.codeIndent(branch.block.originalindex), `case ${branch.value}:`);
+        res.push(ctx.codeIndent(branch.block.originalindex), writeLeaf("keyword", "case"), " ", writeLeaf("literalnumber", branch.value + ""), ":");
         if (i + 1 < node.branches.length && node.branches[i + 1].block == branch.block) {
             res.push(`\n`);
         } else {
@@ -395,7 +430,7 @@ addWriter(SwitchStatementNode, (node, ctx) => {
         }
     }
     if (node.defaultbranch) {
-        res.push(ctx.codeIndent(), `default: `);
+        res.push(ctx.codeIndent(), writeLeaf("keyword", "default"), ": ");
         res.push(ctx.getCode(node.defaultbranch));
         res.push(`\n`);
     }
@@ -405,10 +440,10 @@ addWriter(SwitchStatementNode, (node, ctx) => {
 });
 addWriter(IfStatementNode, (node, ctx) => {
     let res = new WriteResult(0);
-    res.push(`if (`, ctx.getCode(node.statement), `) `);
+    res.push(writeLeaf("keyword", "if"), " (", ctx.getCode(node.statement), `) `);
     res.push(ctx.getCode(node.truebranch));
     if (node.falsebranch) {
-        res.push(` else `);
+        res.push(" ", writeLeaf("keyword", "else"), " ");
         //skip brackets for else if construct
         let subif = getSingleChild(node.falsebranch, IfStatementNode);
         if (subif) {
@@ -419,19 +454,6 @@ addWriter(IfStatementNode, (node, ctx) => {
     }
     return res;
 });
-
-function addTypeCast(ctx: TsWriterContext, exacttype: number, child: WriteResult) {
-    if (!ctx.typescript) { return child; }
-    if (exacttype == -1) { return child; }
-    if (exacttype == vartypes.int || exacttype == vartypes.string || exacttype == vartypes.long) {
-        return child;
-    }
-    if (exacttype == vartypes.unknown_int || exacttype == vartypes.unknown_string || exacttype == vartypes.unknown_long) {
-        return child
-    }
-    // precedence of `as` operator in ts seems to be 8.5
-    return code(9)`${child} as ${subtypeToTs(exacttype)}`;
-}
 addWriter(RawOpcodeNode, (node, ctx) => {
     if (node.op.opcode == namedClientScriptOps.pushconst) {
         let exacttype = -1;
@@ -444,29 +466,52 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             }
         }
         if (typeof node.op.imm_obj == "string") {
-            return addTypeCast(ctx, exacttype, new WriteResult(19, [`"${escapeStringLiteral(node.op.imm_obj, "double")}"`]));
+            let literal = writeLeaf("literalstring", `"${escapeStringLiteral(node.op.imm_obj, "double")}"`);
+            return (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
         } else if (Array.isArray(node.op.imm_obj)) {
-            return addTypeCast(ctx, exacttype, new WriteResult(19, [`${longJsonToBigInt(node.op.imm_obj)}n`]));
+            let literal = writeLeaf("literalnumber", `${longJsonToBigInt(node.op.imm_obj)}n`);
+            return (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
         } else if (typeof node.op.imm_obj == "number") {
             if (exacttype == vartypes.component) {
                 let intf = node.op.imm_obj >> 16;
                 let sub = node.op.imm_obj & 0xffff;
                 if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
-                    return new WriteResult(17, [`comprel(${intf}, ${sub - ctx.compoffsets.get(intf)!})`]);
+                    return new WriteResult(17, [
+                        writeLeaf("keyword", "comprel"), "(",
+                        writeLeaf("literalnumber", `${intf}`), ", ",
+                        writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
+                    ], "", `comp_${intf}_${sub}`);
                 } else {
-                    return new WriteResult(17, [`comp(${intf}, ${sub})`]);
+                    return new WriteResult(17, [
+                        writeLeaf("keyword", "comp"), "(",
+                        writeLeaf("literalnumber", `${intf}`), ", ",
+                        writeLeaf("literalnumber", `${sub}`), ")"
+                    ], "", `comp_${intf}_${sub}`);
                 }
             }
             if (exacttype == vartypes.coordgrid && node.op.imm_obj != -1) {
                 let v = node.op.imm_obj;
                 let pos = unpackCoordgrid(v);
-                //plane,chunkx,chunkz,subx,subz
-                return new WriteResult(17, [`coordgrid(${pos.level},${pos.x},${pos.z})`]);
+                // TODO maybe make the entire construct look like a literal
+                return new WriteResult(17, [
+                    writeLeaf("keyword", "coordgrid"), "(",
+                    writeLeaf("literalnumber", `${pos.level}`), ", ",
+                    writeLeaf("literalnumber", `${pos.x}`), ", ",
+                    writeLeaf("literalnumber", `${pos.z}`), ")"
+                ], "", `coordgrid_${v}`);
             }
             if (exacttype == vartypes.boolean) {
-                return new WriteResult(19, [node.op.imm_obj == 0 ? "false" : "true"]);
+                return writeLeaf("keyword", node.op.imm_obj == 0 ? "false" : "true");
             }
-            return addTypeCast(ctx, exacttype, new WriteResult(19, [`${node.op.imm_obj}`]));
+            let literal = writeLeaf("literalnumber", "" + node.op.imm_obj);
+            let res = (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
+            if (exacttype != -1 && exacttype != vartypes.int && exacttype != vartypes.unknown_int) {
+                let typename = Object.entries(vartypes).find(q => q[1] == exacttype);
+                if (typename) {
+                    res.objectid = `${typename[0]}_${node.op.imm_obj}`;
+                }
+            }
+            return res;
         } else {
             throw new Error("unexpected");
         }
@@ -480,15 +525,21 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         return new WriteResult(19, [name],);
     }
     if (node.op.opcode == namedClientScriptOps.joinstring) {
-        let res = new WriteResult(19, ["`"]);
-        for (let child of node.children) {
+        let res = new WriteResult(19);
+        let literalfrag = "`";
+        for (let i = 0; i < node.children.length; i++) {
+            let child = node.children[i];
             if (child instanceof RawOpcodeNode && child.opinfo.id == namedClientScriptOps.pushconst && typeof child.op.imm_obj == "string") {
-                res.push(escapeStringLiteral(child.op.imm_obj, "template"));
+                literalfrag += escapeStringLiteral(child.op.imm_obj, "template");
             } else {
-                res.push("${", ctx.getCode(child), "}");
+                literalfrag += "${";
+                res.push(writeLeaf("literalstring", literalfrag));
+                res.push(ctx.getCode(child));
+                literalfrag = "}";
             }
         }
-        res.push("`");
+        literalfrag += "`";
+        res.push(writeLeaf("literalstring", literalfrag));
         return res;
     }
     return getOpcodeCallCode(ctx, node.op, node.children, node.originalindex);
@@ -496,20 +547,24 @@ addWriter(RawOpcodeNode, (node, ctx) => {
 addWriter(ClientScriptFunction, (node, ctx) => {
     let scriptidmatch = node.scriptname.match(/^script(\d+)$/);
     let meta = (scriptidmatch ? ctx.calli.scriptargs.get(+scriptidmatch[1]) : null);
-    let res = new WriteResult(0);
-    res.push(`//${meta?.scriptname ?? "unknown name"}\n`);
-    res.push(ctx.codeIndent(), `function ${node.scriptname}(`, node.argtype.toTypeScriptVarlist(true, ctx.typescript, meta?.stack.exactin), `)`);
-    if (ctx.typescript) { res.push(`: `, node.returntype.toTypeScriptReturnType(meta?.stack.exactout), " "); }
+    let res = new WriteResult(0, [
+        writeLeaf("comment", `//${meta?.scriptname ?? "unknown name"}\n`),
+        ctx.codeIndent(), writeLeaf("keyword", "function"), " ", writeLeaf("scriptname", node.scriptname), "(",
+        typeList(node.argtype, true, ctx.typescript, meta?.stack.exactin),
+        ")"
+    ]);
+    if (ctx.typescript) { res.push(`: `, returntypeTuple(node.returntype, meta?.stack.exactout), " "); }
     res.push(ctx.getCode(node.children[0]));
     return res;
 });
 addWriter(FunctionBindNode, (node, ctx) => {
     let scriptid = node.children[0]?.knownStackDiff?.constout ?? -1;
-    if (scriptid == -1 && node.children.length == 1) { return new WriteResult(17, [`callback()`]); }
-    let scriptnode = new WriteResult(17, [`script${scriptid}`], `scripts_${scriptid}`);
+    if (scriptid == -1 && node.children.length == 1) { return new WriteResult(19, [writeLeaf("keyword", "callback"), "()"]); }
+    let scriptnode = writeLeaf("scriptname", `script${scriptid}`, `scripts_${scriptid}`);
     let children = node.children.slice(1).map(ctx.getCode);
-    return new WriteResult(19, [`callback(`, scriptnode, ...children.flatMap(q => [", ", q]), `)`]);
+    return new WriteResult(19, [writeLeaf("keyword", "callback"), "(", scriptnode, ...children.flatMap(q => [", ", q]), ")"]);
 });
 addWriter(SubcallNode, (node, ctx) => {
-    return writeCall(ctx, new WriteResult(19, [node.funcname]), node.children.slice(0, -1));
+    return writeCall(ctx, writeLeaf("scriptname", node.funcname), node.children.slice(0, -1));
 });
+

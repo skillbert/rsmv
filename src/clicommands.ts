@@ -16,7 +16,7 @@ import { getSequenceGroups } from "./scripts/groupskeletons";
 import { getGameInterfaces } from "./scripts/gameinterfaces";
 import { CacheFileSource } from "./cache";
 import fs from "fs/promises";
-import { extractClientModuleCode, IsolatedCS2Module } from "./clientscript/extractmodule";
+import { extractClientModuleCode, IsolatedCS2Module } from "./clientscript/typescript/extractmodule";
 import { diffFileDependencyHash } from "./scripts/dependencydiff";
 import { EngineCache } from "./3d/modeltothree";
 import { cacheFileJsonModes } from "./parser/jsondecoders";

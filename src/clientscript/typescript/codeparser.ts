@@ -1,15 +1,16 @@
-import { has, hasMore, parse, optional, invert, isEnd } from "../libs/yieldparser";
-import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff, ControlStatementNode } from "./ast";
-import { ClientscriptObfuscation, OpcodeInfo } from "./callibrator";
+import { has, parse } from "../../libs/yieldparser";
+import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff, ControlStatementNode } from "../ast";
+import { ClientscriptObfuscation } from "../callibrator";
 import { TsWriterContext } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, getParamOps, dynamicOps, subtypeToTs, ExactStack, tsToSubtype, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "./definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, ExactStack, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "../definitions";
 import prettyJson from "json-stringify-pretty-compact";
-import { parse as opdecoder } from "../parser/jsondecoders";
-import { CacheFileSource } from "../cache";
-import { prepareClientScript } from ".";
-import { astToImJson, intrinsics } from "./jsonwriter";
-import { ClientScriptInterpreter } from "./interpreter";
-import { vartypes } from "../constants";
+import { parse as opdecoder } from "../../parser/jsondecoders";
+import { CacheFileSource } from "../../cache";
+import { prepareClientScript } from "..";
+import { astToImJson, intrinsics } from "../jsonwriter";
+import { vartypes } from "../../constants";
+import { reserved } from "./typescripthelpers";
+import { subtypeToTs, tsToSubtype } from "./writehelpers";
 
 function* whitespace() {
     while (true) {
@@ -19,7 +20,6 @@ function* whitespace() {
 }
 const newline = /^\s*?\n/;
 const unmatchable = /$./;
-const reserverd = "if,while,break,continue,else,switch,script,return,var".split(",");
 const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
 const binaryops = [...binaryOpSymbols.values()].map(q => q.str);
 const binaryopsoremtpy = binaryops.concat("");
@@ -315,7 +315,7 @@ function scriptContext(ctx: ParseContext) {
 
     function* varname() {
         const [name]: [string] = yield (/^[a-zA-Z$][\w$]*/);
-        if (reserverd.includes(name)) { yield unmatchable; }
+        if (reserved.includes(name)) { yield unmatchable; }
         return name;
     }
 
@@ -631,7 +631,7 @@ function scriptContext(ctx: ParseContext) {
         let name = yield varname;
         if (name == "true") { return makeIntConst(1, "boolean"); }
         if (name == "false") { return makeIntConst(0, "boolean"); }
-        if (reserverd.includes(name)) { yield unmatchable; }
+        if (reserved.includes(name)) { yield unmatchable; }
         yield whitespace;
         let { readopid, writeopid, vartype, varid } = getVarMeta(name);
         let postop = "";
@@ -866,79 +866,4 @@ globalThis.testy = async (range = "0-1999") => {
         return { exact: rawinput == rawroundtrip, exactts: originalts == roundtripts, roundtripped, original };
     }
     return { subtest, testinner, testknown, codefiles, codefs, jsonfs, jsonfiles };
-}
-
-export function writeOpcodeFile(calli: ClientscriptObfuscation) {
-    let res = "";
-    res += `// Need to be defined for the typescript compiler\n`;
-    res += "interface Boolean { }\n";
-    res += "interface Function { }\n";
-    res += "interface Number { }\n";
-    res += "interface Object { }\n";
-    res += "interface RegExp { }\n";
-    res += "interface String { }\n";
-    res += "interface IArguments { }\n";
-    res += "interface BigInt { }\n";
-    res += "interface Symbol { }\n";
-    res += "interface Array<T> { [Symbol.iterator](): any; }\n";
-    res += "declare var Symbol: { readonly iterator: unique symbol };\n";
-    res += "\n";
-    res += `// Language constructs\n`;
-    res += "declare class BoundFunction { }\n";
-    res += "declare function operator(op: string, ...values:any[]): any;\n";
-    res += "declare function callback(): BoundFunction;\n";
-    res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
-    res += "declare function comp(interf: number, element: number): component;\n";
-    res += "declare function comprel(interf: number, elementrel: number): component;\n"
-    res += "declare function pos(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
-    res += "declare function stack(...args: any[]): any;\n";
-    res += "\n";
-    res += `// Compiler intrinsics\n`;
-    for (let [name, intr] of intrinsics) {
-        res += `declare function ${name}(${intr.in.toTypeScriptVarlist(true, true)}): ${intr.out.toTypeScriptReturnType()};\n`;
-    }
-    res += "\n";
-    res += `// Clientscript types\n`;
-    for (let type of Object.values(vartypes)) {
-        let prim = typeToPrimitive(type);
-        let name = subtypeToTs(type);
-        if (name == "string") { continue; }
-        if (name == "boolean") { continue; }
-        res += `type ${name} = ${prim == "int" ? "number" : prim == "long" ? "BigInt" : "string"}\n`;
-    }
-    res += "\n";
-    res += `// VM opcodes\n`;
-    for (let op of calli.mappings.values()) {
-        let opname = getOpName(op.id);
-        if (reserverd.includes(opname)) { continue; }
-        if (op.id == namedClientScriptOps.enum_getvalue) {
-            res += `declare function ${opname}(int0: number, int1: number, int2: number, int3: number): any;\n`;
-        } else if (op.id == namedClientScriptOps.dbrow_getfield) {
-            res += `declare function ${opname}(int0: number, int1: number, int2: number): any;\n`;
-        } else if (!dynamicOps.includes(op.id) && op.stackinfo.initializedthrough) {
-            let args = op.stackinfo.in.toTypeScriptVarlist(true, true, op.stackinfo.exactin);
-            let returns = op.stackinfo.out.toTypeScriptReturnType(op.stackinfo.exactout);
-            res += `declare function ${opname}(${args}): ${returns};\n`;
-        } else {
-            res += `declare function ${opname}(...args: any[]): any;\n`;
-        }
-    }
-    return res;
-}
-
-export function writeClientVarFile(calli: ClientscriptObfuscation) {
-    let res = "";
-    for (let [domainid, domain] of calli.varmeta) {
-        res += `// ===== ${domain.name} =====\n`;
-        for (let [id, meta] of domain.vars) {
-            let varid = domainid | (id << 8);
-            res += `declare var ${calli.getClientVarName(varid)}: ${meta.type};\n`;
-        }
-    }
-    res += `// ===== varbits =====\n`;
-    for (let [id, meta] of calli.varbitmeta) {
-        let name = calli.getClientVarbitName(id, 0);
-        res += `declare var ${name}: number;\n`;
-    }
-    return res;
 }

@@ -195,26 +195,6 @@ export function longBigIntToJson(long: bigint): [number, number] {
     return [upper, lower];
 }
 
-export function subtypeToTs(subt: number) {
-    let resentry = Object.entries(vartypes).find(q => q[1] == subt);
-    if (!resentry) { return `type_${subt}`; }
-    let res = resentry[0];
-    // if (res == "boolean") { res = "cs2bool"; }
-    if (res == "enum") { res = "cs2enum"; }
-    return res;
-}
-
-export function tsToSubtype(tscode: string) {
-    if (tscode == "cs2bool") { return vartypes.boolean; }
-    if (tscode == "cs2enum") { return vartypes.enum; }
-    if (!Object.hasOwn(vartypes, tscode)) {
-        let m = tscode.match(/^type_(\d+)$/);
-        if (!m) { throw new Error("unknown subtype " + tscode); }
-        return +m[1];
-    }
-    return vartypes[tscode];
-}
-
 const stringtypes = [
     vartypes.string,
     vartypes.coordfine,
@@ -556,49 +536,6 @@ export class StackList {
         }
         return res;
     }
-    toTypeScriptVarlist(withnames: boolean, withtypes: boolean, exacttype?: ExactStack | null) {
-        let res = "";
-        let counts = new StackDiff();
-        for (let i = 0; i < this.values.length; i++) {
-            let part = this.values[i];
-            if (part instanceof StackDiff) { res += part.toTypeScriptVarlist(counts, withnames, withtypes, exacttype); }
-            else if (part == "int" && i + 1 < this.values.length && this.values[i + 1] == "vararg") {
-                //combine int+vararg arguments into a single boundfunction argument
-                if (withnames) { res += `vararg${withtypes ? ": " : ""}`; }
-                if (withtypes) { res += "BoundFunction"; }
-                counts.vararg++;
-                i++;
-            }
-            else if (part == "int") {
-                if (withnames) { res += `int${counts.int}${withtypes ? ": " : ""}`; }
-                if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.int[counts.int]) : "number"); }
-                counts.int++;
-            }
-            else if (part == "long") {
-                if (withnames) { res += `long${counts.long}${withtypes ? ": " : ""}`; }
-                if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.long[counts.long]) : "BigInt"); }
-                counts.long++;
-            }
-            else if (part == "string") {
-                if (withnames) { res += `string${counts.string}${withtypes ? ": " : ""}`; }
-                if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.string[counts.string]) : "string"); }
-                counts.string++;
-            }
-            else throw new Error("unsupported stack type");
-            if (i != this.values.length - 1) { res += ", "; }
-        }
-        // res = res.replace(/,\s?$/, "");
-        return res;
-    }
-    toTypeScriptReturnType(exacttype?: ExactStack | null) {
-        if (this.values.length == 0) {
-            return "void";
-        }
-        if (this.values.length == 1) {
-            return this.toTypeScriptVarlist(false, true, exacttype);
-        }
-        return `[${this.toTypeScriptVarlist(false, true, exacttype)}]`;
-    }
     toJson() { return this.values.map(q => typeof q == "string" ? q : q.toJson()); }
     static fromJson(v: ReturnType<StackList["toJson"]>) {
         return new StackList(v.map(q => typeof q == "string" ? q : StackDiff.fromJson(q)!));
@@ -847,35 +784,6 @@ export class StackDiff {
         res += "l".repeat(this.long);
         res += "s".repeat(this.string);
         if (this.vararg != 0) { throw new Error("vararg not supported"); }
-        return res;
-    }
-    toTypeScriptVarlist(nameoffset: StackDiff, withnames: boolean, withtypes: boolean, exacttype?: ExactStack | null) {
-        let res = "";
-        for (let i = 0; i < this.int; i++) {
-            if (withnames) { res += `int${nameoffset.int}${withtypes ? ": " : ""}`; }
-            if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.int[nameoffset.int]) : "number"); }
-            res += ", ";
-            nameoffset.int++;
-        }
-        for (let i = 0; i < this.long; i++) {
-            if (withnames) { res += `long${nameoffset.long}${withtypes ? ": " : ""}`; }
-            if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.long[nameoffset.long]) : "BigInt"); }
-            res += ", ";
-            nameoffset.long++;
-        }
-        for (let i = 0; i < this.string; i++) {
-            if (withnames) { res += `string${nameoffset.string}${withtypes ? ": " : ""}`; }
-            if (withtypes) { res += (exacttype ? subtypeToTs(exacttype.string[nameoffset.string]) : "string"); }
-            res += ", ";
-            nameoffset.string++;
-        }
-        for (let i = 0; i < this.vararg; i++) {
-            if (withnames) { res += `vararg${nameoffset.vararg}${withtypes ? ": " : ""}`; }
-            if (withtypes) { res += "BoundFunction"; }
-            res += ", ";
-            nameoffset.vararg++;
-        }
-        res = res.replace(/, $/, "");
         return res;
     }
 }

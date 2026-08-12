@@ -1,7 +1,7 @@
 import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibrator";
-import { debugAst } from "./codewriter";
+import { debugAst } from "./typescript/codewriter";
 import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, makeop } from "./definitions";
 import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./subtypedetector";

@@ -1,8 +1,8 @@
-import { TsWriterContext } from "./codewriter";
+import { TsWriterContext } from "./typescript/codewriter";
 import { parseClientScriptIm } from "./ast";
 import { ClientscriptObfuscation } from "./callibrator";
 import { CacheFileSource } from "../cache";
-import { parseClientscriptTs } from "../clientscript/codeparser";
+import { parseClientscriptTs } from "./typescript/codeparser";
 import { parse } from "../parser/jsondecoders";
 import { astToImJson } from "./jsonwriter";
 import { clientscript } from "../../generated/clientscript";
@@ -10,7 +10,7 @@ import { crc32, crc32addInt } from "../libs/crc32util";
 // import { Openrs2CacheSource } from "../cache/openrs2loader";
 // import { GameCacheLoader } from "../cache/sqlite";
 
-export { writeClientVarFile, writeOpcodeFile } from "../clientscript/codeparser";
+export { writeClientVarFile, writeOpcodeFile } from "./typescript/codewriter";
 
 export async function compileClientScript(source: CacheFileSource, code: string) {
     let calli = await prepareClientScript(source);

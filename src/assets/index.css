@@ -439,3 +439,42 @@
 	font-family: monospace;
 	line-height: 1.25;
 }
+
+.mv-code__literalstring {
+	color: #d4d4d4;
+}
+
+.mv-code__literalnumber {
+	color: #b5cea8;
+}
+
+.mv-code__global {
+	color: #9cdcfe;
+}
+
+.mv-code__local {
+	color: #9cdcfe;
+}
+
+.mv-code__scriptname {
+	color: #dcdcaa;
+}
+
+.mv-code__opname {
+	color: #c586c0;
+	font-weight: bold;
+}
+
+.mv-code__keyword {
+	color: #569cd6;
+	font-weight: bold;
+}
+
+.mv-code__type {
+	color: #4ec9b0;
+}
+
+.mv-code__link {
+	text-decoration: underline;
+	cursor: pointer;
+}
