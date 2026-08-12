@@ -645,7 +645,7 @@ export class ClientscriptObfuscation {
     getClientVarObjectId(varint: number) {
         let groupid = (varint >> 24) & 0xff;
         let varid = (varint >> 8) & 0xffff;
-        return `${this.varmeta.get(groupid)?.name ?? "unk"}_${varid}`;
+        return `var_${this.varmeta.get(groupid)?.name ?? "unk"}_${varid}`;
     }
     getNamedOp(id: number) {
         let opinfo = this.decodedMappings.get(id);

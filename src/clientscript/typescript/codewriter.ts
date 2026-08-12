@@ -521,8 +521,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         || node.op.opcode == namedClientScriptOps.pushlocalstring
         || node.op.opcode == namedClientScriptOps.pushvar
         || node.op.opcode == namedClientScriptOps.pushvarbit) {
-        let name = getOpcodeName(ctx.calli, node.op);
-        return new WriteResult(19, [name],);
+        return getOpcodeName(ctx.calli, node.op);
     }
     if (node.op.opcode == namedClientScriptOps.joinstring) {
         let res = new WriteResult(19);
@@ -560,7 +559,7 @@ addWriter(ClientScriptFunction, (node, ctx) => {
 addWriter(FunctionBindNode, (node, ctx) => {
     let scriptid = node.children[0]?.knownStackDiff?.constout ?? -1;
     if (scriptid == -1 && node.children.length == 1) { return new WriteResult(19, [writeLeaf("keyword", "callback"), "()"]); }
-    let scriptnode = writeLeaf("scriptname", `script${scriptid}`, `scripts_${scriptid}`);
+    let scriptnode = writeLeaf("scriptname", `script${scriptid}`, `scriptref_${scriptid}`);
     let children = node.children.slice(1).map(ctx.getCode);
     return new WriteResult(19, [writeLeaf("keyword", "callback"), "(", scriptnode, ...children.flatMap(q => [", ", q]), ")"]);
 });
