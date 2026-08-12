@@ -292,9 +292,9 @@ export const branchInstructions = [
     ...branchInstructionsLong
 ];
 
-export const binaryOpSymbols = new Map([
-    [namedClientScriptOps.shorting_or, "||"],
-    [namedClientScriptOps.shorting_and, "&&"],
+export const binaryOpSymbols = new Map<number, { str: string, prec: number, intmath: boolean, assoc: "left" | "right" | "none" }>([
+    [namedClientScriptOps.shorting_or, { str: "||", prec: 3, intmath: false, assoc: "left" }],
+    [namedClientScriptOps.shorting_and, { str: "&&", prec: 4, intmath: false, assoc: "left" }],
 
     //compare longs
     // [namedClientScriptOps.branch_not_long, ":!="],
@@ -305,28 +305,21 @@ export const binaryOpSymbols = new Map([
     // [namedClientScriptOps.branch_gt_long, ":>"],
 
     //ints
-    [namedClientScriptOps.branch_not, "!="],
-    [namedClientScriptOps.branch_eq, "=="],
-    [namedClientScriptOps.branch_lteq, "<="],
-    [namedClientScriptOps.branch_gteq, ">="],
-    [namedClientScriptOps.branch_lt, "<"],//make sure shorter ops are after longer ones
-    [namedClientScriptOps.branch_gt, ">"],
+    [namedClientScriptOps.branch_not, { str: "!=", prec: 8, intmath: false, assoc: "left" }],
+    [namedClientScriptOps.branch_eq, { str: "==", prec: 8, intmath: false, assoc: "left" }],
+    [namedClientScriptOps.branch_lteq, { str: "<=", prec: 9, intmath: false, assoc: "left" }],
+    [namedClientScriptOps.branch_gteq, { str: ">=", prec: 9, intmath: false, assoc: "left" }],
+    [namedClientScriptOps.branch_lt, { str: "<", prec: 9, intmath: false, assoc: "left" }],//make sure shorter ops are after longer ones
+    [namedClientScriptOps.branch_gt, { str: ">", prec: 9, intmath: false, assoc: "left" }],
 
     //math
-    [namedClientScriptOps.plus, "+"],
-    [namedClientScriptOps.minus, "-"],
-    [namedClientScriptOps.intdiv, "/"],
-    [namedClientScriptOps.intmul, "*"],
+    [namedClientScriptOps.plus, { str: "+", prec: 11, intmath: true, assoc: "left" }],
+    [namedClientScriptOps.minus, { str: "-", prec: 11, intmath: true, assoc: "left" }],
+    [namedClientScriptOps.intdiv, { str: "/", prec: 12, intmath: true, assoc: "left" }],
+    [namedClientScriptOps.intmul, { str: "*", prec: 12, intmath: true, assoc: "left" }],
 ]);
 
-export const int32MathOps = new Set([
-    namedClientScriptOps.plus,
-    namedClientScriptOps.minus,
-    namedClientScriptOps.intdiv,
-    namedClientScriptOps.intmul
-]);
-
-export const binaryOpIds = new Map([...binaryOpSymbols].map(q => [q[1], q[0]]));
+export const binaryOpIds = new Map([...binaryOpSymbols].map(q => [q[1].str, q[0]]));
 
 export const branchInstructionsOrJump = [
     ...branchInstructions,

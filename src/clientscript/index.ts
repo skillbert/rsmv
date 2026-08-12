@@ -31,7 +31,7 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     if (relativeComps) { writer.setCompOffsets(rootfunc); }
     writer.typescript = !notypes;
     writer.int32casts = int32casts;
-    let res = writer.getCode(rootfunc);
+    let res = writer.getCodeString(rootfunc);
     return res;
 }
 

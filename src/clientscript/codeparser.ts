@@ -21,7 +21,7 @@ const newline = /^\s*?\n/;
 const unmatchable = /$./;
 const reserverd = "if,while,break,continue,else,switch,script,return,var".split(",");
 const binaryconditionals = "||,&&,>=,<=,==,!=,>,<".split(",");
-const binaryops = [...binaryOpSymbols.values()];
+const binaryops = [...binaryOpSymbols.values()].map(q => q.str);
 const binaryopsoremtpy = binaryops.concat("");
 
 
@@ -860,7 +860,7 @@ globalThis.testy = async (range = "0-1999") => {
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/json2.json", prettyJson(roundtripped.opcodedata));
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js1.ts", originalts);
         let { rootfunc: roundtrippedAst, typectx } = parseClientScriptIm(deob, roundtripped, fileid);
-        let roundtripts = new TsWriterContext(deob, typectx).getCode(roundtrippedAst);
+        let roundtripts = new TsWriterContext(deob, typectx).getCodeString(roundtrippedAst);
         globalThis.cstest = roundtrippedAst;
         fs.writeFileSync("C:/Users/wilbe/tmp/clinetscript/js2.ts", roundtripts);
         return { exact: rawinput == rawroundtrip, exactts: originalts == roundtripts, roundtripped, original };
