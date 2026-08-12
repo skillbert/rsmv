@@ -269,8 +269,9 @@ const decodeClientScript: DecodeModeFactory = (ops) => {
 			out.writeFile("opcodes.d.ts", writeOpcodeFile(calli));
 			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
 		},
-		read(buf, fileid, source) {
-			return renderClientScript(source, buf, fileid[0], ops.cs2relativecomps == "true", ops.cs2notypes == "true", ops.cs2intcasts == "true");
+		async read(buf, fileid, source) {
+			let { writer, rootfunc } = await renderClientScript(source, buf, fileid[0], ops.cs2relativecomps == "true", ops.cs2notypes == "true", ops.cs2intcasts == "true");
+			return writer.getCodeString(rootfunc);
 		},
 		async write(file, fileid, source) {
 			let obj = await compileClientScript(source, file.toString("utf8"));

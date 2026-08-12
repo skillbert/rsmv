@@ -10,8 +10,7 @@ import classNames from "classnames";
 import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
 import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
-import { makeFileId } from "../tabs/browse";
-import { cacheFileJsonModes } from "../../parser/jsondecoders";
+import { BrowseModes, makeFileId } from "../tabs/browse";
 import { styleSheetImageProps, styleSheetRGBAProps, styleSheetRGBProps } from "../../scripts/renderrsinterface";
 
 type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit" | "stylevalue";
@@ -34,7 +33,7 @@ class DeepLinkContext {
     }
 }
 
-export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeof cacheFileJsonModes>> = {
+export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes>> = {
     achievement: "achievements",
     bas: "animgroupconfigs",
     chatcat: "quickchatcats",
@@ -58,6 +57,9 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeo
     var_player: "var_player",
     stylesheet: "stylesheets",
     skybox: "skyboxes",
+    graphic: "sprites",
+    interface: "interfaces",
+    scriptref: "clientscript",
     // TODO fix these
     ["maplabel" as any]: "maplabels",
     ["varbit" as any]: "varbits",
@@ -69,7 +71,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, keyof typeo
     // graphic: "sprites",
     // texture: "textures",
     // maparea: "mapareas",
-    component: "interfaces",//redirect this to interfaceviewer instead
+    component: "interfaceviewer",//redirect this to interfaceviewer instead
     // interface: "interfaces"
 }
 

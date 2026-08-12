@@ -25,7 +25,7 @@ export function CanvasView(p: { canvas: HTMLCanvasElement | null, fillHeight?: b
 	)
 }
 
-export function TextureView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap | ImageData }) {
+export function TextureView(p: { img: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap | ImageData, fillHeight?: boolean }) {
 	let ref = React.useCallback((cnv: HTMLCanvasElement | null) => {
 		if (cnv) {
 			let ctx = cnv.getContext("2d")!;
@@ -34,8 +34,10 @@ export function TextureView(p: { img: HTMLImageElement | HTMLCanvasElement | HTM
 	}, [p.img]);
 
 	return (
-		<canvas ref={ref} className="mv-image-preview-canvas" />
-	)
+		<div className="mv-image-preview" style={p.fillHeight ? { height: "100%" } : {}}>
+			<canvas ref={ref} className="mv-image-preview-canvas" />
+		</div>
+	);
 }
 
 export function BlobImage(p: { file: Uint8Array, ext: string, fillHeight?: boolean }) {

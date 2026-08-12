@@ -2,12 +2,24 @@ import React, { useContext } from "react";
 import { checkObject, stringToFileRange } from "../../utils";
 import { LookupModeProps } from "../scenenodes";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
-import { TabStrip, useAwaited, useEmitterProperty } from "../commoncontrols";
-import { BrowseModes, BrowsePageId, UIEngineContext, UIRootContext } from "../maincomponents";
+import { DomWrap, TabStrip, TextureView, useAwaited, useEmitterProperty } from "../commoncontrols";
+import { UIEngineContext, UIRootContext } from "../maincomponents";
 import { jsonCacheSearch, JsonSearchFilter } from "../jsonsearch";
 import { FileListView } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
 import { vartypeToDecoder } from "../viewers/configview";
+import { prepareClientScript, renderClientScript } from "../../clientscript";
+import { cacheMajors } from "../../constants";
+import { parseSprite } from "../../3d/materials/sprite";
+import { RsUIViewer } from "../viewers/rsuiviewer";
+import { cacheFileDecodeModes } from "../../parser/filetypes";
+
+export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites";
+
+export type BrowsePageId = {
+    type: "browse",
+    id: string
+}
 
 const modeOverrides: Partial<Record<keyof typeof cacheFileJsonModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -34,14 +46,14 @@ export function fileIdToIndex(fileid: string) {
         }
     }
     if (mode in vartypeToDecoder) { mode = vartypeToDecoder[mode]; }
-    if (!cacheFileJsonModes[mode as BrowseModes]) { return null; }
+    if (!cacheFileDecodeModes[mode as BrowseModes]) { return null; }
     if (index.length == 0) { return null; }
     return { mode: mode as BrowseModes, index };
 }
 
 
 function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string, initialMode: string, onSearch: (search: string, searchmode: string) => void, onFileSelect: (id: string) => void }) {
-    let mode = cacheFileJsonModes[p.modename] ?? null;
+    let mode = cacheFileDecodeModes[p.modename]?.({}) ?? null;
     let overrides = modeOverrides[p.modename] ?? {};
     let ctx = useContext(UIRootContext);
     let engine = useContext(UIEngineContext)?.sceneCache.engine;
@@ -50,12 +62,10 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
     let selectedfile = (activetab?.type == "browse" ? activetab.id : null);
 
     let [searchtext, setSearchText] = React.useState(p.initialValue);
-    let [searchmode, setSearchmode] = React.useState<keyof typeof searchModes>(p.initialMode as any);
-
-
+    let [searchmode, setSearchmode] = React.useState(p.initialMode);
 
     let canjsonsearch = overrides.jsonNameProperty != undefined;
-    let caninternalnamesearch = mode.lookup.internalNamefile != undefined;
+    let caninternalnamesearch = mode.internalNamefile != undefined;
     const searchModes: Record<string, string> = { id: "ID" };
     if (canjsonsearch) { searchModes.objectname = "Object Name"; }
     if (caninternalnamesearch) { searchModes.internalname = "Internal Name"; }
@@ -66,22 +76,22 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
             if (!engine) { return null; }
             return async (searchtext: string) => {
                 let ranges = stringToFileRange(searchtext);
-                let allfiles = (await Promise.all(ranges.map(q => mode.lookup.logicalRangeToFiles(engine, q.start, q.end))))
+                let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(engine, q.start, q.end))))
                     .flat()
                     .sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subindex - b.subindex);
 
                 let matches = new Map<string, string>();
                 for (let file of allfiles) {
                     let subid = file.index.subindices[file.subindex];
-                    let filename = makeFileId(p.modename, mode.lookup.fileToLogical(engine, file.index.major, file.index.minor, subid));
+                    let filename = makeFileId(p.modename, mode.fileToLogical(engine, file.index.major, file.index.minor, subid));
                     matches.set(filename, filename);
                 }
                 return matches;
             }
         }
         if (searchmode == "internalname") {
-            if (!engine || mode.lookup.internalNamefile == null) { return null; }
-            let internalnames = await engine.getInternalNameList(mode.lookup.internalNamefile);
+            if (!engine || mode.internalNamefile == null) { return null; }
+            let internalnames = await engine.getInternalNameList(mode.internalNamefile);
             return (searchtext: string) => {
                 let matches = new Map<string, string>();
                 let searchterm = searchtext.toLowerCase().replace(/ /g, "_");
@@ -96,7 +106,8 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
         }
         if (searchmode == "objectname") {
             if (!engine || !overrides.jsonNameProperty) { return null; }
-            let jsonsearch = await jsonCacheSearch(engine, p.modename);
+            if (!(p.modename in cacheFileJsonModes)) { return null; }
+            let jsonsearch = await jsonCacheSearch(engine, p.modename as any);
             return (searchtext: string) => {
                 let jsonsearchfilter: JsonSearchFilter[] = [{ path: [overrides.jsonNameProperty!], search: searchtext }];
                 let matches = new Map<string, string>();
@@ -150,8 +161,8 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
 
     return <div className="mv-sidebar-scroll">
         {subgroup("Game", ["items", "npcs", "locs", "spotanims"])}
-        {subgroup("Data", ["dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests"])}
-        {subgroup("UI", ["cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
+        {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests"])}
+        {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
         {subgroup("Map", ["mapscenes", "maplabels", "mapzones", "mappastes", "maplabellocations"])}
         {subgroup("Rendering", ["underlays", "overlays", "skyboxes", "identitykit", "animgroupconfigs"])}
         {subgroup("Other", Object.keys(cacheFileJsonModes) as any)}
@@ -186,16 +197,44 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
 
 
     let data = useAwaited(() => {
+        if (!engine || !index) { return null; }
         let overrides = index && modeOverrides[index.mode];
-        let modefn = index && cacheFileJsonModes[index.mode];
-        if (!engine || !modefn || !index) { return null; }
-        return engine.getObject(index.mode, index.index).then(json => {
-            return {
-                file: JSON.stringify(json),
-                mode: index.mode,
+
+        return (async () => {
+            if (index.mode == "clientscript") {
+                let buf = await engine.getFileById(cacheMajors.clientscript, index.index[0]);
+                let { writer, rootfunc } = await renderClientScript(engine, buf, index.index[0], false, false, false);
+                let dom = writer.getCodeDom(rootfunc);
+                return { viewer: "dom", mode: index.mode, dom } as const;
             }
-        })
+            if (index.mode == "sprites") {
+                let file = await engine.getFileById(cacheMajors.sprites, index.index[0]);
+                let sprite = parseSprite(file);
+                return { viewer: "sprite", mode: index.mode, sprite } as const;
+            }
+            if (index.mode == "interfaceviewer") {
+                return { viewer: "interfaces", mode: index.mode, interfaceid: index.index[0] } as const;
+            }
+
+            let jsonfn = cacheFileJsonModes[index.mode];
+            if (!jsonfn) { return null; }
+            let obj = await engine.getObject(index.mode, index.index);
+            return {
+                viewer: "json",
+                mode: index.mode,
+                file: JSON.stringify(obj),
+            } as const;
+        })()
     }, [index?.mode, index?.index.join("_"), engine]);
 
-    return <JsonViewer data={data?.file} jsonmode={data?.mode ?? ""} />
+    if (!data) { return <div>Loading...</div>; }
+    if (data.viewer == "json") {
+        return <JsonViewer data={data?.file} jsonmode={data?.mode ?? ""} />
+    } else if (data.viewer == "dom") {
+        return <DomWrap el={data.dom} />
+    } else if (data.viewer == "sprite") {
+        return <TextureView img={data.sprite[0].img} fillHeight />
+    } else if (data.viewer == "interfaces") {
+        return <RsUIViewer interfaceid={data.interfaceid} />
+    }
 }

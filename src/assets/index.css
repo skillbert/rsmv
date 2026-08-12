@@ -432,3 +432,10 @@
 	display: grid;
 	grid-template-columns: subgrid;
 }
+
+.mv-codeview {
+	white-space: pre;
+	user-select: text;
+	font-family: monospace;
+	line-height: 1.25;
+}

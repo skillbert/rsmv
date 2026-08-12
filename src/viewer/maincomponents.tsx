@@ -13,7 +13,7 @@ import { CacheDownloader } from "../cache/downloader";
 import * as path from "path";
 import { selectFsCache } from "../cache/autocache";
 import { CLIScriptFS, ScriptFS } from "../scriptrunner";
-import { cacheFileJsonModes } from "../parser/jsondecoders";
+import { BrowsePageId } from "./tabs/browse";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -341,13 +341,6 @@ function CacheDragNDropHelp() {
 			)}
 		</React.Fragment>
 	);
-}
-
-export type BrowseModes = keyof typeof cacheFileJsonModes;
-
-export type BrowsePageId = {
-	type: "browse",
-	id: string
 }
 
 export type UIOpenedFile = {

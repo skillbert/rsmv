@@ -109,7 +109,8 @@ export class TsWriterContext {
     }
     @boundMethod
     getCodeDom(node: AstNode) {
-        let root = new DocumentFragment();
+        let root = document.createElement("div");
+        root.classList.add("mv-codeview");
 
         let recur = (frag: string | WriteResult, parent: DocumentFragment | HTMLElement) => {
             if (typeof frag == "string") {

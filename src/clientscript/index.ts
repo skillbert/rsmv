@@ -31,23 +31,25 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     if (relativeComps) { writer.setCompOffsets(rootfunc); }
     writer.typescript = !notypes;
     writer.int32casts = int32casts;
-    let res = writer.getCodeString(rootfunc);
-    return res;
+    return { writer, rootfunc };
 }
 
 export async function prepareClientScript(source: CacheFileSource) {
     if (!source.decodeArgs.clientScriptDeob) {
-        let deobsource = source;
-        // use equivelant openrs2 cache instead to prevent problems with edits begin invalid
-        // if (source instanceof GameCacheLoader) {
-        //     deobsource = new Openrs2CacheSource(await Openrs2CacheSource.getRecentCache());
-        // }
-        let deob = await ClientscriptObfuscation.create(deobsource);
-        source.decodeArgs.clientScriptDeob = deob;
-        await deob.runAutoCallibrate(source);
-        await deob.save();
+        let prom = source.decodeArgs.clientScriptDeobPromise ??= (async () => {
+            let deobsource = source;
+            // use equivelant openrs2 cache instead to prevent problems with edits begin invalid
+            // if (source instanceof GameCacheLoader) {
+            //     deobsource = new Openrs2CacheSource(await Openrs2CacheSource.getRecentCache());
+            // }
+            let deob = await ClientscriptObfuscation.create(deobsource);
+            source.decodeArgs.clientScriptDeob = deob;
+            await deob.runAutoCallibrate(source);
+            await deob.save();
 
-        globalThis.deob = deob;//TODO remove
+            globalThis.deob = deob;//TODO remove
+        })();
+        await prom;
     }
     return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation;
 }

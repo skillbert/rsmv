@@ -12,9 +12,8 @@ import { drawTexture } from "../../imgutils";
 import { RsUIViewer } from "../viewers/rsuiviewer";
 import { ClientScriptViewer } from "../viewers/cs2viewer";
 import { RsFontViewer } from "../viewers/fontviewer";
-import { JSONSchema6Definition } from "json-schema";
 import { StructView } from "../viewers/configview";
-import { BrowsePageId, downloadBlob, UIOpenedFile } from "../maincomponents";
+import { downloadBlob, UIOpenedFile } from "../maincomponents";
 
 
 function bufToHexView(buf: Buffer) {
@@ -305,7 +304,8 @@ export function FileDisplay(p: { file: UIOpenedFile }) {
     if (ext == "hexerr.json") {
         el = <FileDecodeErrorViewer file={fileText()} />;
     } else if (ext == "ui.json") {
-        el = <RsUIViewer data={fileText()} />
+        let uiinfo = JSON.parse(fileText());
+        el = <RsUIViewer interfaceid={uiinfo.id} />
     } else if (ext == "font.json") {
         el = <RsFontViewer data={JSON.parse(fileText())} />
     } else if (ext == "cs2.json") {

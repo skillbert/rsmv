@@ -5,7 +5,7 @@ import { ThreeJsRenderer } from "../threejsrender";
 import { CacheFileSource } from "../../cache";
 import { DomWrap } from "../commoncontrols";
 
-export function RsUIViewer(p: { data: string }) {
+export function RsUIViewer(p: { interfaceid: number }) {
 	let [ui, setui] = React.useState<RsInterfaceDomTree | null>(null);
 	let [hovering, sethovering] = React.useState(true);
 	let [refreshcount, refresh] = React.useReducer((v: number) => v + 1, 0);
@@ -20,9 +20,8 @@ export function RsUIViewer(p: { data: string }) {
 
 	React.useEffect(() => {
 		let needed = true;
-		let uiinfo = JSON.parse(p.data);
 		let cleanup = () => { };
-		loadRsInterfaceData(ctx, uiinfo.id).then(ui => {
+		loadRsInterfaceData(ctx, p.interfaceid).then(ui => {
 			if (!needed) { return; }
 			let res = renderRsInterfaceDOM(ctx, ui);
 			cleanup = res.dispose;
@@ -32,7 +31,7 @@ export function RsUIViewer(p: { data: string }) {
 			needed = false;
 			cleanup();
 		}
-	}, [ctx, p.data, refreshcount, ctx.runOnloadScripts]);
+	}, [ctx, p.interfaceid, refreshcount, ctx.runOnloadScripts]);
 
 	let scrollfix = React.useCallback((el: HTMLElement | null) => {
 		if (!el || !ui) { return; }
