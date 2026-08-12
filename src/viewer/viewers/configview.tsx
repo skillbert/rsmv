@@ -60,6 +60,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     graphic: "sprites",
     interface: "interfaces",
     scriptref: "clientscript",
+    inv: "inventories",
     // TODO fix these
     ["maplabel" as any]: "maplabels",
     ["varbit" as any]: "varbits",

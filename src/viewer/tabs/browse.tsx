@@ -160,7 +160,7 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
     }
 
     return <div className="mv-sidebar-scroll">
-        {subgroup("Game", ["items", "npcs", "locs", "spotanims"])}
+        {subgroup("Game", ["items", "npcs", "locs", "spotanims", "inventories"])}
         {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests"])}
         {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
         {subgroup("Map", ["mapscenes", "maplabels", "mapzones", "mappastes", "maplabellocations"])}

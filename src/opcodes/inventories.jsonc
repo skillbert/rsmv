@@ -1,0 +1,7 @@
+{
+    "0x02":{"name":"size","read":"ushort"},
+    "0x15":{"name":"shopdata","read":["array","ubyte",["struct",
+                                    ["item","unsigned tribyte","obj"],
+                                    ["stock","ushort"]
+                                ]]}
+}

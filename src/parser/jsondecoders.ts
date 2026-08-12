@@ -143,6 +143,7 @@ function allParsers() {
 		avatars: FileParser.fromJson<import("../../generated/avatars").avatars>(require("../opcodes/avatars.jsonc")),
 		avatarOverrides: FileParser.fromJson<import("../../generated/avataroverrides").avataroverrides>(require("../opcodes/avataroverrides.jsonc")),
 		identitykit: FileParser.fromJson<import("../../generated/identitykit").identitykit>(require("../opcodes/identitykit.jsonc")),
+		inventories: FileParser.fromJson<import("../../generated/inventories").inventories>(require("../opcodes/inventories.jsonc")),
 		structs: FileParser.fromJson<import("../../generated/structs").structs>(require("../opcodes/structs.jsonc")),
 		params: FileParser.fromJson<import("../../generated/params").params>(require("../opcodes/params.jsonc")),
 		particles_0: FileParser.fromJson<import("../../generated/particles_0").particles_0>(require("../opcodes/particles_0.jsonc")),
@@ -212,6 +213,7 @@ export const cacheFileJsonModes = {
 
 	overlays: JsonBasedFile(parse.mapsquareOverlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapoverlays)),
 	identitykit: JsonBasedFile(parse.identitykit, singleMinorIndex(cacheMajors.config, cacheConfigPages.identityKit)),
+	inventories: JsonBasedFile(parse.inventories, singleMinorIndex(cacheMajors.config, cacheConfigPages.inventories, internalNameFiles.inv)),
 	params: JsonBasedFile(parse.params, singleMinorIndex(cacheMajors.config, cacheConfigPages.params, internalNameFiles.param)),
 	underlays: JsonBasedFile(parse.mapsquareUnderlays, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapunderlays)),
 	mapscenes: JsonBasedFile(parse.mapscenes, singleMinorIndex(cacheMajors.config, cacheConfigPages.mapscenes)),
