@@ -4,7 +4,7 @@ import { ClientScriptInterpreter } from "../../clientscript/interpreter";
 import { getOpName } from "../../clientscript/definitions";
 import { ThreejsSceneCache } from "../../3d/modeltothree";
 import { prepareClientScript } from "../../clientscript";
-import { ClientscriptObfuscation } from "../../clientscript/callibrator";
+import { ClientscriptObfuscation } from "../../clientscript/callibration/callibrator";
 import { useForceUpdate } from "../commoncontrols";
 
 export function ClientScriptViewer(p: { data: string }) {

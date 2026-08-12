@@ -1,6 +1,6 @@
 import { TsWriterContext } from "./typescript/codewriter";
 import { parseClientScriptIm } from "./ast";
-import { ClientscriptObfuscation } from "./callibrator";
+import { ClientscriptObfuscation } from "./callibration/callibrator";
 import { CacheFileSource } from "../cache";
 import { parseClientscriptTs } from "./typescript/codeparser";
 import { parse } from "../parser/jsondecoders";
@@ -45,7 +45,7 @@ export async function prepareClientScript(source: CacheFileSource) {
             let deob = await ClientscriptObfuscation.create(deobsource);
             source.decodeArgs.clientScriptDeob = deob;
             await deob.runAutoCallibrate(source);
-            await deob.save();
+            // await deob.save();
 
             globalThis.deob = deob;//TODO remove
         })();

@@ -303,7 +303,7 @@ export abstract class CacheFileSource {
 				names = (namefile == internalNameFiles.var_player ? varps : varbits);
 			} else {
 				let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
-					console.log("failed to load filename file", namefile, e);
+					// console.log("failed to load filename file", namefile, e);
 					return null;
 				});
 				names = (file ? parseFileNameList(file) : new Map<number, string>());

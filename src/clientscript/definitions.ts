@@ -1,5 +1,5 @@
 import { cacheConfigPages, internalNameFiles } from "../constants";
-import { rs3opnames } from "./opnames";
+import { rs3opnames } from "./callibration/opnames";
 import { vartypes } from "../constants";
 
 export const variableSources = {

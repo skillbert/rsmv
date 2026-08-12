@@ -1,7 +1,7 @@
-import { ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "./ast";
-import { ClientscriptObfuscation, ScriptCandidate } from "./callibrator";
-import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps } from "./definitions";
-import { vartypes } from "../constants";
+import { ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "../ast";
+import { ClientscriptObfuscation, ScriptCandidate, ScriptCandidates } from "./callibrator";
+import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps } from "../definitions";
+import { vartypes } from "../../constants";
 
 //to test
 //await cli("extract --mode clientscript -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
@@ -239,9 +239,10 @@ class CombinedExactStack {
     }
 }
 
-export function detectSubtypes(calli: ClientscriptObfuscation, candidates: Map<number, ScriptCandidate>) {
+export function detectSubtypes(calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
+    if (!candidates.parsed) { throw new Error("candidates must be parsed before detectSubtypes()"); }
     let ctx = new ClientScriptSubtypeSolver();
-    for (let cand of candidates.values()) {
+    for (let cand of candidates.data.values()) {
         if (!cand.scriptcontents) { continue; }
         let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         ctx.parseSections(sections);

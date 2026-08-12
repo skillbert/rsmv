@@ -1,7 +1,7 @@
 import { boundMethod } from "autobind-decorator";
 import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, ComposedOp, FunctionBindNode, IfStatementNode, RawOpcodeNode, SwitchStatementNode, VarAssignNode, WhileLoopStatementNode, getSingleChild, SubcallNode, ComposedopType, isNamedOp, RewriteCursor } from "../ast";
-import { ClientscriptObfuscation } from "../callibrator";
-import { ClientScriptSubtypeSolver } from "../subtypedetector";
+import { ClientscriptObfuscation } from "../callibration/callibrator";
+import { ClientScriptSubtypeSolver } from "../callibration/subtypedetector";
 import { ClientScriptOp, ExactStack, PrimitiveType, StackDiff, StackList, binaryOpSymbols, branchInstructionsOrJump, dynamicOps, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, typeToPrimitive } from "../definitions";
 import { getOrInsert, unpackCoordgrid } from "../../utils";
 import { vartypes } from "../../constants";

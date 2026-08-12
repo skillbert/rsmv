@@ -1,5 +1,5 @@
 import { vartypes } from "../../constants";
-import { ClientscriptObfuscation } from "../callibrator";
+import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { ClientScriptOp, ExactStack, getOpName, namedClientScriptOps, StackDiff, StackList } from "../definitions";
 
 type FragmentType = "literalstring" | "literalnumber" | "global" | "local" | "scriptname" | "opname" | "keyword" | "type" | "comment" | "";

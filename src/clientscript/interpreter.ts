@@ -1,7 +1,7 @@
 import { clientscript } from "../../generated/clientscript"
-import { ClientscriptObfuscation } from "./callibrator";
+import { ClientscriptObfuscation } from "./callibration/callibrator";
 import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructions, getParamOps, knownClientScriptOpNames, longBigIntToJson, longJsonToBigInt, namedClientScriptOps, typeToPrimitive } from "./definitions"
-import { rs3opnames } from "./opnames";
+import { rs3opnames } from "./callibration/opnames";
 import { CS2Api, MAGIC_CONST_CURRENTCOMP, UiRenderContext } from "../scripts/renderrsinterface";
 import { getEnumInt, getStructInt } from "./util";
 

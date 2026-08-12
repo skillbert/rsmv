@@ -1,9 +1,9 @@
 import { prepareClientScript, writeOpcodeFile } from "..";
 import { CacheFileSource } from "../../cache";
 import { ClientScriptFunction, CodeBlockNode, isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor, FunctionBindNode } from "../ast";
-import { ClientscriptObfuscation } from "../callibrator";
+import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { TsWriterContext } from "./codewriter";
-import { ClientScriptSubtypeSolver } from "../subtypedetector";
+import { ClientScriptSubtypeSolver } from "../callibration/subtypedetector";
 import { namedClientScriptOps, StackConstants } from "../definitions";
 import { ScriptFS, ScriptOutput } from "../../scriptrunner";
 import { subtypeToTs } from "./writehelpers";

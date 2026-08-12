@@ -1,6 +1,6 @@
 import { has, parse } from "../../libs/yieldparser";
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff, ControlStatementNode } from "../ast";
-import { ClientscriptObfuscation } from "../callibrator";
+import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { TsWriterContext } from "./codewriter";
 import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, ExactStack, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "../definitions";
 import prettyJson from "json-stringify-pretty-compact";

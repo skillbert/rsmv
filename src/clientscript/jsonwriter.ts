@@ -1,7 +1,7 @@
 import { clientscript } from "../../generated/clientscript";
 import { getOrInsert } from "../utils";
 import { AstNode, ClientScriptFunction } from "./ast";
-import { ClientscriptObfuscation } from "./callibrator";
+import { ClientscriptObfuscation } from "./callibration/callibrator";
 import { branchInstructionsOrJump, namedClientScriptOps, StackDiff, ClientScriptOp, getOpName, makeop, pushOrPopLocalOps, makejump, SwitchJumpTable, StackList, variableSources, popDiscardOps } from "./definitions";
 
 const tmplocaloffset = 0x10000;
