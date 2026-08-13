@@ -32,6 +32,9 @@ module.exports = {
 				use: {
 					loader: 'swc-loader',
 					options: {
+						env: {
+							targets: "last 5 chrome versions",
+						},
 						jsc: {
 							parser: {
 								syntax: 'typescript',
