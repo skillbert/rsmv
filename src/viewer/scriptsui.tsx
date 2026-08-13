@@ -493,7 +493,7 @@ export function FileListView<T>(p: { files: Map<T, string>, selected: T | null, 
 				p.onSelect?.(match);
 			}
 		}
-	}, [p.files, p.selected, p.onSelect])
+	}, [p.files, p.selected, p.onSelect]);
 
 	let filelist: React.ReactNode[] = [];
 	let index = 0;
@@ -505,7 +505,7 @@ export function FileListView<T>(p: { files: Map<T, string>, selected: T | null, 
 	}
 
 	return (<>
-		{p.files.size > maxlist && <div>Only showing first {maxlist} files</div>}
+		{p.files.size > maxlist && <div>Only showing first {maxlist}/{p.files.size} files</div>}
 		<div tabIndex={0} onKeyDownCapture={listkeydown}>
 			{filelist}
 			{p.files.size > maxlist && <input type="button" className="sub-btn" onClick={e => setMaxlist(maxlist + 4000)} value={`Show more(${maxlist} / ${p.files.size})`} />}

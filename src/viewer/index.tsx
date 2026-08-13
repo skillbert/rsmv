@@ -5,19 +5,20 @@ import * as ReactDOM from "react-dom/client";
 import * as datastore from "idb-keyval";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
-import { UIContext, SavedCacheSource, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext, downloadBlob } from "./maincomponents";
+import { UIContext, SavedCacheSource, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext, downloadBlob, BrowsePageId } from "./maincomponents";
 import classNames from "classnames";
 import { exposeDebugToolsInGlobal } from "../consoletools";
 import { useForceUpdate } from "./commoncontrols";
 import { FileDisplay } from "./viewers/fileviewer";
-import { BrowseDisplay, BrowsePageId } from "./tabs/browse";
+import { BrowseDisplay } from "./tabs/browse";
 import { BlobTS } from "../utils";
 
 
 exposeDebugToolsInGlobal();
 
-export function unload(root: ReactDOM.Root) {
-	root.unmount();
+export function unload(obj: { root: ReactDOM.Root, ctx: UIContext }) {
+	obj.root.unmount();
+	obj.ctx.close();
 }
 
 export function start(rootelement: HTMLElement, serviceworker?: boolean) {
@@ -34,7 +35,7 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 		</UIRootContext.Provider>
 	);
 
-	return root;
+	return { root, ctx };
 }
 
 

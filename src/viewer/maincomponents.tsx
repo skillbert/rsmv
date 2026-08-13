@@ -7,13 +7,12 @@ import { CacheFileSource } from "../cache";
 import * as datastore from "idb-keyval";
 import { ThreejsSceneCache } from "../3d/modeltothree";
 import { StringInput, TabStrip, useAwaited } from "./commoncontrols";
-import { Openrs2CacheMeta, Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
+import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { delay, TypedEmitter } from "../utils";
 import { CacheDownloader } from "../cache/downloader";
 import * as path from "path";
 import { selectFsCache } from "../cache/autocache";
 import { CLIScriptFS, ScriptFS } from "../scriptrunner";
-import { BrowsePageId } from "./tabs/browse";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -350,7 +349,17 @@ export type UIOpenedFile = {
 	data: string | Buffer
 };
 
-export type UIOpenedTab = BrowsePageId | UIOpenedFile;
+export type BrowsePageId = {
+	type: "browse",
+	id: string
+}
+
+export type Toplevel3DView = {
+	type: "view3d",
+	id: string
+}
+
+export type UIOpenedTab = Toplevel3DView | BrowsePageId | UIOpenedFile;
 
 export type RenderableContext = { source: CacheFileSource, sceneCache: ThreejsSceneCache, renderer: ThreeJsRenderer };
 
@@ -374,6 +383,8 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 			//across tab reloads
 			navigator.serviceWorker?.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
 		}
+
+		navigation.addEventListener("navigate", this.onNavigate);
 	}
 
 	fixRenderable() {
@@ -413,8 +424,70 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		return !!this.source && !!this.sceneCache && !!this.renderer;
 	}
 
+	close() {
+		this.source?.close();
+		navigation.removeEventListener("navigate", this.onNavigate);
+	}
+
+	decodeUrlSearchParams(search: URL): UIOpenedTab | null {
+		let params = new URLSearchParams(search.search);
+		if (params.has("browse")) {
+			return { type: "browse", id: params.get("browse")! };
+		} else if (params.has("view3d")) {
+			return { type: "view3d", id: params.get("view3d")! };
+		} else if (params.has("file")) {
+			// return { type: "file", name: params.get("file")!, fs: null! };//data and fs will be filled in later
+		}
+		return null;
+	}
+
 	@boundMethod
-	openFile(tab: UIOpenedTab | null, newtab = false) {
+	onNavigate(e: NavigateEvent) {
+		if (!e.canIntercept) { return; }
+
+		if (this.isNavigating) {
+			e.intercept({ focusReset: "manual" });
+		} else {
+			// preven't reuse of our new url if the navigation was manual
+			this.lastPushTime = 0;
+			let target = this.decodeUrlSearchParams(new URL(e.destination.url));
+			console.log(`history triggered to ${target?.type} ${(target as any)?.id}`);
+			this.openFile(target, false, true);
+		}
+	}
+
+	lastPushTime = 0;
+	isNavigating = false;
+	fixUrl(tab: UIOpenedTab | null) {
+		let now = Date.now();
+		let url = "";
+		let navigatable = true;
+		if (!tab) {
+			url = "";
+		} else if (tab.type == "browse") {
+			url = `?browse=${encodeURIComponent(tab.id)}`;
+		} else if (tab.type == "view3d") {
+			url = `?view3d=${encodeURIComponent(tab.id)}`;
+		} else if (tab.type == "file") {
+			navigatable = false;
+			// url = `?file=${encodeURIComponent(tab.name)}`;
+		}
+
+		if (navigatable && url != document.location.search) {
+			this.isNavigating = true;
+			// only push to history if the last page was shown more than 1 second
+			let dopush = now - this.lastPushTime > 1000;
+			this.lastPushTime = now;
+			try {
+				navigation.navigate(url, { history: (dopush ? "push" : "replace"), state: { target: tab } });
+			} finally {
+				this.isNavigating = false;
+			}
+		}
+	}
+
+	@boundMethod
+	openFile(tab: UIOpenedTab | null, newtab = false, isHistoryNavigation = false) {
 		let tabindex = this.activeTabIndex;
 		if (tabindex == -1) {
 			tabindex = 0;
@@ -427,6 +500,9 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		}
 		this.activeTabIndex = tabindex;
 		this.emit("showTab", tab);
+		if (!isHistoryNavigation) {
+			this.fixUrl(tab);
+		}
 	}
 }
 

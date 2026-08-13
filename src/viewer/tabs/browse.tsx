@@ -3,7 +3,7 @@ import { checkObject, stringToFileRange } from "../../utils";
 import { LookupModeProps } from "../scenenodes";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
 import { DomWrap, TabStrip, TextureView, useAwaited, useEmitterProperty } from "../commoncontrols";
-import { UIEngineContext, UIRootContext } from "../maincomponents";
+import { BrowsePageId, UIEngineContext, UIRootContext } from "../maincomponents";
 import { jsonCacheSearch, JsonSearchFilter } from "../jsonsearch";
 import { FileListView } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
@@ -15,11 +15,6 @@ import { RsUIViewer } from "../viewers/rsuiviewer";
 import { cacheFileDecodeModes } from "../../parser/filetypes";
 
 export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites";
-
-export type BrowsePageId = {
-    type: "browse",
-    id: string
-}
 
 const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
