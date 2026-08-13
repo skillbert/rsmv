@@ -2,19 +2,20 @@ import React, { useContext } from "react";
 import { checkObject, stringToFileRange } from "../../utils";
 import { LookupModeProps } from "../scenenodes";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
-import { DomWrap, TabStrip, TextureView, useAwaited, useEmitterProperty } from "../commoncontrols";
+import { BlobAudio, DomWrap, TabStrip, TextureView, useAwaited, useEmitterProperty } from "../commoncontrols";
 import { BrowsePageId, UIEngineContext, UIRootContext } from "../maincomponents";
 import { jsonCacheSearch, JsonSearchFilter } from "../jsonsearch";
 import { FileListView } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
 import { vartypeToDecoder } from "../viewers/configview";
-import { prepareClientScript, renderClientScript } from "../../clientscript";
+import { renderClientScript } from "../../clientscript";
 import { cacheMajors } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { RsUIViewer } from "../viewers/rsuiviewer";
 import { cacheFileDecodeModes } from "../../parser/filetypes";
+import { parseMusic } from "../../scripts/musictrack";
 
-export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites";
+export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music";
 
 const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -155,8 +156,8 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
     }
 
     return <div className="mv-sidebar-scroll">
-        {subgroup("Game", ["items", "npcs", "locs", "spotanims", "inventories"])}
-        {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests"])}
+        {subgroup("Game", ["items", "npcs", "locs", "spotanims", "sounds", "music"])}
+        {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests", "inventories"])}
         {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
         {subgroup("Map", ["mapscenes", "maplabels", "mapzones", "mappastes", "maplabellocations"])}
         {subgroup("Rendering", ["underlays", "overlays", "skyboxes", "identitykit", "animgroupconfigs"])}
@@ -212,6 +213,11 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
             if (index.mode == "interfaceviewer") {
                 return { viewer: "interfaces", mode: index.mode, interfaceid: index.index[0] } as const;
             }
+            if (index.mode == "sounds" || index.mode == "music") {
+                let major = (index.mode == "sounds" ? cacheMajors.sounds : cacheMajors.music);
+                let file = await parseMusic(engine, major, index.index[0], null, true);
+                return { viewer: "audio", mode: index.mode, file } as const;
+            }
 
             let jsonfn = cacheFileJsonModes[index.mode];
             if (!jsonfn) { return null; }
@@ -231,6 +237,8 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
         return <DomWrap el={data.dom} />
     } else if (data.viewer == "sprite") {
         return <TextureView img={data.sprite[0].img} fillHeight />
+    } else if (data.viewer == "audio") {
+        return <BlobAudio file={data.file} autoplay />
     } else if (data.viewer == "interfaces") {
         return <RsUIViewer interfaceid={data.interfaceid} />
     }

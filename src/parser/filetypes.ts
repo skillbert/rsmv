@@ -127,17 +127,29 @@ const decodeMusic: DecodeModeFactory = () => {
 		minor: undefined,
 		logicalDimensions: 1,
 		usesArchieves: false,
-		internalNamefile: undefined,
+		internalNamefile: internalNameFiles.midi,
 		fileToLogical(source, major, minor, subfile) { return [minor]; },
 		logicalToFile(source, id) { return { major: cacheMajors.music, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let enumdata = await source.getObject("enums", 1351);
+			// the music index contains ~10sec music fragments, only a small fraction of those are header fragments
+			// only these header fragments contain a list of fragment ids that make up the music track
+			// brute force searching for these tracks is not feasible.
+			// use the cs2 internal name file to find the header ids if it exists
+			// otherwise fall back to using the enum 1351 which contains a music tracks shown in-game (but excludes hidden tracks)
 			let indexfile = await source.getCacheIndex(cacheMajors.music);
-			return enumdata.intArrayValue2!.values
-				.filter(q => q[1] >= start[0] && q[1] <= end[0])
-				.sort((a, b) => a[1] - b[1])
-				.filter((q, i, arr) => i == 0 || arr[i - 1][1] != q[1])//filter duplicates
-				.map<CacheFileId>(q => ({ index: indexfile[q[1]], subindex: 0 }))
+			let namefile = await source.getInternalNameList(internalNameFiles.midi);
+			if (namefile.size != 0) {
+				return [...namefile.keys()]
+					.filter(q => q >= start[0] && q <= end[0])
+					.map<CacheFileId>(q => ({ index: indexfile[q], subindex: 0 }));
+			} else {
+				let enumdata = await source.getObject("enums", 1351);
+				return enumdata.intArrayValue2!.values
+					.filter(q => q[1] >= start[0] && q[1] <= end[0])
+					.sort((a, b) => a[1] - b[1])
+					.filter((q, i, arr) => i == 0 || arr[i - 1][1] != q[1])//filter duplicates
+					.map<CacheFileId>(q => ({ index: indexfile[q[1]], subindex: 0 }))
+			}
 		},
 		...throwOnNonSimple,
 		read(buf, fileid, source) {

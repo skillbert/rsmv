@@ -184,7 +184,7 @@ export const cacheFileJsonModes = {
 	enums: JsonBasedFile(parse.enums, chunkedIndex(cacheMajors.enums, internalNameFiles.enum)),
 	npcs: JsonBasedFile(parse.npc, chunkedIndex(cacheMajors.npcs, internalNameFiles.npc)),
 	soundjson: JsonBasedFile(parse.audio, blacklistIndex(noArchiveIndex(cacheMajors.sounds, internalNameFiles.sound), [{ major: cacheMajors.sounds, minor: 0 }])),
-	musicjson: JsonBasedFile(parse.audio, blacklistIndex(noArchiveIndex(cacheMajors.music), [{ major: cacheMajors.music, minor: 0 }])),
+	musicjson: JsonBasedFile(parse.audio, blacklistIndex(noArchiveIndex(cacheMajors.music, internalNameFiles.midi), [{ major: cacheMajors.music, minor: 0 }])),
 	locs: JsonBasedFile(parse.loc, chunkedIndex(cacheMajors.locs, internalNameFiles.loc)),
 	achievements: JsonBasedFile(parse.achievement, chunkedIndex(cacheMajors.achievements, internalNameFiles.achievement)),
 	structs: JsonBasedFile(parse.structs, chunkedIndex(cacheMajors.structs, internalNameFiles.struct)),
