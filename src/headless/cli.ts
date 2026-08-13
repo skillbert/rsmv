@@ -2,7 +2,7 @@
 import { cliArguments, filesource } from "../cliparser";
 import * as cmdts from "cmd-ts";
 import { renderAppearance, runServer } from "./api";
-import { EngineCache, ThreejsSceneCache } from "3d/modeltothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { promises as fs } from "fs";
 
 let cmd = cmdts.command({

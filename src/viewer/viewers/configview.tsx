@@ -7,7 +7,7 @@ import { JSONSchema6, JSONSchema6Definition } from "json-schema";
 import { loadParams } from "../../clientscript/util";
 import { CacheFileSource } from "../../cache";
 import classNames from "classnames";
-import { HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
+import { BlobTS, HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
 import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { BrowseModes, makeFileId } from "../tabs/browse";
@@ -288,7 +288,7 @@ function SoundView(p: { id: number }) {
     let soundblob = useAwaited(async () => {
         if (!enginectx) { return; }
         let sound = await parseMusic(enginectx.source, cacheMajors.sounds, p.id, null, true);
-        return URL.createObjectURL(new Blob([sound], { type: "audio/ogg" }));
+        return URL.createObjectURL(new BlobTS([sound], { type: "audio/ogg" }));
     }, [p.id, enginectx]);
 
     // cleanup

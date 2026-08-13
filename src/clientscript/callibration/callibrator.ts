@@ -833,7 +833,7 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
                         }
                     }
                     if (op.possibleTypes.size == 1 && op.type == "unknown") {
-                        op.type = op.possibleTypes.values().next().value;
+                        op.type = op.possibleTypes.values().next().value!;
                     }
                     if (op.type == "unknown" && updateCandidate) {
                         updateCandidate.unknowns.set(op.id, op);

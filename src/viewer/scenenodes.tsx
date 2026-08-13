@@ -12,6 +12,7 @@ import { SceneMapModel } from './tabs/map';
 import { SceneScenario } from './tabs/scenario';
 import VR360Viewer from "../libs/vr360viewer";
 import { BrowseUI } from "./tabs/browse";
+import { BlobTS } from "../utils";
 
 
 export type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "browse" | "scripts";
@@ -121,13 +122,13 @@ function ExportSceneMenu(p: { renderopts: ThreeJsSceneElement["options"] }) {
 	let saveGltf = async () => {
 		if (!renderctx) { return; }
 		let file = await exportThreeJsGltf(renderctx.renderer.getModelNode());
-		downloadBlob("model.glb", new Blob([file as Uint8Array<ArrayBuffer>]));
+		downloadBlob("model.glb", new BlobTS([file]));
 	}
 
 	let saveStl = async () => {
 		if (!renderctx) { return; }
 		let file = await exportThreeJsStl(renderctx.renderer.getModelNode());
-		downloadBlob("model.stl", new Blob([file as Uint8Array<ArrayBuffer>]));
+		downloadBlob("model.stl", new BlobTS([file]));
 	}
 
 	let clicktab = (v: typeof tab) => {

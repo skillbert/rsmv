@@ -84,7 +84,7 @@ async function parseAnimationSequence3(loader: ThreejsSceneCache, sequenceframes
         }
     }
 
-    let framebase = await loader.engine.getObject("framemaps", orderedframes[0].probably_framemap_id);
+    let framebase = await loader.engine.getObject("framemaps", orderedframes[0].framemap_id);
 
     let { actions, rootboneinits } = buildFramebaseSkeleton(framebase);
     let clips = getFrameClips(framebase, orderedframes);

@@ -1,4 +1,5 @@
 import { fileToImageData, makeImageData } from "../../imgutils";
+import { BlobTS } from "../../utils";
 import { loadDds, loadKtx } from "./ddsimage";
 
 export class ParsedTexture {
@@ -130,7 +131,7 @@ export class ParsedTexture {
 						resolve(img);
 					}
 					img.onerror = reject;
-					let blob = new Blob([this.imagefiles[subimg]], { type: "image/png" });
+					let blob = new BlobTS([this.imagefiles[subimg]], { type: "image/png" });
 					img.src = URL.createObjectURL(blob);
 				});
 			} else {

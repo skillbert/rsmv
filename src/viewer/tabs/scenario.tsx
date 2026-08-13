@@ -457,7 +457,7 @@ class SceneScenarioInner extends React.Component<LookupModeProps & { ctx: Render
             if (!isinit) { throw new Error("invalid state json"); }
             return { actions: [], components: {} };
         });
-        let keys = Object.keys(newstate.components);
+        let keys = Object.keys(newstate.components).map(q => +q);
         this.idcounter = (keys.length == 0 ? 0 : Math.max.apply(null, keys) + 1);
         this.hadctx = false;
         if (isinit) {

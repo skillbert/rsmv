@@ -11,6 +11,7 @@ import { exposeDebugToolsInGlobal } from "../consoletools";
 import { useForceUpdate } from "./commoncontrols";
 import { FileDisplay } from "./viewers/fileviewer";
 import { BrowseDisplay, BrowsePageId } from "./tabs/browse";
+import { BlobTS } from "../utils";
 
 
 exposeDebugToolsInGlobal();
@@ -146,7 +147,7 @@ export function FileViewer(p: { file: UIOpenedFile, onSelectFile: (f: UIOpenedFi
 		<div style={{ display: "grid", gridTemplateRows: "auto 1fr" }}>
 			<div className="mv-modal-head">
 				<span>{p.file.name}</span>
-				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => downloadBlob(p.file.name, new Blob([p.file.data]))}>download</span>
+				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => downloadBlob(p.file.name, new BlobTS([p.file.data]))}>download</span>
 				<span style={{ float: "right", marginLeft: "10px" }} onClick={e => p.onSelectFile(null)}>x</span>
 			</div>
 			<div style={{ overflow: "auto", flex: "1", position: "relative" }}>

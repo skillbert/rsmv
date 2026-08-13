@@ -1,7 +1,7 @@
 // import * as fs from "fs";
 import * as opcode_reader from "./opcode_reader";
 import commentJson from "comment-json";
-import type { CacheFileSource } from "cache";
+import type { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, internalNameFiles } from "../constants";
 import { classicGroups } from "../cache/classicloader";
 import { prepareClientScript } from "../clientscript";
@@ -87,8 +87,7 @@ export class FileParser<T> {
 		//append footer data to end of normal data
 		state.buffer.copyWithin(state.scan, state.endoffset, scratchbuf.byteLength);
 		state.scan += scratchbuf.byteLength - state.endoffset;
-		//do the weird prototype slice since we need a copy, not a ref
-		let r: Buffer = Uint8Array.prototype.slice.call(scratchbuf, 0, state.scan);
+		let r = Buffer.from(state.buffer.subarray(0, state.scan));
 		//clear it for next use
 		scratchbuf.fill(0, 0, state.scan);
 		return r;

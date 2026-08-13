@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"moduleResolution": "node",
+		"moduleResolution": "bundler",
 		"module": "ESNext",
 		"lib": [
 			"ESNext",
@@ -11,16 +11,18 @@
 		"alwaysStrict": true,
 		"jsx": "react",
 		"allowJs": false,
-		"strictNullChecks": true,
-		"baseUrl": "./src",
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"esModuleInterop": true,
 		"experimentalDecorators": true,
 		"resolveJsonModule": true,
+
+		"strictNullChecks": true,
 		"noImplicitThis": true,
 		"strictFunctionTypes": true,
-		"strictPropertyInitialization":true
+		"strictPropertyInitialization": true,
+		"noImplicitAny": false,
+		"useUnknownInCatchVariables": false
 	},
 	"exclude": [
 		"node_modules",

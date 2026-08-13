@@ -26,7 +26,7 @@ async function buildFileTypes() {
 		typesfile += "export type " + objname + " = ";
 		try {
 			typesfile += opcode_reader.buildParser(null, opcodes as any, typedef as any).getTypescriptType("") + ";\n";
-		} catch (e) {
+		} catch (e: any) {
 			//console.error(e);
 			typesfile += "any;\n";
 			typesfile += "// " + e.toString().replace(/\n/g, "\n//");

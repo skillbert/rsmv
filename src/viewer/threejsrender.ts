@@ -1,11 +1,11 @@
 import * as THREE from "three";
 
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { delay, TypedEmitter } from '../utils';
 import { flipImage, makeImageData } from '../imgutils';
 import { boundMethod } from 'autobind-decorator';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
-import { STLExporter } from 'three/examples/jsm/exporters/STLExporter';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
 import { ModelExtras, ClickableMesh } from '../3d/mapsquare';
 import { CubeCamera, AnimationClip, BufferGeometry, Camera, Clock, DoubleSide, Group, LinearFilter, Material, Matrix4, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, RawShaderMaterial, RGBAFormat, Texture, Vector3, WebGLCubeRenderTarget, WebGLRenderer, PlaneGeometry } from "three";
 import { UiCameraParams, updateItemCamera } from "./tabs/simplemodes";

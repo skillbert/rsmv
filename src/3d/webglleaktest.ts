@@ -68,6 +68,7 @@ export function hookgltextures() {
 		if (buffer) { buffers.getOrInsert(buffer, () => ({ ctx: this, size: 0 })) }
 	}
 	WebGL2RenderingContext.prototype.bufferData = function (...args: any[]) {
+		// @ts-ignore
 		oldbufferdata.call(this, ...args);
 		let size = 0;
 		if (typeof args[1] == "number") { size = args[1]; }

@@ -34,6 +34,12 @@ export type Stream = {
 	tee(): Stream
 }
 
+// fix typings conflict between nodejs Buffer typings and browser arraybuffer typings
+export const BlobTS = Blob as unknown as {
+	new(data: (BlobPart | Uint8Array<ArrayBufferLike>)[], options?: BlobPropertyBag): Blob,
+	prototype: Blob
+};
+
 export function checkObject<T extends { [key: string]: "string" | "number" | "boolean" | "numberarray" }>(obj: unknown, props: T) {
 	if (!obj || typeof obj != "object") { return null; }
 	let res: {

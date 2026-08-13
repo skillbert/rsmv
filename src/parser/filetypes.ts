@@ -38,7 +38,7 @@ export type DecodeMode<T = Buffer | string, CTX = void> = {
 const throwOnNonSimple = {
 	prepareDump() { },
 	prepareWrite() { },
-	write(b) { throw new Error("write not supported"); },
+	write() { throw new Error("write not supported"); },
 	combineSubs(b: Buffer[]) { throw new Error("batch output mode not supported"); }
 }
 

@@ -1,7 +1,7 @@
 import { HSL2RGBfloat, packedHSL2HSL } from "../../utils";
 import { parse } from "../../parser/jsondecoders";
 import type { materials } from "../../../generated/materials";
-import type { CacheFileSource } from "cache";
+import type { CacheFileSource } from "../../cache";
 
 type TextureRepeatMode = "clamp" | "repeat" | "mirror";
 

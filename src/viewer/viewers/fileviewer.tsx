@@ -4,7 +4,7 @@ import { CallbackCacheLoader } from "../../cache";
 import { CanvasView, BlobImage, BlobAudio, CopyButton, useAwaited, DomWrap } from "../commoncontrols";
 import { DecodeErrorJson } from "../../scripts/testdecode";
 import prettyJson from "json-stringify-pretty-compact";
-import { findParentElement } from "../../utils";
+import { BlobTS, findParentElement } from "../../utils";
 import { ParsedTexture } from "../../3d/materials/textures";
 import { cacheFileJsonModes, parse } from "../../parser/jsondecoders";
 import classNames from "classnames";
@@ -250,7 +250,7 @@ function FileDecodeErrorViewer(p: { file: string }) {
             <div>
                 <input type="button" className={classNames("sub-btn", { "active": mode == "split" })} onClick={e => setmode("split")} value="split" />
                 <input type="button" className={classNames("sub-btn", { "active": mode == "full" })} onClick={e => setmode("full")} value="full" />
-                <input type="button" className="sub-btn" onClick={e => downloadBlob("file.bin", new Blob([buffer], { type: "application/octet-stream" }))} value="download original" />
+                <input type="button" className="sub-btn" onClick={e => downloadBlob("file.bin", new BlobTS([buffer], { type: "application/octet-stream" }))} value="download original" />
                 <CopyButton getText={() => bufToHexView(buffer).resulthex} />
             </div>
             {err.error}

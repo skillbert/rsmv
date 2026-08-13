@@ -21,7 +21,7 @@ export type BrowsePageId = {
     id: string
 }
 
-const modeOverrides: Partial<Record<keyof typeof cacheFileJsonModes, { jsonNameProperty?: string }>> = {
+const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
     npcs: { jsonNameProperty: "name" },
     locs: { jsonNameProperty: "name" },
@@ -147,11 +147,11 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
     let visited: string[] = [];
 
     let subgroup = (groupname: string, tabids: BrowseModes[]) => {
-        let tabs = {};
+        let tabs: Record<string, string> = {};
         for (let tabid of tabids) {
             if (visited.includes(tabid)) { continue; }
             visited.push(tabid);
-            tabs[tabid] = tabids[tabid] ?? tabid;
+            tabs[tabid] = tabid;
         }
         return <>
             <div className="mv-tab-strip-header">{groupname}</div>

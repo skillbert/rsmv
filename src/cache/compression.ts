@@ -1,6 +1,5 @@
 import { simplexteadecrypt } from "../libs/xtea";
 
-
 let compressiontimes = {
 	bzip2: 0,
 	lzma: 0,

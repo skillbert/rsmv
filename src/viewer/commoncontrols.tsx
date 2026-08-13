@@ -2,11 +2,11 @@ import * as React from "react";
 import { boundMethod } from "autobind-decorator";
 import prettyJson from "json-stringify-pretty-compact";
 import classNames from "classnames";
-import { EngineCache } from "3d/modeltothree";
+import { EngineCache } from "../3d/modeltothree";
 import { jsonCacheSearch, JsonSearchFilter } from "./jsonsearch";
 import { cacheFileJsonModes } from "../parser/jsondecoders";
 import { drawTexture } from "../imgutils";
-import { TypedEmitter } from "../utils";
+import { BlobTS, TypedEmitter } from "../utils";
 
 
 export function CanvasView(p: { canvas: HTMLCanvasElement | null, fillHeight?: boolean }) {
@@ -44,7 +44,7 @@ export function BlobImage(p: { file: Uint8Array, ext: string, fillHeight?: boole
 	let urlref = React.useRef("");
 	let ref = React.useCallback((el: HTMLImageElement | null) => {
 		if (el) {
-			let blob = new Blob([p.file as Uint8Array<ArrayBuffer>], { type: `image/${p.ext == "svg" ? "svg+xml" : p.ext}` });
+			let blob = new BlobTS([p.file], { type: `image/${p.ext == "svg" ? "svg+xml" : p.ext}` });
 			let url = URL.createObjectURL(blob);
 			urlref.current = url;
 			el.src = url;
@@ -66,7 +66,7 @@ export function BlobAudio(p: { file: Uint8Array, autoplay: boolean }) {
 
 	let ref = React.useCallback((el: HTMLAudioElement | null) => {
 		if (el) {
-			let blob = new Blob([p.file as Uint8Array<ArrayBuffer>], { type: `audio/ogg` });
+			let blob = new BlobTS([p.file], { type: `audio/ogg` });
 			let url = URL.createObjectURL(blob);
 			urlref.current = url;
 			el.src = url;
