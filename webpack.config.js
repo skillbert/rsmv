@@ -1,5 +1,6 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
+const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 
 /**
  * @type {import("webpack").Configuration}
@@ -20,10 +21,22 @@ module.exports = {
 		rules: [
 			{
 				test: /\.tsx?$/,
-				loader: 'ts-loader',
-				exclude: /node_modules/,
-				options: {
-					onlyCompileBundledFiles: true
+				use: {
+					loader: 'swc-loader',
+					options: {
+						jsc: {
+							parser: {
+								syntax: 'typescript',
+								tsx: true,
+								decorators: true
+							},
+							transform: {
+								react: {
+									runtime: 'automatic'
+								}
+							}
+						}
+					}
 				}
 			},
 			{
@@ -63,6 +76,7 @@ module.exports = {
 		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [
+		new ForkTsCheckerWebpackPlugin(),
 		new CopyWebpackPlugin({
 			patterns: [
 				{ from: 'src/assets', to: "assets" },

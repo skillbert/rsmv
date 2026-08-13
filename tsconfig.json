@@ -16,6 +16,8 @@
 		"esModuleInterop": true,
 		"experimentalDecorators": true,
 		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"erasableSyntaxOnly": true,
 
 		"strictNullChecks": true,
 		"noImplicitThis": true,
