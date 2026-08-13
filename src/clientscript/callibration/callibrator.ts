@@ -265,17 +265,20 @@ async function getReferenceOpcodeDump() {
         let bounce1 = await ClientscriptObfuscation.create(await Openrs2CacheSource.fromId(1572));//932 16 oct 2023
         //add extra bounces when the gap is too large and non of the scripts match
         rootcalli.setNonObbedMappings();
-        await rootcalli.save()
-        await bounce1.runCallibrationFrom(await rootcalli.generateDump());
+        let rootdump = rootcalli.generateDump(await rootcalli.parseCandidateContents());
+        await rootcalli.save();
+
+        await bounce1.runCallibrationFrom(rootdump);
+        let bounce1dump = bounce1.generateDump(await bounce1.parseCandidateContents());
         await bounce1.save();
-        return bounce1.generateDump();
+        return bounce1dump;
     })();
     return referenceOpcodeDump;
 }
 
 export class ClientscriptObfuscation {
-    mappings = new Map<number, OpcodeInfo>();
-    decodedMappings = new Map<number, OpcodeInfo>();
+    scrambledops = new Map<number, OpcodeInfo>();
+    ops = new Map<number, OpcodeInfo>();
     isNonObbedCache = false;
     candidates: Promise<ScriptCandidates> | null = null;
     foundEncodings = false;
@@ -296,8 +299,8 @@ export class ClientscriptObfuscation {
         let r = new ClientscriptObfuscation(source);
         for (let opjson of deobjson.mappings) {
             let op = OpcodeInfo.fromJson(opjson);
-            r.mappings.set(op.scrambledid, op);
-            r.decodedMappings.set(op.id, op);
+            r.scrambledops.set(op.scrambledid, op);
+            r.ops.set(op.id, op);
         }
         r.opidcounter = deobjson.opidcounter;
         r.foundEncodings = true;
@@ -319,7 +322,7 @@ export class ClientscriptObfuscation {
     toJson() {
         let r = {
             buildnr: this.source.getBuildNr(),
-            mappings: [...this.mappings.values()].map(v => v.toJson()),
+            mappings: [...this.scrambledops.values()].map(v => v.toJson()),
             opidcounter: this.opidcounter,
         }
         return r;
@@ -395,12 +398,13 @@ export class ClientscriptObfuscation {
         return res;
     }
 
-    declareOp(rawopid: number, types: ImmediateType[]) {
-        let op = new OpcodeInfo(rawopid, this.opidcounter++, types);
-        if (this.mappings.has(rawopid)) { throw new Error("op already exists"); }
-        if (this.decodedMappings.has(op.id)) { throw new Error("allocated op id alerady exists"); }
-        this.mappings.set(rawopid, op);
-        this.decodedMappings.set(op.id, op);
+    declareOp(scrambledid: number, types: ImmediateType[], rsmvid?: number) {
+        let op = new OpcodeInfo(scrambledid, rsmvid ?? this.opidcounter++, types);
+        // console.log(`${this.source.getBuildNr()} declaring op:${op.id} scrambled:${scrambledid} with types ${types.join(",")} fixed id: ${rsmvid ?? "auto"}`);
+        if (this.scrambledops.has(scrambledid)) { throw new Error("op already exists"); }
+        if (this.ops.has(op.id)) { throw new Error("allocated op id already exists"); }
+        this.scrambledops.set(scrambledid, op);
+        this.ops.set(op.id, op);
         return op;
     }
 
@@ -508,9 +512,8 @@ export class ClientscriptObfuscation {
         return candidates;
     }
 
-    async generateDump() {
+    generateDump(candobj: ScriptCandidates) {
         let scripts: ReferenceScript[] = [];
-        let candobj = await this.parseCandidateContents();
         for (let cand of candobj.data.values()) {
             if (cand.scriptcontents) {
                 scripts.push({ id: cand.id, scriptdata: cand.script, scriptops: cand.scriptcontents.opcodedata });
@@ -520,7 +523,7 @@ export class ClientscriptObfuscation {
         return {
             buildnr: this.source.getBuildNr(),
             scripts,
-            decodedMappings: this.decodedMappings,
+            decodedMappings: this.ops,
             opidcounter: this.opidcounter
         } satisfies ReferenceCallibration;
     }
@@ -530,7 +533,7 @@ export class ClientscriptObfuscation {
         } else if (!this.foundEncodings) {
             let ref = await getReferenceOpcodeDump();
             await this.runCallibrationFrom(ref);
-            detectSubtypes(this, await this.parseCandidateContents());
+            await this.save();
         }
     }
     async runCallibrationFrom(refscript: ReferenceCallibration) {
@@ -605,12 +608,10 @@ export class ClientscriptObfuscation {
         if (!this.foundEncodings) { throw new Error("clientscript deob not callibrated yet"); }
         let opcode = state.buffer.readUint16BE(state.scan);
         state.scan += 2;
-        let res = this.mappings.get(opcode);
+        let res = this.scrambledops.get(opcode);
         if (!res || res.type == "unknown") {
             if (this.isNonObbedCache) {
-                res = new OpcodeInfo(opcode, opcode, [getClassicImmType(opcode)]);
-                this.mappings.set(opcode, res);
-                this.decodedMappings.set(opcode, res);
+                res = this.declareOp(opcode, [getClassicImmType(opcode)], opcode);
             } else {
                 //TODO do this guess somewhere else
                 // throw new Error("op type not resolved: 0x" + opcode.toString(16));
@@ -660,7 +661,7 @@ export class ClientscriptObfuscation {
         return `var_${this.varmeta.get(groupid)?.name ?? "unk"}_${varid}`;
     }
     getNamedOp(id: number) {
-        let opinfo = this.decodedMappings.get(id);
+        let opinfo = this.ops.get(id);
         if (!opinfo) { throw new Error(`op with named id ${id} not found`); }
         return opinfo;
     }
@@ -668,8 +669,6 @@ export class ClientscriptObfuscation {
 
 function copyOpcodesFrom(deob: ClientscriptObfuscation, candidates: ScriptCandidates, refcalli: ReferenceCallibration) {
     let newbuildnr = deob.source.getBuildNr();
-
-    deob.opidcounter = refcalli.opidcounter;
     let testCandidate = (cand: ScriptCandidate, refops: ClientScriptOp[]) => {
         if (cand.script.instructioncount != refops.length) {
             return false;
@@ -683,23 +682,28 @@ function copyOpcodesFrom(deob: ClientscriptObfuscation, candidates: ScriptCandid
             let refop = cannonicalOp(refops[i], refcalli.buildnr, refopinfo.type);
 
             if (buf.byteLength < offset + 2) { return false; }
-            let opid = buf.readUint16BE(offset);
+            let scrambledid = buf.readUint16BE(offset);
             offset += 2;
             let imm = parseImm(buf, offset, refop.immtype);
             if (!imm) { return false; }
             offset = imm.offset;
             let op: ClientScriptOp = { opcode: refop.opcode, imm: imm.imm, imm_obj: imm.imm_obj };
             if (!isOpEqual(cannonicalOp(op, newbuildnr, refop.immtype), refop)) { return false; }
-            unconfirmed.set(opid, refop);
+            unconfirmed.set(scrambledid, refop);
         }
         if (offset != buf.byteLength) {
             return false;
         }
         cand.didmatch = true;
-        for (let [k, v] of unconfirmed) {
-            let info = new OpcodeInfo(k, v.opcode, [v.immtype]);
-            deob.mappings.set(k, info);
-            deob.decodedMappings.set(v.opcode, info);
+        for (let [scrambledid, v] of unconfirmed) {
+            let existing = deob.scrambledops.get(scrambledid);
+            let appointed = deob.ops.get(v.opcode);
+            if (!existing && !appointed) {
+                deob.declareOp(scrambledid, [v.immtype], v.opcode);
+            } else if (existing && existing.id != v.opcode || existing && existing.scrambledid != scrambledid) {
+                console.log(`conflicting solution for opid ${scrambledid}, existing:${existing.id} vs ref:${v.opcode}`);
+                // throw new Error(`opcode mismatch for opid ${k}, existing:${existing.id} vs ref:${v.opcode}`)
+            }
         }
         return true;
     }
@@ -709,8 +713,8 @@ function copyOpcodesFrom(deob: ClientscriptObfuscation, candidates: ScriptCandid
         if (!cand) { continue; }
         testCandidate(cand, ref.scriptops);
     }
-    deob.opidcounter = refcalli.opidcounter;
-    console.log(`copied ${deob.mappings.size} opcodes from reference cache, idcount:${deob.opidcounter}`);
+    deob.opidcounter = Math.max(deob.opidcounter, refcalli.opidcounter);
+    console.log(`copied ${deob.scrambledops.size} opcodes from reference cache, idcount:${deob.opidcounter}`);
 }
 
 function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
@@ -730,7 +734,7 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
             if (previoustheory.opid == opid) { break; }
             previoustheory = previoustheory.parent;
         }
-        let op = calli.mappings.get(opid);
+        let op = calli.scrambledops.get(opid);
         let options = (previoustheory ? [previoustheory.type] : op ? [...op.possibleTypes] : detectableImmediates);
         for (let type of options) {
             if (type == "switch" && switchcompleted && (!op || op.type == "unknown")) { continue; }
@@ -818,7 +822,7 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
                     row = nextrow;
                 }
                 if (matched) {
-                    let op = calli.mappings.get(opid);
+                    let op = calli.scrambledops.get(opid);
                     if (!op) {
                         op = calli.declareOp(opid, detectableImmediates);
                     }
@@ -852,7 +856,7 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
                 //TODO very wasteful n^2 going on here, take it out of loop?
                 let nswitch = 0;
                 let ntribyte = 0;
-                for (let op of calli.mappings.values()) {
+                for (let op of calli.scrambledops.values()) {
                     if (op.type == "switch") { nswitch++; }
                     if (op.type == "tribyte") { ntribyte++; }
                 }
@@ -899,7 +903,7 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
             }
             run();
 
-            console.log(limit, calli.mappings.size);
+            console.log(limit, calli.scrambledops.size);
         }
     }
 
@@ -1124,7 +1128,7 @@ function callibrateOperants(calli: ClientscriptObfuscation, candidates: ScriptCa
         let partial = 0;
         let done = 0;
         let missing = new Set<OpcodeInfo>()
-        for (let op of calli.mappings.values()) {
+        for (let op of calli.scrambledops.values()) {
             if (op.stackinfo.initializedthrough) { done++; }
             else if (op.stackinfo.initializedin || op.stackinfo.initializedout) { partial++; }
             else { missing.add(op); }
@@ -1182,7 +1186,7 @@ globalThis.getop = (opid: string) => {
         }
     }
     let calli: ClientscriptObfuscation = globalThis.deob;
-    return calli.decodedMappings.get(id);
+    return calli.ops.get(id);
 };
 
 function firstKey<T>(map: Map<T, any>) {

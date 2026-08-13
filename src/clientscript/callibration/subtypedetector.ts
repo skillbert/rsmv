@@ -27,7 +27,9 @@ const looseOps = [
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
 
-
+    // unknown op that messes it up for openrs2:2630
+    // 412857857,
+    // 135295488, //arg0 IF_SETGRAPHIC
 ];
 
 function debugAstTypes(node: AstNode) {
@@ -119,7 +121,7 @@ export class ClientScriptSubtypeSolver {
             let isscript = type == "scriptargvar" || type == "scriptret";
             let isop = type == "opin" || type == "opout";
             if (isscript || isop) {
-                let stackinout = (isscript ? calli.scriptargs.get(group)?.stack : calli.decodedMappings.get(group)?.stackinfo);
+                let stackinout = (isscript ? calli.scriptargs.get(group)?.stack : calli.ops.get(group)?.stackinfo);
                 if (stackinout) {
                     let stack = (isin ? stackinout.exactin : stackinout.exactout);
                     if (stack) {
@@ -136,6 +138,7 @@ export class ClientScriptSubtypeSolver {
     solve() {
         let activekeys = new Set(this.knowntypes.keys());
         let itercount = 0;
+        let conflictcount = 0;
         while (activekeys.size != 0) {
             // console.log(`iteration ${itercount++}, known: ${this.knowntypes.size}, active:${activekeys.size}`);
             let nextactivekeys = new Set<number>();
@@ -149,8 +152,10 @@ export class ClientScriptSubtypeSolver {
                             nextactivekeys.add(link);
                             this.knowntypes.set(link, known);
                         } else if (prevknown != known) {
-                            globalThis.testkey = [key, link];
-                            throw new Error(`conflicting types old:${Object.entries(vartypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(vartypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
+                            conflictcount++;
+                            console.log(`conflicting types old:${Object.entries(vartypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(vartypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
+                            // globalThis.testkey = [key, link];
+                            // throw new Error(`conflicting types old:${Object.entries(vartypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(vartypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
                         }
                     }
                 }
@@ -272,7 +277,7 @@ export function detectSubtypes(calli: ClientscriptObfuscation, candidates: Scrip
     calli.foundSubtypes = true;
 }
 export function assignKnownTypes(calli: ClientscriptObfuscation, knowntypes: Map<number, number>) {
-    for (let op of calli.mappings.values()) {
+    for (let op of calli.scrambledops.values()) {
         if (!op.stackinfo.initializedthrough) { continue; }
         let exactin = new ExactStack();
         let diffin = op.stackinfo.in.getStackdiff();

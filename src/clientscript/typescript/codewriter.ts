@@ -279,7 +279,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     }
     res += "\n";
     res += `// VM opcodes\n`;
-    for (let op of calli.mappings.values()) {
+    for (let op of calli.scrambledops.values()) {
         let opname = getOpName(op.id);
         if (reserved.includes(opname)) { continue; }
         if (op.id == namedClientScriptOps.enum_getvalue) {
@@ -501,7 +501,12 @@ addWriter(RawOpcodeNode, (node, ctx) => {
                 ], "", `coordgrid_${v}`);
             }
             if (exacttype == vartypes.boolean) {
-                return writeLeaf("keyword", node.op.imm_obj == 0 ? "false" : "true");
+                if (node.op.imm_obj != 0 && node.op.imm_obj != 1) {
+                    // something went wrong if we land here, don't hide it
+                    return addTypeCast(vartypes.boolean, writeLeaf("literalnumber", "" + node.op.imm_obj));
+                } else {
+                    return writeLeaf("keyword", node.op.imm_obj == 0 ? "false" : "true");
+                }
             }
             let literal = writeLeaf("literalnumber", "" + node.op.imm_obj);
             let res = (ctx.typescript ? addTypeCast(exacttype, literal) : literal);

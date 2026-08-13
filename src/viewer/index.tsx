@@ -58,6 +58,7 @@ function App(p: {}) {
 
 				globalThis.sceneCache = scene;
 				globalThis.engine = engine;
+				globalThis.reloadCache = () => openCache(source);
 			} catch (e) {
 				console.log("failed to create scenecache");
 				console.error(e);

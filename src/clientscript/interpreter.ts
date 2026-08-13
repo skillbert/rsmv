@@ -188,7 +188,7 @@ export class ClientScriptInterpreter {
         } else if (implemented) {
             res = implemented(this as InterpreterWithScope, op);
         } else {
-            let opinfo = this.calli.decodedMappings.get(op.opcode);
+            let opinfo = this.calli.ops.get(op.opcode);
             if (!opinfo) { throw new Error(`Uknown op with opcode ${op.opcode}`); }
             if (!opinfo.stackinfo.initializedthrough) { throw new Error(`Unknown params/returns for op ${op.opcode}`); }
             this.popStacklist(opinfo.stackinfo.in);
@@ -220,7 +220,7 @@ export class ClientScriptInterpreter {
                 res += `${index} ${index == this.scope.index ? ">>" : "  "} `;
                 let op = this.scope.ops[index];
                 if (op) {
-                    let opinfo = this.calli.decodedMappings.get(op.opcode);
+                    let opinfo = this.calli.ops.get(op.opcode);
                     let name = knownClientScriptOpNames[op.opcode];
                     res += `${name.padEnd(12, " ").slice(0, 12)} ${op.imm} ${op.imm_obj ?? ""}\n`;
                 } else {
