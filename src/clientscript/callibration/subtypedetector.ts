@@ -1,6 +1,6 @@
-import { ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "../ast";
+import { AstNode, ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "../ast";
 import { ClientscriptObfuscation, ScriptCandidate, ScriptCandidates } from "./callibrator";
-import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, knownDependency, namedClientScriptOps } from "../definitions";
+import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, getOpName, knownDependency, namedClientScriptOps } from "../definitions";
 import { vartypes } from "../../constants";
 
 //to test
@@ -26,7 +26,27 @@ const looseOps = [
     knownDependency(vartypes.unknown_string),
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
+
+
 ];
+
+function debugAstTypes(node: AstNode) {
+    let recur = (node: AstNode, indent: string) => {
+        let res = "";
+        let children = node.debugTraverse();
+        for (let child of children) {
+            res += recur(child, indent + "  ");
+        }
+        let funcname = node.debugName();
+        let stackdiff = node.knownStackDiff;
+        if (!stackdiff && node instanceof RawOpcodeNode) { stackdiff = node.opinfo.stackinfo; }
+        res += `${indent}${funcname.padEnd(30)} - ${stackdiff?.toString()}\n`;
+        return res;
+    }
+    console.log(recur(node, ""));
+}
+
+globalThis.debugAstTypes = debugAstTypes;
 
 export class ClientScriptSubtypeSolver {
     map = new Map<number, Set<number>>();

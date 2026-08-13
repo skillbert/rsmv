@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibration/callibrator";
 import { debugAst } from "./typescript/codewriter";
-import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, makeop, popDiscardOps } from "./definitions";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, makeop, popDiscardOps, getOpName } from "./definitions";
 import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./callibration/subtypedetector";
 import { vartypes } from "../constants";
@@ -71,6 +71,10 @@ export abstract class AstNode {
         this.children.splice(index, 1);
         node.parent = null;
     }
+    abstract debugName(): string;
+    debugTraverse() {
+        return this.children;
+    }
 }
 
 export class SubcallNode extends AstNode {
@@ -86,6 +90,9 @@ export class SubcallNode extends AstNode {
         let body = this.children.slice(0, -1).flatMap(q => q.getOpcodes(ctx));
         body.push(...ctx.makeSubCallOps(this.funcname));
         return body;
+    }
+    debugName() {
+        return `subcall_${this.funcname}`;
     }
 }
 
@@ -103,6 +110,12 @@ export class ComposedOp extends AstNode {
         return this.children.flatMap(q => q.getOpcodes(ctx))
             .concat(this.internalOps.flatMap(q => q.getOpcodes(ctx)));
     }
+    debugName() {
+        return `composed<${this.type}>`;
+    }
+    debugTraverse() {
+        return [...this.children, ...this.internalOps];
+    }
 }
 
 export class VarAssignNode extends AstNode {
@@ -115,6 +128,12 @@ export class VarAssignNode extends AstNode {
     addVar(node: RawOpcodeNode) {
         this.varops.unshift(node);
         this.knownStackDiff.in.push(getNodeStackIn(node));
+    }
+    debugName() {
+        return `varassign`;
+    }
+    debugTraverse() {
+        return [...this.children, ...this.varops.slice().reverse()];
     }
 }
 
@@ -207,6 +226,9 @@ export class CodeBlockNode extends AstNode {
     dump() {
         debugAst(this);
     }
+    debugName() {
+        return `codeblock_${this.scriptid}_${this.subfuncid}`;
+    }
 }
 
 function retargetJumps(ctx: OpcodeWriterContext, code: ClientScriptOp[], from: number, to: number) {
@@ -261,6 +283,10 @@ export class BranchingStatement extends AstNode {
         let op: ClientScriptOp = { opcode: this.op.opcode, imm: 1, imm_obj: null };
         return this.children.flatMap(q => q.getOpcodes(ctx)).concat(op);
     }
+
+    debugName() {
+        return `branch_${this.op.opcode}`;
+    }
 }
 
 export class WhileLoopStatementNode extends AstNode {
@@ -287,6 +313,9 @@ export class WhileLoopStatementNode extends AstNode {
         body.push({ opcode: jump.id, imm: -(body.length + 1 + cond.length), imm_obj: null });
         return [...cond, ...body];
     }
+    debugName() {
+        return `whileloop`;
+    }
 }
 
 type ControlStatementType = "break" | "continue";
@@ -299,7 +328,9 @@ export class ControlStatementNode extends AstNode {
     getOpcodes(ctx: OpcodeWriterContext): never {
         throw new Error("break/continue statements failed to process. only break at end of switch case supported");
     }
-
+    debugName() {
+        return `control_${this.type}`;
+    }
 }
 
 export class SwitchStatementNode extends AstNode {
@@ -409,6 +440,16 @@ export class SwitchStatementNode extends AstNode {
 
         return body;
     }
+    debugName() {
+        return `switch`;
+    }
+    debugTraverse() {
+        return [
+            ...(this.valueop ? [this.valueop] : []),
+            ...this.branches.map(q => q.block),
+            ...(this.defaultbranch ? [this.defaultbranch] : [])
+        ];
+    }
 }
 
 export class IfStatementNode extends AstNode {
@@ -461,6 +502,12 @@ export class IfStatementNode extends AstNode {
         if (truebranch.length == 1) { retargetJumps(ctx, cond, 2, 1); }
         return [...cond, ...truebranch, ...falsebranch];
     }
+    debugName() {
+        return `if`;
+    }
+    debugTraverse() {
+        return [this.statement, this.truebranch, ...(this.falsebranch ? [this.falsebranch] : [])];
+    }
 }
 
 export class FunctionBindNode extends AstNode {
@@ -483,6 +530,9 @@ export class FunctionBindNode extends AstNode {
         ops.push({ opcode: namedClientScriptOps.pushconst, imm: 2, imm_obj: typestring });
         return ops;
     }
+    debugName() {
+        return `functionbind`;
+    }
 }
 
 export class RawOpcodeNode extends AstNode {
@@ -498,6 +548,9 @@ export class RawOpcodeNode extends AstNode {
         let body = this.children.flatMap(q => q.getOpcodes(ctx));
         body.push({ ...this.op });
         return body;
+    }
+    debugName() {
+        return getOpName(this.opinfo.id);
     }
 }
 
@@ -967,6 +1020,9 @@ export class ClientScriptFunction extends AstNode {
             body.push({ opcode: namedClientScriptOps.return, imm: 0, imm_obj: null });
         }
         return body;
+    }
+    debugName() {
+        return `function_${this.scriptname}`;
     }
 }
 

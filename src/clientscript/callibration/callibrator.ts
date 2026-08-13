@@ -13,7 +13,7 @@ import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, S
 import { dbtables } from "../../../generated/dbtables";
 import { reverseHashes } from "../../libs/rshashnames";
 import { CodeBlockNode, RawOpcodeNode, generateAst, parseClientScriptIm } from "../ast";
-import { detectSubtypes as callibrateSubtypes } from "./subtypedetector";
+import { detectSubtypes as callibrateSubtypes, detectSubtypes } from "./subtypedetector";
 import * as datastore from "idb-keyval";
 import { loadParams } from "../util";
 
@@ -530,6 +530,7 @@ export class ClientscriptObfuscation {
         } else if (!this.foundEncodings) {
             let ref = await getReferenceOpcodeDump();
             await this.runCallibrationFrom(ref);
+            detectSubtypes(this, await this.parseCandidateContents());
         }
     }
     async runCallibrationFrom(refscript: ReferenceCallibration) {

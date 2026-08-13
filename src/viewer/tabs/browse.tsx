@@ -206,6 +206,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 let { writer, rootfunc } = await renderClientScript(engine, buf, index.index[0], false, false, false);
                 let clicker = (objectid: string) => ctx.openFile({ type: "browse", id: objectid });
                 let dom = writer.getCodeDom(rootfunc, clicker);
+                globalThis.cs2 = rootfunc;
                 return { viewer: "dom", mode: index.mode, dom } as const;
             }
             if (index.mode == "sprites") {

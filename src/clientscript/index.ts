@@ -45,7 +45,7 @@ export async function prepareClientScript(source: CacheFileSource) {
             let deob = await ClientscriptObfuscation.create(deobsource);
             source.decodeArgs.clientScriptDeob = deob;
             await deob.runAutoCallibrate(source);
-            // await deob.save();
+            await deob.save();
 
             globalThis.deob = deob;//TODO remove
         })();

@@ -641,7 +641,20 @@ export class StackInOut {
         return `${this.out.values.join(",")}(${this.in.values.join(",")})`;
     }
     toString() {
-        return `${this.out + "" || "void"}${this.initializedthrough ? "" : "??"}(${this.in})`;
+        let res = `${this.out + "" || "void"}${this.initializedthrough ? "" : "??"}(${this.in})`;
+        if (!this.exactout) {
+            res += " out<??>";
+        } else {
+            let out = this.exactout;
+            res += ` out<${out.int.map(debugKey)}|${out.long.map(debugKey)}|${out.string.map(debugKey)}>`;
+        }
+        if (!this.exactin) {
+            res += " in<??>";
+        } else {
+            let inp = this.exactin;
+            res += ` in<${inp.int.map(debugKey)}|${inp.long.map(debugKey)}|${inp.string.map(debugKey)}>`;
+        }
+        return res;
     }
     toJson() {
         return {
