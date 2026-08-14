@@ -2,7 +2,7 @@ import { has, parse } from "../../libs/yieldparser";
 import { AstNode, BranchingStatement, CodeBlockNode, FunctionBindNode, IfStatementNode, RawOpcodeNode, VarAssignNode, WhileLoopStatementNode, SwitchStatementNode, ClientScriptFunction, ComposedOp, parseClientScriptIm, SubcallNode, isNamedOp, getNodeStackOut, setRawOpcodeStackDiff, ControlStatementNode } from "../ast";
 import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { TsWriterContext } from "./codewriter";
-import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, ExactStack, getOpName, PrimitiveType, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson } from "../definitions";
+import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, ExactStack, getOpName, makeop, primitiveToUknownExact, StackConstants, longBigIntToJson, PrimitiveType } from "../definitions";
 import prettyJson from "json-stringify-pretty-compact";
 import { parse as opdecoder } from "../../parser/jsondecoders";
 import { CacheFileSource } from "../../cache";

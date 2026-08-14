@@ -1,12 +1,12 @@
 import { AstNode, ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "../ast";
 import { ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, ScriptCandidates } from "./callibrator";
-import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, getOpName, knownDependency, namedClientScriptOps } from "../definitions";
+import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, getOpName, keyToPrimitive, namedClientScriptOps, primitiveToUknownExact, typeToPrimitive } from "../definitions";
 import { vartypes } from "../../constants";
 
 //to test
 //await cli("extract --mode clientscript -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
 
-const looseOps = [
+const looseKeys = [
     //TODO most of these have known types depending on literal args
     dependencyGroup("opin", namedClientScriptOps.enum_hasoutput) | dependencyIndex("int", 2),
     dependencyGroup("opout", namedClientScriptOps.enum_getreverseindex) | dependencyIndex("int", 0),
@@ -21,9 +21,9 @@ const looseOps = [
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
     // dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
-    knownDependency(vartypes.unknown_int),
-    knownDependency(vartypes.unknown_long),
-    knownDependency(vartypes.unknown_string),
+    vartypes.unknown_int,
+    vartypes.unknown_long,
+    vartypes.unknown_string,
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
 
@@ -56,15 +56,14 @@ export class ClientScriptSubtypeSolver {
 
     constructor() {
         for (let subtype of Object.values(vartypes)) {
-            let key = knownDependency(subtype);
-            this.knowntypes.set(key, subtype);
+            this.knowntypes.set(subtype, subtype);
         }
     }
 
     entangle(key: number, other: number | undefined) {
         if (other == undefined) { return; }
         if (key == other) { return; }
-        if (looseOps.includes(key) || looseOps.includes(other)) { return; }
+        if (looseKeys.includes(key) || looseKeys.includes(other)) { return; }
         if (Array.isArray(globalThis.testkey) && key == globalThis.testkey[0] && other == globalThis.testkey[1]) {
             debugger;
         }
@@ -163,6 +162,19 @@ export class ClientScriptSubtypeSolver {
         }
     }
 
+    getType(key: number) {
+        let entry = this.knowntypes.get(key);
+        if (entry != undefined) {
+            return entry;
+        }
+        let stack = keyToPrimitive(key);
+        return primitiveToUknownExact(stack);
+    }
+    getIntType(key: number | undefined) {
+        if (key == undefined) { return vartypes.unknown_int; }
+        return this.getType(key);
+    }
+
     /** @deprecated only for debugging */
     intlocal(scriptid: number, localid: number) {
         let key = dependencyGroup("scriptargvar", scriptid) | dependencyIndex("int", localid);
@@ -234,9 +246,9 @@ class CombinedExactStack {
 
         if (node.knownStackDiff?.exactin) {
             let exact = node.knownStackDiff.exactin;
-            for (let i = exact.int.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(exact.int[i]), this.intstack.pop()); }
-            for (let i = exact.long.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(exact.long[i]), this.longstack.pop()); }
-            for (let i = exact.string.length - 1; i >= 0; i--) { this.ctx.entangle(knownDependency(exact.string[i]), this.stringstack.pop()); }
+            for (let i = exact.int.length - 1; i >= 0; i--) { this.ctx.entangle(exact.int[i], this.intstack.pop()); }
+            for (let i = exact.long.length - 1; i >= 0; i--) { this.ctx.entangle(exact.long[i], this.longstack.pop()); }
+            for (let i = exact.string.length - 1; i >= 0; i--) { this.ctx.entangle(exact.string[i], this.stringstack.pop()); }
         } else {
             let stackin = stackinout.in;
             //need to do inputs in correct order because of vararg
@@ -265,9 +277,9 @@ class CombinedExactStack {
 
         if (node.knownStackDiff?.exactout) {
             let exact = node.knownStackDiff.exactout;
-            for (let i = 0; i < exact.int.length; i++) { this.intstack.push(knownDependency(exact.int[i])); }
-            for (let i = 0; i < exact.long.length; i++) { this.longstack.push(knownDependency(exact.long[i])); }
-            for (let i = 0; i < exact.string.length; i++) { this.stringstack.push(knownDependency(exact.string[i])); }
+            for (let i = 0; i < exact.int.length; i++) { this.intstack.push(exact.int[i]); }
+            for (let i = 0; i < exact.long.length; i++) { this.longstack.push(exact.long[i]); }
+            for (let i = 0; i < exact.string.length; i++) { this.stringstack.push(exact.string[i]); }
         } else {
             //only ensure order per primitive type
             let totalout = stackinout.out.getStackdiff();

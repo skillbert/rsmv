@@ -136,23 +136,30 @@ export function dependencyGroup(deptype: DependentType, id: number) {
 export function dependencyIndex(subtype: PrimitiveType, index: number) {
     return (primitiveToId(subtype) << 25) | index;
 }
-export function knownDependency(fulltype: number) {
-    return (primitiveToId(typeToPrimitive(fulltype)) << 25) | fulltype;
-}
 export function keyToPrimitive(key: number): PrimitiveType {
     let deptype = (key >> 27) & 7;
-    if (deptype == 0) { return typeToPrimitive(key & 0x1ff); }
+    if (deptype == 0) {
+        return typeToPrimitive(key & 0x1ff);
+    }
     let typekey = (key >> 25) & 3;
     return typekey == 0 ? "int" : typekey == 1 ? "long" : "string";
 }
 export function decomposeKey(key: number) {
     let sourcetype = grouptypekeys[(key >> 27) & 0x7];
-    let stacktype = stacktypekeys[(key >> 25) & 0x3];
-    let group = (key >> 9) & 0xffff;
-    let index = key & 0x1ff;
-    if (sourcetype == "uuid") {
-        index = key & 0x1ffffff;
-        group = 0;
+    let group = 0;
+    let index: number;
+    let stacktype: PrimitiveType;
+    if (sourcetype == "known") {
+        index = key;
+        stacktype = typeToPrimitive(key);
+    } else {
+        stacktype = stacktypekeys[(key >> 25) & 0x3];
+        if (sourcetype == "uuid") {
+            index = key & 0x1ffffff;
+        } else {
+            group = (key >> 9) & 0xffff;
+            index = key & 0x1ff;
+        }
     }
     return [sourcetype, stacktype, group, index] as const;
 }
@@ -169,7 +176,7 @@ export function debugKey(key: number) {
 }
 globalThis.debugkey = debugKey;
 
-export const typeuuids = {
+export const subtypeuuids = {
     int: dependencyGroup("uuid", 0) | dependencyIndex("int", 0),
     long: dependencyGroup("uuid", 0) | dependencyIndex("long", 0),
     string: dependencyGroup("uuid", 0) | dependencyIndex("string", 0),
@@ -565,13 +572,13 @@ export class StackList {
         for (let value of this.values) {
             if (value instanceof StackDiff) {
                 if (value.vararg != 0) { throw new Error("vararg doesn't have a vm type"); }
-                for (let i = 0; i < value.int; i++) { res.push(typeuuids.int++); }
-                for (let i = 0; i < value.long; i++) { res.push(typeuuids.long++); }
-                for (let i = 0; i < value.string; i++) { res.push(typeuuids.string++); }
+                for (let i = 0; i < value.int; i++) { res.push(subtypeuuids.int++); }
+                for (let i = 0; i < value.long; i++) { res.push(subtypeuuids.long++); }
+                for (let i = 0; i < value.string; i++) { res.push(subtypeuuids.string++); }
             }
-            else if (value == "int") { res.push(typeuuids.int++); }
-            else if (value == "long") { res.push(typeuuids.long++); }
-            else if (value == "string") { res.push(typeuuids.string++); }
+            else if (value == "int") { res.push(subtypeuuids.int++); }
+            else if (value == "long") { res.push(subtypeuuids.long++); }
+            else if (value == "string") { res.push(subtypeuuids.string++); }
             else throw new Error("vararg doesn't have a vm type");
         }
         return res;

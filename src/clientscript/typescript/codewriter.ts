@@ -56,16 +56,15 @@ export class TsWriterContext {
     setCompOffsets(rootnode: AstNode) {
         let cursor = new RewriteCursor(rootnode);
         for (let node = cursor.goToStart(); node; node = cursor.next()) {
-            if (!isNamedOp(node, namedClientScriptOps.pushconst)) { continue; }
-            if (!node.knownStackDiff?.exactout) { continue; }
-            let all = node.knownStackDiff.exactout.all();
-            if (all.length != 1) { throw new Error("unexpected"); }
-            let type = this.typectx.knowntypes.get(all[0]);
-            if (typeof type != "number") { continue; }
-            if (typeof node.op.imm_obj != "number") { continue; }
+            if (!isNamedOp(node, namedClientScriptOps.pushconst) || typeof node.op.imm_obj != "number") { continue; }
+
+            let key = node.knownStackDiff?.exactout?.int[0];
+            if (key == undefined) { continue; }
+            let type = this.typectx.getType(key);
+            if (type != vartypes.component) { continue; }
+
             let intf = node.op.imm_obj >> 16;
             let sub = node.op.imm_obj & 0xffff;
-
             let least = getOrInsert(this.compoffsets, intf, () => sub);
             if (sub < least) { this.compoffsets.set(intf, sub); }
         }
@@ -392,17 +391,7 @@ addWriter(VarAssignNode, (node, ctx) => {
         let vardeclared: boolean[] = [];
         for (let sub of node.varops) {
             let name = getOpcodeName(ctx.calli, sub.op);
-
-            let exacttype = -1;
-            if (node.knownStackDiff?.exactin) {
-                let all = node.knownStackDiff.exactin.all();
-                if (all.length != 1) { throw new Error("unexpected"); }
-                let type = ctx.typectx.knowntypes.get(all[0]);
-                if (typeof type == "number") {
-                    exacttype = type;
-                }
-            }
-            exacttypes.push(exacttype);
+            exacttypes.push(ctx.typectx.getIntType(node.knownStackDiff?.exactin?.int[0]));
             if (popLocalOps.includes(sub.op.opcode)) {
                 let varname = name.fragments[0]
                 if (typeof varname != "string" || !varname) { throw new Error("unexpected"); }
@@ -464,9 +453,7 @@ addWriter(WhileLoopStatementNode, (node, ctx) => {
 });
 addWriter(SwitchStatementNode, (node, ctx) => {
     let res = new WriteResult(0);
-    let type = vartypes.unknown_int;
-    // let typekey = node.knownStackDiff?.exactin?.int[0];
-    // let type = typekey != undefined ? vartypes.unknown_int : vartypes.unknown_int;
+    let type = ctx.typectx.getIntType(node.knownStackDiff.exactin?.int[0]);
     res.push(writeLeaf("keyword", "switch"), " (", node.valueop ? ctx.getCode(node.valueop) : "", `) {\n`);
     ctx.pushIndent(false);
     for (let [i, branch] of node.branches.entries()) {
@@ -509,7 +496,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
         if (node.knownStackDiff?.exactout) {
             let all = node.knownStackDiff.exactout.all();
             if (all.length != 1) { throw new Error("unexpected"); }
-            let type = ctx.typectx.knowntypes.get(all[0]);
+            let type = ctx.typectx.getType(all[0]);
             if (typeof type == "number") {
                 exacttype = type;
             }

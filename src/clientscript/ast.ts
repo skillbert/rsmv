@@ -2,7 +2,7 @@ import { clientscript } from "../../generated/clientscript";
 import { clientscriptdata } from "../../generated/clientscriptdata";
 import { ClientscriptObfuscation, OpcodeInfo, getArgType, getReturnType } from "./callibration/callibrator";
 import { debugAst } from "./typescript/codewriter";
-import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, dependencyGroup, dependencyIndex, typeuuids, makeop, popDiscardOps, getOpName } from "./definitions";
+import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimitive, namedClientScriptOps, variableSources, StackDiff, StackInOut, StackList, StackTypeExt, ClientScriptOp, StackConst, StackType, StackConstants, getParamOps, branchInstructionsInt, branchInstructionsLong, ExactStack, makeop, popDiscardOps, getOpName, subtypeuuids } from "./definitions";
 import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./callibration/subtypedetector";
 import { vartypes } from "../constants";
@@ -1053,11 +1053,11 @@ export function varArgtype(stringconst: string | unknown, lastintconst: number |
 export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: ClientscriptObfuscation, node: RawOpcodeNode) {
     if (branchInstructionsInt.includes(node.opinfo.id)) {
         //make sure that left and right side are same type
-        let uuid = typeuuids.int++;
+        let uuid = subtypeuuids.int++;
         node.knownStackDiff = StackInOut.fromExact([uuid, uuid], []);
     } else if (branchInstructionsLong.includes(node.opinfo.id)) {
         //make sure that left and right side are same type
-        let uuid = typeuuids.long++;
+        let uuid = subtypeuuids.long++;
         node.knownStackDiff = StackInOut.fromExact([uuid, uuid], []);
     } else if (node.opinfo.id == namedClientScriptOps.dbrow_getfield) {
         //args are rowid,tablefield,subrow
@@ -1134,14 +1134,14 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
     } else if (node.opinfo.id == namedClientScriptOps.pushconst) {
         if (node.op.imm == 0) {
             if (typeof node.op.imm_obj != "number") { throw new Error("unexpected"); }
-            node.knownStackDiff = StackInOut.fromExact([], [typeuuids.int++]);
+            node.knownStackDiff = StackInOut.fromExact([], [subtypeuuids.int++]);
             node.knownStackDiff.constout = node.op.imm_obj;
         } else if (node.op.imm == 1) {
-            node.knownStackDiff = StackInOut.fromExact([], [typeuuids.long++]);
+            node.knownStackDiff = StackInOut.fromExact([], [subtypeuuids.long++]);
             node.knownStackDiff.constout = node.op.imm_obj;
         } else if (node.op.imm == 2) {
             let stringconst = node.op.imm_obj as string;
-            node.knownStackDiff = StackInOut.fromExact([], [typeuuids.string++]);
+            node.knownStackDiff = StackInOut.fromExact([], [subtypeuuids.string++]);
             node.knownStackDiff.constout = node.op.imm_obj;
 
             //a string like this indicates a vararg set where this string indicates the types
@@ -1165,11 +1165,13 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
         // need to hardcode this since we need special behavoir later to deal with unordered popdiscards
         node.knownStackDiff = new StackInOut(new StackList(["int"]));
     } else if (node.opinfo.id == namedClientScriptOps.popdiscardlong) {
+        // need to hardcode this since we need special behavoir later to deal with unordered popdiscards
         node.knownStackDiff = new StackInOut(new StackList(["long"]));
     } else if (node.opinfo.id == namedClientScriptOps.popdiscardstring) {
+        // need to hardcode this since we need special behavoir later to deal with unordered popdiscards
         node.knownStackDiff = new StackInOut(new StackList(["string"]));
     } else if (node.opinfo.id == namedClientScriptOps.switch) {
-        node.knownStackDiff = StackInOut.fromExact([typeuuids.int++], []);
+        node.knownStackDiff = StackInOut.fromExact([subtypeuuids.int++], []);
     }
 
     if (!node.knownStackDiff && dynamicOps.includes(node.op.opcode)) {
