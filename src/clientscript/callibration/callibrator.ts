@@ -12,7 +12,7 @@ import { params } from "../../../generated/params";
 import { ClientScriptOp, ImmediateType, StackConstants, StackDiff, StackInOut, StackList, namedClientScriptOps, variableSources, typeToPrimitive, getOpName, knownClientScriptOpNames, PrimitiveType } from "../definitions";
 import { dbtables } from "../../../generated/dbtables";
 import { reverseHashes } from "../../libs/rshashnames";
-import { CodeBlockNode, RawOpcodeNode, generateAst, parseClientScriptIm } from "../ast";
+import { CodeBlockNode, RawOpcodeNode, generateAst } from "../ast";
 import { detectSubtypes as callibrateSubtypes, detectSubtypes } from "./subtypedetector";
 import * as datastore from "idb-keyval";
 import { loadParams } from "../util";

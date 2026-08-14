@@ -381,7 +381,10 @@ export class SwitchStatementNode extends AstNode {
         if (defaultblock) {
             defaultblock.maxEndIndex = endindex;
         }
-        return new SwitchStatementNode(switchop.originalindex, valueop, defaultblock, branches);
+        let res = new SwitchStatementNode(switchop.originalindex, valueop, defaultblock, branches);
+        // copy exact type uuid from the type we were assigned earlier in the parser
+        res.knownStackDiff.exactin = switchop.knownStackDiff?.exactin ?? null;
+        return res;
     }
     getOpcodes(ctx: OpcodeWriterContext) {
         let body: ClientScriptOp[] = [];
@@ -1165,6 +1168,8 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
         node.knownStackDiff = new StackInOut(new StackList(["long"]));
     } else if (node.opinfo.id == namedClientScriptOps.popdiscardstring) {
         node.knownStackDiff = new StackInOut(new StackList(["string"]));
+    } else if (node.opinfo.id == namedClientScriptOps.switch) {
+        node.knownStackDiff = StackInOut.fromExact([typeuuids.int++], []);
     }
 
     if (!node.knownStackDiff && dynamicOps.includes(node.op.opcode)) {
@@ -1441,7 +1446,7 @@ function reattachDeadcode(sections: CodeBlockNode[]) {
     }
 }
 
-export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid = -1) {
+export function parseClientScriptIm(calli: ClientscriptObfuscation, script: clientscript, fileid: number) {
     let { sections, rootfunc } = generateAst(calli, script, script.opcodedata, fileid);
     // reattachDeadcode(sections);
     let typectx = new ClientScriptSubtypeSolver();

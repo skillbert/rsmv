@@ -313,6 +313,52 @@ export function writeClientVarFile(calli: ClientscriptObfuscation) {
     }
     return res;
 }
+function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number) {
+    if (exacttype == vartypes.component) {
+        let intf = value >> 16;
+        let sub = value & 0xffff;
+        if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
+            return new WriteResult(17, [
+                writeLeaf("keyword", "comprel"), "(",
+                writeLeaf("literalnumber", `${intf}`), ", ",
+                writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
+            ], "", `comp_${intf}_${sub}`);
+        } else {
+            return new WriteResult(17, [
+                writeLeaf("keyword", "comp"), "(",
+                writeLeaf("literalnumber", `${intf}`), ", ",
+                writeLeaf("literalnumber", `${sub}`), ")"
+            ], "", `comp_${intf}_${sub}`);
+        }
+    }
+    if (exacttype == vartypes.coordgrid && value != -1) {
+        let pos = unpackCoordgrid(value);
+        // TODO maybe make the entire construct look like a literal
+        return new WriteResult(17, [
+            writeLeaf("keyword", "coordgrid"), "(",
+            writeLeaf("literalnumber", `${pos.level}`), ", ",
+            writeLeaf("literalnumber", `${pos.x}`), ", ",
+            writeLeaf("literalnumber", `${pos.z}`), ")"
+        ], "", `coordgrid_${pos.level}_${pos.x}_${pos.z}`);
+    }
+    if (exacttype == vartypes.boolean) {
+        if (value != 0 && value != 1) {
+            // something went wrong if we land here, don't hide it
+            return addTypeCast(vartypes.boolean, writeLeaf("literalnumber", "" + value));
+        } else {
+            return writeLeaf("keyword", value == 0 ? "false" : "true");
+        }
+    }
+    let literal = writeLeaf("literalnumber", "" + value);
+    let res = (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
+    if (exacttype != -1 && exacttype != vartypes.int && exacttype != vartypes.unknown_int) {
+        let typename = Object.entries(vartypes).find(q => q[1] == exacttype);
+        if (typename) {
+            res.objectid = `${typename[0]}_${value}`;
+        }
+    }
+    return res;
+}
 
 addWriter(ComposedOp, (node, ctx) => {
     if ((["++x", "--x", "x++", "x--"] as ComposedopType[]).includes(node.type)) {
@@ -418,10 +464,13 @@ addWriter(WhileLoopStatementNode, (node, ctx) => {
 });
 addWriter(SwitchStatementNode, (node, ctx) => {
     let res = new WriteResult(0);
+    let type = vartypes.unknown_int;
+    // let typekey = node.knownStackDiff?.exactin?.int[0];
+    // let type = typekey != undefined ? vartypes.unknown_int : vartypes.unknown_int;
     res.push(writeLeaf("keyword", "switch"), " (", node.valueop ? ctx.getCode(node.valueop) : "", `) {\n`);
     ctx.pushIndent(false);
     for (let [i, branch] of node.branches.entries()) {
-        res.push(ctx.codeIndent(branch.block.originalindex), writeLeaf("keyword", "case"), " ", writeLeaf("literalnumber", branch.value + ""), ":");
+        res.push(ctx.codeIndent(branch.block.originalindex), writeLeaf("keyword", "case"), " ", writeIntLiteral(ctx, branch.value, type), ":");
         if (i + 1 < node.branches.length && node.branches[i + 1].block == branch.block) {
             res.push(`\n`);
         } else {
@@ -472,51 +521,7 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             let literal = writeLeaf("literalnumber", `${longJsonToBigInt(node.op.imm_obj)}n`);
             return (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
         } else if (typeof node.op.imm_obj == "number") {
-            if (exacttype == vartypes.component) {
-                let intf = node.op.imm_obj >> 16;
-                let sub = node.op.imm_obj & 0xffff;
-                if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
-                    return new WriteResult(17, [
-                        writeLeaf("keyword", "comprel"), "(",
-                        writeLeaf("literalnumber", `${intf}`), ", ",
-                        writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
-                    ], "", `comp_${intf}_${sub}`);
-                } else {
-                    return new WriteResult(17, [
-                        writeLeaf("keyword", "comp"), "(",
-                        writeLeaf("literalnumber", `${intf}`), ", ",
-                        writeLeaf("literalnumber", `${sub}`), ")"
-                    ], "", `comp_${intf}_${sub}`);
-                }
-            }
-            if (exacttype == vartypes.coordgrid && node.op.imm_obj != -1) {
-                let v = node.op.imm_obj;
-                let pos = unpackCoordgrid(v);
-                // TODO maybe make the entire construct look like a literal
-                return new WriteResult(17, [
-                    writeLeaf("keyword", "coordgrid"), "(",
-                    writeLeaf("literalnumber", `${pos.level}`), ", ",
-                    writeLeaf("literalnumber", `${pos.x}`), ", ",
-                    writeLeaf("literalnumber", `${pos.z}`), ")"
-                ], "", `coordgrid_${v}`);
-            }
-            if (exacttype == vartypes.boolean) {
-                if (node.op.imm_obj != 0 && node.op.imm_obj != 1) {
-                    // something went wrong if we land here, don't hide it
-                    return addTypeCast(vartypes.boolean, writeLeaf("literalnumber", "" + node.op.imm_obj));
-                } else {
-                    return writeLeaf("keyword", node.op.imm_obj == 0 ? "false" : "true");
-                }
-            }
-            let literal = writeLeaf("literalnumber", "" + node.op.imm_obj);
-            let res = (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
-            if (exacttype != -1 && exacttype != vartypes.int && exacttype != vartypes.unknown_int) {
-                let typename = Object.entries(vartypes).find(q => q[1] == exacttype);
-                if (typename) {
-                    res.objectid = `${typename[0]}_${node.op.imm_obj}`;
-                }
-            }
-            return res;
+            return writeIntLiteral(ctx, node.op.imm_obj, exacttype);
         } else {
             throw new Error("unexpected");
         }

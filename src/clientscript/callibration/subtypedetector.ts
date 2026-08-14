@@ -1,5 +1,5 @@
 import { AstNode, ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "../ast";
-import { ClientscriptObfuscation, ScriptCandidate, ScriptCandidates } from "./callibrator";
+import { ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, ScriptCandidates } from "./callibrator";
 import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, getOpName, knownDependency, namedClientScriptOps } from "../definitions";
 import { vartypes } from "../../constants";
 
@@ -20,7 +20,7 @@ const looseOps = [
 
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
-    dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
+    // dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
     knownDependency(vartypes.unknown_int),
     knownDependency(vartypes.unknown_long),
     knownDependency(vartypes.unknown_string),
@@ -53,7 +53,6 @@ globalThis.debugAstTypes = debugAstTypes;
 export class ClientScriptSubtypeSolver {
     map = new Map<number, Set<number>>();
     knowntypes = new Map<number, number>();
-    uuidcounter = 1;
 
     constructor() {
         for (let subtype of Object.values(vartypes)) {
@@ -162,6 +161,24 @@ export class ClientScriptSubtypeSolver {
             }
             activekeys = nextactivekeys;
         }
+    }
+
+    /** @deprecated only for debugging */
+    intlocal(scriptid: number, localid: number) {
+        let key = dependencyGroup("scriptargvar", scriptid) | dependencyIndex("int", localid);
+        return [this.knowntypes.get(key), this.map.get(key)];
+    }
+    /** @deprecated only for debugging */
+    intoparg(opname: string, index: number) {
+        let op: OpcodeInfo = globalThis.getop(opname);
+        let key = dependencyGroup("opin", op.id) | dependencyIndex("int", index);
+        return [this.knowntypes.get(key), this.map.get(key)];
+    }
+    /** @deprecated only for debugging */
+    intopret(opname: string, index: number) {
+        let op: OpcodeInfo = globalThis.getop(opname);
+        let key = dependencyGroup("opout", op.id) | dependencyIndex("int", index);
+        return [this.knowntypes.get(key), this.map.get(key)];
     }
 }
 
