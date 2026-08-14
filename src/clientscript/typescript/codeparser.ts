@@ -11,6 +11,7 @@ import { astToImJson, intrinsics } from "../jsonwriter";
 import { vartypes } from "../../constants";
 import { reserved } from "./typescripthelpers";
 import { subtypeToTs, tsToSubtype } from "./writehelpers";
+import { packCoordgrid, unpackCoordgrid } from "../../utils";
 
 function* whitespace() {
     while (true) {
@@ -377,15 +378,18 @@ function scriptContext(ctx: ParseContext) {
             if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
             return makeIntConst((args[0].op.imm_obj << 16) | args[1].op.imm_obj, "component");
         }
-        if (funcname == "pos") {
-            if (args.length != 5) { throw new Error("5 raw opcodes expected"); }
+        if (funcname == "coordgrid") {
+            if (args.length != 3) { throw new Error("3 raw opcodes expected"); }
             if (!isNamedOp(args[0], namedClientScriptOps.pushconst) || typeof args[0].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
             if (!isNamedOp(args[1], namedClientScriptOps.pushconst) || typeof args[1].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
             if (!isNamedOp(args[2], namedClientScriptOps.pushconst) || typeof args[2].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
-            if (!isNamedOp(args[3], namedClientScriptOps.pushconst) || typeof args[3].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
-            if (!isNamedOp(args[4], namedClientScriptOps.pushconst) || typeof args[4].op.imm_obj != "number") { throw new Error("5 int literals expected"); }
-            //level,chunkx,chunkz,subx,subz
-            return makeIntConst((args[0].op.imm_obj << 28) | (args[1].op.imm_obj << 20) | (args[2].op.imm_obj << 6) | (args[3].op.imm_obj << 12) | (args[2].op.imm_obj << 0), "coordgrid");
+            return makeIntConst(packCoordgrid(args[0].op.imm_obj, args[1].op.imm_obj, args[2].op.imm_obj), "coordgrid");
+        }
+        if (funcname == "cs2enum") { funcname = "enum"; }
+        if (vartypes.hasOwnProperty(funcname)) {
+            if (args.length != 1 || !isNamedOp(args[0], namedClientScriptOps.pushconst)) { throw new Error("raw opcode expected"); }
+            if (typeof args[0].op.imm_obj != "number") { throw new Error("int literal expected"); }
+            return makeIntConst(args[0].op.imm_obj, funcname);
         }
         if (funcname == "stack") {
             let op = new ComposedOp(-1, "stack");

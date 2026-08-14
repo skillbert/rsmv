@@ -260,7 +260,7 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
     res += "declare function callback<T extends (...args: any[]) => any>(fn: T, ...args: T extends (...args: (infer ARGS)[]) => any ? ARGS : never): BoundFunction;\n";
     res += "declare function comp(interf: number, element: number): component;\n";
     res += "declare function comprel(interf: number, elementrel: number): component;\n"
-    res += "declare function pos(level: number, chunkx:number, chunkz:number, subx:number, subz:number): coordgrid;\n";
+    res += "declare function coordgrid(level: number, x:number, z:number): coordgrid;\n";
     res += "declare function stack(...args: any[]): any;\n";
     res += "\n";
     res += `// Compiler intrinsics\n`;
@@ -276,6 +276,16 @@ export function writeOpcodeFile(calli: ClientscriptObfuscation) {
         if (name == "boolean") { continue; }
         res += `type ${name} = ${prim == "int" ? "number" : prim == "long" ? "BigInt" : "string"}\n`;
     }
+    res += "\n";
+    res += `// function style type casts\n`;
+    for (let type of Object.values(vartypes)) {
+        let prim = typeToPrimitive(type);
+        let name = subtypeToTs(type);
+        if (name == "string") { continue; }
+        if (name == "boolean") { continue; }
+        res += `function ${name}(value: ${prim}): ${type};\n`;
+    }
+
     res += "\n";
     res += `// VM opcodes\n`;
     for (let op of calli.scrambledops.values()) {
@@ -318,13 +328,13 @@ function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number)
         let sub = value & 0xffff;
         if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
             return new WriteResult(17, [
-                writeLeaf("keyword", "comprel"), "(",
+                writeLeaf("type", "comprel"), "(",
                 writeLeaf("literalnumber", `${intf}`), ", ",
                 writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
             ], "", `comp_${intf}_${sub}`);
         } else {
             return new WriteResult(17, [
-                writeLeaf("keyword", "comp"), "(",
+                writeLeaf("type", "comp"), "(",
                 writeLeaf("literalnumber", `${intf}`), ", ",
                 writeLeaf("literalnumber", `${sub}`), ")"
             ], "", `comp_${intf}_${sub}`);
@@ -334,7 +344,7 @@ function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number)
         let pos = unpackCoordgrid(value);
         // TODO maybe make the entire construct look like a literal
         return new WriteResult(17, [
-            writeLeaf("keyword", "coordgrid"), "(",
+            writeLeaf("type", "coordgrid"), "(",
             writeLeaf("literalnumber", `${pos.level}`), ", ",
             writeLeaf("literalnumber", `${pos.x}`), ", ",
             writeLeaf("literalnumber", `${pos.z}`), ")"

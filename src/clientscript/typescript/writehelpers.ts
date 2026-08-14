@@ -57,14 +57,12 @@ export function tsToSubtype(tscode: string) {
 
 export function addTypeCast(exacttype: number, child: WriteResult) {
     if (exacttype == -1) { return child; }
-    if (exacttype == vartypes.int || exacttype == vartypes.string || exacttype == vartypes.long) {
-        return child;
-    }
-    if (exacttype == vartypes.unknown_int || exacttype == vartypes.unknown_string || exacttype == vartypes.unknown_long) {
-        return child
-    }
+    if (exacttype == vartypes.int || exacttype == vartypes.unknown_int) { return child; }
+    if (exacttype == vartypes.string || exacttype == vartypes.unknown_string) { return child; }
+    if (exacttype == vartypes.long || exacttype == vartypes.unknown_long) { return child; }
+    return new WriteResult(17, [writeLeaf("type", subtypeToTs(exacttype)), "(", child, ")"]);
     // precedence of `as` operator in ts seems to be 8.5
-    return new WriteResult(9, [addBracketsIfNeeded(9, "left", true, false, child), " ", writeLeaf("keyword", "as"), " ", writeLeaf("type", subtypeToTs(exacttype))]);
+    // return new WriteResult(9, [addBracketsIfNeeded(9, "left", true, false, child), " ", writeLeaf("keyword", "as"), " ", writeLeaf("type", subtypeToTs(exacttype))]);
 }
 
 export function writeLeaf(type: FragmentType, str: string, objectid = "") {
