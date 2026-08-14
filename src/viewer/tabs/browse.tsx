@@ -14,8 +14,9 @@ import { parseSprite } from "../../3d/materials/sprite";
 import { RsUIViewer } from "../viewers/rsuiviewer";
 import { cacheFileDecodeModes } from "../../parser/filetypes";
 import { parseMusic } from "../../scripts/musictrack";
+import { CheapMapView, MapviewMarker } from "../viewers/mappreview";
 
-export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music";
+export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
 
 const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -42,7 +43,7 @@ export function fileIdToIndex(fileid: string) {
         }
     }
     if (mode in vartypeToDecoder) { mode = vartypeToDecoder[mode]; }
-    if (!cacheFileDecodeModes[mode as BrowseModes]) { return null; }
+    if (mode != "coordgrid" && !cacheFileDecodeModes[mode as BrowseModes]) { return null; }
     if (index.length == 0) { return null; }
     return { mode: mode as BrowseModes, index };
 }
@@ -218,6 +219,15 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 let file = await parseMusic(engine, major, index.index[0], null, true);
                 return { viewer: "audio", mode: index.mode, file } as const;
             }
+            if (index.mode == "coordgrid") {
+                return {
+                    viewer: "map",
+                    level: index.index[0],
+                    x: index.index[1],
+                    z: index.index[2],
+                    markers: [{ x: index.index[1], z: index.index[2] }] as MapviewMarker[]
+                } as const;
+            }
 
             let jsonfn = cacheFileJsonModes[index.mode];
             if (!jsonfn) { return null; }
@@ -241,5 +251,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
         return <BlobAudio file={data.file} autoplay />
     } else if (data.viewer == "interfaces") {
         return <RsUIViewer interfaceid={data.interfaceid} />
+    } else if (data.viewer == "map") {
+        return <CheapMapView level={data.level} centerx={data.x} centerz={data.z} markers={data.markers} />
     }
 }

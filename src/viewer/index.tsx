@@ -19,6 +19,7 @@ exposeDebugToolsInGlobal();
 export function unload(obj: { root: ReactDOM.Root, ctx: UIContext }) {
 	obj.root.unmount();
 	obj.ctx.close();
+	globalThis.uicontext = null;
 }
 
 export function start(rootelement: HTMLElement, serviceworker?: boolean) {
@@ -34,7 +35,8 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 			<App />
 		</UIRootContext.Provider>
 	);
-
+	
+	globalThis.uicontext = ctx;
 	return { root, ctx };
 }
 

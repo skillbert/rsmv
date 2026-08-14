@@ -62,6 +62,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     interface: "interfaces",
     scriptref: "clientscript",
     inv: "inventories",
+    coordgrid: "coordgrid",
     // TODO fix these
     ["maplabel" as any]: "maplabels",
     ["varbit" as any]: "varbits",
@@ -336,11 +337,6 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     );
 }
 
-function CoordGridView(p: { value: number }) {
-    let { level, x, z } = unpackCoordgrid(p.value);
-    return <span>coord: {level}_{x}_{z}</span>;
-}
-
 function DBRowsView(p: { data: DeepLinkElement }) {
     let data = p.data;
 
@@ -405,6 +401,10 @@ function ObjectLink(p: { prop: DeepLinkElement }) {
         let sub = (p.prop.primitive) & 0xffff;
         index = [main, sub];
     }
+    if (p.prop.rsmvtype == "coordgrid") {
+        let { level, x, z } = unpackCoordgrid(p.prop.primitive);
+        index = [level, x, z];
+    }
 
     let fileid = makeFileId(p.prop.rsmvtype, index);
 
@@ -427,9 +427,6 @@ export function renderPrimitive(prop: DeepLinkElement) {
 
         if (prop.rsmvtype == "color") {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
-        }
-        if (prop.rsmvtype == "coordgrid") {
-            return { isbig: false, el: <CoordGridView value={prop.primitive} /> };
         }
         if (prop.rsmvtype == "graphic") {
             return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><SpriteView id={prop.primitive} /></> };

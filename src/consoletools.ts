@@ -10,6 +10,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { UIScriptFS } from "./viewer/scriptsui";
 import { EngineCache } from "./3d/modeltothree";
 import { cacheFileDecodeModes } from "./parser/filetypes";
+import { UIContext } from "./viewer/maincomponents";
 
 // exposes various tools into the global scope to use in the console for debugging and testing
 export function exposeDebugToolsInGlobal() {
@@ -32,6 +33,7 @@ export function exposeDebugToolsInGlobal() {
     globalThis.getKnownCounts = getKnownCounts;
     globalThis.getNameCounts = getNameCounts;
     globalThis.getConfigCounts = getConfigCounts;
+    globalThis.browse = browse;
 }
 
 function coordgrid(coord: number) {
@@ -188,4 +190,9 @@ async function allnames() {
         res[entry.minor] = await source.getInternalNameList(entry.minor);
     }
     return res;
+}
+
+function browse(filename: string) {
+    let ctx = globalThis.uicontext as UIContext;
+    ctx.openFile({ type: "browse", id: filename });
 }

@@ -113,7 +113,7 @@ export function getOrInsert<K, V>(map: Map<K, V>, key: K, fallback: () => (V ext
 }
 
 export function delay(ms: number) {
-	return new Promise(d => setTimeout(d, ms))
+	return new Promise<void>(d => { setTimeout(d, ms) });
 }
 
 export function posmod(x: number, n: number) {
@@ -551,6 +551,17 @@ export async function trickleTasksTwoStep<T>(parallel: number, tasks: () => Iter
 		let res = await queue[completecounter % parallel];
 		completecounter++;
 		steptwo(res);
+	}
+}
+
+export function taskTrickler(maxparallel = 1, delaytime = 1) {
+	let stallindex = 0;
+	let stall = new Array<Promise<void>>(maxparallel).fill(Promise.resolve());
+	return function gate() {
+		let p = stall[stallindex];
+		stall[stallindex] = p.then(() => delay(delaytime));
+		stallindex = (stallindex + 1) % maxparallel;
+		return p;
 	}
 }
 
