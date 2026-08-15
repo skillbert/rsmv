@@ -398,7 +398,7 @@ export abstract class CacheFileSource {
 
 	async getIndexEntryById(major: number, minor: number) {
 		let index: CacheIndex;
-		if (this.getBuildNr() <= lastLegacyBuildnr) {
+		if (this.getBuildNr() <= lastLegacyBuildnr || (major == 255 && minor == 255)) {
 			index = { major, minor, crc: 0, name: null, subindexcount: 1, subindices: [0], subnames: null, version: 0 };
 		} else {
 			let indexfile = await this.getCacheIndex(major);

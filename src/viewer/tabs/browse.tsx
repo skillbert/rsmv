@@ -27,7 +27,7 @@ const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>>
 }
 
 export function makeFileId(mode: string, index: number[]) {
-    return `${mode}_${index.join("_")}`;
+    return [mode, ...index].join("_");
 }
 
 export function fileIdToIndex(fileid: string) {
@@ -44,7 +44,6 @@ export function fileIdToIndex(fileid: string) {
     }
     if (mode in vartypeToDecoder) { mode = vartypeToDecoder[mode]; }
     if (mode != "coordgrid" && !cacheFileDecodeModes[mode as BrowseModes]) { return null; }
-    if (index.length == 0) { return null; }
     return { mode: mode as BrowseModes, index };
 }
 
