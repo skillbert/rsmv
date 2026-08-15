@@ -15,6 +15,7 @@ import { RsUIViewer } from "../viewers/rsuiviewer";
 import { cacheFileDecodeModes } from "../../parser/filetypes";
 import { parseMusic } from "../../scripts/musictrack";
 import { CheapMapView, MapviewMarker } from "../viewers/mappreview";
+import prettyJson from "json-stringify-pretty-compact";
 
 export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
 
@@ -234,7 +235,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
             return {
                 viewer: "json",
                 mode: index.mode,
-                file: JSON.stringify(obj),
+                file: prettyJson(obj),
             } as const;
         })()
     }, [index?.mode, index?.index.join("_"), engine]);
