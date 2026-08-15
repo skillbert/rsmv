@@ -3,7 +3,7 @@
 // run `npm run filetypes` to rebuild
 
 export type hitmarks = {
-	unk01?: number | null
+	font?: number | null
 	icon?: number | null
 	bgleft?: number | null
 	bgmid?: number | null
@@ -16,8 +16,7 @@ export type hitmarks = {
 			number,
 			number,
 		][],
-		unk1: number,
-		unk2: number,
+		unk0: number,
 	} | null
 	unk0c?: number | null
 	unk0d?: number | null
