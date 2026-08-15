@@ -123,6 +123,8 @@ export const cacheConfigPages = {
 	maplabels: 36,
 	dbtables: 40,
 	dbrows: 41,
+	headbars: 72,
+	hitmarks: 46,
 
 	// 46 probly hitsplats
 	varplayer: 60,

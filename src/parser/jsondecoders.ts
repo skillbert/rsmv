@@ -136,6 +136,8 @@ function allParsers() {
 		materials: FileParser.fromJson<import("../../generated/materials").materials>(require("../opcodes/materials.jsonc")),
 		oldmaterials: FileParser.fromJson<import("../../generated/oldmaterials").oldmaterials>(require("../opcodes/oldmaterials.jsonc")),
 		quest: FileParser.fromJson<import("../../generated/quests").quests>(require("../opcodes/quests.jsonc")),
+		hitmarks: FileParser.fromJson<import("../../generated/hitmarks").hitmarks>(require("../opcodes/hitmarks.jsonc")),
+		headbars: FileParser.fromJson<import("../../generated/headbars").headbars>(require("../opcodes/headbars.jsonc")),
 		quickchatCategories: FileParser.fromJson<import("../../generated/quickchatcategories").quickchatcategories>(require("../opcodes/quickchatcategories.jsonc")),
 		quickchatLines: FileParser.fromJson<import("../../generated/quickchatlines").quickchatlines>(require("../opcodes/quickchatlines.jsonc")),
 		skyboxes: FileParser.fromJson<import("../../generated/skyboxes").skyboxes>(require("../opcodes/skyboxes.jsonc")),
@@ -197,6 +199,8 @@ export const cacheFileJsonModes = {
 	dbtables: JsonBasedFile(parse.dbtables, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbtables, internalNameFiles.dbtable)),
 	dbrows: JsonBasedFile(parse.dbrows, singleMinorIndex(cacheMajors.config, cacheConfigPages.dbrows, internalNameFiles.dbrow)),
 	quests: JsonBasedFile(parse.quest, singleMinorIndex(cacheMajors.config, cacheConfigPages.quests, internalNameFiles.quest)),
+	hitmarks: JsonBasedFile(parse.hitmarks, singleMinorIndex(cacheMajors.config, cacheConfigPages.hitmarks, internalNameFiles.hitmark)),
+	headbars: JsonBasedFile(parse.headbars, singleMinorIndex(cacheMajors.config, cacheConfigPages.headbars, internalNameFiles.headbar)),
 
 	varbits: JsonBasedFile(parse.varbits, singleMinorIndex(cacheMajors.config, cacheConfigPages.varbits, internalNameFiles.varbit)),
 	var_player: JsonBasedFile(parse.vars, singleMinorIndex(cacheMajors.config, cacheConfigPages.varplayer, internalNameFiles.var_player)),

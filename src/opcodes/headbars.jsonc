@@ -1,0 +1,15 @@
+{
+    "0x02":{"name":"unk02","read":["tuple","ubyte","ubyte","ubyte"]},
+    "0x04":{"name":"unk04","read":true},
+    "0x05":{"name":"unk05","read":"varuint"},
+    "0x07":{"name":"full","read":"varuint","type":"graphic"},
+    "0x08":{"name":"empty","read":"varuint","type":"graphic"},
+    "0x09":{"name":"full_group","read":"varuint","type":"graphic"},
+    "0x0a":{"name":"empty_group","read":"varuint","type":"graphic"},
+    "0x0b":{"name":"unk0b","read":"varuint"},
+    "0x0c":{"name":"full_team","read":"varuint","type":"graphic"},
+    "0x0d":{"name":"empty_team","read":"varuint","type":"graphic"},
+    "0x0e":{"name":"unk0e","read":"varuint","type":"graphic"},
+    "0x0f":{"name":"unk0f","read":"varuint","type":"graphic"},
+    "0x10":{"name":"unk10","read":true}
+}

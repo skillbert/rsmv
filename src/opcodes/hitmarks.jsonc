@@ -1,0 +1,34 @@
+{
+    "0x01":{"name":"unk01","read":"ushort"},
+    "0x03":{"name":"icon","read":"ushort","type":"graphic"},
+    "0x04":{"name":"bgleft","read":"ushort","type":"graphic"},
+    "0x05":{"name":"bgmid","read":"ushort","type":"graphic"},
+    "0x06":{"name":"bgright","read":"ushort","type":"graphic"},
+    "0x07":{"name":"unk07","read":"ushort"},
+    "0x08":{"name":"text","read":"paddedstring"},
+    "0x09":{"name":"unk09","read":"ushort"},
+    "0x0a":{"name":"unk0a","read":["struct",
+        ["arr",["array","ubyte",["tuple","ushort","ushort"]]],
+        ["unk1","ushort"],
+        ["unk2","ushort"]
+    ]},
+    "0x0c":{"name":"unk0c","read":"ubyte"},
+    "0x0d":{"name":"unk0d","read":"ushort"},
+    "0x0e":{"name":"unk0e","read":"ushort"},
+    "0x10":{"name":"unk10","read":["array",2,"short"]},
+    "0x11":{"name":"morph_11","read":["struct",
+        ["varbit","ushort","varbit"],
+        ["varp","ushort","var_player"],
+        ["values",["array","ubyte","ushort","hitmark"]],
+        ["default","ushort","hitmark"]
+    ]},
+    "0x12":{"name":"morph_12","read":["struct",
+        ["varbit","ushort","varbit"],
+        ["varp","ushort","var_player"],
+        ["default","ushort","hitmark"],
+        ["values",["array","ubyte","ushort","hitmark"]],
+        ["unk1","ushort","hitmark"]
+    ]},
+    "0x13":{"name":"unk13","read":"ushort"},
+    "0x14":{"name":"unk14","read":"ushort"}
+}

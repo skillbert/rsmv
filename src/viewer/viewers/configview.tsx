@@ -64,7 +64,9 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     inv: "inventories",
     coordgrid: "coordgrid",
     maparea: "mapzones",
+    hitmark: "hitmarks",
     // TODO fix these
+    ["headbar" as any]: "headbars",
     ["maplabel" as any]: "maplabels",
     ["varbit" as any]: "varbits",
     // need to confirm
