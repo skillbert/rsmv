@@ -1,5 +1,5 @@
 import { CacheFileSource } from "../../cache";
-import { cacheConfigPages, cacheMajors } from "../../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles } from "../../constants";
 import { FileParser, parse } from "../../parser/jsondecoders";
 import { posmod, trickleTasksTwoStep } from "../../utils";
 import { DecodeState, EncodeState } from "../../parser/opcode_reader";
@@ -442,6 +442,8 @@ export class ClientscriptObfuscation {
             })));
 
             let varbitarchieve = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.varbits);
+            let varnames = await this.source.getInternalNameList(internalNameFiles.varbit);
+
             this.varbitmeta = new Map(varbitarchieve.map(q => {
                 let parsed = parse.varbits.read(q.buffer, this.source);
                 return [
@@ -449,7 +451,7 @@ export class ClientscriptObfuscation {
                     {
                         varid: parsed.varid!,
                         bits: parsed.bits!,
-                        varname: this.getClientVarName(parsed.varid!)
+                        varname: varnames.get(q.fileid) ?? ""
                     } satisfies VarbitMeta
                 ];
             }));
@@ -638,7 +640,7 @@ export class ClientscriptObfuscation {
         if (!varbitmeta) {
             return `varbit_${varbit}${target != 0 ? `[${target}]` : ""}`;
         }
-        return `${varbitmeta.varname}_bit${varbitmeta.bits[0]}_${varbitmeta.bits[1]}${target != 0 ? `[${target}]` : ""}`;
+        return varbitmeta.varname + (target != 0 ? `[${target}]` : "");
     }
     getClientVarName(varint: number) {
         let groupid = (varint >> 24) & 0xff;

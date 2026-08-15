@@ -1,7 +1,7 @@
 import { crc32, crc32_backward, forge_crcbytes } from "../libs/crc32util";
-import { cacheConfigPages, cacheMajors, internalNameFiles, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles, internalNameFilesWithVarbit, lastClassicBuildnr, lastLegacyBuildnr, latestBuildNumber } from "../constants";
 import { cacheFileJsonModes, JsonBasedFile, parse } from "../parser/jsondecoders";
-import { cacheFilenameHash } from "../utils";
+import { cacheFilenameHash, getOrInsert } from "../utils";
 import { parseLegacyArchive } from "./legacycache";
 
 export type SubFile = {
@@ -279,36 +279,86 @@ export function parseFileNameList(buffer: Buffer) {
 	}
 	return res;
 }
+async function testnamefilepacking() {
+	let source = globalThis.source as CacheFileSource;
+	let res = {};
+	let allvarbits = new Set<number>();
+	for (let [key, value] of internalNameFilesWithVarbit) {
+		let configindex = await source.getCacheIndex(cacheMajors.config);
+		let entrylist = configindex.at(value)!;
+		let namelist = parseFileNameList(await source.getFile(cacheMajors.filenames, key));
+		let name = Object.entries(internalNameFiles).find(([k, v]) => v == key)?.[0] ?? key;
+
+		let maxid = 0;
+		for (let [id, name] of namelist) {
+			if (!name) { continue; }
+			let isvarbit = name.startsWith("_");
+			if (!isvarbit) {
+				maxid = Math.max(maxid, id);
+			} else {
+				let actualindex = id - maxid - 1;
+				if (allvarbits.has(actualindex)) {
+					console.log("warning: varbit name file collision", actualindex, name, allvarbits.has(actualindex));
+				}
+				allvarbits.add(actualindex);
+			}
+		}
+
+		res[name] = {
+			namecount: namelist.size,
+			maxnameid: Math.max(...namelist.keys()),
+			lastconfig: entrylist.subindices.at(-1),
+			namelist,
+			entrylist
+		};
+	}
+	// @ts-ignore
+	res.allvarbits = allvarbits;
+	return res;
+}
+globalThis.testnamefilepacking = testnamefilepacking;
+
 
 export abstract class CacheFileSource {
 	decodeArgs: Record<string, any> = {};
 	nameFiles: Map<number, Map<number, string>> = new Map();
+	nameFileVarbitsLoaded = false;
 
 	async getInternalNameList(namefile: number) {
+		// special case for varbit names, they are stored in the var name files instead
+		if (!this.nameFileVarbitsLoaded && namefile == internalNameFiles.varbit) {
+			// trigger loading of all var name files, this will populate the varbit name file as well
+			await Promise.all(internalNameFilesWithVarbit.keys().map(key => this.getInternalNameList(key)));
+			this.nameFileVarbitsLoaded = true;
+		}
 		let names = this.nameFiles.get(namefile);
 		if (names === undefined) {
-			if (namefile == internalNameFiles.var_player || namefile == internalNameFiles.varbit) {
-				// for some dumb reason varps and varbits are stored in a single file, so we need to split them up
-				let index = await this.getCacheIndex(cacheMajors.config);
-				let sharednames = await this.getInternalNameList(internalNameFiles.packed_varp_and_varbit);
-				let lastvarp = index[cacheConfigPages.varplayer].subindices.at(-1)!;
-				let varps = new Map<number, string>();
-				let varbits = new Map<number, string>();
-				for (let [index, value] of sharednames) {
-					if (index <= lastvarp) { varps.set(index, value); }
-					else { varbits.set(index - lastvarp, value); }
+			let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
+				// console.log("failed to load filename file", namefile, e);
+				return null;
+			});
+			names = (file ? parseFileNameList(file) : new Map<number, string>());
+
+			// special case for var files, they also contain names for varbits that target them
+			if (internalNameFilesWithVarbit.has(namefile)) {
+				let varbitfile = getOrInsert(this.nameFiles, internalNameFiles.varbit, () => new Map<number, string>());
+				let maxid = 0;
+				let varbitstarted = false;
+				for (let [key, name] of names) {
+					let isvarbit = name.startsWith("_");
+					if (isvarbit) {
+						varbitstarted = true;
+					}
+					if (varbitstarted) {
+						varbitfile.set(key - maxid - 1, name);
+						names.delete(key);
+					} else {
+						maxid = Math.max(maxid, key);
+					}
 				}
-				this.nameFiles.set(internalNameFiles.var_player, varps);
-				this.nameFiles.set(internalNameFiles.varbit, varbits);
-				names = (namefile == internalNameFiles.var_player ? varps : varbits);
-			} else {
-				let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
-					// console.log("failed to load filename file", namefile, e);
-					return null;
-				});
-				names = (file ? parseFileNameList(file) : new Map<number, string>());
-				this.nameFiles.set(namefile, names);
 			}
+
+			this.nameFiles.set(namefile, names);
 		}
 		return names;
 	}

@@ -82,7 +82,7 @@ export const internalNameFiles = {
 	var_client: 57,
 	var_npc: 59,
 	var_object: 60,
-	packed_varp_and_varbit: 61,
+	var_player: 61,
 	sound: 64,
 	midi: 69,
 	var_player_group: 80,
@@ -93,7 +93,6 @@ export const internalNameFiles = {
 	ui_anim: 97,
 
 	// hardcoded, extract their value from packed_varp_and_varbit
-	var_player: 1000,
 	varbit: 1001
 }
 
@@ -144,6 +143,16 @@ export const cacheConfigPages = {
 	items_old: 10,
 	spotanim_old: 13
 } as const;
+
+export const internalNameFilesWithVarbit = new Map([
+	[internalNameFiles.var_player, cacheConfigPages.varplayer],
+	[internalNameFiles.var_clan, cacheConfigPages.varclan],
+	[internalNameFiles.var_clan_setting, cacheConfigPages.varclansettings],
+	[internalNameFiles.var_client, cacheConfigPages.varclient],
+	[internalNameFiles.var_npc, cacheConfigPages.varnpc],
+	[internalNameFiles.var_object, cacheConfigPages.varobject],
+	[internalNameFiles.var_player_group, cacheConfigPages.varplayergroup]
+]);
 
 // from runestar cs2-rs3
 export const vartypes = {

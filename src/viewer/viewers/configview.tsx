@@ -63,6 +63,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     scriptref: "clientscript",
     inv: "inventories",
     coordgrid: "coordgrid",
+    maparea: "mapzones",
     // TODO fix these
     ["maplabel" as any]: "maplabels",
     ["varbit" as any]: "varbits",
