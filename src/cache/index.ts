@@ -438,6 +438,9 @@ export abstract class CacheFileSource {
 		let json = modefn.parser.read(file, this);
 		json.$fileid = logicalid.length == 1 ? logicalid[0] : logicalid;
 		json.$decoder = mode;
+		if (modefn.lookup.internalNamefile !== undefined) {
+			json.$filename = await this.getInternalName(modefn.lookup.internalNamefile, logicalid[0]);
+		}
 		return json;
 	}
 
