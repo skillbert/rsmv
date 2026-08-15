@@ -119,7 +119,7 @@ export function parseSprite(buf: Buffer) {
 				height: buf.readUInt16BE(offset + count * 6 + subimg * 2),
 			});
 		}
-		let palette = buf.slice(buf.length - footsize - 3 * palette_count, buf.length - footsize);
+		let palette = buf.subarray(buf.length - footsize - 3 * palette_count, buf.length - footsize);
 		// if (palette[0] == 0 && palette[1] == 0 && palette[2] == 0) {
 		// 	palette[2] = 1;//yep, the game does this, i don't know why
 		// }
@@ -129,7 +129,7 @@ export function parseSprite(buf: Buffer) {
 				let flags = buf.readUInt8(offset); offset++;
 				let transposed = (flags & 1) != 0;
 				let alpha = (flags & 2) != 0;
-				let subimg = parseSubsprite(buf.slice(offset), palette, imgdef.width, imgdef.height, alpha, transposed);
+				let subimg = parseSubsprite(buf.subarray(offset), palette, imgdef.width, imgdef.height, alpha, transposed);
 				offset += subimg.bytesused;
 				spriteimgs.push({
 					x: imgdef.x,
@@ -164,7 +164,7 @@ export function parseSprite(buf: Buffer) {
 				imgdata[outoffset + 0] = buf.readUInt8(coloroffset + inoffset * 3 + 0);
 				imgdata[outoffset + 1] = buf.readUInt8(coloroffset + inoffset * 3 + 1);
 				imgdata[outoffset + 2] = buf.readUInt8(coloroffset + inoffset * 3 + 2);
-				imgdata[outoffset + 3] = alpha ? buf.readUInt8(alphaoffset + inoffset + 2) : 255;
+				imgdata[outoffset + 3] = alpha ? buf.readUInt8(alphaoffset + inoffset) : 255;
 			}
 		}
 		spriteimgs.push({
