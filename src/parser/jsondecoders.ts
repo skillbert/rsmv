@@ -3,8 +3,6 @@ import * as opcode_reader from "./opcode_reader";
 import commentJson from "comment-json";
 import type { CacheFileSource } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, internalNameFiles } from "../constants";
-import { classicGroups } from "../cache/classicloader";
-import { prepareClientScript } from "../clientscript";
 import { anyFileIndex, blacklistIndex, chunkedIndex, DecodeLookup, indexfileIndex, noArchiveIndex, oldWorldmapIndex, rootindexfileIndex, singleMinorIndex, standardIndex, worldmapIndex } from "./filelookup";
 
 const typedef = commentJson.parse(require("../opcodes/typedef.jsonc")) as any;
@@ -254,13 +252,8 @@ export const cacheFileJsonModes = {
 
 	config83: JsonBasedFile(parse.config83, singleMinorIndex(cacheMajors.config, 83)),
 
-
-	classicmodels: JsonBasedFile(parse.classicmodels, singleMinorIndex(0, classicGroups.models)),
-
 	indices: JsonBasedFile(parse.cacheIndex, indexfileIndex()),
 	rootindex: JsonBasedFile(parse.rootCacheIndex, rootindexfileIndex()),
 
 	test: JsonBasedFile(FileParser.fromJson(`["struct",\n  \n]`), anyFileIndex()),
-
-	clientscriptops: JsonBasedFile(parse.clientscript, noArchiveIndex(cacheMajors.clientscript), undefined, source => prepareClientScript(source).then(() => undefined)),
 } satisfies Record<string, JsonBasedFile<any>>;
