@@ -63,19 +63,17 @@ export class AbstractSQLiteWasm extends AbstractSQLite {
     private constructor() {
         super();
     }
-    static async create(file: Blob | FileSystemFileHandle) {
+    static async create(file: Blob | string) {
         let db = new AbstractSQLiteWasm();
         let sqlite = await import("@sqlite.org/sqlite-wasm").then((q) => q.default());
-        let vfsname = "" + Math.random()
+        sqlite.client ??= {};
         if (file instanceof Blob) {
+            let vfsname = "" + Math.random()
             let blobfs = installBlobVfs(sqlite, file, vfsname);
             db.db = blobfs.open();
         } else {
-            const pool = await sqlite.installOpfsSAHPoolVfs({
-                name: vfsname,// also the VFS name
-                initialCapacity: 6,// pre-allocated OPFS file slots
-            });
-            db.db = new pool.OpfsSAHPoolDb(file.name);
+            sqlite.client.opfsSAHPool ??= await sqlite.installOpfsSAHPoolVfs({});
+            db.db = new sqlite.client.opfsSAHPool.OpfsSAHPoolDb(file);
         }
         return db;
     }
@@ -172,7 +170,7 @@ export class AbstractSQLiteWorker extends AbstractSQLite {
     private constructor() {
         super();
     }
-    static async create(uniquename: string, file: Blob | FileSystemFileHandle) {
+    static async create(uniquename: string, file: Blob | string) {
         let db = new AbstractSQLiteWorker();
         db.dbid = await db.worker.call<number>({ type: "sqliteopen", dbname: uniquename, file, write: false, create: false });
         return db;

@@ -1,7 +1,7 @@
 import { AbstractSQLite, AbstractSQLiteStatement, AbstractSQLiteWasm } from "./sqlite3wrap";
 
 export type SharedWorkerPackets = {
-	type: "sqliteopen", dbname: string, file: Blob | FileSystemFileHandle, write: boolean, create: boolean
+	type: "sqliteopen", dbname: string, file: Blob | string, write: boolean, create: boolean
 } | {
 	type: "sqliteexec", dbid: number, query: string
 } | {

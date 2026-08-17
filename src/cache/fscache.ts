@@ -23,15 +23,13 @@ export class FileSourceFsCache {
     constructor(filename: string) {
         this.isready = false;
         this.ready = (async () => {
-            if (!!fs.access) {
+            if (!!fs.constants) {
                 // nodejs
                 await fs.mkdir(cachefolder, { recursive: true });
                 this.database = await AbstractSQLiteNode.create(path.join(cachefolder, filename), { create: true, write: true });
             } else {
                 // web
-                const root = await navigator.storage.getDirectory();
-                let filehandle = await root.getFileHandle(filename, { create: true });
-                this.database = await AbstractSQLiteWorker.create(filename, filehandle);
+                this.database = await AbstractSQLiteWorker.create(filename, filename);
             }
             await this.database.exec(`CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
             await this.database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);
