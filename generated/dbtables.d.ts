@@ -3,32 +3,21 @@
 // run `npm run filetypes` to rebuild
 
 export type dbtables = {
-	unk01?: {
-		cols: number,
-		columndata: {
-			id: number,
-			flags: number,
-			columns: {
-				type: number,
-				unk: number | null,
-				default: (string|number) | null,
-			}[],
+	version: number,
+	unkint: number | null,
+	cols: number | null,
+	columndata: {
+		id: number,
+		flags: number,
+		unkbyte: number | null,
+		columns: {
+			type: number,
+			flagsbyte: number,
+			hasdefault: (1|1|0),
+			unk1: number | null,
+			default: (string|number) | null,
+			unk2: number | null,
 		}[],
-	} | null
-	unk02?: {
-		unkint: number,
-		cols: number,
-		columndata: {
-			id: number,
-			flags: number,
-			unkbyte: number,
-			columns: {
-				type: number,
-				hasdefault: number,
-				unk1: number | null,
-				default: (string|number) | null,
-				unk2: number | null,
-			}[],
-		}[],
-	} | null
+	}[] | null,
+	nullbyte: number | null,
 };

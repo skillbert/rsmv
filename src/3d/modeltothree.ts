@@ -348,10 +348,10 @@ export class EngineCache extends CachingFileSource {
 	/**
 	 * very aggressive caching, do not use for objects which take a lot of memory
 	 */
-	getJsonSearchData(modename: string) {
+	getJsonSearchData(modename: keyof typeof cacheFileJsonModes) {
 		let cached = this.jsonSearchCache.get(modename);
 		if (!cached) {
-			let mode = cacheFileJsonModes[modename as keyof typeof cacheFileJsonModes];
+			let mode = cacheFileJsonModes[modename];
 			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
 				await mode.prepareDump?.(this);

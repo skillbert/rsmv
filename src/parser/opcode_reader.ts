@@ -1430,7 +1430,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 					return byte0;
 				}
 				let byte1 = state.buffer.readUint8(state.scan++);
-				return (byte0 | (byte1 << 8)) - 0x100;
+				return (byte1 << 7) | (byte0 & 0x7f);
 			},
 			write(state, v) {
 				if (typeof v != "number") { throw new Error("number expected"); }
@@ -1438,7 +1438,7 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 					state.buffer.writeUint8(v, state.scan++);
 				} else {
 					state.buffer.writeUint8((v & 0x7f) | 0x80, state.scan++);
-					state.buffer.writeUint8((v + 0x100) >> 8, state.scan++);
+					state.buffer.writeUint8(v >> 7, state.scan++);
 				}
 			},
 			getTypescriptType(indent) {

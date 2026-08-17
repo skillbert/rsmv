@@ -12,8 +12,10 @@ import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { BrowseModes, makeFileId } from "../tabs/browse";
 import { styleSheetImageProps, styleSheetRGBAProps, styleSheetRGBProps } from "../../scripts/renderrsinterface";
+import { dbrows } from "../../../generated/dbrows";
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "varbit" | "stylevalue";
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey"
+    | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "varbit" | "stylevalue";
 type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown" | "";
 
 type DeepLinkElement = {
@@ -65,6 +67,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     coordgrid: "coordgrid",
     maparea: "mapzones",
     hitmark: "hitmarks",
+    ["dbtable" as any]: "dbtables",
     // TODO fix these
     ["headbar" as any]: "headbars",
     ["maplabel" as any]: "maplabels",
@@ -232,6 +235,10 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
             return { name, rsmvtype, array: subs };
         } else if (typeof data == "object") {
             let subs: DeepLinkElement[] = [];
+            if (rsmvtype == "dbtable_definition") {
+                // give dbtables access to its own id so it can fetch matching dbrows
+                subs.push({ name: "dbid", rsmvtype: "", primitive: data.$fileid })
+            }
             for (let key in data) {
                 if (key.startsWith("$")) { continue; } // skip internal properties
                 let itemmeta: JSONSchema6Definition | null = null;
@@ -340,6 +347,106 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     );
 }
 
+function DBTablesView(p: { data: DeepLinkElement }) {
+    let data = p.data;
+    let [loadrows, setloadrows] = React.useState(true);
+    let ctx = React.useContext(UIEngineContext);
+
+    let tableid = data.items?.find(q => q.name == "dbid")?.primitive;
+    let dbrows = useAwaited(async () => {
+        if (!loadrows || !ctx) { return []; }
+        let rowcache: dbrows[] = await ctx.sceneCache.engine.getJsonSearchData("dbrows").files;
+        return rowcache.filter(q => q.table == tableid);
+    }, [loadrows, ctx, tableid])
+
+    let subtables = data.items?.find(q => q.name == "columndata");
+
+    if (!subtables?.array) {
+        return <span>Empty</span>;
+    }
+
+    type DBTableSub = {
+        tableid: number,
+        columnstart: number,
+        columncount: number,
+        cols: {
+            default: any,
+            type: DeepLinkElement
+        }[]
+    }
+    let outtables: DBTableSub[] = [];
+    let columncounter = 0;
+    for (let subtable of subtables.array) {
+        let id = subtable.items?.find(q => q.name == "id");
+        let flags = subtable.items?.find(q => q.name == "flags");
+        let unkbyte = subtable.items?.find(q => q.name == "unkbyte");
+        let columns = subtable.items?.find(q => q.name == "columns");
+        let columncount = columns?.array?.length;
+        if (typeof id?.primitive != "number" || columncount == undefined) {
+            continue;
+        }
+        let outtable: DBTableSub = {
+            cols: [],
+            tableid: id.primitive,
+            columnstart: columncounter,
+            columncount: columncount
+        }
+        outtables.push(outtable);
+        for (let column of columns?.array ?? []) {
+            let type = column.items?.find(q => q.name == "type");
+            let defaultvalue = column.items?.find(q => q.name == "type");
+
+            outtable.cols.push({
+                default: defaultvalue?.primitive,
+                type: type!
+            })
+        }
+        columncounter += columncount;
+    }
+
+    let titlehead: JSX.Element[] = [];
+    let head: JSX.Element[] = [];
+
+    for (let [itable, table] of outtables.entries()) {
+        let gridColumn = `${table.columnstart + 1} / span ${table.columncount}`;
+        titlehead.push(<div key={itable} className="mv-dbtitle" style={{ gridColumn }}>{itable}</div>);
+        let subhead: JSX.Element[] = [];
+        for (let [icolumn, column] of table.cols.entries()) {
+            subhead.push(<div key={icolumn}>{renderPrimitive(column.type)?.el}</div>);
+        }
+        head.push(<div key={itable} className="mv-dbsubgrid" style={{ gridColumn }}>{subhead}</div>);
+    }
+
+    let rowdata: JSX.Element[] = [];
+    if (dbrows) {
+        for (let [dbrowindex, dbrow] of dbrows.entries()) {
+            for (let [itable, table] of outtables.entries()) {
+                let gridColumn = `${table.columnstart + 1} / span ${table.columncount}`;
+                let subrows = dbrow.rows?.columndata.find(q => q.columnid == itable);
+                let rowjsx: JSX.Element[] = [];
+                if (subrows) {
+                    for (let [irow, row] of subrows.rows.entries()) {
+                        for (let [icolumn, column] of table.cols.entries()) {
+                            let subtypematch = Object.entries(vartypes).find(q => q[1] == column.type.primitive);
+                            let subtype = subtypematch?.[0] ?? "" as any;
+                            rowjsx.push(<React.Fragment key={`${irow}-${icolumn}`}>
+                                {renderPrimitive({ name: "", rsmvtype: subtype, primitive: row[icolumn] })?.el!}
+                            </React.Fragment>);
+                        }
+                    }
+                }
+                rowdata.push(<div key={`${dbrowindex}-${itable}`} className="mv-dbsubgrid" style={{ gridColumn }}> {rowjsx}</div >);
+            }
+        }
+    }
+
+    return <div className="mv-dbgrid">
+        {titlehead}
+        {head}
+        {rowdata}
+    </div>
+}
+
 function DBRowsView(p: { data: DeepLinkElement }) {
     let data = p.data;
 
@@ -432,19 +539,19 @@ export function renderPrimitive(prop: DeepLinkElement) {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
         }
         if (prop.rsmvtype == "graphic") {
-            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><SpriteView id={prop.primitive} /></> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><SpriteView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "texture") {
-            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><TextureView id={prop.primitive} /></> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><TextureView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "cursor") {
-            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><CursorView id={prop.primitive} /></> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><CursorView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "sound") {
-            return { isbig: false, el: <><div><ObjectLink prop={prop} /></div><SoundView id={prop.primitive} /></> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><SoundView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "boolean") {
-            return { isbig: false, el: <span>{prop.primitive ? true : false}</span> };
+            return { isbig: false, el: <span>{prop.primitive ? "true" : "false"}</span> };
         }
         return { isbig: false, el: <span><ObjectLink prop={prop} /></span> };
     }
@@ -467,6 +574,9 @@ export function renderPrimitive(prop: DeepLinkElement) {
         if (prop.rsmvtype == "dbrow_definition") {
             return { isbig: true, el: <DBRowsView data={prop} /> };
         }
+        if (prop.rsmvtype == "dbtable_definition") {
+            return { isbig: true, el: <DBTablesView data={prop} /> };
+        }
     }
     return null;
 }
@@ -474,7 +584,9 @@ export function renderPrimitive(prop: DeepLinkElement) {
 export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
     let source = React.useContext(UIEngineContext)?.source;
-    let data = useAwaited(async () => source && deepLinkJson({ source, objstack: [] }, "root", p.data, p.meta), [p.data, p.meta, source]);
+    let data = useAwaited(async () => {
+        return source && deepLinkJson(new DeepLinkContext(source), "root", p.data, p.meta);
+    }, [p.data, p.meta, source]);
 
     let handlenode = (prop: DeepLinkElement, isroot = false): { isbig: boolean, el: JSX.Element } => {
         let primitive = renderPrimitive(prop);
