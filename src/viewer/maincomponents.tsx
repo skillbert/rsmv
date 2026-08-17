@@ -461,20 +461,20 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 	isNavigating = false;
 	fixUrl(tab: UIOpenedTab | null) {
 		let now = Date.now();
-		let url = "";
 		let navigatable = true;
+		let url = new URL(document.location.href);
 		if (!tab) {
-			url = "";
+			url.search = "";
 		} else if (tab.type == "browse") {
-			url = `?browse=${encodeURIComponent(tab.id)}`;
+			url.search = `?browse=${encodeURIComponent(tab.id)}`;
 		} else if (tab.type == "view3d") {
-			url = `?view3d=${encodeURIComponent(tab.id)}`;
+			url.search = `?view3d=${encodeURIComponent(tab.id)}`;
 		} else if (tab.type == "file") {
 			navigatable = false;
 			// url = `?file=${encodeURIComponent(tab.name)}`;
 		}
 
-		if (navigatable && url != document.location.search) {
+		if (navigatable && url.href != document.location.search) {
 			this.isNavigating = true;
 			// only push to history if the last page was shown more than 1 second
 			let dopush = now - this.lastPushTime > 1000;
