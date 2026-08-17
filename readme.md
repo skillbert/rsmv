@@ -13,7 +13,7 @@ npm run buildnative
 
 #build the native/electron files
 npm run build
-#build the web viewer (currently broken because of local fork of sql.js)
+#build the web viewer
 npm run web
 ```
 

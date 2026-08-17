@@ -1,38 +1,43 @@
-import { sqliteExec, sqliteOpenDatabase, sqlitePrepare, sqliteRunStatement } from "../libs/sqlite3wrap";
-import type * as sqlite3 from "sqlite3";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { AbstractSQLite, AbstractSQLiteNode, AbstractSQLiteStatement, AbstractSQLiteWorker } from "../libs/sqlite3wrap";
 
-const dbpath = "./cache/fscache.sqlite3";
+const cachefolder = "./cache";
+const cachefile = "fscache.sqlite3";
 
 export class FileSourceFsCache {
     ready: Promise<void>;
     isready: boolean;
-    database!: sqlite3.Database;
-    getstatement!: sqlite3.Statement;
-    setstatement!: sqlite3.Statement;
+    database!: AbstractSQLite;
+    getstatement!: AbstractSQLiteStatement;
+    setstatement!: AbstractSQLiteStatement;
 
     static tryCreate() {
-        if (typeof __non_webpack_require__ == "undefined") { return null; }
         try {
-            __non_webpack_require__("sqlite3")
+            return new FileSourceFsCache(cachefile);
         } catch {
             return null;
         }
-        return new FileSourceFsCache(dbpath);
     }
 
     constructor(filename: string) {
         this.isready = false;
         this.ready = (async () => {
-            await fs.mkdir(path.dirname(filename), { recursive: true });
-            let database = await sqliteOpenDatabase(filename, { create: true, write: true });
+            if (!!fs.access) {
+                // nodejs
+                await fs.mkdir(cachefolder, { recursive: true });
+                this.database = await AbstractSQLiteNode.create(path.join(cachefolder, filename), { create: true, write: true });
+            } else {
+                // web
+                const root = await navigator.storage.getDirectory();
+                let filehandle = await root.getFileHandle(filename, { create: true });
+                this.database = await AbstractSQLiteWorker.create(filename, filehandle);
+            }
+            await this.database.exec(`CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
+            await this.database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);
 
-            await sqliteExec(database, `CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
-            await sqliteExec(database, `CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);
-
-            this.getstatement = await sqlitePrepare(database, `SELECT major, minor, crc, file FROM groupcache WHERE major=? AND minor=? AND crc=?`);
-            this.setstatement = await sqlitePrepare(database, `INSERT INTO groupcache(major,minor,crc,file) VALUES (?,?,?,?)`);
+            this.getstatement = await this.database.prepare(`SELECT major, minor, crc, file FROM groupcache WHERE major=? AND minor=? AND crc=?`);
+            this.setstatement = await this.database.prepare(`INSERT INTO groupcache(major,minor,crc,file) VALUES (?,?,?,?)`);
 
             this.isready = true;
         })()
@@ -43,22 +48,27 @@ export class FileSourceFsCache {
             await this.ready;
         }
         console.log("saving", major, minor, crc, "len", file.length);
-        sqliteRunStatement(this.setstatement, [major, minor, crc, file]);
+        await this.setstatement.run([major, minor, crc, file]);
     }
 
     async getFile(major: number, minor: number, crc: number): Promise<Buffer | null> {
         if (!this.isready) {
             await this.ready;
         }
-        let cached = await sqliteRunStatement(this.getstatement, [major, minor, crc]);
+        let cached = await this.getstatement.run([major, minor, crc]);
         if (cached.length > 1) {
             throw new Error("more than one match for fs cached file");
         }
         if (cached.length == 1) {
-            if (!cached[0].file) {
+            let file = cached[0].file;
+            if (!file) {
                 throw new Error(`file ${major}.${minor} not found (explicitly missing in cache)`);
             }
-            return cached[0].file;
+            // Buffer doesn't survive the trip from worker
+            if (!(file instanceof Buffer)) {
+                file = Buffer.from(file);
+            }
+            return file;
         }
         return null;
     }

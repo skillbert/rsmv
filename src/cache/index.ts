@@ -175,26 +175,25 @@ export function unpackBufferArchive(buffer: Buffer, subids: number[], namehashes
 	return subbufs;
 }
 
-export function rootIndexBufferToObject(metaindex: Buffer, source: CacheFileSource) {
+function rootIndexBufferToObject(metaindex: Buffer, source: CacheFileSource) {
 	let index = parse.rootCacheIndex.read(metaindex, source);
-	return index.cachemajors
-		.map(q => {
-			if (q.crc == 0) { return undefined!; }
-			let r: CacheIndex = {
-				major: 255,
-				minor: q.minor,
-				crc: q.crc,
-				version: q.version,
-				size: 0,
-				name: null,
-				subindexcount: q.subindexcount,
-				subindices: [0],
-				subnames: null,
-				uncompressed_crc: 0,
-				uncompressed_size: 0,
-			}
-			return r;
-		});
+	return index.cachemajors.map(q => {
+		if (q.crc == 0) { return undefined!; }
+		let r: CacheIndex = {
+			major: 255,
+			minor: q.minor,
+			crc: q.crc,
+			version: q.version,
+			size: 0,
+			name: null,
+			subindexcount: q.subindexcount,
+			subindices: [0],
+			subnames: null,
+			uncompressed_crc: 0,
+			uncompressed_size: 0,
+		}
+		return r;
+	});
 }
 
 export function indexBufferToObject(major: number, buffer: Buffer, source: CacheFileSource): CacheIndex[] {

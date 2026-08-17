@@ -13,7 +13,6 @@ type ClientConfig = {
 	[id: string]: string | {}
 }
 
-//TODO get rid of this again
 const handshake1 = new FileParser<any>(["struct",
 	["type", "ubyte"],
 	["length", "ubyte"],

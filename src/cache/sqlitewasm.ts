@@ -3,16 +3,13 @@ import * as cache from "./index";
 import type { WorkerPackets } from "./sqlitewasmworker";
 
 
-export class WasmGameCacheLoader extends cache.CacheFileSource {
-	indices = new Map<number, Promise<cache.CacheIndexFile>>();
-	dbfiles: Record<string, Blob> = {};
+export class WasmSqliteManager {
+	callbacks = new Map<number, { resolve: (res: any) => void, reject: (err: Error) => void, reqpacket: WorkerPackets }>();
 	worker: Worker;
 	msgidcounter = 1;
-	callbacks = new Map<number, { resolve: (res: any) => void, reject: (err: Error) => void, reqpacket: WorkerPackets }>();
-	timestamp = new Date();
-	constructor() {
-		super();
-		//@ts-ignore this whole line gets consumed by webpack, turns to static string in webpack
+	refcount = 0;
+
+	private constructor() {
 		this.worker = new Worker(new URL("./sqlitewasmworker.ts", import.meta.url));
 		this.worker.onmessage = e => {
 			let handler = this.callbacks.get(e.data.id);
@@ -33,6 +30,38 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 			}
 			this.callbacks.delete(e.data.id);
 		}
+	}
+	static instance: WasmSqliteManager | null = null;
+	static getInstance() {
+		if (!this.instance) {
+			this.instance = new WasmSqliteManager();
+		}
+		this.instance.refcount++;
+		return this.instance;
+	}
+
+	call(packet: WorkerPackets) {
+		let id = this.msgidcounter++;
+		this.worker.postMessage({ id, packet });
+		return new Promise((resolve, reject) => this.callbacks.set(id, { resolve, reject, reqpacket: packet }));
+	}
+
+	deref() {
+		this.refcount--;
+		if (this.refcount <= 0) {
+			this.worker.terminate();
+			WasmSqliteManager.instance = null;
+		}
+	}
+}
+
+export class WasmGameCacheLoader extends cache.CacheFileSource {
+	indices = new Map<number, Promise<cache.CacheIndexFile>>();
+	dbfiles: Record<string, Blob> = {};
+	timestamp = new Date();
+	worker = WasmSqliteManager.getInstance();
+	constructor() {
+		super();
 	}
 	getCacheMeta() {
 		return {
@@ -65,16 +94,9 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 
 		return majors;
 	}
-
-	sendWorker(packet: WorkerPackets) {
-		let id = this.msgidcounter++;
-		this.worker.postMessage({ id, packet });
-		return new Promise((resolve, reject) => this.callbacks.set(id, { resolve, reject, reqpacket: packet }));
-	}
-
 	giveBlobs(blobs: Record<string, Blob>) {
 		Object.assign(this.dbfiles, blobs);
-		this.sendWorker({ type: "blobs", blobs });
+		this.worker.call({ type: "blobs", blobs });
 	}
 	async giveFsDirectory(dir: FileSystemDirectoryHandle) {
 		let files: Record<string, Blob> = {};
@@ -93,7 +115,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 
 	async getFile(major: number, minor: number, crc?: number) {
 		if (major == cacheMajors.index) { return this.getIndexFile(minor); }
-		let data = await this.sendWorker({ type: "getfile", major, minor, crc }) as Uint8Array;
+		let data = await this.worker.call({ type: "getfile", major, minor, crc }) as Uint8Array;
 		return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 	}
 
@@ -113,12 +135,12 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 	}
 
 	async getIndexFile(major: number) {
-		let data = await this.sendWorker({ type: "getindex", major }) as Uint8Array;
+		let data = await this.worker.call({ type: "getindex", major }) as Uint8Array;
 		return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
 	}
 
 	close() {
 		//TODO this will break if we are doing writes
-		this.worker.terminate();
+		this.worker.deref();
 	}
 }
