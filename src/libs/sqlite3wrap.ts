@@ -1,7 +1,7 @@
 import type * as sqlite3 from "sqlite3";
-import type sqlitewasm from "sql.js";
+import type * as sqlitewasm from "@sqlite.org/sqlite-wasm";
 import { SharedWorkerPackets } from "./sqlite3worker";
-import { delay } from "../utils";
+import { installBlobVfs } from "./sqlite3blobfs";
 
 
 export abstract class AbstractSQLiteStatement {
@@ -65,8 +65,18 @@ export class AbstractSQLiteWasm extends AbstractSQLite {
     }
     static async create(file: Blob | FileSystemFileHandle) {
         let db = new AbstractSQLiteWasm();
-        let sqlite = await import("sql.js/dist/sql-wasm-workerfs.js").then((q: typeof import("sql.js")) => q.default());
-        db.db = new sqlite.Database(file as any);
+        let sqlite = await import("@sqlite.org/sqlite-wasm").then((q) => q.default());
+        let vfsname = "" + Math.random()
+        if (file instanceof Blob) {
+            let blobfs = installBlobVfs(sqlite, file, vfsname);
+            db.db = blobfs.open();
+        } else {
+            const pool = await sqlite.installOpfsSAHPoolVfs({
+                name: vfsname,// also the VFS name
+                initialCapacity: 6,// pre-allocated OPFS file slots
+            });
+            db.db = new pool.OpfsSAHPoolDb(file.name);
+        }
         return db;
     }
     async exec(query: string) {
@@ -81,16 +91,29 @@ export class AbstractSQLiteWasm extends AbstractSQLite {
     }
 }
 class AbstractSQLiteWasmStatement extends AbstractSQLiteStatement {
-    private stmt: sqlitewasm.Statement
-    constructor(stmt: sqlitewasm.Statement) {
+    private stmt: sqlitewasm.PreparedStatement
+    private columns: string[]
+    constructor(stmt: sqlitewasm.PreparedStatement) {
         super();
         this.stmt = stmt;
+        // bug in sqlite-wasm: stmt.getColumnNames() throws if columnCount=0
+        this.columns = (stmt.columnCount == 0 ? [] : stmt.getColumnNames());
     }
-    async run(args?: any[]) {
-        this.stmt.bind(args);
+    async run(args: any[]) {
         let rows: any[] = [];
-        while (this.stmt.step()) {
-            rows.push(this.stmt.getAsObject());
+        try {
+            if (this.stmt.parameterCount != 0) {
+                this.stmt.bind(args);
+            }
+            while (this.stmt.step()) {
+                let obj: any = {};
+                for (let i = 0; i < this.columns.length; i++) {
+                    obj[this.columns[i]] = this.stmt.get(i);
+                }
+                rows.push(obj);
+            }
+        } finally {
+            this.stmt.reset();
         }
         return rows;
     }
@@ -151,7 +174,6 @@ export class AbstractSQLiteWorker extends AbstractSQLite {
     }
     static async create(uniquename: string, file: Blob | FileSystemFileHandle) {
         let db = new AbstractSQLiteWorker();
-        await delay(1000);
         db.dbid = await db.worker.call<number>({ type: "sqliteopen", dbname: uniquename, file, write: false, create: false });
         return db;
     }

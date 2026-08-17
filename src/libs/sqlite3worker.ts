@@ -46,12 +46,11 @@ console.log("worker started");
 async function sqliteOpen(packet: SharedWorkerPackets & { type: "sqliteopen" }) {
 	let entry = opentables.values().find(q => q.name == packet.dbname);
 	if (!entry) {
-		let writeable = await (packet.file as FileSystemFileHandle).createWritable();
 		entry = {
 			refs: 0,
 			name: packet.dbname,
 			id: idcounter++,
-			backend: await AbstractSQLiteWasm.create(writeable as any)
+			backend: await AbstractSQLiteWasm.create(packet.file)
 		}
 		opentables.set(entry.id, entry);
 	}

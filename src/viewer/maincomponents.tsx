@@ -525,9 +525,12 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 				cache = wasmcache;
 			}
 		} else {
-			let wasmcache = new WasmGameCacheLoader();
-			wasmcache.giveBlobs(source.blobs);
-			cache = wasmcache;
+			// Files don't survive json round-trip, but i believe they might have survived indexeddb round-trip
+			if (Object.values(source.blobs).every(q => q instanceof File)) {
+				let wasmcache = new WasmGameCacheLoader();
+				wasmcache.giveBlobs(source.blobs);
+				cache = wasmcache;
+			}
 		}
 	}
 	if (source.type == "openrs2") {
