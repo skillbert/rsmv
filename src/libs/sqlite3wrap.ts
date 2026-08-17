@@ -106,7 +106,7 @@ export class WasmSQLiteManager {
     refcount = 0;
 
     private constructor() {
-        this.worker = new Worker(new URL("./sqlite3sharedworker.ts", import.meta.url));
+        this.worker = new Worker(new URL("./sqlite3worker.ts", import.meta.url));
         this.worker.onmessage = e => {
             let handler = this.callbacks.get(e.data.id);
             if (e.data.error) {

@@ -33,7 +33,7 @@ export type SavedCacheSource = {
 	handle: FileSystemDirectoryHandle
 } | {
 	type: "sqliteblobs",
-	blobs: Record<string, Blob>
+	blobs: Record<string, File>
 } | {
 	type: "openrs2",
 	cachename: string
@@ -235,7 +235,7 @@ export class CacheSelector extends React.Component<{ onOpen: (c: SavedCacheSourc
 	async onFileDrop(e: DragEvent) {
 		e.preventDefault();
 		if (e.dataTransfer) {
-			let files: Record<string, Blob> = {};
+			let files: Record<string, File> = {};
 			let items: DataTransferItem[] = [];
 			let folderhandles: FileSystemDirectoryHandle[] = [];
 			let filehandles: FileSystemFileHandle[] = [];
@@ -379,9 +379,10 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		this.useServiceWorker = useServiceWorker;
 
 		if (useServiceWorker) {
-			//this service worker holds a reference to the cache fs handle which will keep the handles valid 
+			//this service worker holds a reference to the cache fs handle which will keep the handles valid
 			//across tab reloads
-			navigator.serviceWorker?.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
+			// this functionality is broken since chrome no longer allows fs access on rs cache files since they are in a "system folder" (AppData)
+			// navigator.serviceWorker?.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
 		}
 
 		navigation.addEventListener("navigate", this.onNavigate);
