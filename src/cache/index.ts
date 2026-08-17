@@ -319,47 +319,46 @@ globalThis.testnamefilepacking = testnamefilepacking;
 
 
 export abstract class CacheFileSource {
-	decodeArgs: Record<string, any> = {};
-	nameFiles: Map<number, Map<number, string>> = new Map();
-	nameFileVarbitsLoaded = false;
+	private decodeArgs: Record<string, any> = {};
+	private nameFiles: Map<number, Map<number, string> | Promise<Map<number, string>>> = new Map();
+	private nameFileVarbits = new Map<number, string>();
 
 	async getInternalNameList(namefile: number) {
 		// special case for varbit names, they are stored in the var name files instead
-		if (!this.nameFileVarbitsLoaded && namefile == internalNameFiles.varbit) {
-			// trigger loading of all var name files, this will populate the varbit name file as well
-			await Promise.all(internalNameFilesWithVarbit.keys().map(key => this.getInternalNameList(key)));
-			this.nameFileVarbitsLoaded = true;
-		}
-		let names = this.nameFiles.get(namefile);
-		if (names === undefined) {
-			let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
-				// console.log("failed to load filename file", namefile, e);
-				return null;
-			});
-			names = (file ? parseFileNameList(file) : new Map<number, string>());
+		return this.nameFiles.getOrInsertComputed(namefile, async () => {
+			let names: Map<number, string>;
+			if (namefile == internalNameFiles.varbit) {
+				// trigger loading of all var name files, this will populate the varbit name file as well
+				await Promise.all(internalNameFilesWithVarbit.keys().map(key => this.getInternalNameList(key)));
+				names = this.nameFileVarbits;
+			} else {
+				let file = await this.getFile(cacheMajors.filenames, namefile).catch(e => {
+					// console.log("failed to load filename file", namefile, e);
+					return null;
+				});
+				names = (file ? parseFileNameList(file) : new Map<number, string>());
 
-			// special case for var files, they also contain names for varbits that target them
-			if (internalNameFilesWithVarbit.has(namefile)) {
-				let varbitfile = getOrInsert(this.nameFiles, internalNameFiles.varbit, () => new Map<number, string>());
-				let maxid = 0;
-				let varbitstarted = false;
-				for (let [key, name] of names) {
-					let isvarbit = name.startsWith("_");
-					if (isvarbit) {
-						varbitstarted = true;
-					}
-					if (varbitstarted) {
-						varbitfile.set(key - maxid - 1, name);
-						names.delete(key);
-					} else {
-						maxid = Math.max(maxid, key);
+				// special case for var files, they also contain names for varbits that target them
+				if (internalNameFilesWithVarbit.has(namefile)) {
+					let maxid = 0;
+					let varbitstarted = false;
+					for (let [key, name] of names) {
+						let isvarbit = name.startsWith("_");
+						if (isvarbit) {
+							varbitstarted = true;
+						}
+						if (varbitstarted) {
+							this.nameFileVarbits.set(key - maxid - 1, name);
+							names.delete(key);
+						} else {
+							maxid = Math.max(maxid, key);
+						}
 					}
 				}
 			}
-
 			this.nameFiles.set(namefile, names);
-		}
-		return names;
+			return names;
+		});
 	}
 	async getInternalName(namefile: number, index: number) {
 		let names = await this.getInternalNameList(namefile);
