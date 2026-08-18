@@ -1,4 +1,4 @@
-import { vartypes } from "../../constants";
+import { vartypeReverseMap, vartypes } from "../../constants";
 import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { ClientScriptOp, ExactStack, getOpName, namedClientScriptOps, StackDiff, StackList } from "../definitions";
 
@@ -34,7 +34,7 @@ export function addBracketsIfNeeded(slotprec: number, assoc: "left" | "right" | 
 }
 
 export function subtypeToTs(subt: number) {
-    let resentry = Object.entries(vartypes).find(q => q[1] == subt);
+    let resentry = vartypeReverseMap.get(subt)
     if (!resentry) { return `type_${subt}`; }
     let res = resentry[0];
     // prevent conflict with ts keywords

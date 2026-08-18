@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useMemo } from "react";
 import { checkObject, stringToFileRange } from "../../utils";
 import { LookupModeProps } from "../scenenodes";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
@@ -116,10 +116,10 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
             }
         }
         return null;
-    }, [searchmode, engine]);
+    }, [searchmode, engine], 200);
 
 
-    let searchresult = useAwaited(() => searcher?.(searchtext), [searchtext, searcher]);
+    let searchresult = useAwaited(() => searcher?.(searchtext), [searchtext, searcher], 200);
 
     return (
         <React.Fragment>
@@ -238,7 +238,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 file: prettyJson(obj),
             } as const;
         })()
-    }, [index?.mode, index?.index.join("_"), engine]);
+    }, [index?.mode, index?.index.join("_"), engine], 200);
 
     if (!data) { return <div>Loading...</div>; }
     if (data.viewer == "json") {

@@ -291,30 +291,37 @@ export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefin
 	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
 
-export function useAwaited<T>(fn: () => Promise<T> | T | null | undefined, deps: any[] = []): T | null | undefined {
+export function useAwaited<T>(fn: () => Promise<T> | T | null | undefined, deps: any[] = [], staletime = 0): T | null | undefined {
 	let forceupdate = useForceUpdate();
 	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
 	let value = React.useRef<T | null | undefined>(null);
 	let generation = React.useRef(0);
-	let prom = React.useMemo(fn, deps);
-	if (!(prom instanceof Promise)) {
-		value.current = prom;
-	}
-	React.useEffect(() => {
+	let showngeneration = React.useRef(0);
+	let prom = React.useMemo(() => {
+		let prom = fn();
 		generation.current++;
-		if (!(prom instanceof Promise)) { return; }
-		value.current = null;
+		if (!(prom instanceof Promise)) {
+			value.current = prom;
+			showngeneration.current = generation.current;
+		} else if (staletime <= 0) {
+			value.current = null;
+		}
+		return prom;
+	}, deps);
+	React.useEffect(() => {
+		if (!prom || !(prom instanceof Promise)) { return; }
 		let gen = generation.current;
-		// prevent showing stale data for too long
-		let timeout = setTimeout(() => {
-			if (value.current == null && gen == generation.current) {
+		// leave stale data in place for max 200ms to prevent flicker
+		let timeout = (staletime <= 0 ? 0 : +setTimeout(() => {
+			if (gen == generation.current && gen != showngeneration.current) {
+				value.current = null;
 				forceupdate();
 			}
-		}, 200);
-		prom?.then(q => {
+		}, 200));
+		prom.then(res => {
 			clearTimeout(timeout);
 			if (gen == generation.current) {
-				value.current = q;
+				value.current = res;
 				forceupdate();
 			}
 		}).catch(err => console.error(err));

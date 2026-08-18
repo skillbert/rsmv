@@ -110,7 +110,7 @@ function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => voi
 
 			return { games, years, langs, envs, showncaches };
 		})();
-	}, [envFilter, langFilter, gameFilter, yearFilter, advanced]);
+	}, [envFilter, langFilter, gameFilter, yearFilter, advanced], 200);
 
 	let enterCacheId = async (idstring: string) => {
 		let id = +idstring;

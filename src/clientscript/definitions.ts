@@ -1,4 +1,4 @@
-import { cacheConfigPages, internalNameFiles } from "../constants";
+import { cacheConfigPages, internalNameFiles, vartypeReverseMap } from "../constants";
 import { rs3opnames } from "./callibration/opnames";
 import { vartypes } from "../constants";
 
@@ -167,7 +167,7 @@ export function decomposeKey(key: number) {
 export function debugKey(key: number) {
     let [sourcetype, stackstring, group, index] = decomposeKey(key);
 
-    if (sourcetype == "known") { return `known type ${index} ${Object.entries(vartypes).find(q => q[1] == index)?.[0]}`; }
+    if (sourcetype == "known") { return `known type ${index} ${vartypeReverseMap.get(index)}`; }
     if (sourcetype == "opin") { return `opin ${group} ${getOpName(group)} ${index} ${stackstring}`; }
     if (sourcetype == "opout") { return `opout ${group} ${getOpName(group)} ${index} ${stackstring}`; }
     if (sourcetype == "scriptargvar") { return `script ${group} arg/local ${index} ${stackstring}`; }

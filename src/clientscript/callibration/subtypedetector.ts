@@ -1,7 +1,7 @@
 import { AstNode, ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNode, generateAst } from "../ast";
 import { ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, ScriptCandidates } from "./callibrator";
 import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, getOpName, keyToPrimitive, namedClientScriptOps, primitiveToUknownExact, typeToPrimitive } from "../definitions";
-import { vartypes } from "../../constants";
+import { vartypeReverseMap, vartypes } from "../../constants";
 
 //to test
 //await cli("extract --mode clientscript -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
@@ -151,9 +151,9 @@ export class ClientScriptSubtypeSolver {
                             this.knowntypes.set(link, known);
                         } else if (prevknown != known) {
                             conflictcount++;
-                            console.log(`conflicting types old:${Object.entries(vartypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(vartypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
+                            console.log(`conflicting types old:${vartypeReverseMap.get(prevknown) ?? "??"}, new:${vartypeReverseMap.get(known) ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
                             // globalThis.testkey = [key, link];
-                            // throw new Error(`conflicting types old:${Object.entries(vartypes).find(q => q[1] == prevknown)?.[0] ?? "??"}, new:${Object.entries(vartypes).find(q => q[1] == known)?.[0] ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
+                            // throw new Error(`conflicting types old:${vartypeReverseMap.get(prevknown) ?? "??"}, new:${vartypeReverseMap.get(known) ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
                         }
                     }
                 }

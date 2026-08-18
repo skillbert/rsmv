@@ -1,6 +1,6 @@
 import * as React from "react";
 import { UIEngineContext, UIRootContext } from "../maincomponents";
-import { cacheMajors, internalNameFiles, vartypes } from "../../constants";
+import { cacheMajors, internalNameFiles, vartypeReverseMap, vartypes } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { pixelsToDataUrl } from "../../imgutils";
 import { JSONSchema6, JSONSchema6Definition } from "json-schema";
@@ -123,7 +123,7 @@ async function deepLinkParamtable(ctx: DeepLinkContext, value: any[]) {
         let paramname = paramNames.get(q.prop) ?? `param_${q.prop}`;
         let paramdata = paramData.get(q.prop);
         let typeid = paramdata?.type?.vartype ?? -1;
-        let typename = Object.entries(vartypes).find(([k, v]) => v == typeid)?.[0] ?? "unknown"
+        let typename = vartypeReverseMap.get(typeid) ?? "unknown"
         return deepLinkJson(ctx, paramname, q.intvalue ?? q.stringvalue, { "x-rsmv-type": typename } as any);
     }));
 }
@@ -139,19 +139,19 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
         let rsmvtype = getRSType(meta);
         if (rsmvtype == "enumkey") {
             let keyint = ctx.objstack.at(0)?.key_type1 ?? ctx.objstack.at(0)?.key_type2;
-            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == keyint)?.[0] as any ?? "unknown";
+            rsmvtype = vartypeReverseMap.get(keyint) as any ?? "unknown";
         }
         if (rsmvtype == "enumvalue") {
             let valueint = ctx.objstack.at(0)?.value_type1 ?? ctx.objstack.at(0)?.value_type2;
-            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == valueint)?.[0] as any ?? "unknown";
+            rsmvtype = vartypeReverseMap.get(valueint) as any ?? "unknown";
         }
         if (rsmvtype == "paramvalue") {
             let paramint = ctx.objstack.at(0)?.type?.vartype;
-            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == paramint)?.[0] as any ?? "unknown";
+            rsmvtype = vartypeReverseMap.get(paramint) as any ?? "unknown";
         }
         if (rsmvtype == "dbvalue") {
             let fieldtype = ctx.objstack.at(-1)?.type ?? ctx.objstack.at(-4)?.subtypes?.[nameorindex];
-            rsmvtype = Object.entries(vartypes).find(([k, v]) => v == fieldtype)?.[0] as any ?? "unknown";
+            rsmvtype = vartypeReverseMap.get(fieldtype) as any ?? "unknown";
         }
         if (typeof data == "number" && rsmvtype == "stylevalue") {
             let proptype = ctx.objstack.at(-2)?.prop;
@@ -268,7 +268,7 @@ function SpriteView(p: { id: number }) {
         let file = await enginectx.source.getFileById(cacheMajors.sprites, p.id);
         let img = parseSprite(file);
         return pixelsToDataUrl(img[0].img);
-    }, [p.id]);
+    }, [p.id], 200);
 
     return <img src={imgurl ?? undefined} />;
 }
@@ -279,7 +279,7 @@ function TextureView(p: { id: number }) {
         if (!enginectx) { return; }
         let file = await enginectx.sceneCache.getTextureFile("diffuse", p.id, false);
         return pixelsToDataUrl(await file.toImageData());
-    }, [p.id]);
+    }, [p.id], 200);
 
     return <img src={imgurl ?? undefined} />;
 }
@@ -290,7 +290,7 @@ function CursorView(p: { id: number }) {
         if (!enginectx) { return; }
         let parsed = await enginectx.source.getObject("cursors", p.id);
         return parsed.cursor;
-    }, [p.id, enginectx]);
+    }, [p.id, enginectx], 200);
     return <SpriteView id={spriteid ?? 0} />;
 }
 
@@ -301,7 +301,7 @@ function SoundView(p: { id: number }) {
         if (!enginectx) { return; }
         let sound = await parseMusic(enginectx.source, cacheMajors.sounds, p.id, null, true);
         return URL.createObjectURL(new BlobTS([sound], { type: "audio/ogg" }));
-    }, [p.id, enginectx]);
+    }, [p.id, enginectx], 200);
 
     // cleanup
     React.useEffect(() => () => {
@@ -347,23 +347,7 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
     );
 }
 
-function DBTablesView(p: { data: DeepLinkElement }) {
-    let data = p.data;
-    let [loadrows, setloadrows] = React.useState(true);
-    let ctx = React.useContext(UIEngineContext);
-
-    let tableid = data.items?.find(q => q.name == "dbid")?.primitive;
-    let dbrows = useAwaited(async () => {
-        if (!loadrows || !ctx) { return []; }
-        let rowcache: dbrows[] = await ctx.sceneCache.engine.getJsonSearchData("dbrows").files;
-        return rowcache.filter(q => q.table == tableid);
-    }, [loadrows, ctx, tableid])
-
-    let subtables = data.items?.find(q => q.name == "columndata");
-
-    if (!subtables?.array) {
-        return <span>Empty</span>;
-    }
+function getDBTableStructure(data: DeepLinkElement) {
 
     type DBTableSub = {
         tableid: number,
@@ -374,6 +358,11 @@ function DBTablesView(p: { data: DeepLinkElement }) {
             type: DeepLinkElement
         }[]
     }
+
+    let tableid = data.items?.find(q => q.name == "dbid")?.primitive;
+    let subtables = data.items?.find(q => q.name == "columndata");
+    if (!subtables?.array || typeof tableid != "number") { return null; }
+
     let outtables: DBTableSub[] = [];
     let columncounter = 0;
     for (let subtable of subtables.array) {
@@ -403,11 +392,56 @@ function DBTablesView(p: { data: DeepLinkElement }) {
         }
         columncounter += columncount;
     }
+    return {
+        tableid,
+        outtables
+    }
+}
+
+function DBTablesView(p: { data: DeepLinkElement }) {
+    let data = p.data;
+    let [maxdbrows, setmaxdbrows] = React.useState(0);
+    let ctx = React.useContext(UIEngineContext);
+
+    let structure = React.useMemo(() => getDBTableStructure(data), [data]);
+
+    let dbrows = useAwaited(async () => {
+        if (maxdbrows == 0 || !ctx || !structure) { return []; }
+        let rowcache: dbrows[] = await ctx.sceneCache.engine.getJsonSearchData("dbrows").files;
+        return Promise.all(rowcache.filter(q => q.table == structure.tableid).map(async q => {
+            let res: DeepLinkElement[][][] = [];
+            let linkctx = new DeepLinkContext(ctx.sceneCache.engine);
+            for (let subtable of structure.outtables) {
+                let tabledata: DeepLinkElement[][] = [];
+                let subtabledata = q.rows?.columndata.find(q => q.columnid == subtable?.tableid);
+                for (let row of subtabledata?.rows ?? []) {
+                    if (row.length != subtable.cols.length) {
+                        console.log("skipped row because of subcolumn count mismatch", row, subtable.cols);
+                        continue;
+                    }
+                    let rowdata: DeepLinkElement[] = [];
+                    for (let i = 0; i < row.length; i++) {
+                        let rsmvtype = vartypeReverseMap.get(subtable.cols[i].type.primitive as number);
+                        rowdata.push(await deepLinkJson(linkctx, i, row[i], { ["x-rsmv-type" as any]: rsmvtype }))
+                    }
+                    tabledata.push(rowdata);
+                }
+                res.push(tabledata);
+            }
+            return res;
+        }));
+    }, [maxdbrows, ctx, structure])
+
+
+    if (!structure) {
+        return <span>Empty</span>;
+    }
+
 
     let titlehead: JSX.Element[] = [];
     let head: JSX.Element[] = [];
 
-    for (let [itable, table] of outtables.entries()) {
+    for (let [itable, table] of structure.outtables.entries()) {
         let gridColumn = `${table.columnstart + 1} / span ${table.columncount}`;
         titlehead.push(<div key={itable} className="mv-dbtitle" style={{ gridColumn }}>{itable}</div>);
         let subhead: JSX.Element[] = [];
@@ -419,20 +453,17 @@ function DBTablesView(p: { data: DeepLinkElement }) {
 
     let rowdata: JSX.Element[] = [];
     if (dbrows) {
-        for (let [dbrowindex, dbrow] of dbrows.entries()) {
-            for (let [itable, table] of outtables.entries()) {
+        let visiblerows = dbrows.slice(0, maxdbrows);
+        for (let [dbrowindex, dbrow] of visiblerows.entries()) {
+            for (let [itable, table] of structure.outtables.entries()) {
                 let gridColumn = `${table.columnstart + 1} / span ${table.columncount}`;
-                let subrows = dbrow.rows?.columndata.find(q => q.columnid == itable);
+                let subrows = dbrow[itable];
                 let rowjsx: JSX.Element[] = [];
-                if (subrows) {
-                    for (let [irow, row] of subrows.rows.entries()) {
-                        for (let [icolumn, column] of table.cols.entries()) {
-                            let subtypematch = Object.entries(vartypes).find(q => q[1] == column.type.primitive);
-                            let subtype = subtypematch?.[0] ?? "" as any;
-                            rowjsx.push(<React.Fragment key={`${irow}-${icolumn}`}>
-                                {renderPrimitive({ name: "", rsmvtype: subtype, primitive: row[icolumn] })?.el!}
-                            </React.Fragment>);
-                        }
+                for (let [irow, row] of subrows.entries()) {
+                    for (let [icolumn, column] of table.cols.entries()) {
+                        rowjsx.push(<React.Fragment key={`${irow}-${icolumn}`}>
+                            {renderPrimitive(row[icolumn])?.el!}
+                        </React.Fragment>);
                     }
                 }
                 rowdata.push(<div key={`${dbrowindex}-${itable}`} className="mv-dbsubgrid" style={{ gridColumn }}> {rowjsx}</div >);
@@ -440,11 +471,18 @@ function DBTablesView(p: { data: DeepLinkElement }) {
         }
     }
 
-    return <div className="mv-dbgrid">
-        {titlehead}
-        {head}
-        {rowdata}
-    </div>
+    return <>
+        <div>
+            <div className="mv-dbgrid">
+                {titlehead}
+                {head}
+                {rowdata}
+            </div>
+        </div>
+        {!dbrows && <span>Loading...</span>}
+        {maxdbrows == 0 && <button className="sub-btn" onClick={e => setmaxdbrows(100)}>Load row data</button>}
+        {maxdbrows != 0 && dbrows && dbrows.length >= maxdbrows && <button className="sub-btn" onClick={e => setmaxdbrows(maxdbrows * 2)}  >Show more ({maxdbrows}/{dbrows.length})</button>}
+    </>
 }
 
 function DBRowsView(p: { data: DeepLinkElement }) {
@@ -539,16 +577,16 @@ export function renderPrimitive(prop: DeepLinkElement) {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
         }
         if (prop.rsmvtype == "graphic") {
-            return { isbig: false, el: <div><ObjectLink prop={prop} /><SpriteView id={prop.primitive} /></div> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><br /><SpriteView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "texture") {
-            return { isbig: false, el: <div><ObjectLink prop={prop} /><TextureView id={prop.primitive} /></div> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><br /><TextureView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "cursor") {
-            return { isbig: false, el: <div><ObjectLink prop={prop} /><CursorView id={prop.primitive} /></div> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><br /><CursorView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "sound") {
-            return { isbig: false, el: <div><ObjectLink prop={prop} /><SoundView id={prop.primitive} /></div> };
+            return { isbig: false, el: <div><ObjectLink prop={prop} /><br /><SoundView id={prop.primitive} /></div> };
         }
         if (prop.rsmvtype == "boolean") {
             return { isbig: false, el: <span>{prop.primitive ? "true" : "false"}</span> };
@@ -586,7 +624,7 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
     let source = React.useContext(UIEngineContext)?.source;
     let data = useAwaited(async () => {
         return source && deepLinkJson(new DeepLinkContext(source), "root", p.data, p.meta);
-    }, [p.data, p.meta, source]);
+    }, [p.data, p.meta, source], 200);
 
     let handlenode = (prop: DeepLinkElement, isroot = false): { isbig: boolean, el: JSX.Element } => {
         let primitive = renderPrimitive(prop);

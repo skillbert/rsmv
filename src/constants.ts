@@ -311,6 +311,7 @@ export const vartypes = {
 	scriptsubref: 505
 	//max 511 (9bit) or overflow elsewhere in code
 }
+export const vartypeReverseMap = new Map(Object.entries(vartypes).map(q => [q[1], q[0]]));
 
 export const lastLegacyBuildnr = 377;
 //unclear if there ended up being overlap with (public) rs2 since this was 12 years after rs2 release

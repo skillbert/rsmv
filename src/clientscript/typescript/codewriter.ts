@@ -4,7 +4,7 @@ import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { ClientScriptSubtypeSolver } from "../callibration/subtypedetector";
 import { ClientScriptOp, ExactStack, PrimitiveType, StackDiff, StackList, binaryOpSymbols, branchInstructionsOrJump, dynamicOps, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, typeToPrimitive } from "../definitions";
 import { getOrInsert, unpackCoordgrid } from "../../utils";
-import { vartypes } from "../../constants";
+import { vartypeReverseMap, vartypes } from "../../constants";
 import { intrinsics } from "../jsonwriter";
 import { reserved } from "./typescripthelpers";
 import { getOpcodeName, returntypeTuple, typeList, subtypeToTs, valueList, writeLeaf, WriteResult, addTypeCast, addBracketsIfNeeded } from "./writehelpers";
@@ -361,7 +361,7 @@ function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number)
     let literal = writeLeaf("literalnumber", "" + value);
     let res = (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
     if (exacttype != -1 && exacttype != vartypes.int && exacttype != vartypes.unknown_int) {
-        let typename = Object.entries(vartypes).find(q => q[1] == exacttype);
+        let typename = vartypeReverseMap.get(exacttype);
         if (typename) {
             res.objectid = `${typename[0]}_${value}`;
         }
