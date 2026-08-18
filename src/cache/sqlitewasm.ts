@@ -14,7 +14,7 @@ type CacheTable = {
 	major: number,
 	table: CacheTableAccess | null,
 	tableready: Promise<CacheTableAccess> | null,
-	file: Blob
+	file: File
 }
 
 export class WasmGameCacheLoader extends cache.CacheFileSource {
@@ -60,7 +60,12 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 			if (m) {
 				let major = +m[1];
 				if (!this.dbfiles.get(major)) {
-					this.dbfiles.set(major, { major, table: null, tableready: null, file });
+					this.dbfiles.set(major, {
+						major,
+						table: null,
+						tableready: null,
+						file
+					});
 				}
 			}
 		}

@@ -11,6 +11,7 @@ import { UIScriptFS } from "./viewer/scriptsui";
 import { EngineCache } from "./3d/modeltothree";
 import { cacheFileDecodeModes } from "./parser/filetypes";
 import { UIContext } from "./viewer/maincomponents";
+import * as datastore from "idb-keyval";
 
 // exposes various tools into the global scope to use in the console for debugging and testing
 export function exposeDebugToolsInGlobal() {
@@ -20,6 +21,7 @@ export function exposeDebugToolsInGlobal() {
     globalThis.vartypes = vartypes;
     globalThis.dumpjson = dumpjson;
     globalThis.bin = bin;
+    globalThis.datastore = datastore;
     globalThis.binarr = binarr;
     globalThis.findnames = findnames;
     globalThis.allnames = allnames;
@@ -33,6 +35,7 @@ export function exposeDebugToolsInGlobal() {
     globalThis.getKnownCounts = getKnownCounts;
     globalThis.getNameCounts = getNameCounts;
     globalThis.getConfigCounts = getConfigCounts;
+    globalThis.getlasttimestamp = getlasttimestamp;
     globalThis.browse = browse;
 }
 
@@ -195,4 +198,29 @@ async function allnames() {
 function browse(filename: string) {
     let ctx = globalThis.uicontext as UIContext;
     ctx.openFile({ type: "browse", id: filename });
+}
+
+async function getlasttimestamp() {
+    let source = globalThis.source as CacheFileSource;
+    let rootindex = await source.getCacheIndex(cacheMajors.index);
+    let maxids: Record<number, number> = {};
+    for (let major of rootindex) {
+        if (!major) { continue; }
+        try {
+            let index = await source.getCacheIndex(major.minor);
+            let max = 0;
+            let maxid = 0;
+            for (let entry of index) {
+                if (!entry) { continue; }
+                if (entry.version > max) {
+                    max = entry.version;
+                    maxid = entry.minor;
+                }
+            }
+            maxids[major.minor] = maxid;
+        } catch (e) {
+            console.error("failed to get index for major", major.minor, e);
+        }
+    }
+    return maxids;
 }

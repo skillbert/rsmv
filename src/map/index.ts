@@ -1,7 +1,7 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { ParsemapOpts, MapRect, worldStride, parseMapsquare } from "../3d/mapsquare";
-import { CacheFileSource } from "../cache";
+import { CacheFileSource, getCacheVersionFingerprint } from "../cache";
 import { cacheMajors } from "../constants";
 import { parse } from "../parser/jsondecoders";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
@@ -205,16 +205,7 @@ export async function runMapRender(output: ScriptOutput, filesource: CacheFileSo
 		//openrs2 and sqlite caches at will without 100% knowing the build number
 		//and newer game updates rarely update build nr
 		//do a quick search of common cache indices
-		let maxtime = 0;
-		for (let major of [cacheMajors.mapsquares, cacheMajors.items, cacheMajors.npcs, cacheMajors.locs, cacheMajors.config]) {
-			let index = await filesource.getCacheIndex(major);
-			for (let entry of index) {
-				if (entry && entry.version > maxtime) {
-					maxtime = entry.version;
-				}
-			}
-		}
-		versionid = maxtime;
+		versionid = await getCacheVersionFingerprint(filesource);
 	}
 	await config.beginMapVersion(versionid);
 

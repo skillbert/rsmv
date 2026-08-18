@@ -3,9 +3,9 @@ import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
 import { boundMethod } from "autobind-decorator";
 import { WasmGameCacheLoader } from "../cache/sqlitewasm";
-import { CacheFileSource } from "../cache";
+import { CacheFileSource, getCacheVersionFingerprint } from "../cache";
 import * as datastore from "idb-keyval";
-import { ThreejsSceneCache } from "../3d/modeltothree";
+import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { StringInput, TabStrip, useAwaited } from "./commoncontrols";
 import { Openrs2CacheSource, validOpenrs2Caches } from "../cache/openrs2loader";
 import { delay, TypedEmitter } from "../utils";
@@ -13,6 +13,8 @@ import { CacheDownloader } from "../cache/downloader";
 import * as path from "path";
 import { selectFsCache } from "../cache/autocache";
 import { CLIScriptFS, ScriptFS } from "../scriptrunner";
+import { GameCacheLoader } from "../headless/api";
+import { multitabManager } from "./multitab";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -52,24 +54,6 @@ export async function downloadBlob(name: string, blob: Blob) {
 	a.href = url;
 	a.click();
 	setTimeout(() => URL.revokeObjectURL(url), 1);
-}
-
-/**@deprecated requires a service worker and is pretty sketchy, also no actual streaming output file sources atm */
-export async function downloadStream(name: string, stream: ReadableStream) {
-	if (!electron && navigator.serviceWorker) {
-		let url = new URL(`download_${Math.random() * 10000 | 0}_${name}`, document.location.href).href;
-		let sw = await navigator.serviceWorker.ready;
-		if (!sw.active) { throw new Error("no service worker"); }
-		sw.active.postMessage({ type: "servedata", url, stream }, [stream as any]);
-		await delay(100);
-		let fr = document.createElement("iframe");
-		fr.src = url;
-		fr.hidden = true;
-		document.body.appendChild(fr);
-	} else {
-		//TODO
-		console.log("TODO");
-	}
 }
 
 function OpenRs2IdSelector(p: { initialid: number, onSelect: (id: number) => void }) {
@@ -320,8 +304,9 @@ function CacheDragNDropHelp() {
 			</p>
 			{open && (
 				<div style={{ display: "flex", flexDirection: "column" }}>
-					<TabStrip value={mode} tabs={{ fsapi: "Full folder", blob: "Files" }} onChange={setmode as any} />
-					{mode == "fsapi" && (
+					{/* chrome started blocking runescapes cache folder as its a "system file" */}
+					{/* <TabStrip value={mode} tabs={{ fsapi: "Full folder", blob: "Files" }} onChange={setmode as any} /> */}
+					{/* {mode == "fsapi" && (
 						<React.Fragment>
 							{!canfsapi && <p className="mv-errortext">You browser does not support full folder loading!</p>}
 							<p>Drop the RuneScape folder into this window.</p>
@@ -329,13 +314,13 @@ function CacheDragNDropHelp() {
 							<video src={new URL("../assets/dragndrop.mp4", import.meta.url).href} autoPlay loop style={{ aspectRatio: "352/292" }} />
 						</React.Fragment>
 					)}
-					{mode == "blob" && (
+					{mode == "blob" && ( */}
 						<React.Fragment>
 							<p>Drop and drop the cache files into this window.</p>
 							<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
 							<video src={new URL("../assets/dragndropblob.mp4", import.meta.url).href} autoPlay loop style={{ aspectRatio: "458/380" }} />
 						</React.Fragment>
-					)}
+					{/* )} */}
 				</div>
 			)}
 		</React.Fragment>
@@ -365,6 +350,7 @@ export type RenderableContext = { source: CacheFileSource, sceneCache: ThreejsSc
 
 export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, statechange: undefined }> {
 	source: CacheFileSource | null = null;
+	sourceIdentifier: string | null = null;
 	sceneCache: ThreejsSceneCache | null = null;
 	renderer: ThreeJsRenderer | null = null;
 	openedTabs: UIOpenedTab[] = [];
@@ -372,6 +358,8 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 	renderable: RenderableContext | null = null;
 	rootElement: HTMLElement;
 	useServiceWorker: boolean;
+
+	multitab = multitabManager(this);
 
 	constructor(rootelement: HTMLElement, useServiceWorker: boolean) {
 		super();
@@ -382,10 +370,59 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 			//this service worker holds a reference to the cache fs handle which will keep the handles valid
 			//across tab reloads
 			// this functionality is broken since chrome no longer allows fs access on rs cache files since they are in a "system folder" (AppData)
-			// navigator.serviceWorker?.register(new URL('../assets/contextholder.js', import.meta.url).href, { scope: './', });
+			// don't use webpack to bundle the service worker, it will place it in the wrong folder and its plain js anyway
+			// navigator.serviceWorker?.register("contextholder.js", { scope: './', });
 		}
 
 		navigation.addEventListener("navigate", this.onNavigate);
+		this.setStateFromUrl(new URL(document.location.href));
+	}
+
+	close() {
+		this.source?.close();
+		this.multitab.close();
+		navigation.removeEventListener("navigate", this.onNavigate);
+	}
+
+	@boundMethod
+	async openCache(source: SavedCacheSource) {
+		let cache = await openSavedCache(source, true);
+		if (cache) {
+			globalThis.source = cache;
+			this.source = cache;
+			this.sourceIdentifier = await getCacheIdentifier(cache);
+
+			try {
+				let engine = await EngineCache.create(cache);
+				console.log("engine loaded", cache.getBuildNr());
+				let scene = await ThreejsSceneCache.create(engine);
+				this.sceneCache = scene;
+
+				globalThis.sceneCache = scene;
+				globalThis.engine = engine;
+				globalThis.reloadCache = () => this.openCache(source);
+			} catch (e) {
+				console.log("failed to create scenecache");
+				console.error(e);
+			}
+			this.fixRenderable();
+			this.emit("statechange", undefined);
+			this.fixUrl();
+		}
+	}
+
+	@boundMethod
+	closeCache() {
+		datastore.del("openedcache");
+		localStorage.rsmv_openedcache = "";
+		navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
+		this.source?.close();
+		this.sceneCache = null;
+		this.source = null;
+		this.sourceIdentifier = null;
+		this.fixRenderable();
+		this.emit("statechange", undefined);
+		this.fixUrl();
 	}
 
 	fixRenderable() {
@@ -403,18 +440,6 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		}
 	}
 
-	setCacheSource(source: CacheFileSource | null) {
-		this.source = source;
-		this.emit("statechange", undefined);
-		this.fixRenderable();
-	}
-
-	setSceneCache(sceneCache: ThreejsSceneCache | null) {
-		this.sceneCache = sceneCache;
-		this.emit("statechange", undefined);
-		this.fixRenderable();
-	}
-
 	setRenderer(renderer: ThreeJsRenderer | null) {
 		this.renderer = renderer;
 		this.emit("statechange", undefined);
@@ -425,21 +450,41 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		return !!this.source && !!this.sceneCache && !!this.renderer;
 	}
 
-	close() {
-		this.source?.close();
-		navigation.removeEventListener("navigate", this.onNavigate);
-	}
+	setStateFromUrl(url: URL) {
+		let target: UIOpenedTab | null = null;
 
-	decodeUrlSearchParams(search: URL): UIOpenedTab | null {
-		let params = new URLSearchParams(search.search);
-		if (params.has("browse")) {
-			return { type: "browse", id: params.get("browse")! };
-		} else if (params.has("view3d")) {
-			return { type: "view3d", id: params.get("view3d")! };
-		} else if (params.has("file")) {
+		if (url.searchParams.has("cache")) {
+			let cacheidentifier = url.searchParams.get("cache")!;
+			if (this.sourceIdentifier != cacheidentifier) {
+				let parsed = parseCacheIdentifier(cacheidentifier);
+				if (parsed) {
+					if (parsed.type == "live") {
+						this.openCache({ type: "live" });
+					} else if (parsed.type == "openrs2") {
+						this.openCache({ type: "openrs2", cachename: parsed.id + "" });
+					} else if (parsed.type == "fs") {
+						this.openCache({ type: "autofs", location: parsed.location });
+					} else if (parsed.type == "blobs") {
+						this.multitab.findblobs(cacheidentifier).then(blobs => {
+							if (blobs) {
+								this.openCache({ type: "sqliteblobs", blobs: blobs });
+							}
+						});
+					}
+				}
+			}
+		}
+
+		if (url.searchParams.has("browse")) {
+			target = { type: "browse", id: url.searchParams.get("browse")! };
+		} else if (url.searchParams.has("view3d")) {
+			target = { type: "view3d", id: url.searchParams.get("view3d")! };
+		} else if (url.searchParams.has("file")) {
 			// return { type: "file", name: params.get("file")!, fs: null! };//data and fs will be filled in later
 		}
-		return null;
+		console.log(`history triggered to ${target?.type} ${(target as any)?.id}`);
+		this.openFile(target, false, true);
+		return target;
 	}
 
 	@boundMethod
@@ -451,30 +496,38 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		} else {
 			// preven't reuse of our new url if the navigation was manual
 			this.lastPushTime = 0;
-			let target = this.decodeUrlSearchParams(new URL(e.destination.url));
-			console.log(`history triggered to ${target?.type} ${(target as any)?.id}`);
-			this.openFile(target, false, true);
+			this.setStateFromUrl(new URL(e.destination.url));
 		}
 	}
 
 	lastPushTime = 0;
 	isNavigating = false;
-	fixUrl(tab: UIOpenedTab | null) {
+	fixUrl() {
+		let tab = (this.activeTabIndex != -1 ? this.openedTabs[this.activeTabIndex] : null);
 		let now = Date.now();
 		let navigatable = true;
 		let url = new URL(document.location.href);
+
+		// cache
+		if (this.source && this.sourceIdentifier) {
+			url.searchParams.set("cache", this.sourceIdentifier);
+		} else {
+			url.searchParams.delete("cache");
+		}
+
+		// visible tab
 		if (!tab) {
-			url.search = "";
+			url.searchParams.delete("browse");
 		} else if (tab.type == "browse") {
-			url.search = `?browse=${encodeURIComponent(tab.id)}`;
+			url.searchParams.set("browse", tab.id);
 		} else if (tab.type == "view3d") {
-			url.search = `?view3d=${encodeURIComponent(tab.id)}`;
+			url.searchParams.set("view3d", tab.id);
 		} else if (tab.type == "file") {
 			navigatable = false;
 			// url = `?file=${encodeURIComponent(tab.name)}`;
 		}
 
-		if (navigatable && url.href != document.location.search) {
+		if (navigatable && url.href != document.location.href) {
 			this.isNavigating = true;
 			// only push to history if the last page was shown more than 1 second
 			let dopush = now - this.lastPushTime > 1000;
@@ -502,13 +555,67 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 		this.activeTabIndex = tabindex;
 		this.emit("showTab", tab);
 		if (!isHistoryNavigation) {
-			this.fixUrl(tab);
+			this.fixUrl();
 		}
 	}
 }
 
 export const UIRootContext = React.createContext<UIContext>(null!);
 export const UIEngineContext = React.createContext<RenderableContext | null>(null);
+
+export function parseCacheIdentifier(cacheidentifier: string) {
+	let parts = cacheidentifier.split("-");
+	let type = parts.shift()!;
+	if (type == "upload") {
+		let args = parts.join("-");
+		if (args.match(/^\d+$/)) {
+			return { type: "blobs", version: +args } as const;
+		} else {
+			let date = new Date(args.replace(/-/g, " "));
+			if (!isNaN(+date)) {
+				return { type: "blobs", version: +date / 1000 } as const;
+			}
+		}
+		return null;
+	}
+	if (type == "openrs2") {
+		let id = parts.shift();
+		if (id && id.match(/^\d+$/)) {
+			return { type: "openrs2", id: +id } as const;
+		}
+		return null;
+	}
+	if (type == "fs") {
+		return { type: "fs", location: parts.join("-") } as const;
+	}
+	if (type == "live") {
+		return { type: "live" } as const;
+	}
+	return null;
+}
+
+export async function getCacheIdentifier(cache: CacheFileSource) {
+	if (cache instanceof WasmGameCacheLoader) {
+		let version = await getCacheVersionFingerprint(cache);
+		if (version > +new Date(2000, 0) / 1000) {
+			let cachedate = new Date(version * 1000);
+			let datetext = cachedate.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/ /g, "-");
+			return `upload-${datetext}`;
+		} else {
+			return `upload-${version}`;
+		}
+	}
+	if (cache instanceof Openrs2CacheSource) {
+		return `openrs2-${cache.meta.id}`;
+	}
+	if (cache instanceof CacheDownloader) {
+		return `live`;
+	}
+	if (cache instanceof GameCacheLoader) {
+		return `fs-${cache.cachedir}`;
+	}
+	return null;
+}
 
 export async function openSavedCache(source: SavedCacheSource, remember: boolean) {
 	let cache: CacheFileSource | null = null;
@@ -521,7 +628,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 				// await fs.setSaveDirHandle(source.handle);
 				// cache = await selectFsCache(fs);
 				await wasmcache.giveFsDirectory(source.handle);
-				navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: source.handle }));
+				// navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: source.handle }));
 				cache = wasmcache;
 			}
 		} else {
@@ -544,7 +651,7 @@ export async function openSavedCache(source: SavedCacheSource, remember: boolean
 		cache = new CacheDownloader();
 	}
 	if (remember) {
-		datastore.set("openedcache", source);
+		// globalThis.cachewrite = datastore.set("openedcache", source);
 		localStorage.rsmv_openedcache = JSON.stringify(source);
 	}
 	return cache;

@@ -118,10 +118,8 @@ class AbstractSQLiteWasmStatement extends AbstractSQLiteStatement {
 }
 
 
-
-
 export class WasmSQLiteManager {
-    callbacks = new Map<number, { resolve: (res: any) => void, reject: (err: Error) => void, reqpacket: SharedWorkerPackets }>();
+    callbacks = new Map<number, PromiseWithResolvers<any>>();
     worker: Worker;
     msgidcounter = 1;
     refcount = 0;
@@ -153,7 +151,9 @@ export class WasmSQLiteManager {
     call<T>(packet: SharedWorkerPackets) {
         let id = this.msgidcounter++;
         this.worker.postMessage({ id, packet });
-        return new Promise<T>((resolve, reject) => this.callbacks.set(id, { resolve, reject, reqpacket: packet }));
+        let prom = Promise.withResolvers<T>();
+        this.callbacks.set(id, prom);
+        return prom.promise;
     }
 
     deref() {

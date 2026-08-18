@@ -2,10 +2,8 @@
 import { ThreeJsRenderer } from "./threejsrender";
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-import * as datastore from "idb-keyval";
-import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { ModelBrowser, RendererControls } from "./scenenodes";
-import { UIContext, SavedCacheSource, CacheSelector, openSavedCache, UIOpenedFile, UIRootContext, UIEngineContext, downloadBlob, BrowsePageId } from "./maincomponents";
+import { UIContext, CacheSelector, UIOpenedFile, UIRootContext, UIEngineContext, downloadBlob, BrowsePageId } from "./maincomponents";
 import classNames from "classnames";
 import { exposeDebugToolsInGlobal } from "../consoletools";
 import { useForceUpdate } from "./commoncontrols";
@@ -35,7 +33,7 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 			<App />
 		</UIRootContext.Provider>
 	);
-	
+
 	globalThis.uicontext = ctx;
 	return { root, ctx };
 }
@@ -46,55 +44,6 @@ function App(p: {}) {
 
 	let initCnv = React.useCallback((cnv: HTMLCanvasElement | null) => {
 		ctx.setRenderer(cnv ? new ThreeJsRenderer(cnv) : null);
-	}, []);
-
-	let openCache = React.useCallback(async (source: SavedCacheSource) => {
-		let cache = await openSavedCache(source, true);
-		if (cache) {
-			globalThis.source = cache;
-			ctx.setCacheSource(cache);
-
-			try {
-				let engine = await EngineCache.create(cache);
-				console.log("engine loaded", cache.getBuildNr());
-				let scene = await ThreejsSceneCache.create(engine);
-				ctx.setSceneCache(scene);
-
-				globalThis.sceneCache = scene;
-				globalThis.engine = engine;
-				globalThis.reloadCache = () => openCache(source);
-			} catch (e) {
-				console.log("failed to create scenecache");
-				console.error(e);
-			}
-		};
-	}, [ctx]);
-
-	let closeCache = React.useCallback(() => {
-		datastore.del("openedcache");
-		localStorage.rsmv_openedcache = "";
-		navigator.serviceWorker?.ready.then(q => q.active?.postMessage({ type: "sethandle", handle: null }));
-		ctx.source?.close();
-		ctx.setCacheSource(null);
-		ctx.setSceneCache(null);
-	}, [ctx]);
-
-	React.useEffect(() => {
-		(async () => {
-			try {
-				let c = await Promise.race([
-					datastore.get<SavedCacheSource>("openedcache"),
-					new Promise<never>((d, f) => setTimeout(f, 1000))
-				]);
-				if (c) { openCache(c); }
-			} catch (e) {
-				console.log("failed to open indexedDB openedcache, fallback to localStorage (without webfs support)");
-				try {
-					let cache = JSON.parse(localStorage.rsmv_openedcache!);
-					openCache(cache);
-				} catch (e) { }
-			};
-		})()
 	}, []);
 
 	let redraw = useForceUpdate();
@@ -112,7 +61,7 @@ function App(p: {}) {
 	let width = ctx.rootElement.clientWidth;
 	let vertical = width < 550;
 
-	let visibletab = (ctx.activeTabIndex != -1 ? ctx.openedTabs[ctx.activeTabIndex] : null);
+	let visibletab = (ctx.source && ctx.activeTabIndex != -1 ? ctx.openedTabs[ctx.activeTabIndex] : null);
 
 	let cachemeta = ctx.source?.getCacheMeta();
 	return (
@@ -124,7 +73,7 @@ function App(p: {}) {
 				<div className="mv-sidebar">
 					{!ctx.source && (
 						<React.Fragment>
-							<CacheSelector onOpen={openCache} />
+							<CacheSelector onOpen={ctx.openCache} />
 							<div style={{ flex: "1" }} />
 							<div style={{ textAlign: "center" }}>
 								Go to <a href="https://runeapps.org/modelviewer_about">RuneApps</a> for more info. Source code hosted at <a href="https://github.com/skillbert/rsmv" target="_blank">github.com/skillbert/rsmv</a>
@@ -133,13 +82,13 @@ function App(p: {}) {
 					)}
 					{cachemeta && (
 						<React.Fragment>
-							<input type="button" className="sub-btn" onClick={closeCache} value={`Close ${cachemeta.name}`} title={cachemeta.descr} />
+							<input type="button" className="sub-btn" onClick={ctx.closeCache} value={`Close ${cachemeta.name}`} title={cachemeta.descr} />
 							<RendererControls />
 							<ModelBrowser />
 						</React.Fragment>
 					)}
 				</div>
-			</div >
+			</div>
 		</UIEngineContext.Provider>
 	);
 }

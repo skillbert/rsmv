@@ -525,3 +525,23 @@ export class CallbackCacheLoader extends DirectCacheFileSource {
 		return { name: "callback", descr: "Cache source based on external getter", timestamp: new Date(0) };
 	}
 }
+
+export async function getCacheVersionFingerprint(filesource: CacheFileSource) {
+	let maxtime = 0;
+	for (let major of [cacheMajors.mapsquares, cacheMajors.items, cacheMajors.npcs, cacheMajors.locs, cacheMajors.config]) {
+		let index = await filesource.getCacheIndex(major);
+		for (let entry of index) {
+			if (entry && entry.version > maxtime) {
+				maxtime = entry.version;
+			}
+		}
+	}
+	// its an old cache, it uses version numbers instead of timestamps
+	if (maxtime < +new Date(2000, 0) / 1000) {
+		// number of files in index 0 (old animation frames) seems a good monotonicly increasing indicator for cache age
+		// most other indices sometimes decrease, or are not updated for some period of time
+		let oldmodelsindex = await filesource.getCacheIndex(0);
+		maxtime = oldmodelsindex.length;
+	}
+	return maxtime;
+}
