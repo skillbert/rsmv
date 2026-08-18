@@ -415,7 +415,7 @@ function getDBTableStructure(data: DeepLinkElement) {
 
 function DBTablesView(p: { data: DeepLinkElement }) {
     let data = p.data;
-    let [maxdbrows, setmaxdbrows] = React.useState(0);
+    let [maxdbrows, setmaxdbrows] = React.useState(100);
     let ctx = React.useContext(UIEngineContext);
 
     let structure = React.useMemo(() => getDBTableStructure(data), [data]);

@@ -4,7 +4,7 @@ import { ThreeJsSceneElement, ThreeJsSceneElementSource, exportThreeJsGltf, expo
 import { downloadBlob, UIEngineContext } from "./maincomponents";
 import { showModal } from "./jsonsearch";
 import { findImageBounds, makeImageData } from "../imgutils";
-import { TabStrip, CanvasView } from "./commoncontrols";
+import { TabStrip, CanvasView, useAwaited } from "./commoncontrols";
 import { ScriptsUI } from './tabs/scripts';
 import { SceneItem, SceneLocation, SceneMaterialIsh, SceneNpc, SceneRawModel, SceneSpotAnim } from './tabs/simplemodes';
 import { ScenePlayer } from './tabs/avatar';
@@ -12,7 +12,7 @@ import { SceneMapModel } from './tabs/map';
 import { SceneScenario } from './tabs/scenario';
 import VR360Viewer from "../libs/vr360viewer";
 import { BrowseUI } from "./tabs/browse";
-import { BlobTS } from "../utils";
+import { BlobTS, prettyFileSize } from "../utils";
 
 
 export type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "browse" | "scripts";
@@ -255,6 +255,8 @@ export function RendererControls(p: {}) {
 		setshowsettings(!showsettings);
 	}, [showsettings]);
 
+	let storagedata = useAwaited(() => navigator.storage?.estimate?.(), []);
+
 	return (
 		<React.Fragment>
 			<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
@@ -273,6 +275,8 @@ export function RendererControls(p: {}) {
 							<option value="vr360">360 Camera</option>
 						</select>
 					</label>
+					<span>Local cache usage:</span>
+					<span>{prettyFileSize(storagedata?.usage ?? 0)} / {prettyFileSize(storagedata?.quota ?? 0)}</span>
 				</div>
 			)}
 			{showexport && ctx && <ExportSceneMenu renderopts={newopts} />}
