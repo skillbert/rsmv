@@ -319,9 +319,9 @@ globalThis.testnamefilepacking = testnamefilepacking;
 
 
 export abstract class CacheFileSource {
-	private decodeArgs: Record<string, any> = {};
-	private nameFiles: Map<number, Map<number, string> | Promise<Map<number, string>>> = new Map();
-	private nameFileVarbits = new Map<number, string>();
+	decodeArgs: Record<string, any> = {};
+	nameFiles: Map<number, Map<number, string> | Promise<Map<number, string>>> = new Map();
+	nameFileVarbits = new Map<number, string>();
 
 	async getInternalNameList(namefile: number) {
 		// special case for varbit names, they are stored in the var name files instead

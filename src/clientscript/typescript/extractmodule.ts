@@ -21,36 +21,33 @@ type CS2Script = {
     varbits: Set<number>
 }
 
-namespace implementations {
 
+type Param = { defaultValue: number | string | bigint };
+type Struct = Map<number, string | number | bigint>;
+type Enum = { defaultFrom: number, defaultTo: string | number, from: number[], to: number[] | string[] };
 
-    type Param = { defaultValue: number | string | bigint };
-    type Struct = Map<number, string | number | bigint>;
-    type Enum = { defaultFrom: number, defaultTo: string | number, from: number[], to: number[] | string[] };
+var paramtable = new Map<number, Param>();
+var structatble = new Map<number, Struct>();
+var enumtable = new Map<number, Enum>();
+export function struct_getparam(structid: number, paramid: number) {
+    let param = paramtable.get(paramid);
+    if (!param) { throw new Error(`unknown param id ${paramid}`); }
+    let struct = structatble.get(structid);
+    let res = struct?.get(paramid) ?? param.defaultValue;
+    return res;
+}
 
-    var paramtable = new Map<number, Param>();
-    var structatble = new Map<number, Struct>();
-    var enumtable = new Map<number, Enum>();
-    export function struct_getparam(structid: number, paramid: number) {
-        let param = paramtable.get(paramid);
-        if (!param) { throw new Error(`unknown param id ${paramid}`); }
-        let struct = structatble.get(structid);
-        let res = struct?.get(paramid) ?? param.defaultValue;
-        return res;
-    }
+export function enum_getvalue(fromtype: number, totype: number, enumid: number, key: number) {
+    let enumdata = enumtable.get(enumid);
+    if (!enumdata) { throw new Error(`unknown enum id ${enumid}`); }
+    let index = enumdata.from.indexOf(key);
+    return (index == -1 ? enumdata.defaultTo : enumdata.to[index]);
+}
 
-    export function enum_getvalue(fromtype: number, totype: number, enumid: number, key: number) {
-        let enumdata = enumtable.get(enumid);
-        if (!enumdata) { throw new Error(`unknown enum id ${enumid}`); }
-        let index = enumdata.from.indexOf(key);
-        return (index == -1 ? enumdata.defaultTo : enumdata.to[index]);
-    }
-
-    export function ENUM_GETOUTPUTCOUNT(enumid: number) {
-        let enumdata = enumtable.get(enumid);
-        if (!enumdata) { throw new Error(`unknown enum id ${enumid}`); }
-        return enumdata.from.length;
-    }
+export function ENUM_GETOUTPUTCOUNT(enumid: number) {
+    let enumdata = enumtable.get(enumid);
+    if (!enumdata) { throw new Error(`unknown enum id ${enumid}`); }
+    return enumdata.from.length;
 }
 
 export async function extractClientModuleCode(output: ScriptOutput, outdir: ScriptFS, source: CacheFileSource, entryscripts: number[]) {
@@ -94,9 +91,9 @@ export class IsolatedCS2Module {
         res += writeOpcodeFile(this.deob);
         res += this.writeVars();
         res += await this.writeStructsParamsEnums();
-        res += implementations.enum_getvalue + "\n";
-        res += implementations.struct_getparam + "\n";
-        res += implementations.ENUM_GETOUTPUTCOUNT + "\n";
+        res += enum_getvalue + "\n";
+        res += struct_getparam + "\n";
+        res += ENUM_GETOUTPUTCOUNT + "\n";
 
         res += this.writeScripts();
 

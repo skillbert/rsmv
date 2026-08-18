@@ -1067,7 +1067,7 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
             let columnid = (tablefield >> 4) & 0xff;
             let subfield = tablefield & 0xf;
             let table = calli.dbtables.get(dbtable);
-            let column = table?.unk01?.columndata.find(q => q.id == columnid) ?? table?.unk02?.columndata.find(q => q.id == columnid);
+            let column = table?.columndata?.find(q => q.id == columnid);
             if (column) {
                 node.knownStackDiff = StackInOut.fromExact(
                     [vartypes.dbrow, vartypes.int, vartypes.int],

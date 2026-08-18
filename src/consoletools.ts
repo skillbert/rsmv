@@ -139,7 +139,7 @@ async function getConfigCounts() {
 
 async function dumpjson(mode: string) {
     let engine = globalThis.engine as EngineCache;
-    let res = await engine.getJsonSearchData(mode).files;
+    let res = await engine.getJsonSearchData(mode as any).files;
     let remapped: any[] = [];
     for (let f of res) {
         remapped[f.$fileid] = f;

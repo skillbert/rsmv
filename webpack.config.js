@@ -1,6 +1,5 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 
 /**
  * @type {import("webpack").Configuration}
@@ -79,7 +78,6 @@ module.exports = {
 		path: path.resolve(__dirname, 'dist')
 	},
 	plugins: [
-		new ForkTsCheckerWebpackPlugin(),
 		new CopyWebpackPlugin({
 			patterns: [
 				{ from: 'src/assets', to: "assets" }

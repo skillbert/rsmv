@@ -255,5 +255,7 @@ export const cacheFileJsonModes = {
 	indices: JsonBasedFile(parse.cacheIndex, indexfileIndex()),
 	rootindex: JsonBasedFile(parse.rootCacheIndex, rootindexfileIndex()),
 
+	clientscriptops: JsonBasedFile(parse.clientscript, noArchiveIndex(cacheMajors.clientscript)),
+
 	test: JsonBasedFile(FileParser.fromJson(`["struct",\n  \n]`), anyFileIndex()),
 } satisfies Record<string, JsonBasedFile<any>>;

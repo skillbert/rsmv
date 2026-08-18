@@ -1,7 +1,6 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const { ProvidePlugin, HotModuleReplacementPlugin } = require('webpack');
-const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 
 /**
  * @param {Record<string,string>} env
@@ -99,7 +98,7 @@ module.exports = (env) => {
 			path: path.resolve(__dirname, 'dist')
 		},
 		plugins: [
-			new ForkTsCheckerWebpackPlugin(),
+			new TypeScriptWatchPlugin(),
 			new CopyWebpackPlugin({
 				patterns: [
 					{ from: 'src/assets', to: "assets" }

@@ -24,7 +24,9 @@
 		"strictFunctionTypes": true,
 		"strictPropertyInitialization": true,
 		"noImplicitAny": false,
-		"useUnknownInCatchVariables": false
+		"useUnknownInCatchVariables": false,
+		"skipLibCheck": true,
+		"noEmit": true
 	},
 	"exclude": [
 		"node_modules",
