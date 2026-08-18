@@ -560,10 +560,12 @@ export async function trickleTasksTwoStep<T>(parallel: number, tasks: () => Iter
 
 export function taskTrickler(maxparallel = 1, delaytime = 1) {
 	let stallindex = 0;
-	let stall = new Array<Promise<void>>(maxparallel).fill(Promise.resolve());
-	return function gate() {
+	let stall = new Array<Promise<any>>(maxparallel).fill(Promise.resolve());
+	return function gate(task: () => Promise<any>) {
 		let p = stall[stallindex];
-		stall[stallindex] = p.then(() => delay(delaytime));
+		stall[stallindex] = p
+			.then(() => task())
+			.finally(() => { delaytime != 0 && delay(delaytime) });
 		stallindex = (stallindex + 1) % maxparallel;
 		return p;
 	}

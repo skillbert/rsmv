@@ -291,15 +291,16 @@ export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefin
 	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
 
-export function useAwaited<T>(fn: () => Promise<T> | T | null | undefined, deps: any[] = [], staletime = 0): T | null | undefined {
+export function useAwaited<T>(fn: (abort: AbortSignal) => Promise<T> | T | null | undefined, deps: any[] = [], staletime = 0): T | null | undefined {
 	let forceupdate = useForceUpdate();
 	// needed to reset the value when deps change, otherwise it will keep the old value until the new promise resolves
 	let value = React.useRef<T | null | undefined>(null);
-	let generation = React.useRef(0);
-	let showngeneration = React.useRef(0);
+	let generation = React.useRef<AbortController | null>(null);
+	let showngeneration = React.useRef<AbortController | null>(null);
 	let prom = React.useMemo(() => {
-		let prom = fn();
-		generation.current++;
+		generation.current?.abort();
+		generation.current = new AbortController();
+		let prom = fn(generation.current.signal);
 		if (!(prom instanceof Promise)) {
 			value.current = prom;
 			showngeneration.current = generation.current;
@@ -310,21 +311,27 @@ export function useAwaited<T>(fn: () => Promise<T> | T | null | undefined, deps:
 	}, deps);
 	React.useEffect(() => {
 		if (!prom || !(prom instanceof Promise)) { return; }
-		let gen = generation.current;
+		let gen = generation.current!;
 		// leave stale data in place for max 200ms to prevent flicker
 		let timeout = (staletime <= 0 ? 0 : +setTimeout(() => {
 			if (gen == generation.current && gen != showngeneration.current) {
+				showngeneration.current = gen;
 				value.current = null;
 				forceupdate();
 			}
-		}, 200));
+		}, staletime));
 		prom.then(res => {
 			clearTimeout(timeout);
 			if (gen == generation.current) {
 				value.current = res;
+				showngeneration.current = gen;
 				forceupdate();
 			}
 		}).catch(err => console.error(err));
+		return () => {
+			gen!.abort();
+			clearTimeout(timeout);
+		}
 	}, [prom]);
 	return value.current;
 }

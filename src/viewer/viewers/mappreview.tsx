@@ -33,7 +33,7 @@ export async function renderMapPreview(engine: EngineCache, rect: MapRect, level
 
 
     let trickler = taskTrickler(16);
-    let chunks = await Promise.all(chunkids.map(async q => trickler().then(() => engine.getObject("maptiles", q).catch(q => null))));
+    let chunks = await Promise.all(chunkids.map(async q => trickler(() => engine.getObject("maptiles", q).catch(q => null))));
 
     for (let i = 0; i < chunks.length; i++) {
         let [chunkx, chunkz] = chunkids[i];
@@ -148,7 +148,7 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, i
         });
     }
 
-    let antifreeze = taskTrickler(10);
+    let tricklerender = taskTrickler(10);
     let render = () => {
         if (!res.cnv || !res.ctx || !engine) { return; }
         res.cnv.width = res.cnv.clientWidth;
@@ -170,15 +170,13 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, i
             let didrender = false;
             let chunkimg = chunkcache.get(key);
             if (!chunkimg && !toosmall) {
-                chunkcache.set(key, (async () => {
-                    // without this we might end up rendering 50+ chunks without giving the ui a chance
-                    await antifreeze();
+                chunkcache.set(key, tricklerender(async () => {
                     let img = await renderMapPreview(engine, { x: chunkx * rs2ChunkSize, z: chunkz * rs2ChunkSize, xsize: rs2ChunkSize, zsize: rs2ChunkSize }, 0, 1);
                     let bmp = await createImageBitmap(img, { imageOrientation: "flipY" });
                     chunkcache.set(key, bmp);
                     render();
                     return bmp;
-                })());
+                }));
             }
             if (chunkimg instanceof ImageBitmap) {
                 let [px, pz] = tiletopx(chunkx * rs2ChunkSize, (chunkz + 1) * rs2ChunkSize);

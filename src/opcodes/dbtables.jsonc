@@ -16,14 +16,14 @@
         ],[
             ["flagsbyte",["accum","$default",["match",{"$colindex==1 && version>=2":"ubyte","other":0}]]]
         ],[
-            ["hasdefault",["match",{"version>=2 && flagsbyte&0x2":1,"version<=1 && id&0x80":1,"other":0}]],
+            ["hasdefault",["match",{"version>=2 && flagsbyte&0x2":1,"version==1 && flags&0x02":1,"other":0}]],
             ["unk1",["opt","hasdefault==1 && $colindex==1","ubyte"]],//this is dumb, there is currently no way to read a byte between chunkedarray chunks
             ["default",["opt","hasdefault==1",["match",["ref","type"],{
                 //in theory there are about 10 possible non-int types (either string or long), but only these are observed
                 "0x24":"string",
                 "other":"int"
             }]]],
-            ["unk2",["opt","hasdefault==1 && $colindex==1","ubyte"]]
+            ["unk2",["opt","hasdefault==1 && $colindex==1 && version>=2","ubyte"]]
         ]]]
     ]]]],
     ["nullbyte",["opt","version!=0","ubyte"]]

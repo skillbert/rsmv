@@ -7,7 +7,7 @@ import { JSONSchema6, JSONSchema6Definition } from "json-schema";
 import { loadParams } from "../../clientscript/util";
 import { CacheFileSource } from "../../cache";
 import classNames from "classnames";
-import { BlobTS, HSL2RGB, packedHSL2HSL, RGB2HSL, unpackCoordgrid } from "../../utils";
+import { BlobTS, HSL2RGB, packedHSL2HSL, RGB2HSL, taskTrickler, unpackCoordgrid } from "../../utils";
 import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { BrowseModes, makeFileId } from "../tabs/browse";
@@ -261,13 +261,19 @@ function getRSType(meta: JSONSchema6Definition | null | undefined): PropTypes {
     return meta?.["x-rsmv-type"] ?? "unknown";
 }
 
+// prevent sending out 1000+ async requests at once
+let spriteloadlimit = taskTrickler(20, 0);
+
 function SpriteView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
-    let imgurl = useAwaited(async () => {
+    let imgurl = useAwaited((abort) => {
         if (!enginectx) { return; }
-        let file = await enginectx.source.getFileById(cacheMajors.sprites, p.id);
-        let img = parseSprite(file);
-        return pixelsToDataUrl(img[0].img);
+        return spriteloadlimit(async () => {
+            if (abort.aborted) { return; }
+            let file = await enginectx.source.getFileById(cacheMajors.sprites, p.id);
+            let img = parseSprite(file);
+            return pixelsToDataUrl(img[0].img);
+        });
     }, [p.id], 200);
 
     return <img src={imgurl ?? undefined} />;
