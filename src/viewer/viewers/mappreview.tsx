@@ -4,8 +4,8 @@ import { EngineCache } from "../../3d/modeltothree";
 import { UIEngineContext } from "../maincomponents";
 import { cacheMajors } from "../../constants";
 import { CacheIndexFile } from "../../cache";
-import { mapsquare_tiles } from "../../../generated/mapsquare_tiles";
-import { delay, taskTrickler } from "../../utils";
+import { taskTrickler } from "../../utils";
+import { TabStrip, useForceUpdate } from "../commoncontrols";
 
 export type MapviewMarker = { x: number, z: number };
 
@@ -88,7 +88,18 @@ export async function renderMapPreview(engine: EngineCache, rect: MapRect, level
     return img;
 }
 
-function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, initialz?: number, initialpxpertile?: number) {
+function simpleMapRenderer(engine: EngineCache | undefined, initialimgsource: "cache" | "runeapps", initialx?: number, initialz?: number, initialpxpertile?: number) {
+    let chunkindex: CacheIndexFile | null = null;
+    let chunkcache = new Map<number, CanvasImageSource | Promise<CanvasImageSource>>();
+    engine?.getCacheIndex(cacheMajors.mapsquares).then(q => { chunkindex = q; queuerender(); });
+
+    let setImgSource = (newsource: "cache" | "runeapps") => {
+        res.imgsource = newsource;
+        chunkcache.clear();
+        queuerender();
+        res.onChange?.();
+    }
+
     let scroll = (e: WheelEvent) => {
         res.pxpertile *= (1 - e.deltaY / 200);
         res.pxpertile = Math.max(1 / 16, Math.min(16, res.pxpertile));
@@ -135,10 +146,6 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, i
         return [x, z];
     }
 
-    let chunkindex: CacheIndexFile | null = null;
-    let chunkcache = new Map<number, ImageBitmap | Promise<ImageBitmap>>();
-    engine?.getCacheIndex(cacheMajors.mapsquares).then(q => { chunkindex = q; queuerender(); });
-
     let framereq = 0;
     let queuerender = () => {
         if (framereq) { return; }
@@ -154,13 +161,14 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, i
         res.cnv.width = res.cnv.clientWidth;
         res.cnv.height = res.cnv.clientHeight;
         res.ctx.imageSmoothingEnabled = false;
+        let imgtileoffset = (res.imgsource == "runeapps" ? -16 : 0);
 
         let toosmall = res.pxpertile < 0.9;
 
         let xsize = res.cnv.width / res.pxpertile;
         let zsize = res.cnv.height / res.pxpertile;
         let rect: MapRect = { x: res.centerx - xsize / 2, z: res.centerz - zsize / 2, xsize, zsize }
-        let chunks = rectToChunks(rect);
+        let chunks = rectToChunks({ x: rect.x - imgtileoffset, z: rect.z - imgtileoffset, xsize: rect.xsize, zsize: rect.zsize });
         for (let [chunkx, chunkz] of chunks) {
             if (chunkx < 0 || chunkz < 0 || chunkx >= 100 || chunkz >= 200) { continue; }
             let key = chunkz * worldStride + chunkx;
@@ -171,16 +179,31 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, i
             let chunkimg = chunkcache.get(key);
             if (!chunkimg && !toosmall) {
                 chunkcache.set(key, tricklerender(async () => {
-                    let img = await renderMapPreview(engine, { x: chunkx * rs2ChunkSize, z: chunkz * rs2ChunkSize, xsize: rs2ChunkSize, zsize: rs2ChunkSize }, 0, 1);
-                    let bmp = await createImageBitmap(img, { imageOrientation: "flipY" });
-                    chunkcache.set(key, bmp);
-                    render();
-                    return bmp;
+                    if (res.imgsource === "runeapps") {
+                        let img = new Image();
+                        img.src = `https://runeapps.org/s3/map4/live/topdown-0/3/${chunkx}-${199 - chunkz}.webp`;
+                        await img.decode().catch(e => { });
+                        if (res.imgsource == "runeapps") {
+                            chunkcache.set(key, img);
+                            queuerender();
+                        }
+                        return img;
+                    } else if (res.imgsource === "cache") {
+                        let img = await renderMapPreview(engine, { x: chunkx * rs2ChunkSize, z: chunkz * rs2ChunkSize, xsize: rs2ChunkSize, zsize: rs2ChunkSize }, 0, 1);
+                        let bmp = await createImageBitmap(img, { imageOrientation: "flipY" });
+                        if (res.imgsource == "cache") {
+                            chunkcache.set(key, bmp);
+                            queuerender();
+                        }
+                        return bmp;
+                    }
                 }));
             }
-            if (chunkimg instanceof ImageBitmap) {
-                let [px, pz] = tiletopx(chunkx * rs2ChunkSize, (chunkz + 1) * rs2ChunkSize);
-                res.ctx.drawImage(chunkimg, px, pz, rs2ChunkSize * res.pxpertile, rs2ChunkSize * res.pxpertile);
+            if (chunkimg instanceof ImageBitmap || chunkimg instanceof HTMLImageElement) {
+                let [px, pz] = tiletopx(chunkx * rs2ChunkSize + imgtileoffset, (chunkz + 1) * rs2ChunkSize + imgtileoffset);
+                if (!(chunkimg instanceof HTMLImageElement) || chunkimg.naturalWidth > 0) {
+                    res.ctx.drawImage(chunkimg, px, pz, rs2ChunkSize * res.pxpertile, rs2ChunkSize * res.pxpertile);
+                }
                 didrender = true;
             }
             if (!didrender) {
@@ -218,8 +241,14 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialx?: number, i
         pxpertile: initialpxpertile ?? 2,
         centerx: initialx ?? 50 * rs2ChunkSize,
         centerz: initialz ?? 50 * rs2ChunkSize,
+        imgsource: initialimgsource,
+        setImgSource,
+        chunkcache: chunkcache,
+        onChange: null as (() => void) | null,
         markers: [] as MapviewMarker[],
     };
+
+    globalThis.map = res;
 
     return res;
 }
@@ -228,9 +257,16 @@ export function CheapMapView(p: { level?: number, centerx?: number, centerz?: nu
     let ctx = React.useContext(UIEngineContext);
     let engine = ctx?.sceneCache.engine;
 
-    let renderer = React.useMemo(() => simpleMapRenderer(engine, p.centerx, p.centerz, p.pxpertile), [engine]);
+
+    let renderer = React.useMemo(() => simpleMapRenderer(engine, "cache", p.centerx, p.centerz, p.pxpertile), [engine]);
+    renderer.onChange = useForceUpdate();
 
     renderer.markers = p.markers ?? [];
 
-    return <canvas className="mv-canvas" ref={renderer.ref} />
+    return <div style={{ width: "100%", height: "100%", position: "absolute", overflow: "hidden" }}>
+        <span style={{ position: "absolute", margin: "4px" }}>
+            <TabStrip value={renderer.imgsource} tabs={{ cache: "Cache", runeapps: "RuneApps" }} onChange={renderer.setImgSource} />
+        </span>
+        <canvas className="mv-canvas" ref={renderer.ref} />
+    </div>
 }
