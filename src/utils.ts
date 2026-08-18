@@ -562,12 +562,11 @@ export function taskTrickler(maxparallel = 1, delaytime = 1) {
 	let stallindex = 0;
 	let stall = new Array<Promise<any>>(maxparallel).fill(Promise.resolve());
 	return function gate(task: () => Promise<any>) {
-		let p = stall[stallindex];
-		stall[stallindex] = p
-			.then(() => task())
+		let res = stall[stallindex].then(() => task());
+		stall[stallindex] = res
 			.finally(() => { delaytime != 0 && delay(delaytime) });
 		stallindex = (stallindex + 1) % maxparallel;
-		return p;
+		return res;
 	}
 }
 

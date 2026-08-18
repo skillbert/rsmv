@@ -262,13 +262,13 @@ function getRSType(meta: JSONSchema6Definition | null | undefined): PropTypes {
 }
 
 // prevent sending out 1000+ async requests at once
-let spriteloadlimit = taskTrickler(20, 0);
+let resourceloadlimit = taskTrickler(20);
 
 function SpriteView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
-    let imgurl = useAwaited((abort) => {
+    let imgurl = useAwaited(abort => {
         if (!enginectx) { return; }
-        return spriteloadlimit(async () => {
+        return resourceloadlimit(async () => {
             if (abort.aborted) { return; }
             let file = await enginectx.source.getFileById(cacheMajors.sprites, p.id);
             let img = parseSprite(file);
@@ -281,10 +281,13 @@ function SpriteView(p: { id: number }) {
 
 function TextureView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
-    let imgurl = useAwaited(async () => {
+    let imgurl = useAwaited(abort => {
         if (!enginectx) { return; }
-        let file = await enginectx.sceneCache.getTextureFile("diffuse", p.id, false);
-        return pixelsToDataUrl(await file.toImageData());
+        return resourceloadlimit(async () => {
+            if (abort.aborted) { return; }
+            let file = await enginectx.sceneCache.getTextureFile("diffuse", p.id, false);
+            return pixelsToDataUrl(await file.toImageData());
+        })
     }, [p.id], 200);
 
     return <img src={imgurl ?? undefined} />;
@@ -292,10 +295,13 @@ function TextureView(p: { id: number }) {
 
 function CursorView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
-    let spriteid = useAwaited(async () => {
+    let spriteid = useAwaited(abort => {
         if (!enginectx) { return; }
-        let parsed = await enginectx.source.getObject("cursors", p.id);
-        return parsed.cursor;
+        return resourceloadlimit(async () => {
+            if (abort.aborted) { return; }
+            let parsed = await enginectx.source.getObject("cursors", p.id);
+            return parsed.cursor;
+        });
     }, [p.id, enginectx], 200);
     return <SpriteView id={spriteid ?? 0} />;
 }
@@ -303,10 +309,13 @@ function CursorView(p: { id: number }) {
 function SoundView(p: { id: number }) {
     let enginectx = React.useContext(UIEngineContext);
 
-    let soundblob = useAwaited(async () => {
+    let soundblob = useAwaited(abort => {
         if (!enginectx) { return; }
-        let sound = await parseMusic(enginectx.source, cacheMajors.sounds, p.id, null, true);
-        return URL.createObjectURL(new BlobTS([sound], { type: "audio/ogg" }));
+        return resourceloadlimit(async () => {
+            if (abort.aborted) { return; }
+            let sound = await parseMusic(enginectx.source, cacheMajors.sounds, p.id, null, true);
+            return URL.createObjectURL(new BlobTS([sound], { type: "audio/ogg" }));
+        });
     }, [p.id, enginectx], 200);
 
     // cleanup
