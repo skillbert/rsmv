@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 
-export type ScriptState = "running" | "canceled" | "error" | "done";
+export type ScriptState = "waiting" | "running" | "canceled" | "error" | "done";
 export type ScriptFSEntry = { name: string, kind: "file" | "directory" };
 
 export interface ScriptOutput {
@@ -72,7 +72,7 @@ export class CLIScriptFS implements ScriptFS {
 }
 
 export class CLIScriptOutput implements ScriptOutput {
-    state: ScriptState = "running";
+    state: ScriptState = "waiting";
 
     //bind instead of call so the original call site is retained while debugging
     log = console.log.bind(console);
@@ -88,6 +88,7 @@ export class CLIScriptOutput implements ScriptOutput {
     }
 
     async run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: ARGS) => Promise<RET>, ...args: ARGS): Promise<RET | null> {
+        this.setState("running");
         try {
             return await fn(this, ...args);
         } catch (e) {

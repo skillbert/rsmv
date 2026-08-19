@@ -2,6 +2,7 @@ import { AstNode, ClientScriptFunction, CodeBlockNode, RawOpcodeNode, SubcallNod
 import { ClientscriptObfuscation, OpcodeInfo, ScriptCandidate, ScriptCandidates } from "./callibrator";
 import { ExactStack, PrimitiveType, StackConstants, StackDiff, branchInstructionsInt, branchInstructionsLong, debugKey, decomposeKey, dependencyGroup, dependencyIndex, dynamicOps, getOpName, keyToPrimitive, namedClientScriptOps, primitiveToUknownExact, typeToPrimitive } from "../definitions";
 import { vartypeReverseMap, vartypes } from "../../constants";
+import { ScriptOutput } from "../../scriptrunner";
 
 //to test
 //await cli("extract --mode clientscript -i 0");await deob.preloadData(false);deob.parseCandidateContents();detectSubTypes(deob);
@@ -133,7 +134,7 @@ export class ClientScriptSubtypeSolver {
         }
     }
 
-    solve() {
+    solve(outlog = console.log) {
         let activekeys = new Set(this.knowntypes.keys());
         let itercount = 0;
         let conflictcount = 0;
@@ -145,13 +146,14 @@ export class ClientScriptSubtypeSolver {
                 if (links) {
                     let known = this.knowntypes.get(key)!;
                     for (let link of links) {
+                        itercount++;
                         let prevknown = this.knowntypes.get(link);
                         if (typeof prevknown == "undefined") {
                             nextactivekeys.add(link);
                             this.knowntypes.set(link, known);
                         } else if (prevknown != known) {
                             conflictcount++;
-                            console.log(`conflicting types old:${vartypeReverseMap.get(prevknown) ?? "??"}, new:${vartypeReverseMap.get(known) ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
+                            outlog(`conflicting types old:${vartypeReverseMap.get(prevknown) ?? "??"}, new:${vartypeReverseMap.get(known) ?? "??"}\n- ${key} - ${debugKey(key)}\n- ${link} - ${debugKey(link)}`);
                             // globalThis.testkey = [key, link];
                             // throw new Error(`conflicting types old:${vartypeReverseMap.get(prevknown) ?? "??"}, new:${vartypeReverseMap.get(known) ?? "??"}\n${key} - ${debugKey(key)}\n${link} - ${debugKey(link)}`);
                         }
@@ -160,6 +162,7 @@ export class ClientScriptSubtypeSolver {
             }
             activekeys = nextactivekeys;
         }
+        // outlog(`solved ${this.knowntypes.size} types with ${conflictcount} conflicts, in ${itercount} iterations`);
     }
 
     getType(key: number) {
@@ -293,17 +296,19 @@ class CombinedExactStack {
     }
 }
 
-export function detectSubtypes(calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
+export function detectSubtypes(out: ScriptOutput, calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
     if (!candidates.parsed) { throw new Error("candidates must be parsed before detectSubtypes()"); }
+    out.log(`Detecting opcode subtypes`);
     let ctx = new ClientScriptSubtypeSolver();
     for (let cand of candidates.data.values()) {
         if (!cand.scriptcontents) { continue; }
         let { sections } = generateAst(calli, cand.script, cand.scriptcontents.opcodedata, cand.id);
         ctx.parseSections(sections);
     }
-    ctx.solve();
+    ctx.solve(out.log);
     assignKnownTypes(calli, ctx.knowntypes);
     calli.foundSubtypes = true;
+    out.log(`Finished detecting opcode subtypes`);
 }
 export function assignKnownTypes(calli: ClientscriptObfuscation, knowntypes: Map<number, number>) {
     for (let op of calli.scrambledops.values()) {

@@ -66,6 +66,12 @@
 	color: black;
 }
 
+.sub-btn[disabled] {
+	background-color: #716852;
+	border-color: #716852;
+	color: #313131;
+}
+
 .sub-btn.active {
 	background-color: #dba617;
 	border-color: #b79845;
@@ -493,4 +499,15 @@
 .mv-dbtitle {
 	border: 1px solid;
 	text-align: center;
+}
+
+.mv-script-console {
+	background-color: #0004;
+	font-family: monospace;
+	padding: 3px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	flex: 1 1 0;
+	user-select: text;
+	min-height: 3em;
 }

@@ -11,6 +11,7 @@ import { parse } from "../parser/jsondecoders";
 import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { UiCameraParams } from "../viewer/tabs/simplemodes";
+import { clientScriptDeobPopup } from "../viewer/tabs/browse";
 
 
 export const MAGIC_CONST_MOUSE_X = 0x80000001 | 0;
@@ -266,6 +267,7 @@ export function renderRsInterfaceDOM(ctx: UiRenderContext, data: Awaited<ReturnT
     let loadprom: Promise<void>
     if (ctx.runOnloadScripts) {
         loadprom = (async () => {
+            await clientScriptDeobPopup(ctx.source);
             for (let comp of data.comps.values()) {
                 if (comp.data.scripts.load.length != 0) {
                     await ctx.runClientScriptCallback(comp.compid, comp.data.scripts.load).catch(e => console.warn("comp load err", e));

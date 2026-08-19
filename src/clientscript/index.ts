@@ -7,6 +7,7 @@ import { parse } from "../parser/jsondecoders";
 import { astToImJson } from "./jsonwriter";
 import { clientscript } from "../../generated/clientscript";
 import { crc32, crc32addInt } from "../libs/crc32util";
+import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
 // import { Openrs2CacheSource } from "../cache/openrs2loader";
 // import { GameCacheLoader } from "../cache/sqlite";
 
@@ -34,19 +35,35 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     return { writer, rootfunc };
 }
 
-export async function prepareClientScript(source: CacheFileSource) {
+export async function tryPrepareClientScriptCached(source: CacheFileSource) {
     if (!source.decodeArgs.clientScriptDeob) {
         let prom = source.decodeArgs.clientScriptDeobPromise ??= (async () => {
-            let deobsource = source;
-            // use equivelant openrs2 cache instead to prevent problems with edits begin invalid
-            // if (source instanceof GameCacheLoader) {
-            //     deobsource = new Openrs2CacheSource(await Openrs2CacheSource.getRecentCache());
-            // }
-            let deob = await ClientscriptObfuscation.create(deobsource);
-            source.decodeArgs.clientScriptDeob = deob;
-            await deob.runAutoCallibrate(source);
+            let res = await ClientscriptObfuscation.tryLoadCached(source).catch(() => null);
+            source.decodeArgs.clientScriptDeobPromise = null;
+            if (res) {
+                source.decodeArgs.clientScriptDeob = res;
+                globalThis.deob = res;
+            }
+            return res;
+        })();
+        await prom;
+    }
+    return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation | null;
+}
 
-            globalThis.deob = deob;//TODO remove
+export async function prepareClientScript(source: CacheFileSource, makeScriptOutput?: () => Promise<ScriptOutput>) {
+    if (!source.decodeArgs.clientScriptDeob) {
+        let prom = source.decodeArgs.clientScriptDeobPromise ??= (async () => {
+            let deob = await ClientscriptObfuscation.create(source);
+            let scriptctx = (makeScriptOutput ? await makeScriptOutput() : new CLIScriptOutput());
+            await scriptctx.run(out => deob.runAutoCallibrate(out, source));
+            if (scriptctx.state != "done") {
+                source.decodeArgs.clientScriptDeobPromise = null;
+                throw new Error("failed to run auto callibration");
+            } else {
+                source.decodeArgs.clientScriptDeob = deob;
+                globalThis.deob = deob;
+            }
         })();
         await prom;
     }

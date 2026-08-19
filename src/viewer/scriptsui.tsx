@@ -1,11 +1,12 @@
 import { TypedEmitter } from "../utils";
 import { useEffect } from "react";
 import * as React from "react";
-import { DomWrap, TabStrip, useForceUpdateDebounce } from "./commoncontrols";
+import { DomWrap, TabStrip, useForceUpdate, useForceUpdateDebounce } from "./commoncontrols";
 import { showModal } from "./jsonsearch";
 import { CLIScriptFS, ScriptFS, ScriptOutput, ScriptState } from "../scriptrunner";
 import path from "path";
 import { UIRootContext } from "./maincomponents";
+import { boundMethod } from "autobind-decorator";
 
 //see if we have access to a valid electron import
 let electron: typeof import("electron/renderer") | null = (() => {
@@ -255,13 +256,15 @@ export class UIScriptFS extends TypedEmitter<{ writefile: string, unlink: string
 }
 
 export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: undefined, newuifs: ScriptFS }> implements ScriptOutput {
-	state: ScriptState = "running";
+	state: ScriptState = "waiting";
 	logs: string[] = [];
 	outputui: HTMLElement | null = null;
 	fs: Record<string, UIScriptFS>;
 
+	@boundMethod
 	log(...args: any[]) {
-		let str = args.join(" ");
+		let timestamp = new Date().toLocaleTimeString('en-GB', { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+		let str = `[${timestamp}] ${args.join(" ")}`;
 		this.logs.push(str);
 		this.emit("log", str);
 	}
@@ -288,6 +291,7 @@ export class UIScriptOutput extends TypedEmitter<{ log: string, statechange: und
 	}
 
 	async run<ARGS extends any[], RET extends any>(fn: (output: ScriptOutput, ...args: ARGS) => Promise<RET>, ...args: ARGS): Promise<RET | null> {
+		this.setState("running");
 		try {
 			return await fn(this, ...args);
 		} catch (e) {
@@ -327,16 +331,13 @@ export function OutputUI(p: { output?: UIScriptOutput | null }) {
 	for (let fsname in p.output?.fs) { tabs["fs-" + fsname] = fsname; }
 
 	return (
-		<div>
-			<div>
-				Script state: {p.output.state}
-				{p.output.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
-			</div>
+		<>
+			<UIScriptStatus output={p.output} />
 			{p.output.outputui && <input type="button" className="sub-btn" value="Script ui" onClick={e => showModal({ title: "Script output" }, <DomWrap el={p.output?.outputui} />)} />}
 			<TabStrip value={tab} onChange={setTab as any} tabs={tabs} />
 			{tab == "console" && <UIScriptConsole output={p.output} />}
 			{selectedfs && <UIScriptFiles fs={selectedfs} />}
-		</div>
+		</>
 	)
 }
 
@@ -513,6 +514,21 @@ export function FileListView<T>(p: { files: Map<T, string>, selected: T | null, 
 	</>);
 }
 
+export function UIScriptStatus(p: { output: UIScriptOutput }) {
+	let forceUpdate = useForceUpdate();
+	useEffect(() => {
+		p.output.on("statechange", forceUpdate);
+		return () => { p.output.off("statechange", forceUpdate); }
+	}, [p.output]);
+
+	return (
+		<div>
+			Script state: {p.output.state}
+			{p.output.state == "running" && <input type="button" className="sub-btn" value="cancel" onClick={e => p.output?.setState("canceled")} />}
+		</div>
+	);
+}
+
 export function UIScriptConsole(p: { output?: UIScriptOutput | null }) {
 	let [el, setEl] = React.useState<HTMLDivElement | null>(null);
 
@@ -521,7 +537,11 @@ export function UIScriptConsole(p: { output?: UIScriptOutput | null }) {
 			let onlog = (e: string) => {
 				let line = document.createElement("div");
 				line.innerText = e;
+				let isnearbottom = el!.scrollHeight - el!.scrollTop - el!.clientHeight < 20;
 				el!.appendChild(line);
+				if (isnearbottom) {
+					el!.scrollTop = el!.scrollHeight;
+				}
 			}
 			p.output.on("log", onlog);
 			p.output.logs.forEach(onlog);
@@ -533,6 +553,6 @@ export function UIScriptConsole(p: { output?: UIScriptOutput | null }) {
 	}, [p.output, el]);
 
 	return (
-		<div ref={setEl} />
+		<div ref={setEl} className="mv-script-console" />
 	);
 }

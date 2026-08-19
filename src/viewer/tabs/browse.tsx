@@ -1,14 +1,14 @@
 import React, { useContext, useMemo } from "react";
-import { checkObject, stringToFileRange } from "../../utils";
+import { checkObject, delay, stringToFileRange } from "../../utils";
 import { LookupModeProps } from "../scenenodes";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
-import { BlobAudio, DomWrap, TabStrip, TextureView, useAwaited, useEmitterProperty } from "../commoncontrols";
+import { BlobAudio, DomWrap, TabStrip, TextureView, useAwaited, useEmitterProperty, useForceUpdate } from "../commoncontrols";
 import { BrowsePageId, UIEngineContext, UIRootContext } from "../maincomponents";
-import { jsonCacheSearch, JsonSearchFilter } from "../jsonsearch";
-import { FileListView } from "../scriptsui";
+import { jsonCacheSearch, JsonSearchFilter, showModal } from "../jsonsearch";
+import { FileListView, UIScriptConsole, UIScriptOutput, UIScriptStatus } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
 import { vartypeToDecoder } from "../viewers/configview";
-import { renderClientScript } from "../../clientscript";
+import { prepareClientScript, renderClientScript, tryPrepareClientScriptCached } from "../../clientscript";
 import { cacheMajors } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { RsUIViewer } from "../viewers/rsuiviewer";
@@ -16,6 +16,7 @@ import { cacheFileDecodeModes } from "../../parser/filetypes";
 import { parseMusic } from "../../scripts/musictrack";
 import { CheapMapView, MapviewMarker } from "../viewers/mappreview";
 import prettyJson from "json-stringify-pretty-compact";
+import { CacheFileSource } from "../../cache";
 
 export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
 
@@ -187,6 +188,50 @@ export function BrowseUI(p: LookupModeProps) {
     </>
 }
 
+export async function clientScriptDeobPopup(source: CacheFileSource) {
+    // already deobfuscated
+    if (source.decodeArgs.clientScriptDeob) {
+        return;
+    }
+    // cached deobfuscation found
+    if (await tryPrepareClientScriptCached(source)) {
+        return;
+    }
+
+    let script = new UIScriptOutput();
+    function DeobDialog(p: {}) {
+        let forceupdate = useForceUpdate();
+
+        script.on("statechange", () => {
+            forceupdate();
+            if (script.state == "done") { }
+        });
+
+        let run = () => {
+            prepareClientScript(source, async () => script);
+        }
+
+        return <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
+            <div>Clientscript in the cache is obfuscated and no previous deobfuscation were found in this browser.</div>
+            <div>RSMV can deobfuscate it for you. This process takes about 10 minutes and will be cached for future uses.</div>
+            <button className="sub-btn" onClick={run} disabled={script.state == "running" || script.state == "done"}>Start deobfuscation</button>
+            <UIScriptStatus output={script} />
+            <UIScriptConsole output={script} />
+            {script.state == "done" && <button className="sub-btn" onClick={() => dialog.close()}>Close</button>}
+        </div>
+    }
+
+    // new stack so react doesn't complain about state updates during render
+    await delay(1);
+    let res = Promise.withResolvers<void>();
+    let dialog = showModal({ maxWidth: "650px", title: "Decode client script obfuscation" }, <DeobDialog />);
+    dialog.onClose = () => {
+        if (script.state == "done") { res.resolve(); }
+        script.setState("canceled");
+    };
+    return res.promise;
+}
+
 export function BrowseDisplay(p: { browse: BrowsePageId }) {
     let ctx = useContext(UIRootContext);
     let engine = useContext(UIEngineContext)?.sceneCache.engine;
@@ -199,6 +244,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
 
         return (async () => {
             if (index.mode == "clientscript") {
+                await clientScriptDeobPopup(engine);
                 let buf = await engine.getFileById(cacheMajors.clientscript, index.index[0]);
                 let { writer, rootfunc } = await renderClientScript(engine, buf, index.index[0], false, false, false);
                 let clicker = (objectid: string) => ctx.openFile({ type: "browse", id: objectid });

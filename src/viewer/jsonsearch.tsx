@@ -43,6 +43,7 @@ export function showModal(config: { title: string, maxWidth?: string }, children
 			root.unmount();
 			rootel.remove();
 			root = null;
+			res.onClose?.();
 		}
 	}
 
@@ -52,7 +53,11 @@ export function showModal(config: { title: string, maxWidth?: string }, children
 		</ModalFrame>
 	));
 
-	return { close };
+	let res = {
+		close,
+		onClose: null as (() => void) | null
+	}
+	return res;
 }
 
 export function JsonSearchPreview(p: { mode: keyof typeof cacheFileJsonModes, cache: EngineCache | undefined, onSelect: (id: number, obj: object) => void, initialFilters: JsonSearchFilter[] }) {

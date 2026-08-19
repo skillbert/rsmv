@@ -16,6 +16,7 @@ import { CodeBlockNode, RawOpcodeNode, generateAst } from "../ast";
 import { detectSubtypes as callibrateSubtypes, detectSubtypes } from "./subtypedetector";
 import * as datastore from "idb-keyval";
 import { loadParams } from "../util";
+import { ScriptOutput } from "../../scriptrunner";
 
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
@@ -259,18 +260,25 @@ function parseImm(buf: Buffer, offset: number, type: ImmediateType) {
 }
 
 let referenceOpcodeDump: Promise<ReferenceCallibration> | null = null;
-async function getReferenceOpcodeDump() {
+async function getReferenceOpcodeDump(out: ScriptOutput) {
     referenceOpcodeDump ??= (async () => {
+        out.log("Running callibration from scratch - this takes about 10 minutes the first time, but is cached for future runs.");
+        out.log("preparing non-obfuscated reference opcode dump from openrs2:1383 [1/2]");
         let rootcalli = await ClientscriptObfuscation.create(await Openrs2CacheSource.fromId(1383));//668 20 dec 2011
-        let bounce1 = await ClientscriptObfuscation.create(await Openrs2CacheSource.fromId(1572));//932 16 oct 2023
-        //add extra bounces when the gap is too large and non of the scripts match
         rootcalli.setNonObbedMappings();
-        let rootdump = rootcalli.generateDump(await rootcalli.parseCandidateContents());
+        let rootcands = await rootcalli.parseCandidateContents(out);
+        let rootdump = rootcalli.generateDump(rootcands);
         await rootcalli.save();
+        out.log("Reference opcode dump completed [1/2]");
+        //add extra bounces when the gap is too large and non of the scripts match
 
-        await bounce1.runCallibrationFrom(rootdump);
-        let bounce1dump = bounce1.generateDump(await bounce1.parseCandidateContents());
+        out.log("preparing de-obfuscated reference opcode dump from openrs2:1572 [2/2]");
+        let bounce1 = await ClientscriptObfuscation.create(await Openrs2CacheSource.fromId(1572));//932 16 oct 2023
+        await bounce1.runCallibrationFrom(out, rootdump);
+        let bounce1cands = await bounce1.parseCandidateContents(out);
+        let bounce1dump = bounce1.generateDump(bounce1cands);
         await bounce1.save();
+        out.log("Reference opcode dump completed [2/2]");
         return bounce1dump;
     })();
     return referenceOpcodeDump;
@@ -313,8 +321,9 @@ export class ClientscriptObfuscation {
                 }];
             }));
         } else {
-            let candobj = await r.parseCandidateContents();
-            callibrateSubtypes(r, candobj);//TODO is this needed?
+            console.log("no script json provided, no subtype callibration");
+            // let candobj = await r.parseCandidateContents();
+            // callibrateSubtypes(r, candobj);//TODO is this needed?
         }
         return r;
     }
@@ -371,26 +380,33 @@ export class ClientscriptObfuscation {
         this.source = source;
     }
 
+    static async tryLoadCached(source: CacheFileSource) {
+        try {
+            let { opcodename, scriptname } = await this.getSaveName(source);
+            let file: string | undefined = undefined;
+            let scriptfile: string | undefined = undefined;
+            if (fs.constants) {
+                file = await fs.readFile(`cache/${opcodename}`, "utf8");
+                scriptfile = await fs.readFile(`cache/${scriptname}`, "utf8").catch(() => undefined);
+            } else if (datastore.get) {
+                file = await datastore.get(opcodename);
+                scriptfile = await datastore.get(scriptname).catch(() => undefined);
+            }
+            if (file) {
+                let json = JSON.parse(file);
+                let scriptjson = (scriptfile ? JSON.parse(scriptfile) : null);
+                return this.fromJson(source, json, scriptjson);
+            }
+        } catch {
+            return null;
+        }
+    }
+
     static async create(source: CacheFileSource, nocached = false) {
         //TODO merge fromjson and runautocallibrate into this to untangle weird logic and double-loading
         if (!nocached) {
-            try {
-                let { opcodename, scriptname } = await this.getSaveName(source);
-                let file: string | undefined = undefined;
-                let scriptfile: string | undefined = undefined;
-                if (fs.constants) {
-                    file = await fs.readFile(`cache/${opcodename}`, "utf8");
-                    scriptfile = await fs.readFile(`cache/${scriptname}`, "utf8").catch(() => undefined);
-                } else if (datastore.get) {
-                    file = await datastore.get(opcodename);
-                    scriptfile = await datastore.get(scriptname).catch(() => undefined);
-                }
-                if (file) {
-                    let json = JSON.parse(file);
-                    let scriptjson = (scriptfile ? JSON.parse(scriptfile) : null);
-                    return this.fromJson(source, json, scriptjson);
-                }
-            } catch { }
+            let res = await ClientscriptObfuscation.tryLoadCached(source);
+            if (res) { return res; }
         }
         let res = new ClientscriptObfuscation(source);
         globalThis.deob = res;//TODO remove
@@ -459,15 +475,19 @@ export class ClientscriptObfuscation {
             this.parammeta = await loadParams(this.source);
         }
     }
-    loadCandidates(idstart = 0, idend = 0xffffff) {
+    loadCandidates(out: ScriptOutput, idstart = 0, idend = 0xffffff) {
         this.candidates ??= (async () => {
+            out.log("Loading candidate scripts");
             let index = await this.source.getCacheIndex(cacheMajors.clientscript);
             let candidates = new Map<number, ScriptCandidate>();
             let source = this.source;
+            let completedcount = 0;
             await trickleTasksTwoStep(10, function* () {
                 for (let entry of index) {
                     if (!entry) { continue; }
                     if (entry.minor < idstart || entry.minor > idend) { continue; }
+                    if (++completedcount % 1000 == 0) { out.log(`Loaded ${completedcount}/${index.length} candidate scripts`); }
+                    if (out.state != "running") { throw new Error("canceled"); }
                     yield source.getFile(entry.major, entry.minor, entry.crc).then<ScriptCandidate>(buf => ({
                         id: entry.minor,
                         scriptname: reverseHashes.get(index[entry.minor].name!) ?? "",
@@ -482,14 +502,16 @@ export class ClientscriptObfuscation {
                     }));
                 }
             }, q => candidates.set(q.id, q));
+            out.log(`Loaded ${candidates.size} candidate scripts`);
             return { parsed: false, data: candidates };
         })();
         return this.candidates;
     }
-    async parseCandidateContents() {
+    async parseCandidateContents(out: ScriptOutput) {
         if (!this.foundEncodings) { throw new Error("can't parse candidates because op encodings are not yet callibrated"); }
-        let candidates = await this.loadCandidates();
+        let candidates = await this.loadCandidates(out);
         if (!candidates.parsed) {
+            out.log("Parsing candidate scripts");
             for (let cand of candidates.data.values()) {
                 try {
                     cand.scriptcontents ??= parse.clientscript.read(cand.buf, this.source, { clientScriptDeob: this });
@@ -510,6 +532,7 @@ export class ClientscriptObfuscation {
                 });
             }
             candidates.parsed = true;
+            out.log(`Parsed ${candidates.data.size} candidate scripts`);
         }
         return candidates;
     }
@@ -529,30 +552,32 @@ export class ClientscriptObfuscation {
             opidcounter: this.opidcounter
         } satisfies ReferenceCallibration;
     }
-    async runAutoCallibrate(source: CacheFileSource) {
+    async runAutoCallibrate(out: ScriptOutput, source: CacheFileSource) {
         if (source.getBuildNr() <= lastNonObfuscatedBuild) {
             this.setNonObbedMappings();
+            out.log(`buildnr ${source.getBuildNr()} is non-obfuscated, using classic opcode mappings`);
         } else if (!this.foundEncodings) {
-            let ref = await getReferenceOpcodeDump();
-            await this.runCallibrationFrom(ref);
+            let ref = await getReferenceOpcodeDump(out);
+            await this.runCallibrationFrom(out, ref);
             await this.save();
+            out.log(`buildnr ${source.getBuildNr()} callibrated successfully`);
         }
     }
-    async runCallibrationFrom(refscript: ReferenceCallibration) {
-        console.log(`callibrating buildnr ${this.source.getBuildNr()}`);
-        let cands = await this.loadCandidates();
-        copyOpcodesFrom(this, cands, refscript);
-        findOpcodeImmidiates(this, cands);
-        let parsed = await this.parseCandidateContents();
-        callibrateOperants(this, parsed);
+    async runCallibrationFrom(out: ScriptOutput, refscript: ReferenceCallibration) {
+        out.log(`callibrating buildnr ${this.source.getBuildNr()}`);
+        let cands = await this.loadCandidates(out);
+        copyOpcodesFrom(out, this, cands, refscript);
+        findOpcodeImmidiates(out, this, cands);
+        let parsed = await this.parseCandidateContents(out);
+        callibrateOperants(out, this, parsed);
         // todo, somehow a extra runs still finds new types, these should have been caught in the first run
-        callibrateOperants(this, parsed);
-        callibrateOperants(this, parsed);
-        callibrateOperants(this, parsed);
+        callibrateOperants(out, this, parsed);
+        callibrateOperants(out, this, parsed);
+        callibrateOperants(out, this, parsed);
         try {
-            callibrateSubtypes(this, parsed);
+            callibrateSubtypes(out, this, parsed);
         } catch (e) {
-            console.log("subtype callibration failed, types info might not be accurate");
+            out.log("subtype callibration failed, types info might not be accurate");
         }
     }
     // don't want them to be methods, use this to expose them to console
@@ -669,7 +694,7 @@ export class ClientscriptObfuscation {
     }
 }
 
-function copyOpcodesFrom(deob: ClientscriptObfuscation, candidates: ScriptCandidates, refcalli: ReferenceCallibration) {
+function copyOpcodesFrom(out: ScriptOutput, deob: ClientscriptObfuscation, candidates: ScriptCandidates, refcalli: ReferenceCallibration) {
     let newbuildnr = deob.source.getBuildNr();
     let testCandidate = (cand: ScriptCandidate, refops: ClientScriptOp[]) => {
         if (cand.script.instructioncount != refops.length) {
@@ -710,16 +735,17 @@ function copyOpcodesFrom(deob: ClientscriptObfuscation, candidates: ScriptCandid
         return true;
     }
 
+    out.log(`matching opcode mappings from reference cache, buildnr:${refcalli.buildnr} to buildnr:${deob.source.getBuildNr()}`);
     for (let ref of refcalli.scripts) {
         let cand = candidates.data.get(ref.id);
         if (!cand) { continue; }
         testCandidate(cand, ref.scriptops);
     }
     deob.opidcounter = Math.max(deob.opidcounter, refcalli.opidcounter);
-    console.log(`copied ${deob.scrambledops.size} opcodes from reference cache, idcount:${deob.opidcounter}`);
+    out.log(`copied ${deob.scrambledops.size} opcodes from reference cache, idcount:${deob.opidcounter}`);
 }
 
-function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
+function findOpcodeImmidiates(out: ScriptOutput, calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
     let switchcompleted = false;
     let tribytecompleted = false;
 
@@ -905,11 +931,13 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
             }
             run();
 
-            console.log(limit, calli.scrambledops.size);
+            out.log(`limit: ${limit}, scrambled ops: ${calli.scrambledops.size}`);
         }
     }
 
+    out.log("detecting opcode immidiates encoding");
     runfixedaddition();
+    out.log(`detected ${calli.scrambledops.size} opcode immidiates`);
     // console.log([...mappings].sort((a, b) => a[0] - b[0]).map(q => [q[0].toString(16), [...q[1].possibleTypes].join(",")]));
 
 
@@ -959,7 +987,7 @@ function findOpcodeImmidiates(calli: ClientscriptObfuscation, candidates: Script
     }
 }
 
-function callibrateOperants(calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
+function callibrateOperants(out: ScriptOutput, calli: ClientscriptObfuscation, candidates: ScriptCandidates) {
     if (!candidates.parsed) { throw new Error("candidates must be parsed before callibrateOperants()"); }
     //TODO merge with previous loop?
     let allsections: CodeBlockNode[] = [];
@@ -1097,6 +1125,7 @@ function callibrateOperants(calli: ClientscriptObfuscation, candidates: ScriptCa
         }
     }
 
+    out.log(`Detecting opcode operants`);
     let opmap = new Map<number, Set<StackDiffEquation>>();
     let pendingEquations: StackDiffEquation[] = [];
     let foundset = new Set<number>();
@@ -1111,7 +1140,8 @@ function callibrateOperants(calli: ClientscriptObfuscation, candidates: ScriptCa
             testSection(eq);
             pendingEquations.push(eq);
         } catch (e) {
-            console.error("Error testing section", e);
+            out.log(`Error testing section, in script ${section.scriptid} at offset ${section.originalindex}`);
+            console.log("Error testing section", e);
             eq.section.dump();
             globalThis.retry = testSection.bind(null, eq);
             throw null;
@@ -1122,6 +1152,7 @@ function callibrateOperants(calli: ClientscriptObfuscation, candidates: ScriptCa
             try {
                 testSection(eq);
             } catch (e) {
+                out.log(`Error testing section, in script ${eq.section.scriptid} at offset ${eq.section.originalindex}`);
                 console.error("Error testing section", e);
                 eq.section.dump()
             }
@@ -1136,8 +1167,9 @@ function callibrateOperants(calli: ClientscriptObfuscation, candidates: ScriptCa
             else { missing.add(op); }
             total++;
         }
-        console.log("total", total, "done", done, "partial", partial, "incomplete", missing.size);
+        out.log("total", total, "done", done, "partial", partial, "incomplete", missing.size);
     }
+    out.log(`Finished detecting operants`);
     calli.foundParameters = true;
 }
 
