@@ -667,10 +667,11 @@ export class ClientscriptObfuscation {
     }
     getClientVarbitName(varbit: number, target: number) {
         let varbitmeta = this.varbitmeta.get(varbit);
-        if (!varbitmeta) {
-            return `varbit_${varbit}${target != 0 ? `[${target}]` : ""}`;
+        let name = varbitmeta?.varname || `varbit_${varbit}`;
+        if (target != 0) {
+            name += `[${target}]`;
         }
-        return varbitmeta.varname + (target != 0 ? `[${target}]` : "");
+        return name;
     }
     getClientVarName(varint: number) {
         let groupid = (varint >> 24) & 0xff;
