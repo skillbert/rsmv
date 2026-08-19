@@ -7,7 +7,7 @@ import { getOrInsert, unpackCoordgrid } from "../../utils";
 import { vartypeReverseMap, vartypes } from "../../constants";
 import { intrinsics } from "../jsonwriter";
 import { reserved } from "./typescripthelpers";
-import { getOpcodeName, returntypeTuple, typeList, subtypeToTs, valueList, writeLeaf, WriteResult, addTypeCast, addBracketsIfNeeded } from "./writehelpers";
+import { getOpcodeName, returntypeTuple, typeList, subtypeToTs, valueList, writeLeaf, WriteResult, writeIntObject, addBracketsIfNeeded } from "./writehelpers";
 
 /**
  * known compiler differences
@@ -323,50 +323,7 @@ export function writeClientVarFile(calli: ClientscriptObfuscation) {
     return res;
 }
 function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number) {
-    if (exacttype == vartypes.component) {
-        let intf = value >> 16;
-        let sub = value & 0xffff;
-        if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
-            return new WriteResult(17, [
-                writeLeaf("type", "comprel"), "(",
-                writeLeaf("literalnumber", `${intf}`), ", ",
-                writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
-            ], "", `component_${intf}_${sub}`);
-        } else {
-            return new WriteResult(17, [
-                writeLeaf("type", "comp"), "(",
-                writeLeaf("literalnumber", `${intf}`), ", ",
-                writeLeaf("literalnumber", `${sub}`), ")"
-            ], "", `component_${intf}_${sub}`);
-        }
-    }
-    if (exacttype == vartypes.coordgrid && value != -1) {
-        let pos = unpackCoordgrid(value);
-        // TODO maybe make the entire construct look like a literal
-        return new WriteResult(17, [
-            writeLeaf("type", "coordgrid"), "(",
-            writeLeaf("literalnumber", `${pos.level}`), ", ",
-            writeLeaf("literalnumber", `${pos.x}`), ", ",
-            writeLeaf("literalnumber", `${pos.z}`), ")"
-        ], "", `coordgrid_${pos.level}_${pos.x}_${pos.z}`);
-    }
-    if (exacttype == vartypes.boolean) {
-        if (value != 0 && value != 1) {
-            // something went wrong if we land here, don't hide it
-            return addTypeCast(vartypes.boolean, writeLeaf("literalnumber", "" + value));
-        } else {
-            return writeLeaf("keyword", value == 0 ? "false" : "true");
-        }
-    }
-    let literal = writeLeaf("literalnumber", "" + value);
-    let res = (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
-    if (exacttype != -1 && exacttype != vartypes.int && exacttype != vartypes.unknown_int) {
-        let typename = vartypeReverseMap.get(exacttype);
-        if (typename) {
-            res.objectid = `${typename}_${value}`;
-        }
-    }
-    return res;
+    return writeIntObject(ctx, exacttype, value);
 }
 
 addWriter(ComposedOp, (node, ctx) => {
@@ -512,11 +469,9 @@ addWriter(RawOpcodeNode, (node, ctx) => {
             }
         }
         if (typeof node.op.imm_obj == "string") {
-            let literal = writeLeaf("literalstring", `"${escapeStringLiteral(node.op.imm_obj, "double")}"`);
-            return (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
+            return writeLeaf("literalstring", `"${escapeStringLiteral(node.op.imm_obj, "double")}"`);
         } else if (Array.isArray(node.op.imm_obj)) {
-            let literal = writeLeaf("literalnumber", `${longJsonToBigInt(node.op.imm_obj)}n`);
-            return (ctx.typescript ? addTypeCast(exacttype, literal) : literal);
+            return writeLeaf("literalnumber", `${longJsonToBigInt(node.op.imm_obj)}n`);
         } else if (typeof node.op.imm_obj == "number") {
             return writeIntLiteral(ctx, node.op.imm_obj, exacttype);
         } else {

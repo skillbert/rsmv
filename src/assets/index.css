@@ -481,8 +481,10 @@
 }
 
 .mv-code__link {
-	text-decoration: underline;
 	cursor: pointer;
+}
+.mv-code__link:hover {
+	text-decoration: underline;
 }
 
 .mv-dbgrid {

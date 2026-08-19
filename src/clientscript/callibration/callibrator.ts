@@ -298,6 +298,7 @@ export class ClientscriptObfuscation {
     varmeta: Map<number, ClientVarGroup> = new Map();
     varbitmeta: Map<number, VarbitMeta> = new Map();
     parammeta = new Map<number, params>();
+    objectNames = new Map<string, Map<number, string>>();
     scriptargs = new Map<number, { scriptname: string, stack: StackInOut }>();
 
     static async fromJson(source: CacheFileSource, deobjson: ReturnType<ClientscriptObfuscation["toJson"]>, scriptjson: null | ReturnType<ClientscriptObfuscation["getScriptJson"]>) {
@@ -445,6 +446,10 @@ export class ClientscriptObfuscation {
 
         let dbtables = await this.source.getArchiveById(cacheMajors.config, cacheConfigPages.dbtables);
         this.dbtables = new Map(dbtables.map(q => [q.fileid, parse.dbtables.read(q.buffer, this.source)]));
+
+        for (let [groupname, val] of Object.entries(internalNameFiles)) {
+            this.objectNames.set(groupname, await this.source.getInternalNameList(val).catch(() => new Map()));
+        }
 
         //only tested on current 932 caches
         if (this.source.getBuildNr() > 900) {

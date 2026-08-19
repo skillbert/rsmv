@@ -1,6 +1,8 @@
 import { vartypeReverseMap, vartypes } from "../../constants";
+import { unpackCoordgrid } from "../../utils";
 import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { ClientScriptOp, ExactStack, getOpName, namedClientScriptOps, StackDiff, StackList } from "../definitions";
+import { TsWriterContext } from "./codewriter";
 
 type FragmentType = "literalstring" | "literalnumber" | "global" | "local" | "scriptname" | "opname" | "keyword" | "type" | "comment" | "";
 
@@ -54,14 +56,82 @@ export function tsToSubtype(tscode: string) {
     return vartypes[tscode];
 }
 
-export function addTypeCast(exacttype: number, child: WriteResult) {
-    if (exacttype == -1) { return child; }
-    if (exacttype == vartypes.int || exacttype == vartypes.unknown_int) { return child; }
-    if (exacttype == vartypes.string || exacttype == vartypes.unknown_string) { return child; }
-    if (exacttype == vartypes.long || exacttype == vartypes.unknown_long) { return child; }
-    return new WriteResult(17, [writeLeaf("type", subtypeToTs(exacttype)), "(", child, ")"]);
-    // precedence of `as` operator in ts seems to be 8.5
-    // return new WriteResult(9, [addBracketsIfNeeded(9, "left", true, false, child), " ", writeLeaf("keyword", "as"), " ", writeLeaf("type", subtypeToTs(exacttype))]);
+export function writeIntObject(ctx: TsWriterContext, exacttype: number, intvalue: number) {
+    // just an int, no further meaning
+    if (exacttype == -1 || exacttype == vartypes.int || exacttype == vartypes.unknown_int) {
+        return writeLeaf("literalnumber", "" + intvalue);
+    }
+
+    // boolean
+    if (exacttype == vartypes.boolean) {
+        if (intvalue != 0 && intvalue != 1) {
+            // something went wrong if we land here, don't hide it
+            return writeIntObject(ctx, vartypes.boolean, intvalue);
+        } else {
+            return writeLeaf("keyword", intvalue == 0 ? "false" : "true");
+        }
+    }
+
+    // try find a name for this object, if it has one
+    let objectlink = "";
+    let typename = vartypeReverseMap.get(exacttype);
+    if (exacttype == vartypes.component) {
+        let intf = intvalue >> 16;
+        let sub = intvalue & 0xffff;
+        objectlink = `component_${intf}_${sub}`;
+    } else if (typename) {
+        objectlink = `${typename}_${intvalue}`;
+    }
+
+    // if it has a name return it as named constant
+    let namegroup = ctx.calli.objectNames.get(vartypeReverseMap.get(exacttype)!);
+    if (namegroup) {
+        let name = namegroup.get(intvalue);
+        if (name) {
+            return new WriteResult(17, [
+                writeLeaf("type", subtypeToTs(exacttype)),
+                ".",
+                writeLeaf("global", name)
+            ], "", objectlink);
+        }
+    }
+
+    // special handling for component
+    if (exacttype == vartypes.component) {
+        let intf = intvalue >> 16;
+        let sub = intvalue & 0xffff;
+        objectlink = `component_${intf}_${sub}`;
+        if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
+            return new WriteResult(17, [
+                writeLeaf("type", "comprel"), "(",
+                writeLeaf("literalnumber", `${intf}`), ", ",
+                writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
+            ], "", objectlink);
+        } else {
+            return new WriteResult(17, [
+                writeLeaf("type", "comp"), "(",
+                writeLeaf("literalnumber", `${intf}`), ", ",
+                writeLeaf("literalnumber", `${sub}`), ")"
+            ], "", objectlink);
+        }
+    }
+    // special handling for coordgrid
+    if (exacttype == vartypes.coordgrid && intvalue != -1) {
+        let pos = unpackCoordgrid(intvalue);
+        // TODO maybe make the entire construct look like a literal
+        return new WriteResult(17, [
+            writeLeaf("type", "coordgrid"), "(",
+            writeLeaf("literalnumber", `${pos.level}`), ", ",
+            writeLeaf("literalnumber", `${pos.x}`), ", ",
+            writeLeaf("literalnumber", `${pos.z}`), ")"
+        ], "", `coordgrid_${pos.level}_${pos.x}_${pos.z}`);
+    }
+
+    // fallback int with cast
+    return new WriteResult(17, [
+        writeLeaf("type", subtypeToTs(exacttype)),
+        "(", writeLeaf("literalnumber", "" + intvalue), ")"
+    ], "", objectlink);
 }
 
 export function writeLeaf(type: FragmentType, str: string, objectid = "") {
