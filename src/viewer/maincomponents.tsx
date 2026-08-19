@@ -315,11 +315,11 @@ function CacheDragNDropHelp() {
 						</React.Fragment>
 					)}
 					{mode == "blob" && ( */}
-						<React.Fragment>
-							<p>Drop and drop the cache files into this window.</p>
-							<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
-							<video src={new URL("../assets/dragndropblob.mp4", import.meta.url).href} autoPlay loop style={{ aspectRatio: "458/380" }} />
-						</React.Fragment>
+					<React.Fragment>
+						<p>Drop and drop the cache files into this window.</p>
+						<input type="text" onFocus={e => e.target.select()} readOnly value={"C:\\ProgramData\\Jagex"} />
+						<video src={new URL("../assets/dragndropblob.mp4", import.meta.url).href} autoPlay loop style={{ aspectRatio: "458/380" }} />
+					</React.Fragment>
 					{/* )} */}
 				</div>
 			)}
@@ -495,12 +495,10 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 			e.intercept({ focusReset: "manual" });
 		} else {
 			// preven't reuse of our new url if the navigation was manual
-			this.lastPushTime = 0;
 			this.setStateFromUrl(new URL(e.destination.url));
 		}
 	}
 
-	lastPushTime = 0;
 	isNavigating = false;
 	fixUrl() {
 		let tab = (this.activeTabIndex != -1 ? this.openedTabs[this.activeTabIndex] : null);
@@ -529,9 +527,7 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 
 		if (navigatable && url.href != document.location.href) {
 			this.isNavigating = true;
-			// only push to history if the last page was shown more than 1 second
-			let dopush = now - this.lastPushTime > 1000;
-			this.lastPushTime = now;
+			let dopush = true;;
 			try {
 				navigation.navigate(url, { history: (dopush ? "push" : "replace"), state: { target: tab } });
 			} finally {

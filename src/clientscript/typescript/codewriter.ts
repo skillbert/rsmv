@@ -331,13 +331,13 @@ function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number)
                 writeLeaf("type", "comprel"), "(",
                 writeLeaf("literalnumber", `${intf}`), ", ",
                 writeLeaf("literalnumber", `${sub - ctx.compoffsets.get(intf)!}`), ")"
-            ], "", `comp_${intf}_${sub}`);
+            ], "", `component_${intf}_${sub}`);
         } else {
             return new WriteResult(17, [
                 writeLeaf("type", "comp"), "(",
                 writeLeaf("literalnumber", `${intf}`), ", ",
                 writeLeaf("literalnumber", `${sub}`), ")"
-            ], "", `comp_${intf}_${sub}`);
+            ], "", `component_${intf}_${sub}`);
         }
     }
     if (exacttype == vartypes.coordgrid && value != -1) {
@@ -363,7 +363,7 @@ function writeIntLiteral(ctx: TsWriterContext, value: number, exacttype: number)
     if (exacttype != -1 && exacttype != vartypes.int && exacttype != vartypes.unknown_int) {
         let typename = vartypeReverseMap.get(exacttype);
         if (typename) {
-            res.objectid = `${typename[0]}_${value}`;
+            res.objectid = `${typename}_${value}`;
         }
     }
     return res;

@@ -75,12 +75,10 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     // need to confirm
     // mapsceneicon: "mapscenes",
     // mapelement: "maplabels",
-    // skybox: "environments",
     // non-json
-    // graphic: "sprites",
     // texture: "textures",
     // maparea: "mapareas",
-    component: "interfaceviewer",//redirect this to interfaceviewer instead
+    component: "interfaceviewer",
     // interface: "interfaces"
 }
 

@@ -258,7 +258,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 return { viewer: "sprite", mode: index.mode, sprite } as const;
             }
             if (index.mode == "interfaceviewer") {
-                return { viewer: "interfaces", mode: index.mode, interfaceid: index.index[0] } as const;
+                return { viewer: "interfaces", mode: index.mode, interfaceid: index.index } as const;
             }
             if (index.mode == "sounds" || index.mode == "music") {
                 let major = (index.mode == "sounds" ? cacheMajors.sounds : cacheMajors.music);
@@ -296,7 +296,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
     } else if (data.viewer == "audio") {
         return <BlobAudio file={data.file} autoplay />
     } else if (data.viewer == "interfaces") {
-        return <RsUIViewer interfaceid={data.interfaceid} />
+        return <RsUIViewer interfaceid={data.interfaceid[0]} subcomponent={data.interfaceid[1]} />
     } else if (data.viewer == "map") {
         return <CheapMapView level={data.level} centerx={data.x} centerz={data.z} markers={data.markers} />
     }

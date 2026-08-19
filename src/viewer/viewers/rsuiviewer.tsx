@@ -5,9 +5,8 @@ import { ThreeJsRenderer } from "../threejsrender";
 import { CacheFileSource } from "../../cache";
 import { DomWrap } from "../commoncontrols";
 
-export function RsUIViewer(p: { interfaceid: number }) {
+export function RsUIViewer(p: { interfaceid: number, subcomponent?: number }) {
 	let [ui, setui] = React.useState<RsInterfaceDomTree | null>(null);
-	let [hovering, sethovering] = React.useState(true);
 	let [refreshcount, refresh] = React.useReducer((v: number) => v + 1, 0);
 	let scene: ThreejsSceneCache = globalThis.sceneCache;//TODO pass this properly using args
 	let render: ThreeJsRenderer = globalThis.render;//TODO
@@ -24,6 +23,9 @@ export function RsUIViewer(p: { interfaceid: number }) {
 		loadRsInterfaceData(ctx, p.interfaceid).then(ui => {
 			if (!needed) { return; }
 			let res = renderRsInterfaceDOM(ctx, ui);
+			if (p.subcomponent !== undefined) {
+				ctx.toggleHighLightComp((p.interfaceid << 16) | p.subcomponent, true);
+			}
 			cleanup = res.dispose;
 			setui(res);
 		});
@@ -78,7 +80,7 @@ export function RsUIViewer(p: { interfaceid: number }) {
 		} else if (e.type == "click") {
 			ctx.emit("select", comp);
 		}
-	}, [hovering, ctx, ui]);
+	}, [ctx, ui]);
 
 
 	return (
@@ -87,9 +89,8 @@ export function RsUIViewer(p: { interfaceid: number }) {
 				<DomWrap el={ui?.el} />
 			</div>
 			<div>
-				<label><input type="checkbox" checked={ctx.runOnloadScripts} onChange={e => { ctx.runOnloadScripts = e.currentTarget.checked; refresh(); }} />Run load scripts</label>
-				<label><input type="checkbox" checked={hovering} onChange={e => sethovering(e.currentTarget.checked)} />Hover</label>
 				<input type="button" className="sub-btn" onClick={refresh} value="reload" />
+				<label><input type="checkbox" checked={ctx.runOnloadScripts} onChange={e => { ctx.runOnloadScripts = e.currentTarget.checked; refresh(); }} />Run load scripts</label>
 			</div>
 			<div style={{ overflowY: "auto" }}>
 				{ui?.rootcomps.map((q, i) => <RsInterfaceDebugger ctx={ctx} key={i} source={scene.engine} comp={q} />)}

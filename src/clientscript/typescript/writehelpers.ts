@@ -34,9 +34,8 @@ export function addBracketsIfNeeded(slotprec: number, assoc: "left" | "right" | 
 }
 
 export function subtypeToTs(subt: number) {
-    let resentry = vartypeReverseMap.get(subt)
-    if (!resentry) { return `type_${subt}`; }
-    let res = resentry[0];
+    let res = vartypeReverseMap.get(subt)
+    if (!res) { return `type_${subt}`; }
     // prevent conflict with ts keywords
     // if (res == "boolean") { res = "cs2bool"; }
     if (res == "enum") { res = "cs2enum"; }
