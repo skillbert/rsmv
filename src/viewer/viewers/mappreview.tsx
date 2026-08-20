@@ -1,10 +1,10 @@
 import React from "react";
-import { MapRect, rs2ChunkSize, worldStride } from "../../3d/mapsquare";
+import { MapRect, rs2ChunkSize } from "../../3d/mapsquare";
 import { EngineCache } from "../../3d/modeltothree";
 import { UIEngineContext } from "../maincomponents";
 import { cacheMajors } from "../../constants";
 import { CacheIndexFile } from "../../cache";
-import { taskTrickler } from "../../utils";
+import { packMapsquare, taskTrickler } from "../../utils";
 import { TabStrip, useForceUpdate } from "../commoncontrols";
 
 export type MapviewMarker = { x: number, z: number };
@@ -171,7 +171,7 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialimgsource: "c
         let chunks = rectToChunks({ x: rect.x - imgtileoffset, z: rect.z - imgtileoffset, xsize: rect.xsize, zsize: rect.zsize });
         for (let [chunkx, chunkz] of chunks) {
             if (chunkx < 0 || chunkz < 0 || chunkx >= 100 || chunkz >= 200) { continue; }
-            let key = chunkz * worldStride + chunkx;
+            let key = packMapsquare(chunkx, chunkz);
             if (!chunkindex?.[key]) {
                 continue; //doesn't exist
             }

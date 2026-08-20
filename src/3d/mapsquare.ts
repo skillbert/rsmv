@@ -1,4 +1,4 @@
-import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod, getOrInsert } from "../utils";
+import { packedHSL2HSL, HSL2RGB, ModelModifications, posmod, getOrInsert, packMapsquare } from "../utils";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastClassicBuildnr, lastLegacyBuildnr } from "../constants";
 import { parse } from "../parser/jsondecoders";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
@@ -27,7 +27,6 @@ export const tiledimensions = 512;
 export const rs2ChunkSize = 64;
 export const classicChunkSize = 48;
 export const squareLevels = 4;//TODO get rid of this and use grid.levels instead
-export const worldStride = 128;
 const heightScale = 1 / 16;
 
 const upvector = new THREE.Vector3(0, 1, 0);
@@ -935,7 +934,7 @@ export type ParsemapOpts = { padfloor?: boolean, invisibleLayers?: boolean, coll
 
 export async function getMapsquareData(engine: EngineCache, chunkx: number, chunkz: number) {
 	let squareSize = (engine.classicData ? classicChunkSize : rs2ChunkSize);
-	let squareindex = chunkx + chunkz * worldStride;
+	let squareindex = packMapsquare(chunkx, chunkz);
 
 	let tiles: mapsquare_tiles["tiles"];
 	let nxttiles: mapsquare_tiles_nxt | null = null;

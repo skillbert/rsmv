@@ -1,6 +1,7 @@
-import { MapRect, worldStride } from "../3d/mapsquare";
+import { MapRect } from "../3d/mapsquare";
 import { EngineCache } from "../3d/modeltothree";
 import { ScriptFS, ScriptOutput } from "../scriptrunner";
+import { packMapsquare } from "../utils";
 import { depClasses, DepMeta } from "./dependencies";
 
 export async function diffFileDependencyHash(output: ScriptOutput, outdir: ScriptFS, sourcea: EngineCache, sourceb: EngineCache, rootdepformat: string, depstring: string) {
@@ -30,7 +31,7 @@ export async function diffFileDependencyHash(output: ScriptOutput, outdir: Scrip
         ]);
         output.log(`Dependencies for map square ${x}.${z} loaded`);
         rootdeptype = "mapsquare";
-        rootdepid = z * worldStride + x;
+        rootdepid = packMapsquare(x, z);
     } else if (depClasses.includes(rootdepformat as any)) {
         rootdeptype = rootdepformat;
         rootdepid = parseInt(depstring);

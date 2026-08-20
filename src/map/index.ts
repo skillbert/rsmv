@@ -1,13 +1,13 @@
 
 import { ThreeJsRenderer } from "../viewer/threejsrender";
-import { ParsemapOpts, MapRect, worldStride, parseMapsquare } from "../3d/mapsquare";
+import { ParsemapOpts, MapRect, parseMapsquare } from "../3d/mapsquare";
 import { CacheFileSource, getCacheVersionFingerprint } from "../cache";
 import { cacheMajors } from "../constants";
 import { parse } from "../parser/jsondecoders";
 import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { DependencyGraph } from "../scripts/dependencies";
 import { ScriptOutput } from "../scriptrunner";
-import { delay, stringToFileRange, trickleTasks } from "../utils";
+import { delay, packMapsquare, stringToFileRange, trickleTasks } from "../utils";
 import { mapsquareFloorDependencies, mapsquareLocDependencies, mapsquareVisuals } from "./chunksummary";
 import { RSMapChunk } from "../3d/scene/mapchunk";
 import { MapRender, SymlinkCommand, VersionFilter } from "./backends";
@@ -509,7 +509,7 @@ export class SimpleHasher {
 	getsubhash(x: number, z: number) {
 		let h = this.subhashes.find(q => q.x == x && q.z == z);
 		if (!h) {
-			let hash = this.depstracker.hashDependencies(this.depstracker.makeDeptName("mapsquare", x + z * worldStride));
+			let hash = this.depstracker.hashDependencies(this.depstracker.makeDeptName("mapsquare", packMapsquare(x, z)));
 			this.subhashes.push({ x, z, hash });
 			return hash;
 		} else {
@@ -529,7 +529,7 @@ export class SimpleHasher {
 		let exists = false;
 		for (let z = rect.z; z < rect.z + rect.zsize; z++) {
 			for (let x = rect.x; x < rect.x + rect.xsize; x++) {
-				exists ||= this.depstracker.hasEntry("mapsquare", x + z * worldStride);
+				exists ||= this.depstracker.hasEntry("mapsquare", packMapsquare(x, z));
 			}
 		}
 		return exists;

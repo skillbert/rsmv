@@ -3,10 +3,10 @@
 import { cacheConfigPages, cacheMajors, cacheMapFiles, lastLegacyBuildnr } from "../constants";
 import { parse } from "../parser/jsondecoders";
 import { archiveToFileId, mappedFileIds, oldConfigMaps } from "../cache";
-import { ChunkData, defaultMorphId, getMapsquareData, MapRect, worldStride } from "../3d/mapsquare";
+import { ChunkData, defaultMorphId, getMapsquareData, MapRect } from "../3d/mapsquare";
 import { convertMaterial } from "../3d/materials/jmat";
 import { crc32, crc32addInt } from "../libs/crc32util";
-import { arrayEnum, trickleTasksTwoStep, trickleTasks } from "../utils";
+import { arrayEnum, trickleTasksTwoStep, trickleTasks, packMapsquare } from "../utils";
 import { EngineCache } from "../3d/modeltothree";
 import { legacyMajors, legacyGroups } from "../cache/legacycache";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
@@ -54,7 +54,7 @@ async function* iterateConfigFiles(cache: EngineCache, major: number) {
 }
 
 function chunkDeps(data: ChunkData, addDep: DepCallback, addHash: HashCallback) {
-	let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
+	let squareindex = packMapsquare(data.mapsquarex, data.mapsquarez);
 	addHash("mapsquare", squareindex, data.chunkfilehash, data.chunkfileversion);
 	for (let loc of data.rawlocs) {
 		addDep("loc", loc.id, "mapsquare", squareindex);
@@ -547,7 +547,7 @@ export class DependencyGraph {
 
 	insertMapChunk(data: ChunkData) {
 		chunkDeps(data, this.addDep.bind(this), this.addHash.bind(this));
-		let squareindex = data.mapsquarex + data.mapsquarez * worldStride;
+		let squareindex = packMapsquare(data.mapsquarex, data.mapsquarez);
 		return this.makeDeptName("mapsquare", squareindex);
 	}
 

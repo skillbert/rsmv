@@ -1,6 +1,6 @@
 import { archiveToFileId, CacheFileSource, CacheIndex, fileIdToArchiveminor, SubFile } from "../cache";
 import { cacheMajors, lastLegacyBuildnr } from "../constants";
-import { cacheFilenameHash } from "../utils";
+import { cacheFilenameHash, packMapsquare, unpackMapsquare } from "../utils";
 
 export type DecodeLookup = {
     major: number | undefined,
@@ -109,7 +109,6 @@ export function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
 
 export function worldmapIndex(subfile: number): DecodeLookup {
     const major = cacheMajors.mapsquares;
-    const worldStride = 128;
     return {
         major,
         minor: undefined,
@@ -117,18 +116,18 @@ export function worldmapIndex(subfile: number): DecodeLookup {
         usesArchieves: true,
         internalNamefile: undefined,
         fileToLogical(source, major, minor, subfile) {
-            return [minor % worldStride, Math.floor(minor / worldStride)];
+            let { x, z } = unpackMapsquare(minor)
+            return [x, z];
         },
         logicalToFile(source, id: LogicalIndex) {
-            return { major, minor: id[0] + id[1] * worldStride, subid: subfile };
+            return { major, minor: packMapsquare(id[0], id[1]), subid: subfile };
         },
         async logicalRangeToFiles(source, start, end) {
             let indexfile = await source.getCacheIndex(major);
             let files: CacheFileId[] = [];
             for (let index of indexfile) {
                 if (!index) { continue; }
-                let x = index.minor % worldStride;
-                let z = Math.floor(index.minor / worldStride);
+                let { x, z } = unpackMapsquare(index.minor);
                 if (x >= start[0] && x <= end[0] && z >= start[1] && z <= end[1]) {
                     for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
                         let subfileid = index.subindices[fileindex];

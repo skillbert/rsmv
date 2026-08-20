@@ -476,6 +476,18 @@ export function packComponent(intf: number, sub: number) {
 	return (intf << 16) | sub;
 }
 
+export function packMapsquare(x: number, z: number) {
+	const worldStride = 128;
+	return (z * worldStride) + x;
+}
+
+export function unpackMapsquare(mapsquare: number) {
+	const worldStride = 128;
+	let x = mapsquare % worldStride;
+	let z = Math.floor(mapsquare / worldStride);
+	return { x, z };
+}
+
 export class TypedEmitter<T extends Record<string, any>> {
 	protected listeners: { [key in keyof T]?: Set<(v: T[key]) => void> } = {};
 	on<K extends keyof T>(event: K, listener: (v: T[K]) => void) {

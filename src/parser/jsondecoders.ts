@@ -93,7 +93,10 @@ export class FileParser<T> {
 }
 
 // not an async generator since that would incur async overhead for each file
-export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBasedFile<T>, allfiles: CacheFileId[], callback: (obj: T, fileid: CacheFileId, logicalid: LogicalIndex) => void) {
+export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBasedFile<T>, allfiles: CacheFileId[],
+	callback: (obj: T, fileid: CacheFileId, logicalid: LogicalIndex) => void | Promise<void>,
+	errorcallback?: (err: Error, fileid: CacheFileId, logicalid: LogicalIndex) => void
+) {
 	let namelist = (typeof mode.lookup.internalNamefile == "number" ? await source.getInternalNameList(mode.lookup.internalNamefile) : null);
 	let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 	for (let fileid of allfiles) {
@@ -106,13 +109,22 @@ export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBas
 		}
 		let file = arch[fileid.subindex];
 		let logicalid = mode.lookup.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
-		let res = mode.parser.read(file.buffer, source);
-		(res as any).$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
-		let filename = namelist?.get(logicalid[0]);
-		if (filename) {
-			(res as any).$filename = filename;
+		try {
+			let res = mode.parser.read(file.buffer, source);
+			(res as any).$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
+			let filename = namelist?.get(logicalid[0]);
+			if (filename) {
+				(res as any).$filename = filename;
+			}
+			let cbresult = callback(res, fileid, logicalid);
+			if (cbresult instanceof Promise) { await cbresult; }
+		} catch (err) {
+			if (errorcallback) {
+				errorcallback(err as Error, fileid, logicalid);
+			} else {
+				throw err;
+			}
 		}
-		callback(res, fileid, logicalid);
 	}
 }
 

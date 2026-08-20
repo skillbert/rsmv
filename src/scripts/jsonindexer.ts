@@ -8,7 +8,7 @@ import { loadParams } from "../clientscript/util";
 import { params } from "../../generated/params";
 import { LogicalIndex } from "../parser/filelookup";
 import { AbstractSQLite, AbstractSQLiteNode, AbstractSQLiteStatement, AbstractSQLiteWorker } from "../libs/sqlite3wrap";
-import { packComponent, packCoordgrid } from "../utils";
+import { packComponent, packCoordgrid, packMapsquare } from "../utils";
 import { ScriptOutput } from "../scriptrunner";
 
 
@@ -63,89 +63,131 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     // interface: "interfaces"
 }
 
-// const modewhitelist: JsonBasedFile<any>[] = [
-//     cacheFileJsonModes.achievements,
-//     cacheFileJsonModes.animgroupconfigs,
-//     cacheFileJsonModes.client_cutscenes,
-//     cacheFileJsonModes.cursors,
-//     cacheFileJsonModes.cutscenes,
-//     cacheFileJsonModes.dbrows,
-//     cacheFileJsonModes.dbtables,
-//     cacheFileJsonModes.enums,
-//     cacheFileJsonModes.fontmetrics,
-//     cacheFileJsonModes.framemaps,
-//     cacheFileJsonModes.frames,
-//     cacheFileJsonModes.headbars,
-//     cacheFileJsonModes.hitmarks,
-//     cacheFileJsonModes.identitykit,
-//     cacheFileJsonModes.interfaces,
-//     cacheFileJsonModes.inventories,
-//     cacheFileJsonModes.items,
-//     cacheFileJsonModes.locs,
-//     cacheFileJsonModes.mapenvs,
-//     cacheFileJsonModes.maplabellocations,
-//     cacheFileJsonModes.maplabels,
-//     cacheFileJsonModes.maplocations,
-//     cacheFileJsonModes.mappastes,
-//     cacheFileJsonModes.mapscenes,
-//     cacheFileJsonModes.maptiles,
-//     cacheFileJsonModes.mapzones,
-//     cacheFileJsonModes.materials,
-//     cacheFileJsonModes.npcs,
-//     cacheFileJsonModes.overlays,
-//     cacheFileJsonModes.params,
-//     cacheFileJsonModes.quests,
-//     cacheFileJsonModes.quickchatcats,
-//     cacheFileJsonModes.quickchatlines,
-//     cacheFileJsonModes.sequences,
-//     cacheFileJsonModes.skeletons,
-//     cacheFileJsonModes.skyboxes,
-//     cacheFileJsonModes.spotanims,
-//     cacheFileJsonModes.structs,
-//     cacheFileJsonModes.stylesheets,
-//     cacheFileJsonModes.underlays,
-//     cacheFileJsonModes.var_campaign,
-//     cacheFileJsonModes.var_clan,
-//     cacheFileJsonModes.var_client,
-//     cacheFileJsonModes.var_npc,
-//     cacheFileJsonModes.var_object,
-//     cacheFileJsonModes.var_player,
-//     cacheFileJsonModes.var_player_group,
-//     cacheFileJsonModes.var_region,
-//     cacheFileJsonModes.var_world,
-//     cacheFileJsonModes.varbits,
-// ]
+const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip"> = {
+    items: "full",
+    enums: "full",
+    npcs: "full",
+    locs: "full",
+    achievements: "full",
+    structs: "full",
+    spotanims: "full",
+    materials: "full",
+    quickchatcats: "full",
+    quickchatlines: "full",
+    dbtables: "full",
+    dbrows: "full",
+    quests: "full",
+    hitmarks: "full",
+    headbars: "full",
+    varbits: "full",
+    var_player: "full",
+    var_npc: "full",
+    var_client: "full",
+    var_world: "full",
+    var_region: "full",
+    var_object: "full",
+    var_clan: "full",
+    var_clansetting: "full",
+    var_campaign: "full",
+    var_player_group: "full",
+    overlays: "full",
+    identitykit: "full",
+    inventories: "full",
+    params: "full",
+    underlays: "full",
+    mapscenes: "full",
+    skyboxes: "full",
+    cursors: "full",
+    maplabels: "full",
+    maplabellocations: "full",
+    mapzones: "full",
+    mappastes: "full",
+    stylesheets: "full",
+    cutscenes: "full",
+    interfaces: "full",
+    fontmetrics: "full",
+    // only explicitly typed fields
+    framemaps: "typedonly",
+    sequences: "typedonly",
+    animgroupconfigs: "typedonly",
+    client_cutscenes: "typedonly",
+    maptiles: "typedonly",
+    maplocations: "typedonly",
+    frames: "typedonly",
+    models: "typedonly",
+    skeletons: "typedonly",
+    // skip
+    soundjson: "skip",
+    musicjson: "skip",
+    oldmaterials: "skip",
+    mapzones_sub3: "skip",
+    mapzones_sub4: "skip",
+    particles0: "skip",
+    particles1: "skip",
+    maptiles_nxt: "skip",
+    maptiles_old: "skip",
+    maplocations_old: "skip",
+    oldmodels: "skip",
+    proctextures: "skip",
+    oldproctextures: "skip",
+    config83: "skip",
+    indices: "skip",
+    rootindex: "skip",
+    clientscriptops: "skip",
+    test: "skip",
+    // broken - fixable
+    mapenvs: "skip",
+}
 
-const modewhitelist: JsonBasedFile<any>[] = [
-    cacheFileJsonModes.quests
-];
+// const modewhitelist: JsonBasedFile<any>[] = [
+//     cacheFileJsonModes.quests
+// ];
 
 export async function calculateReferenceGraph(out: ScriptOutput, source: CacheFileSource) {
     let graph = await ReferenceGraph.create(source);
 
-    for (let [modename, mode] of Object.entries(cacheFileJsonModes)) {
+    // for (let [modename, mode] of Object.entries(cacheFileJsonModes)) {
+    // if (!modewhitelist.includes(mode)) { continue; }
+    for (let [modename, action] of Object.entries(modeactions)) {
+        let mode = cacheFileJsonModes[modename];
+        if (action == "skip") { continue; }
         if (out.state != "running") { break; }
-        if (!modewhitelist.includes(mode)) { continue; }
 
-        out.log(`Indexing references for ${modename}...`);
+        out.log(`=== Indexing ${modename} ===`);
         let allfiles = await mode.lookup.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
         let schema = mode.parser.parser.getJsonSchema();
         let count = 0;
+        let lastprogress = Date.now();
         await iterateJsonFiles(source, mode, allfiles, (obj, fileid, logical) => {
             if (out.state != "running") { throw new Error("script aborted"); }
-            if (++count % 5000 == 0) { out.log(`Processed ${count} files`); }
             graph.currentobjstack = [];
             graph.currentlogical = logical;
             graph.currentmode = modename as any;
+            graph.currenttypedonly = action == "typedonly";
+
             parseJsonValue(graph, "root", obj, schema);
+
+            count++;
+            if (Date.now() - lastprogress > 10000) {
+                out.log(`Processed ${count}/${allfiles.length} files`);
+                lastprogress = Date.now();
+            }
+            if (count % 500 == 0) {
+                return graph.maybeFlush();
+            }
+        }, (err, fileid, logical) => {
+            out.log(`Error processing ${modename}_${logical.join("_")}: ${err.message}`);
         });
-        out.log(`Finished indexing references for ${modename}, processed ${count} files`);
+        await graph.flush();
+        out.log(`Finished ${modename} - ${count} files`);
     }
 }
 
 async function calculateCS2References(source: CacheFileSource) {
     // TODO
 }
+
+type RefEntry = { srcmode: string, srcid: number, propname: string, value: number | string, dstmode: string };
 
 class ReferenceGraph {
     params!: Map<number, params>;
@@ -154,6 +196,9 @@ class ReferenceGraph {
     currentobjstack: any[] = [];
     currentlogical: LogicalIndex = [];
     currentmode: BrowseModes = "" as any;
+    currenttypedonly = false;
+
+    queue: RefEntry[] = [];
 
     refdb!: AbstractSQLite;
     dbAddInt!: AbstractSQLiteStatement;
@@ -178,23 +223,60 @@ class ReferenceGraph {
         builder.refdb = await AbstractSQLiteNode.create(dbname, { create: true, write: true });
         await builder.refdb.exec(`CREATE TABLE IF NOT EXISTS refints (srcmode TEXT, srcid UINT, propname TEXT, value INT, dstmode TEXT);`);
         await builder.refdb.exec(`CREATE TABLE IF NOT EXISTS refstrings (srcmode TEXT, srcid UINT, propname TEXT, value TEXT, dstmode TEXT);`);
+        await builder.refdb.exec(`CREATE INDEX IF NOT EXISTS idx_refints_value ON refints (value, dstmode);`);
+        await builder.refdb.exec(`CREATE INDEX IF NOT EXISTS idx_refstrings_value ON refstrings (value, dstmode);`);
         builder.dbAddInt = await builder.refdb.prepare(`INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
         builder.dbAddString = await builder.refdb.prepare(`INSERT INTO refstrings (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
 
         return builder;
     }
 
+    async flush() {
+        await this.refdb.exec("BEGIN TRANSACTION;");
+        try {
+            await Promise.all(this.queue.map(entry => {
+                if (typeof entry.value == "number") {
+                    return this.dbAddInt.run([entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode]);
+                } else {
+                    return this.dbAddString.run([entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode]);
+                }
+            }));
+            await this.refdb.exec("COMMIT;");
+            this.queue = [];
+        } catch (e) {
+            await this.refdb.exec("ROLLBACK;");
+            throw e;
+        }
+    }
+
+    async maybeFlush() {
+        if (this.queue.length > 10000) {
+            await this.flush();
+        }
+    }
+
     addInt(propname: string, value: number, type: string) {
-        this.dbAddInt.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type])
-        // .then(v => {
-        //     console.log("added int to refgraph: ", v, this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type)
-        // })
-        // .catch(e => {
-        //     console.error("error adding int to refgraph: ", e, this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type)
-        // })
+        if (this.currenttypedonly && (type == "unknown" || type == "")) {
+            return;
+        }
+        this.queue.push({
+            srcmode: this.currentmode,
+            srcid: logicalIdToPackedInt(this.currentlogical, this.currentmode),
+            propname,
+            value,
+            dstmode: type
+        });
+        // this.dbAddInt.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type]);
     }
     addString(propname: string, value: string, type: string) {
-        this.dbAddString.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type]);
+        this.queue.push({
+            srcmode: this.currentmode,
+            srcid: logicalIdToPackedInt(this.currentlogical, this.currentmode),
+            propname,
+            value,
+            dstmode: type
+        });
+        // this.dbAddString.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type]);
     }
 
     async findReferences() { }
@@ -207,6 +289,10 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
     if (mode == "coordgrid") {
         return packCoordgrid(id[0], id[1], id[2]);
     }
+    if (mode == "maptiles" || mode == "maptiles_nxt" || mode == "maplocations" || mode == "mapenvs") {
+        return packMapsquare(id[0], id[1]);
+    }
+
     if (id.length == 0) {
         return 0;
     }
