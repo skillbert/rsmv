@@ -14,7 +14,7 @@ export type models = {
 	unkCount4: (number|0),
 	meshes: {
 		unkint: number,
-		materialArgument: number,
+		material: number,
 		faceCount: number,
 		hasVertices: number,
 		hasVertexAlpha: number,
@@ -68,7 +68,7 @@ export type models = {
 			isHidden: number,
 			hasSkin: number,
 			unkint: number,
-			materialArgument: number,
+			material: number,
 			unkbyte2: number,
 			buf: (Uint16Array|Uint32Array),
 		}[],

@@ -13,7 +13,10 @@
 	["meshes",["opt","version<=3",["array",["ref","meshCount"],["struct",
 		["$groupFlags","ubyte"],
 		["unkint","uint"],
-		["materialArgument","ushort le"],
+		// bit awkward, material is stored with an offset of 1
+		["$materialoffset",-1],
+		["material",["accum","$materialoffset","ushort le"],"material"],
+		
 		["faceCount","ushort le"],
 
 		["hasVertices",["ref","$groupFlags",[0,1]]],
@@ -94,7 +97,10 @@
 			["hasSkin",["ref","$groupFlags",[5,1]]],
 			
 			["unkint","uint"],
-			["materialArgument","ushort le"],
+			// bit awkward, material is stored with an offset of 1
+			["$materialoffset",-1],
+			["material",["accum","$materialoffset","ushort le"],"material"],
+			
 			["unkbyte2","ubyte"],
 			//this might be groupflags&0x80 for uint indexbuffer
 			["buf",["match",{

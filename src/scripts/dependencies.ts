@@ -367,8 +367,8 @@ const modelDeps: DepCollector = async (cache, addDep, addHash, opts) => {
 		// 	let file = await cache.getFile(modelindex.major, modelindex.minor, modelindex.crc);
 		// 	let model = parse.models.read(file, cache);
 		// 	for (let mesh of model.meshes) {
-		// 		if (mesh.materialArgument != 0) {
-		// 			addDep("material", mesh.materialArgument - 1, "model", modelindex.minor);
+		// 		if (mesh.material != -1) {
+		// 			addDep("material", mesh.material, "model", modelindex.minor);
 		// 		}
 		// 	}
 		// }

@@ -576,7 +576,7 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
     }
 
     let decoder = p.data?.$decoder ?? "unknown";
-    let fileidstring = (p.data?.$fileid ? (Array.isArray(p.data.$fileid) ? p.data.$fileid.join(".") : p.data.$fileid) : "");
+    let fileidstring = (p.data?.$fileid != undefined ? (Array.isArray(p.data.$fileid) ? p.data.$fileid.join(".") : p.data.$fileid) : "");
     let filename = p.data?.$filename ?? "";
 
     return (
