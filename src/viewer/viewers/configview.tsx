@@ -1,25 +1,21 @@
 import * as React from "react";
 import { UIEngineContext, UIRootContext } from "../maincomponents";
-import { cacheMajors, internalNameFiles, vartypeReverseMap, vartypes } from "../../constants";
+import { cacheMajors, internalNameFiles, vartypeReverseMap } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { pixelsToDataUrl } from "../../imgutils";
-import { JSONSchema6, JSONSchema6Definition } from "json-schema";
+import { JSONSchema6Definition } from "json-schema";
 import { loadParams } from "../../clientscript/util";
-import { CacheFileSource } from "../../cache";
 import classNames from "classnames";
-import { BlobTS, HSL2RGB, packedHSL2HSL, RGB2HSL, taskTrickler, unpackCoordgrid } from "../../utils";
+import { BlobTS, HSL2RGB, packedHSL2HSL, RGB2HSL, taskTrickler, unpackComponent, unpackCoordgrid } from "../../utils";
 import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
-import { BrowseModes, makeFileId } from "../tabs/browse";
-import { styleSheetImageProps, styleSheetRGBAProps, styleSheetRGBProps } from "../../scripts/renderrsinterface";
+import { makeFileId } from "../tabs/browse";
 import { dbrows } from "../../../generated/dbrows";
-
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey"
-    | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "varbit" | "stylevalue";
-type PropTypes = keyof typeof vartypes | CustomPropTypes | "unknown" | "";
+import { BrowsableType, iterateTypedJson, vartypeToDecoder } from "../../scripts/jsonindexer";
+import { CacheFileSource } from "../../cache";
 
 type DeepLinkElement = {
-    rsmvtype: PropTypes,
+    rsmvtype: BrowsableType,
     name: string,
     valuename?: string | undefined,
     primitive?: string | number | boolean | null,
@@ -33,53 +29,6 @@ class DeepLinkContext {
     constructor(source: CacheFileSource) {
         this.source = source;
     }
-}
-
-export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes>> = {
-    achievement: "achievements",
-    bas: "animgroupconfigs",
-    chatcat: "quickchatcats",
-    chatphrase: "quickchatlines",
-    cursor: "cursors",
-    cutscene: "cutscenes",
-    dbrow: "dbrows",
-    enum: "enums",
-    idkit: "identitykit",
-    obj: "items",
-    loc: "locs",
-    model: "models",
-    fontmetrics: "fontmetrics",
-    npc: "npcs",
-    seq: "sequences",
-    spotanim: "spotanims",
-    sound: "sounds",
-    midi: "music",
-    struct: "structs",
-    quest: "quests",
-    material: "materials",
-    var_player: "var_player",
-    stylesheet: "stylesheets",
-    skybox: "skyboxes",
-    graphic: "sprites",
-    interface: "interfaces",
-    scriptref: "clientscript",
-    inv: "inventories",
-    coordgrid: "coordgrid",
-    maparea: "mapzones",
-    hitmark: "hitmarks",
-    ["dbtable" as any]: "dbtables",
-    // TODO fix these
-    ["headbar" as any]: "headbars",
-    ["maplabel" as any]: "maplabels",
-    ["varbit" as any]: "varbits",
-    // need to confirm
-    // mapsceneicon: "mapscenes",
-    // mapelement: "maplabels",
-    // non-json
-    // texture: "textures",
-    // maparea: "mapareas",
-    component: "interfaceviewer",
-    // interface: "interfaces"
 }
 
 const skillNames = [
@@ -131,66 +80,9 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
     let name = typeof nameorindex == "number" ? "" : nameorindex;
     ctx.objstack.push(data);
     try {
-        if (typeof meta == "boolean") { meta = null; }
-
         // === find expected type ===
-        let rsmvtype = getRSType(meta);
-        if (rsmvtype == "enumkey") {
-            let keyint = ctx.objstack.at(0)?.key_type1 ?? ctx.objstack.at(0)?.key_type2;
-            rsmvtype = vartypeReverseMap.get(keyint) as any ?? "unknown";
-        }
-        if (rsmvtype == "enumvalue") {
-            let valueint = ctx.objstack.at(0)?.value_type1 ?? ctx.objstack.at(0)?.value_type2;
-            rsmvtype = vartypeReverseMap.get(valueint) as any ?? "unknown";
-        }
-        if (rsmvtype == "paramvalue") {
-            let paramint = ctx.objstack.at(0)?.type?.vartype;
-            rsmvtype = vartypeReverseMap.get(paramint) as any ?? "unknown";
-        }
-        if (rsmvtype == "dbvalue") {
-            let fieldtype = ctx.objstack.at(-1)?.type ?? ctx.objstack.at(-4)?.subtypes?.[nameorindex];
-            rsmvtype = vartypeReverseMap.get(fieldtype) as any ?? "unknown";
-        }
-        if (typeof data == "number" && rsmvtype == "stylevalue") {
-            let proptype = ctx.objstack.at(-2)?.prop;
-            if (proptype != null) {
-                if (styleSheetImageProps.includes(proptype)) {
-                    rsmvtype = "graphic";
-                } else if (styleSheetRGBProps.includes(proptype)) {
-                    rsmvtype = "rgb";
-                    data = [(data >> 16) & 0xff, (data >> 8) & 0xff, data & 0xff];
-                } else if (styleSheetRGBAProps.includes(proptype)) {
-                    rsmvtype = "argb";
-                    data = [(data >> 0) & 0xff, (data >> 24) & 0xff, (data >> 16) & 0xff, (data >> 8) & 0xff];
-                } else {
-                    rsmvtype = "unknown";
-                }
-            }
-        }
-        // collapse multitypes
-        if (typeof data == "number" && rsmvtype == "var_reference") {
-            let domainid = (data >> 24) & 0xff;
-            data = data & 0xffff;
-            if (domainid == 0) { rsmvtype = "var_player"; }
-            else if (domainid == 1) { rsmvtype = "varbit"; }
-            else { console.log("unknown var_reference domainid: " + domainid); }
-        }
-        if (typeof data == "number" && rsmvtype == "achievement_or_varbit") {
-            let domainid = (data >> 24) & 0xff;
-            data = data & 0xffff;
-            if (domainid == 0) { rsmvtype = "achievement"; }
-            else if (domainid == 1) { rsmvtype = "varbit"; }
-            else { console.log("unknown achievement_or_varbit domainid: " + domainid); }
-        }
-
-        // === fix schema location ===
-        // strip nullable type from schema
-        if (meta?.oneOf) {
-            meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
-        }
-        if (meta?.anyOf) {
-            meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
-        }
+        let rsmvtype: BrowsableType;
+        ({ rsmvtype, data, meta } = iterateTypedJson(ctx.objstack, meta, data, nameorindex));
 
         // === handle data type ===
         if (ArrayBuffer.isView(data)) {
@@ -204,7 +96,7 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
             let valuename: string | undefined = undefined;
 
             if (rsmvtype == "type") {
-                valuename = Object.entries(vartypes).find(([k, v]) => v == data)?.[0];
+                valuename = vartypeReverseMap.get(data);
             } else if (rsmvtype == "stat") {
                 valuename = skillNames[data];
             }
@@ -252,11 +144,6 @@ async function deepLinkJson(ctx: DeepLinkContext, nameorindex: string | number, 
     } finally {
         ctx.objstack.pop();
     }
-}
-
-
-function getRSType(meta: JSONSchema6Definition | null | undefined): PropTypes {
-    return meta?.["x-rsmv-type"] ?? "unknown";
 }
 
 // prevent sending out 1000+ async requests at once
@@ -558,9 +445,8 @@ function ObjectLink(p: { prop: DeepLinkElement }) {
 
     let index = [p.prop.primitive];
     if (p.prop.rsmvtype == "component") {
-        let main = (p.prop.primitive >> 16) & 0xffff;
-        let sub = (p.prop.primitive) & 0xffff;
-        index = [main, sub];
+        let { intf, sub } = unpackComponent(p.prop.primitive);
+        index = [intf, sub];
     }
     if (p.prop.rsmvtype == "coordgrid") {
         let { level, x, z } = unpackCoordgrid(p.prop.primitive);

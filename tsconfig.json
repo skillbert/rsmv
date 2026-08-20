@@ -18,7 +18,6 @@
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"erasableSyntaxOnly": true,
-
 		"strictNullChecks": true,
 		"noImplicitThis": true,
 		"strictFunctionTypes": true,
@@ -28,8 +27,16 @@
 		"skipLibCheck": true,
 		"noEmit": true
 	},
+	"watchOptions": {
+		"excludeDirectories": [
+			"dist",
+			"cache",
+			"node_modules"
+		]
+	},
 	"exclude": [
 		"node_modules",
+		"./cache",
 		"./generated"
 	],
 	"compileOnSave": false

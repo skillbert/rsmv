@@ -52,8 +52,6 @@ function standardFile(mode: JsonBasedFile<any>, decodername: string): DecodeMode
 			...mode.lookup,
 			parser: mode.parser,
 			async prepareDump(output, source) {
-				await mode.prepareParser?.(source);
-				await mode.prepareDump?.(source);
 				let name = Object.entries(cacheFileDecodeModes).find(q => q[1] == constr);
 				if (!name) { throw new Error(); }
 				let schema = mode.parser.parser.getJsonSchema();
@@ -76,7 +74,7 @@ function standardFile(mode: JsonBasedFile<any>, decodername: string): DecodeMode
 				return (typeof mode.lookup.internalNamefile == "number" ? source.getInternalNameList(mode.lookup.internalNamefile) : undefined);
 			},
 			async prepareWrite(source) {
-				await mode.prepareParser?.(source);
+				// nop
 			},
 			read(b, id, source, ctx) {
 				let obj = mode.parser.read(b, source, { keepbuffers: args.keepbuffers });

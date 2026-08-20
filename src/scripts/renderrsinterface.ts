@@ -8,7 +8,7 @@ import { ClientScriptInterpreter } from "../clientscript/interpreter";
 import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
 import { parse } from "../parser/jsondecoders";
-import { escapeHTML, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
+import { escapeHTML, packComponent, rsmarkupToSafeHtml, TypedEmitter } from "../utils";
 import { ThreeJsRenderer } from "../viewer/threejsrender";
 import { UiCameraParams } from "../viewer/tabs/simplemodes";
 import { clientScriptDeobPopup } from "../viewer/tabs/browse";
@@ -183,7 +183,7 @@ export async function loadRsInterfaceData(ctx: UiRenderContext, id: number) {
 
     for (let sub of arch) {
         try {
-            let compid = (id << 16) | sub.fileid;
+            let compid = packComponent(id, sub.fileid);
             if (ctx.comps.has(compid)) { throw new Error("ui render context already had comp with same id"); }
             let comp = new RsInterfaceComponent(ctx, parse.interfaces.read(sub.buffer, ctx.source), compid);
             comps.set(sub.fileid, comp);

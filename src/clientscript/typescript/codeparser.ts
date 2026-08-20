@@ -11,7 +11,7 @@ import { astToImJson, intrinsics } from "../jsonwriter";
 import { vartypes } from "../../constants";
 import { reserved } from "./typescripthelpers";
 import { subtypeToTs, tsToSubtype } from "./writehelpers";
-import { packCoordgrid, unpackCoordgrid } from "../../utils";
+import { packComponent, packCoordgrid } from "../../utils";
 
 function* whitespace() {
     while (true) {
@@ -376,7 +376,7 @@ function scriptContext(ctx: ParseContext) {
         if (funcname == "comp") {
             if (args.length != 2 || !isNamedOp(args[0], namedClientScriptOps.pushconst) || !isNamedOp(args[1], namedClientScriptOps.pushconst)) { throw new Error("raw opcode expected"); }
             if (typeof args[0].op.imm_obj != "number" || typeof args[1].op.imm_obj != "number") { throw new Error("two int literals expected"); }
-            return makeIntConst((args[0].op.imm_obj << 16) | args[1].op.imm_obj, "component");
+            return makeIntConst(packComponent(args[0].op.imm_obj, args[1].op.imm_obj), "component");
         }
         if (funcname == "coordgrid") {
             if (args.length != 3) { throw new Error("3 raw opcodes expected"); }

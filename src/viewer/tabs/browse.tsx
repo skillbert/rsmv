@@ -7,7 +7,6 @@ import { BrowsePageId, UIEngineContext, UIRootContext } from "../maincomponents"
 import { jsonCacheSearch, JsonSearchFilter, showModal } from "../jsonsearch";
 import { FileListView, UIScriptConsole, UIScriptOutput, UIScriptStatus } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
-import { vartypeToDecoder } from "../viewers/configview";
 import { prepareClientScript, renderClientScript, tryPrepareClientScriptCached } from "../../clientscript";
 import { cacheMajors } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
@@ -17,6 +16,7 @@ import { parseMusic } from "../../scripts/musictrack";
 import { CheapMapView, MapviewMarker } from "../viewers/mappreview";
 import prettyJson from "json-stringify-pretty-compact";
 import { CacheFileSource } from "../../cache";
+import { vartypeToDecoder } from "../../scripts/jsonindexer";
 
 export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
 

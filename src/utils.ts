@@ -466,6 +466,16 @@ export function packCoordgrid(level: number, x: number, z: number) {
 	return ((level & 0x3) << 28) | ((x & 0x3FFF) << 14) | (z & 0x3FFF);
 }
 
+export function unpackComponent(comp: number) {
+	let intf = (comp >> 16) & 0xFFFF;
+	let sub = comp & 0xFFFF;
+	return { intf, sub };
+}
+
+export function packComponent(intf: number, sub: number) {
+	return (intf << 16) | sub;
+}
+
 export class TypedEmitter<T extends Record<string, any>> {
 	protected listeners: { [key in keyof T]?: Set<(v: T[key]) => void> } = {};
 	on<K extends keyof T>(event: K, listener: (v: T[K]) => void) {

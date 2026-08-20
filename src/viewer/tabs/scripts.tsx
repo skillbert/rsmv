@@ -22,6 +22,7 @@ import { RSModel } from '../../3d/scene/model';
 import { diffFileDependencyHash } from '../../scripts/dependencydiff';
 import { depClasses } from '../../scripts/dependencies';
 import { LookupModeProps } from '../scenenodes';
+import { calculateReferenceGraph } from '../../scripts/jsonindexer';
 
 function PreviewFilesScript(p: UiScriptProps) {
     let ctx = React.useContext(UIRootContext);
@@ -168,6 +169,24 @@ function MaprenderScript(p: UiScriptProps) {
                 {configjson != examplemapconfig && <input type="button" className="sub-btn" value="Reset" onClick={e => setconfigjson(examplemapconfig)} />}
             </div>
             <input type="button" className="sub-btn" value="Run" onClick={run} />
+        </React.Fragment>
+    )
+}
+
+function ReferenceGraphScript(p: UiScriptProps) {
+    let ctx = React.useContext(UIRootContext);
+
+    let run = async () => {
+        if (!ctx.source) { return; }
+        let output = new UIScriptOutput();
+        p.onRun(output, "");
+        let res = output.run(calculateReferenceGraph, ctx.source);
+    }
+
+    return (
+        <React.Fragment>
+            <p>Indexes all references in the cache for later use.</p>
+            <input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
         </React.Fragment>
     )
 }
@@ -400,6 +419,7 @@ const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
     historic: ExtractHistoricScript,
     maprender: MaprenderScript,
     diff: CacheDiffScript,
+    refgraph: ReferenceGraphScript,
     deps: DependencyDiffScript,
     cli: RawCliScript
 }

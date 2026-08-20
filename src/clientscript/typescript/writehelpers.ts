@@ -1,5 +1,5 @@
 import { vartypeReverseMap, vartypes } from "../../constants";
-import { unpackCoordgrid } from "../../utils";
+import { unpackComponent, unpackCoordgrid } from "../../utils";
 import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { ClientScriptOp, ExactStack, getOpName, namedClientScriptOps, StackDiff, StackList } from "../definitions";
 import { TsWriterContext } from "./codewriter";
@@ -76,8 +76,7 @@ export function writeIntObject(ctx: TsWriterContext, exacttype: number, intvalue
     let objectlink = "";
     let typename = vartypeReverseMap.get(exacttype);
     if (exacttype == vartypes.component) {
-        let intf = intvalue >> 16;
-        let sub = intvalue & 0xffff;
+        let { intf, sub } = unpackComponent(intvalue);
         objectlink = `component_${intf}_${sub}`;
     } else if (typename) {
         objectlink = `${typename}_${intvalue}`;
@@ -98,8 +97,7 @@ export function writeIntObject(ctx: TsWriterContext, exacttype: number, intvalue
 
     // special handling for component
     if (exacttype == vartypes.component) {
-        let intf = intvalue >> 16;
-        let sub = intvalue & 0xffff;
+        let { intf, sub } = unpackComponent(intvalue);
         objectlink = `component_${intf}_${sub}`;
         if (ctx.usecompoffset && ctx.compoffsets.has(intf)) {
             return new WriteResult(17, [

@@ -2,7 +2,10 @@ import type * as sqlite3 from "sqlite3";
 import type * as sqlitewasm from "@sqlite.org/sqlite-wasm";
 import { SharedWorkerPackets } from "./sqlite3worker";
 import { installBlobVfs } from "./sqlite3blobfs";
+import fs from "fs/promises";
+import path from "path";
 
+const nodecachefolder = "./cache";
 
 export abstract class AbstractSQLiteStatement {
     abstract run(args?: any[]): Promise<any[]>;
@@ -19,13 +22,17 @@ export class AbstractSQLiteNode extends AbstractSQLite {
     private constructor() {
         super();
     }
-    static async create(filepath: string, opts: { write?: boolean, create?: boolean }) {
+    static async create(filename: string, opts: { write?: boolean, create?: boolean }) {
         let db = new AbstractSQLiteNode();
         //only actually load the dependency when used
         let sqlite = __non_webpack_require__("sqlite3") as typeof import("sqlite3");
         let flags = (opts.write ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY) | (opts.create ? sqlite.OPEN_CREATE : 0);
+        
+        await fs.mkdir(nodecachefolder, { recursive: true });
+        let fullfilename = path.join(nodecachefolder, filename);
+
         db.db = await new Promise<sqlite3.Database>((done, err) => {
-            let res = new sqlite.Database(filepath, flags, e => e ? err(e) : done(res));
+            let res = new sqlite.Database(fullfilename, flags, e => e ? err(e) : done(res));
         });
         return db;
     }
@@ -63,7 +70,7 @@ export class AbstractSQLiteWasm extends AbstractSQLite {
     private constructor() {
         super();
     }
-    static async create(file: Blob | string) {
+    static async create(file: Blob | undefined) {
         let db = new AbstractSQLiteWasm();
         let sqlite = await import("@sqlite.org/sqlite-wasm").then((q) => q.default());
         sqlite.client ??= {};
@@ -170,7 +177,7 @@ export class AbstractSQLiteWorker extends AbstractSQLite {
     private constructor() {
         super();
     }
-    static async create(uniquename: string, file: Blob | string) {
+    static async create(uniquename: string, file?: Blob) {
         let db = new AbstractSQLiteWorker();
         db.dbid = await db.worker.call<number>({ type: "sqliteopen", dbname: uniquename, file, write: false, create: false });
         return db;

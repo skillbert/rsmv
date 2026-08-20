@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { CacheFileSource, CacheIndex, mappedFileIds, oldConfigMaps, SubFile } from "../cache";
 import { CachedObject, CachingFileSource } from "../cache/memorycache";
 import { Bone, BufferAttribute, Mesh, Object3D, Skeleton, SkinnedMesh } from "three";
-import { cacheFileJsonModes, parse } from "../parser/jsondecoders";
+import { cacheFileJsonModes, iterateJsonFiles, parse } from "../parser/jsondecoders";
 import { mapsquare_underlays } from "../../generated/mapsquare_underlays";
 import { mapsquare_overlays } from "../../generated/mapsquare_overlays";
 import { mapscenes } from "../../generated/mapscenes";
@@ -354,28 +354,11 @@ export class EngineCache extends CachingFileSource {
 			let mode = cacheFileJsonModes[modename];
 			if (!mode) { throw new Error("unknown decode mode " + modename); }
 			let files = (async () => {
-				await mode.prepareDump?.(this);
-				let namelist = (typeof mode.lookup.internalNamefile == "number" ? await this.getInternalNameList(mode.lookup.internalNamefile) : null);
 				let allfiles = await mode.lookup.logicalRangeToFiles(this, [0, 0], [Infinity, Infinity]);
-				let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
 				let files: any[] = [];
-				for (let fileid of allfiles) {
-					let arch: SubFile[];
-					if (lastarchive && lastarchive.index == fileid.index) {
-						arch = lastarchive.subfiles;
-					} else {
-						arch = await this.getFileArchive(fileid.index);
-						lastarchive = { index: fileid.index, subfiles: arch };
-					}
-					let file = arch[fileid.subindex];
-					let logicalid = mode.lookup.fileToLogical(this, fileid.index.major, fileid.index.minor, file.fileid);
-					let res = mode.parser.read(file.buffer, this.rawsource);
-					res.$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
-					let filename = namelist?.get(logicalid[0]);
-					if (filename) { res.$filename = filename; }
-					files.push(res);
-				}
-
+				await iterateJsonFiles(this, mode, allfiles, obj => {
+					files.push(obj);
+				});
 				return files;
 			})();
 			let schema = mode.parser.parser.getJsonSchema();

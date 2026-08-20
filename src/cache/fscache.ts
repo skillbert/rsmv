@@ -2,7 +2,6 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { AbstractSQLite, AbstractSQLiteNode, AbstractSQLiteStatement, AbstractSQLiteWorker } from "../libs/sqlite3wrap";
 
-const cachefolder = "./cache";
 const cachefile = "fscache.sqlite3";
 
 export class FileSourceFsCache {
@@ -25,11 +24,10 @@ export class FileSourceFsCache {
         this.ready = (async () => {
             if (!!fs.constants) {
                 // nodejs
-                await fs.mkdir(cachefolder, { recursive: true });
-                this.database = await AbstractSQLiteNode.create(path.join(cachefolder, filename), { create: true, write: true });
+                this.database = await AbstractSQLiteNode.create(filename, { create: true, write: true });
             } else {
                 // web
-                this.database = await AbstractSQLiteWorker.create(filename, filename);
+                this.database = await AbstractSQLiteWorker.create(filename);
             }
             await this.database.exec(`CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
             await this.database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);

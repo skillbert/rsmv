@@ -1,9 +1,9 @@
 // import * as fs from "fs";
 import * as opcode_reader from "./opcode_reader";
 import commentJson from "comment-json";
-import type { CacheFileSource } from "../cache";
+import type { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, internalNameFiles } from "../constants";
-import { anyFileIndex, blacklistIndex, chunkedIndex, DecodeLookup, indexfileIndex, noArchiveIndex, oldWorldmapIndex, rootindexfileIndex, singleMinorIndex, standardIndex, worldmapIndex } from "./filelookup";
+import { anyFileIndex, blacklistIndex, CacheFileId, chunkedIndex, DecodeLookup, indexfileIndex, LogicalIndex, noArchiveIndex, oldWorldmapIndex, rootindexfileIndex, singleMinorIndex, standardIndex, worldmapIndex } from "./filelookup";
 
 const typedef = commentJson.parse(require("../opcodes/typedef.jsonc")) as any;
 
@@ -92,6 +92,30 @@ export class FileParser<T> {
 	}
 }
 
+// not an async generator since that would incur async overhead for each file
+export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBasedFile<T>, allfiles: CacheFileId[], callback: (obj: T, fileid: CacheFileId, logicalid: LogicalIndex) => void) {
+	let namelist = (typeof mode.lookup.internalNamefile == "number" ? await source.getInternalNameList(mode.lookup.internalNamefile) : null);
+	let lastarchive: null | { index: CacheIndex, subfiles: SubFile[] } = null;
+	for (let fileid of allfiles) {
+		let arch: SubFile[];
+		if (lastarchive && lastarchive.index == fileid.index) {
+			arch = lastarchive.subfiles;
+		} else {
+			arch = await source.getFileArchive(fileid.index);
+			lastarchive = { index: fileid.index, subfiles: arch };
+		}
+		let file = arch[fileid.subindex];
+		let logicalid = mode.lookup.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
+		let res = mode.parser.read(file.buffer, source);
+		(res as any).$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
+		let filename = namelist?.get(logicalid[0]);
+		if (filename) {
+			(res as any).$filename = filename;
+		}
+		callback(res, fileid, logicalid);
+	}
+}
+
 globalThis.parserTimings = () => {
 	let all = Object.entries(parse).map(q => ({ name: q[0], t: q[1].totaltime }));
 	all.sort((a, b) => b.t - a.t);
@@ -170,12 +194,10 @@ function allParsers() {
 export type JsonBasedFile<T> = {
 	parser: FileParser<T>,
 	lookup: DecodeLookup,
-	prepareParser?: (source: CacheFileSource) => Promise<void> | void,
-	prepareDump?: (source: CacheFileSource) => Promise<void> | void
 }
 
-function JsonBasedFile<T>(parser: FileParser<T>, lookup: DecodeLookup, prepareParser?: JsonBasedFile<T>["prepareParser"], prepareDump?: JsonBasedFile<T>["prepareDump"]): JsonBasedFile<T> {
-	return { parser, lookup, prepareParser, prepareDump };
+function JsonBasedFile<T>(parser: FileParser<T>, lookup: DecodeLookup): JsonBasedFile<T> {
+	return { parser, lookup };
 }
 
 export const cacheFileJsonModes = {

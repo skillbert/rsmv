@@ -3,7 +3,7 @@ import { AstNode, BranchingStatement, ClientScriptFunction, CodeBlockNode, Compo
 import { ClientscriptObfuscation } from "../callibration/callibrator";
 import { ClientScriptSubtypeSolver } from "../callibration/subtypedetector";
 import { ClientScriptOp, ExactStack, PrimitiveType, StackDiff, StackList, binaryOpSymbols, branchInstructionsOrJump, dynamicOps, getOpName, longJsonToBigInt, namedClientScriptOps, popDiscardOps, popLocalOps, typeToPrimitive } from "../definitions";
-import { getOrInsert, unpackCoordgrid } from "../../utils";
+import { getOrInsert, unpackComponent, unpackCoordgrid } from "../../utils";
 import { vartypeReverseMap, vartypes } from "../../constants";
 import { intrinsics } from "../jsonwriter";
 import { reserved } from "./typescripthelpers";
@@ -63,8 +63,7 @@ export class TsWriterContext {
             let type = this.typectx.getType(key);
             if (type != vartypes.component) { continue; }
 
-            let intf = node.op.imm_obj >> 16;
-            let sub = node.op.imm_obj & 0xffff;
+            let { intf, sub } = unpackComponent(node.op.imm_obj);
             let least = getOrInsert(this.compoffsets, intf, () => sub);
             if (sub < least) { this.compoffsets.set(intf, sub); }
         }

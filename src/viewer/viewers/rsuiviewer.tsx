@@ -4,6 +4,7 @@ import type { ThreejsSceneCache } from "../../3d/modeltothree";
 import { ThreeJsRenderer } from "../threejsrender";
 import { CacheFileSource } from "../../cache";
 import { DomWrap } from "../commoncontrols";
+import { packComponent } from "../../utils";
 
 export function RsUIViewer(p: { interfaceid: number, subcomponent?: number }) {
 	let [ui, setui] = React.useState<RsInterfaceDomTree | null>(null);
@@ -24,7 +25,7 @@ export function RsUIViewer(p: { interfaceid: number, subcomponent?: number }) {
 			if (!needed) { return; }
 			let res = renderRsInterfaceDOM(ctx, ui);
 			if (p.subcomponent !== undefined) {
-				ctx.toggleHighLightComp((p.interfaceid << 16) | p.subcomponent, true);
+				ctx.toggleHighLightComp(packComponent(p.interfaceid, p.subcomponent), true);
 			}
 			cleanup = res.dispose;
 			setui(res);
