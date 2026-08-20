@@ -6,8 +6,8 @@ import * as cache from "./index";
 
 type CacheTableAccess = {
 	table: AbstractSQLiteWorker,
-	getfile: AbstractSQLiteStatement,
-	getindex: AbstractSQLiteStatement
+	getfile: AbstractSQLiteStatement<[number], { DATA: Uint8Array, CRC: number }>,
+	getindex: AbstractSQLiteStatement<[], { DATA: Uint8Array }>
 }
 
 type CacheTable = {
@@ -89,7 +89,7 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		if (major == cacheMajors.index) { return this.getIndexFile(minor); }
 		let index = this.prepareTable(major);
 		let table = index.table ?? await index.tableready;
-		let [row] = await table.getfile.run([minor]);
+		let [row] = await table.getfile.run(minor);
 		let res = Buffer.from(row.DATA.buffer, row.DATA.byteOffset, row.DATA.byteLength);
 		return decompress(res);
 	}
@@ -128,8 +128,8 @@ export class WasmGameCacheLoader extends cache.CacheFileSource {
 		if (!index.table) {
 			index.tableready = (async () => {
 				let table = await AbstractSQLiteWorker.create(`js5-${major}.jcache`, index.file);
-				let getfile = await table.prepare(`SELECT DATA,CRC FROM cache WHERE KEY=?`);
-				let getindex = await table.prepare(`SELECT DATA FROM cache_index`);
+				let getfile = await table.prepare<[number], { DATA: Uint8Array, CRC: number }>(`SELECT DATA,CRC FROM cache WHERE KEY=?`);
+				let getindex = await table.prepare<[], { DATA: Uint8Array }>(`SELECT DATA FROM cache_index`);
 				let cacheTableAccess: CacheTableAccess = { table, getfile, getindex };
 				index.table = cacheTableAccess;
 				return cacheTableAccess;

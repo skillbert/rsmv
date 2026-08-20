@@ -7,13 +7,13 @@ import path from "path";
 
 const nodecachefolder = "./cache";
 
-export abstract class AbstractSQLiteStatement {
-    abstract run(args?: any[]): Promise<any[]>;
+export abstract class AbstractSQLiteStatement<ARGS extends any[], RESULTS extends any> {
+    abstract run(...args: ARGS): Promise<RESULTS[]>;
 }
 
 export abstract class AbstractSQLite {
     abstract exec(query: string): Promise<void>;
-    abstract prepare(query: string): Promise<AbstractSQLiteStatement>;
+    abstract prepare<ARGS extends any[], RESULTS extends any>(query: string): Promise<AbstractSQLiteStatement<ARGS, RESULTS>>;
     abstract close(): Promise<void>;
 }
 
@@ -27,7 +27,7 @@ export class AbstractSQLiteNode extends AbstractSQLite {
         //only actually load the dependency when used
         let sqlite = __non_webpack_require__("sqlite3") as typeof import("sqlite3");
         let flags = (opts.write ? sqlite.OPEN_READWRITE : sqlite.OPEN_READONLY) | (opts.create ? sqlite.OPEN_CREATE : 0);
-        
+
         await fs.mkdir(nodecachefolder, { recursive: true });
         let fullfilename = path.join(nodecachefolder, filename);
 
@@ -41,9 +41,9 @@ export class AbstractSQLiteNode extends AbstractSQLite {
             this.db.exec(query, e => e ? err(e) : done());
         });
     }
-    async prepare(query: string) {
-        return new Promise<AbstractSQLiteNodeStatement>((done, err) => {
-            let stmt = this.db.prepare(query, e => e ? err(e) : done(new AbstractSQLiteNodeStatement(stmt)));
+    async prepare<ARGS extends any[], RESULTS extends any>(query: string) {
+        return new Promise<AbstractSQLiteNodeStatement<ARGS, RESULTS>>((done, err) => {
+            let stmt = this.db.prepare(query, e => e ? err(e) : done(new AbstractSQLiteNodeStatement<ARGS, RESULTS>(stmt)));
         });
     }
     async close() {
@@ -52,15 +52,15 @@ export class AbstractSQLiteNode extends AbstractSQLite {
         });
     }
 }
-class AbstractSQLiteNodeStatement extends AbstractSQLiteStatement {
+class AbstractSQLiteNodeStatement<ARGS extends any[], RESULTS extends any> extends AbstractSQLiteStatement<ARGS, RESULTS> {
     private stmt: sqlite3.Statement;
     constructor(stmt: sqlite3.Statement) {
         super();
         this.stmt = stmt;
     }
-    async run(args?: any[]) {
-        return new Promise<any[]>((done, err) => {
-            this.stmt.all(args, (e, rows) => e ? err(e) : done(rows));
+    async run(...args: ARGS) {
+        return new Promise<RESULTS[]>((done, err) => {
+            this.stmt.all(args, (e, rows) => e ? err(e) : done(rows as RESULTS[]));
         });
     }
 }
@@ -87,15 +87,15 @@ export class AbstractSQLiteWasm extends AbstractSQLite {
     async exec(query: string) {
         this.db.exec(query);
     }
-    async prepare(query: string) {
+    async prepare<ARGS extends any[], RESULTS extends any>(query: string) {
         let stmt = this.db.prepare(query);
-        return new AbstractSQLiteWasmStatement(stmt);
+        return new AbstractSQLiteWasmStatement<ARGS, RESULTS>(stmt);
     }
     async close() {
         this.db.close();
     }
 }
-class AbstractSQLiteWasmStatement extends AbstractSQLiteStatement {
+class AbstractSQLiteWasmStatement<ARGS extends any[], RESULTS extends any> extends AbstractSQLiteStatement<ARGS, RESULTS> {
     private stmt: sqlitewasm.PreparedStatement
     private columns: string[]
     constructor(stmt: sqlitewasm.PreparedStatement) {
@@ -104,7 +104,7 @@ class AbstractSQLiteWasmStatement extends AbstractSQLiteStatement {
         // bug in sqlite-wasm: stmt.getColumnNames() throws if columnCount=0
         this.columns = (stmt.columnCount == 0 ? [] : stmt.getColumnNames());
     }
-    async run(args: any[]) {
+    async run(...args: ARGS) {
         let rows: any[] = [];
         try {
             if (this.stmt.parameterCount != 0) {
@@ -120,7 +120,7 @@ class AbstractSQLiteWasmStatement extends AbstractSQLiteStatement {
         } finally {
             this.stmt.reset();
         }
-        return rows;
+        return rows as RESULTS[];
     }
 }
 
@@ -185,15 +185,15 @@ export class AbstractSQLiteWorker extends AbstractSQLite {
     async exec(query: string) {
         return this.worker.call<void>({ type: "sqliteexec", dbid: this.dbid, query });
     }
-    async prepare(query: string) {
+    async prepare<ARGS extends any[], RESULTS extends any>(query: string) {
         let stmtid = await this.worker.call<number>({ type: "sqliteprepare", dbid: this.dbid, query });
-        return new AbstractSQLiteWorkerStatement(this.worker, stmtid);
+        return new AbstractSQLiteWorkerStatement<ARGS, RESULTS>(this.worker, stmtid);
     }
     async close() {
         return this.worker.call<void>({ type: "sqliteclose", dbid: this.dbid });
     }
 }
-class AbstractSQLiteWorkerStatement extends AbstractSQLiteStatement {
+class AbstractSQLiteWorkerStatement<ARGS extends any[], RESULTS extends any> extends AbstractSQLiteStatement<ARGS, RESULTS> {
     private stmtid: number;
     private worker: WasmSQLiteManager;
     constructor(worker: WasmSQLiteManager, stmtid: number) {
@@ -201,7 +201,7 @@ class AbstractSQLiteWorkerStatement extends AbstractSQLiteStatement {
         this.worker = worker;
         this.stmtid = stmtid;
     }
-    async run(args?: any[]) {
-        return this.worker.call<any[]>({ type: "sqliterunprepared", queryid: this.stmtid, args });
+    async run(...args: ARGS) {
+        return this.worker.call<RESULTS[]>({ type: "sqliterunprepared", queryid: this.stmtid, args });
     }
 }

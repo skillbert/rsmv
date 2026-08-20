@@ -14,7 +14,7 @@ export type SharedWorkerPackets = {
 
 let idcounter = 1;
 let opentables = new Map<number, { id: number, refs: number, name: string, backend: AbstractSQLite }>();
-let openstatements = new Map<number, { id: number, dbid: number, originalquery: string, backend: AbstractSQLiteStatement }>();
+let openstatements = new Map<number, { id: number, dbid: number, originalquery: string, backend: AbstractSQLiteStatement<any, any> }>();
 
 
 

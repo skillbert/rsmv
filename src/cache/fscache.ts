@@ -1,5 +1,4 @@
 import * as fs from "fs/promises";
-import * as path from "path";
 import { AbstractSQLite, AbstractSQLiteNode, AbstractSQLiteStatement, AbstractSQLiteWorker } from "../libs/sqlite3wrap";
 
 const cachefile = "fscache.sqlite3";
@@ -8,8 +7,8 @@ export class FileSourceFsCache {
     ready: Promise<void>;
     isready: boolean;
     database!: AbstractSQLite;
-    getstatement!: AbstractSQLiteStatement;
-    setstatement!: AbstractSQLiteStatement;
+    getstatement!: AbstractSQLiteStatement<[number, number, number], { major: number, minor: number, crc: number, file: Uint8Array }>;
+    setstatement!: AbstractSQLiteStatement<[number, number, number, Uint8Array], {}>;
 
     static tryCreate() {
         try {
@@ -32,26 +31,26 @@ export class FileSourceFsCache {
             await this.database.exec(`CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
             await this.database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);
 
-            this.getstatement = await this.database.prepare(`SELECT major, minor, crc, file FROM groupcache WHERE major=? AND minor=? AND crc=?`);
-            this.setstatement = await this.database.prepare(`INSERT INTO groupcache(major,minor,crc,file) VALUES (?,?,?,?)`);
+            this.getstatement = await this.database.prepare<[number, number, number], { major: number, minor: number, crc: number, file: Uint8Array }>(`SELECT major, minor, crc, file FROM groupcache WHERE major=? AND minor=? AND crc=?`);
+            this.setstatement = await this.database.prepare<[number, number, number, Uint8Array], {}>(`INSERT INTO groupcache(major,minor,crc,file) VALUES (?,?,?,?)`);
 
             this.isready = true;
         })()
     }
 
-    async addFile(major: number, minor: number, crc: number, file: Buffer) {
+    async addFile(major: number, minor: number, crc: number, file: Uint8Array) {
         if (!this.isready) {
             await this.ready;
         }
         console.log("saving", major, minor, crc, "len", file.length);
-        await this.setstatement.run([major, minor, crc, file]);
+        await this.setstatement.run(major, minor, crc, file);
     }
 
     async getFile(major: number, minor: number, crc: number): Promise<Buffer | null> {
         if (!this.isready) {
             await this.ready;
         }
-        let cached = await this.getstatement.run([major, minor, crc]);
+        let cached = await this.getstatement.run(major, minor, crc);
         if (cached.length > 1) {
             throw new Error("more than one match for fs cached file");
         }
@@ -64,7 +63,7 @@ export class FileSourceFsCache {
             if (!(file instanceof Buffer)) {
                 file = Buffer.from(file);
             }
-            return file;
+            return file as Buffer;
         }
         return null;
     }
