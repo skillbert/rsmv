@@ -467,7 +467,7 @@ export function packCoordgrid(level: number, x: number, z: number) {
 }
 
 export function unpackComponent(comp: number) {
-	let intf = (comp >> 16) & 0xFFFF;
+	let intf = (comp >>> 16) & 0xFFFF;
 	let sub = comp & 0xFFFF;
 	return { intf, sub };
 }
@@ -477,7 +477,7 @@ export function packComponent(intf: number, sub: number) {
 }
 
 export function unpackAnimFrame(comp: number) {
-	let intf = (comp >> 16) & 0xFFFF;
+	let intf = (comp >>> 16) & 0xFFFF;
 	let sub = comp & 0xFFFF;
 	return { intf, sub };
 }

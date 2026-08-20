@@ -2,13 +2,13 @@ import { JSONSchema6, JSONSchema6Definition } from "json-schema";
 import { cacheMajors, internalNameFiles, vartypeReverseMap, vartypes } from "../constants";
 import { cacheFileJsonModes, iterateJsonFiles, JsonBasedFile } from "../parser/jsondecoders";
 import { styleSheetImageProps, styleSheetRGBAProps, styleSheetRGBProps } from "./renderrsinterface";
-import { BrowseModes } from "../viewer/tabs/browse";
+import { BrowseModes, makeFileId } from "../viewer/tabs/browse";
 import { CacheFileSource, getCacheVersionFingerprint } from "../cache";
 import { loadParams } from "../clientscript/util";
 import { params } from "../../generated/params";
 import { LogicalIndex } from "../parser/filelookup";
 import { AbstractSQLite, AbstractSQLiteNode } from "../libs/sqlite3wrap";
-import { packAnimFrame, packComponent, packCoordgrid, packMapsquare } from "../utils";
+import { packAnimFrame, packComponent, packCoordgrid, packMapsquare, unpackComponent, unpackMapsquare, unpackCoordgrid, unpackAnimFrame } from "../utils";
 import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
 import { ClientScriptDeobLoader, renderClientScript } from "../clientscript";
 import { isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor } from "../clientscript/ast";
@@ -57,6 +57,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     ["headbar" as any]: "headbars",
     ["maplabel" as any]: "maplabels",
     ["varbit" as any]: "varbits",
+    ["clientscriptops" as any]: "clientscript",
     // need to confirm
     // mapsceneicon: "mapscenes",
     // mapelement: "maplabels",
@@ -143,15 +144,13 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     mapenvs: "skip",
 }
 const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip">> = {
-    client_cutscenes: "typedonly",
     maptiles: "typedonly",
     maplocations: "typedonly",
     frames: "typedonly",
-    skeletons: "typedonly",
     framemaps: "typedonly",
     sequences: "typedonly",
-    models: "typedonly",
     clientscriptops: "typedonly",
+    // models: "typedonly",
 }
 
 const allModes = new Set([
@@ -181,8 +180,6 @@ export class IndexGraphLoader {
 }
 
 async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, full: boolean) {
-    // for (let [modename, mode] of Object.entries(cacheFileJsonModes)) {
-    // if (!modewhitelist.includes(mode)) { continue; }
     for (let [modenamestr, action] of Object.entries(modeactions)) {
         let modename = modenamestr as keyof typeof cacheFileJsonModes;
         if (full && extendedmodeactions[modename]) {
@@ -290,7 +287,7 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
     }
 }
 
-type RefEntry = { srcmode: string, srcid: number, propname: string, value: number | string, dstmode: string };
+type RefEntry<T> = { srcmode: string, srcid: number, propname: string, value: T, dstmode: string };
 
 class ReferenceGraph {
     params!: Map<number, params>;
@@ -302,7 +299,8 @@ class ReferenceGraph {
     currentmode: BrowseModes = "" as any;
     currenttypedonly = false;
 
-    queue: RefEntry[] = [];
+    intqueue: RefEntry<number>[] = [];
+    stringqueue: RefEntry<string>[] = [];
 
     db!: Awaited<ReturnType<typeof ReferenceGraph.initDB>>;
 
@@ -322,16 +320,23 @@ class ReferenceGraph {
         // int table
         await db.exec(`CREATE TABLE IF NOT EXISTS refints (srcmode TEXT, srcid UINT, propname TEXT, value INT, dstmode TEXT);`);
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_refints_value ON refints (value, dstmode);`);
-        let addInt = await db.prepare<[string, number, string, number, string], any>(`INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
+        let addInt = await db.prepare<[srcmode: string, srcid: number, propname: string, value: number, dstmode: string], any>(`INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
+        let addIntBatchSize = 32;
+        let addIntBatchQuery = `INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES ${Array.from({ length: addIntBatchSize }).fill("(?,?,?,?,?)").join(",")}`;
+        let addIntBatch = await db.prepare<any, any>(addIntBatchQuery);
         // strings table
         await db.exec(`CREATE TABLE IF NOT EXISTS refstrings (srcmode TEXT, srcid UINT, propname TEXT, value TEXT, dstmode TEXT);`);
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_refstrings_value ON refstrings (value, dstmode);`);
-        let addString = await db.prepare<[string, number, string, string, string], any>(`INSERT INTO refstrings (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
+        let addString = await db.prepare<[srcmode: string, srcid: number, propname: string, value: string, dstmode: string], any>(`INSERT INTO refstrings (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
         // progress table
         await db.exec(`CREATE TABLE IF NOT EXISTS progress (mode TEXT PRIMARY KEY, completed INT, max INT, intensity INT);`);
-        let updateProgress = await db.prepare<[string, number, number, number], any>(`INSERT OR REPLACE INTO progress (mode, completed, max, intensity) VALUES (?,?,?,?)`);
-        let getProgress = await db.prepare<[string], { completed: number, max: number, intensity: number }>(`SELECT completed, max, intensity FROM progress WHERE mode=?`);
-        return { sqlite: db, addInt, addString, updateProgress, getProgress };
+        let updateProgress = await db.prepare<[mode: string, completed: number, max: number, intensity: number], any>(`INSERT OR REPLACE INTO progress (mode, completed, max, intensity) VALUES (?,?,?,?)`);
+        let getProgress = await db.prepare<[mode: string], { completed: number, max: number, intensity: number }>(`SELECT completed, max, intensity FROM progress WHERE mode=?`);
+        // search
+        let findrefs = await db.prepare<[mode: string, id: number, limit: number], { srcmode: string, srcid: number, propname: string, value: number, dstmode: string }>(`SELECT * FROM refints WHERE dstmode=? AND value=? GROUP BY srcmode,srcid LIMIT ?`);
+        let findints = await db.prepare<[int: number, limit: number], { srcmode: string, srcid: number, propname: string, value: number, dstmode: string }>(`SELECT * FROM refints WHERE value=? LIMIT ?`);
+        let findstrings = await db.prepare<[pattern: string, limit: number], { srcmode: string, srcid: number, propname: string, value: string, dstmode: string }>(`SELECT * FROM refstrings WHERE value LIKE ? LIMIT ?`);
+        return { sqlite: db, addInt, addIntBatch, addIntBatchSize, addString, updateProgress, getProgress, findrefs, findints, findstrings };
     }
 
     static async create(source: CacheFileSource) {
@@ -355,16 +360,25 @@ class ReferenceGraph {
     async flush() {
         await this.db.sqlite.exec("BEGIN TRANSACTION;");
         try {
-            await Promise.all(this.queue.map(entry => {
-                if (typeof entry.value == "number") {
-                    return this.db.addInt.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode);
-                } else {
-                    return this.db.addString.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode);
-                }
-            }));
+            let proms: Promise<any>[] = [];
+            let lastintindex = 0;
+            for (; lastintindex + this.db.addIntBatchSize < this.intqueue.length; lastintindex += this.db.addIntBatchSize) {
+                let batch = this.intqueue.slice(lastintindex, lastintindex + this.db.addIntBatchSize).flatMap(entry => [
+                    entry.srcmode,
+                    entry.srcid,
+                    entry.propname,
+                    entry.value,
+                    entry.dstmode
+                ]);
+                proms.push(this.db.addIntBatch.run(...batch));
+            }
+            proms.push(...this.intqueue.slice(lastintindex).map(entry => this.db.addInt.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode)));
+            proms.push(...this.stringqueue.map(entry => this.db.addString.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode)));
+            await Promise.all(proms);
             await this.db.updateProgress.run(this.currentmode, this.currentlogicalpacked, this.currentlogicalmax, this.currenttypedonly ? 1 : 0);
             await this.db.sqlite.exec("COMMIT;");
-            this.queue = [];
+            this.intqueue = [];
+            this.stringqueue = [];
         } catch (e) {
             await this.db.sqlite.exec("ROLLBACK;");
             throw e;
@@ -372,33 +386,33 @@ class ReferenceGraph {
     }
 
     async maybeFlush() {
-        if (this.queue.length > 10000) {
+        if (this.intqueue.length + this.stringqueue.length > 10000) {
             await this.flush();
         }
     }
 
     addInt(propname: string, value: number, type: string) {
-        if (this.currenttypedonly && (type == "unknown" || type == "")) {
+        let rsmvtype = vartypeToDecoder[type];
+        if (rsmvtype) { type = rsmvtype; }
+        if (this.currenttypedonly && (type == "unknown" || type == "" || type == "unknown_int")) {
             return;
         }
-        this.queue.push({
+        this.intqueue.push({
             srcmode: this.currentmode,
             srcid: this.currentlogicalpacked,
             propname,
             value,
             dstmode: type
         });
-        // this.dbAddInt.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type]);
     }
     addString(propname: string, value: string, type: string) {
-        this.queue.push({
+        this.stringqueue.push({
             srcmode: this.currentmode,
             srcid: this.currentlogicalpacked,
             propname,
             value,
             dstmode: type
         });
-        // this.dbAddString.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type]);
     }
     async getProgress() {
         let progress: { mode: string, completed: number, total: number, typedonly: boolean }[] = [];
@@ -419,7 +433,24 @@ class ReferenceGraph {
         }
     }
 
-    async findReferences() { }
+    async findReferences(mode: BrowseModes, logical: LogicalIndex) {
+        let packed = logicalIdToPackedInt(logical, mode);
+        let res = await this.db.findrefs.run(mode, packed, 1000);
+        return res.map(q => {
+            let logical = packedIntToLogical(q.srcid, q.srcmode as BrowseModes);
+            return {
+                srcmode: q.srcmode,
+                srcpacked: q.srcid,
+                srclogical: logical,
+                srcobject: makeFileId(q.srcmode, logical),
+                propname: q.propname
+            };
+        });
+    }
+
+    async findStrings(pattern: string) {
+        return this.db.findstrings.run(pattern, 1000);
+    }
 }
 
 function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
@@ -444,6 +475,26 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
         return -1;
     }
     return id[0];
+}
+
+function packedIntToLogical(id: number, mode: BrowseModes) {
+    if (mode == "interfaces") {
+        let r = unpackComponent(id);
+        return [r.intf, r.sub];
+    }
+    if (mode == "frames") {
+        let r = unpackAnimFrame(id);
+        return [r.intf, r.sub];
+    }
+    if (mode == "coordgrid") {
+        let r = unpackCoordgrid(id);
+        return [r.level, r.x, r.z];
+    }
+    if (mode == "maptiles" || mode == "maptiles_nxt" || mode == "maplocations" || mode == "mapenvs") {
+        let r = unpackMapsquare(id);
+        return [r.x, r.z];
+    }
+    return [id];
 }
 
 export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | null | undefined, data: any, nameorindex: string | number) {
@@ -521,8 +572,9 @@ function parseParamtable(graph: ReferenceGraph, value: any[]) {
         let paramdata = graph.params.get(entry.prop);
         let typeid = paramdata?.type?.vartype ?? -1;
         let typename = vartypeReverseMap.get(typeid) ?? "unknown";
-        if (entry.intvalue != undefined) { }
-        if (entry.stringvalue != undefined) { }
+        if (entry.intvalue != undefined) { graph.addInt(paramname, entry.intvalue, typename); }
+        if (entry.stringvalue != undefined) { graph.addString(paramname, entry.stringvalue, typename); }
+        graph.addInt("" + (entry.intvalue ?? entry.stringvalue), entry.prop, "params");
     }
 }
 

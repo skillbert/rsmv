@@ -11,8 +11,10 @@ import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { makeFileId } from "../tabs/browse";
 import { dbrows } from "../../../generated/dbrows";
-import { BrowsableType, iterateTypedJson, vartypeToDecoder } from "../../scripts/jsonindexer";
+import { BrowsableType, IndexGraphLoader, iterateTypedJson, vartypeToDecoder } from "../../scripts/jsonindexer";
 import { CacheFileSource } from "../../cache";
+import { cacheFileJsonModes } from "../../parser/jsondecoders";
+import { cacheFileDecodeModes } from "../../parser/filetypes";
 
 type DeepLinkElement = {
     rsmvtype: BrowsableType,
@@ -583,6 +585,47 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
         <div style={{ userSelect: "text" }}>
             <h3>{decoder}_{fileidstring} - {filename}</h3>
             {data ? handlenode(data, true).el : <span>Loading...</span>}
+            <h3>Referenced By</h3>
+            <ReferencesView jsonmode={p.data?.$decoder ?? "unknown"} id={p.data?.$fileid} />
         </div>
     );
+}
+
+export function ReferencesView(p: { jsonmode: string, id: unknown }) {
+    let ctx = React.useContext(UIRootContext);
+
+    let refs = useAwaited(async () => {
+        if (!ctx.source) { return null; }
+        let id = p.id;
+        if (typeof id == "number") { id = [id]; }
+        if (!Array.isArray(id)) { return null; }
+        let graph = await IndexGraphLoader.forCache(ctx.source).load(ctx.source);
+        let res = await graph.findReferences(p.jsonmode as keyof typeof cacheFileJsonModes, id);
+        return Promise.all(res.map(async q => {
+            let decoder = cacheFileDecodeModes[q.srcmode as keyof typeof cacheFileDecodeModes];
+            let namefile = decoder?.({}).internalNamefile;
+            let name = (namefile == undefined ? "" : await ctx.source!.getInternalName(namefile, q.srclogical[0]));
+            return {
+                srcobject: q.srcobject,
+                propname: q.propname,
+                name: name ?? ""
+            }
+        }));
+    }, [ctx.source, p.jsonmode, p.id]);
+
+    let onclick = (e: React.MouseEvent<HTMLSpanElement>) => {
+        e.preventDefault();
+        ctx.openFile({ type: "browse", id: e.currentTarget.dataset.fileid! });
+    }
+
+    return <div className="mv-proplist">
+        {refs && refs.map(q => <React.Fragment key={q.srcobject}>
+            <div className="mv-proplist__value">
+                <span className="mv-filelink" data-fileid={q.srcobject} onClick={onclick}>{q.srcobject}</span>
+                {q.name && ` (${q.name})`}
+            </div>
+            <div className="mv-proplist__name">{q.propname}</div>
+        </React.Fragment>)}
+        {!refs && <span>Loading...</span>}
+    </div>
 }
