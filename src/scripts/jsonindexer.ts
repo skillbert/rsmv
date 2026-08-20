@@ -7,8 +7,8 @@ import { CacheFileSource, getCacheVersionFingerprint } from "../cache";
 import { loadParams } from "../clientscript/util";
 import { params } from "../../generated/params";
 import { LogicalIndex } from "../parser/filelookup";
-import { AbstractSQLite, AbstractSQLiteNode, AbstractSQLiteStatement, AbstractSQLiteWorker } from "../libs/sqlite3wrap";
-import { packComponent, packCoordgrid, packMapsquare } from "../utils";
+import { AbstractSQLite, AbstractSQLiteNode } from "../libs/sqlite3wrap";
+import { packAnimFrame, packComponent, packCoordgrid, packMapsquare } from "../utils";
 import { ScriptOutput } from "../scriptrunner";
 
 
@@ -107,16 +107,16 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     interfaces: "full",
     fontmetrics: "full",
     // only explicitly typed fields
-    framemaps: "typedonly",
-    sequences: "typedonly",
     animgroupconfigs: "typedonly",
-    client_cutscenes: "typedonly",
-    maptiles: "typedonly",
-    maplocations: "typedonly",
-    frames: "typedonly",
-    models: "typedonly",
-    skeletons: "typedonly",
     // skip
+    client_cutscenes: "skip",
+    maptiles: "skip",
+    maplocations: "skip",
+    frames: "skip",
+    skeletons: "skip",
+    framemaps: "skip",
+    sequences: "skip",
+    models: "skip",
     soundjson: "skip",
     musicjson: "skip",
     oldmaterials: "skip",
@@ -138,32 +138,87 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     // broken - fixable
     mapenvs: "skip",
 }
+const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip">> = {
+    client_cutscenes: "typedonly",
+    maptiles: "typedonly",
+    maplocations: "typedonly",
+    frames: "typedonly",
+    skeletons: "typedonly",
+    framemaps: "typedonly",
+    sequences: "typedonly",
+    models: "typedonly",
+}
 
-// const modewhitelist: JsonBasedFile<any>[] = [
-//     cacheFileJsonModes.quests
-// ];
+const allModes = new Set([
+    ...Object.entries(modeactions).filter(([_, action]) => action != "skip").map(q => q[0]),
+    ...Object.entries(extendedmodeactions).filter(([_, action]) => action != "skip").map(q => q[0]),
+]);
 
-export async function calculateReferenceGraph(out: ScriptOutput, source: CacheFileSource) {
-    let graph = await ReferenceGraph.create(source);
+export class IndexGraphLoader {
+    source: CacheFileSource;
+    loaded: ReferenceGraph | null = null;
+    loadPromise: Promise<ReferenceGraph> | null = null;
 
+    constructor(source: CacheFileSource) {
+        this.source = source;
+    }
+
+    static forCache(source: CacheFileSource): IndexGraphLoader {
+        return source.decodeArgs.indexGraphLoader ??= new IndexGraphLoader(source);
+    }
+
+    load(source: CacheFileSource) {
+        return this.loadPromise ??= ReferenceGraph.create(source).then(graph => {
+            this.loaded = graph;
+            return graph;
+        });
+    }
+}
+
+async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, full: boolean) {
     // for (let [modename, mode] of Object.entries(cacheFileJsonModes)) {
     // if (!modewhitelist.includes(mode)) { continue; }
-    for (let [modename, action] of Object.entries(modeactions)) {
+    for (let [modenamestr, action] of Object.entries(modeactions)) {
+        let modename = modenamestr as keyof typeof cacheFileJsonModes;
+        if (full && extendedmodeactions[modename]) {
+            action = extendedmodeactions[modename]!;
+        }
+        let oldprogressrows = await graph.db.getProgress.run(modename);
+        let oldprogress = oldprogressrows?.[0]?.completed ?? 0;
+
         let mode = cacheFileJsonModes[modename];
         if (action == "skip") { continue; }
         if (out.state != "running") { break; }
 
         out.log(`=== Indexing ${modename} ===`);
-        let allfiles = await mode.lookup.logicalRangeToFiles(source, [0, 0], [Infinity, Infinity]);
+        let allfiles = await mode.lookup.logicalRangeToFiles(source, [0, 0, 0], [Infinity, Infinity, Infinity]);
         let schema = mode.parser.parser.getJsonSchema();
+
+        let lastfile = allfiles.at(-1);
+        let lastlogical = (lastfile ? mode.lookup.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subindex) : [0, 0, 0]);
+        let lastpackedlogical = logicalIdToPackedInt(lastlogical, modename);
+
+        if (lastpackedlogical <= oldprogress) {
+            out.log(`Skipping ${modename} - already completed`);
+            continue;
+        }
+
+        graph.currentmode = modename;
+        graph.currentlogicalmax = lastpackedlogical;
+        graph.currenttypedonly = action == "typedonly";
+
         let count = 0;
         let lastprogress = Date.now();
         await iterateJsonFiles(source, mode, allfiles, (obj, fileid, logical) => {
             if (out.state != "running") { throw new Error("script aborted"); }
+
+            let packed = logicalIdToPackedInt(logical, modename);
+            graph.currentlogicalpacked = packed;
             graph.currentobjstack = [];
-            graph.currentlogical = logical;
-            graph.currentmode = modename as any;
-            graph.currenttypedonly = action == "typedonly";
+
+            if (packed <= oldprogress) {
+                return;
+            }
 
             parseJsonValue(graph, "root", obj, schema);
 
@@ -181,6 +236,7 @@ export async function calculateReferenceGraph(out: ScriptOutput, source: CacheFi
         await graph.flush();
         out.log(`Finished ${modename} - ${count} files`);
     }
+    out.log(`=== Finished indexing reference graph ===`);
 }
 
 async function calculateCS2References(source: CacheFileSource) {
@@ -194,17 +250,41 @@ class ReferenceGraph {
     paramnames!: Map<number, string>;
 
     currentobjstack: any[] = [];
-    currentlogical: LogicalIndex = [];
+    currentlogicalmax = 0;
+    currentlogicalpacked = 0;
     currentmode: BrowseModes = "" as any;
     currenttypedonly = false;
 
     queue: RefEntry[] = [];
 
-    refdb!: AbstractSQLite;
-    dbAddInt!: AbstractSQLiteStatement;
-    dbAddString!: AbstractSQLiteStatement;
+    db!: Awaited<ReturnType<typeof ReferenceGraph.initDB>>;
 
     private constructor() {
+    }
+
+    locked = Promise.resolve();
+
+    runIndexer(script: ScriptOutput, source: CacheFileSource, full: boolean) {
+        return this.locked = this.locked.finally(async () => {
+            if (script.state != "running") { return; }
+            await calculateReferenceGraph(script, this, source, full);
+        });
+    }
+
+    private static async initDB(db: AbstractSQLite) {
+        // int table
+        await db.exec(`CREATE TABLE IF NOT EXISTS refints (srcmode TEXT, srcid UINT, propname TEXT, value INT, dstmode TEXT);`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_refints_value ON refints (value, dstmode);`);
+        let addInt = await db.prepare<[string, number, string, number, string], any>(`INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
+        // strings table
+        await db.exec(`CREATE TABLE IF NOT EXISTS refstrings (srcmode TEXT, srcid UINT, propname TEXT, value TEXT, dstmode TEXT);`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_refstrings_value ON refstrings (value, dstmode);`);
+        let addString = await db.prepare<[string, number, string, string, string], any>(`INSERT INTO refstrings (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
+        // progress table
+        await db.exec(`CREATE TABLE IF NOT EXISTS progress (mode TEXT PRIMARY KEY, completed INT, max INT, intensity INT);`);
+        let updateProgress = await db.prepare<[string, number, number, number], any>(`INSERT OR REPLACE INTO progress (mode, completed, max, intensity) VALUES (?,?,?,?)`);
+        let getProgress = await db.prepare<[string], { completed: number, max: number, intensity: number }>(`SELECT completed, max, intensity FROM progress WHERE mode=?`);
+        return { sqlite: db, addInt, addString, updateProgress, getProgress };
     }
 
     static async create(source: CacheFileSource) {
@@ -220,31 +300,26 @@ class ReferenceGraph {
         let dbname = `build${source.getBuildNr()}-refgraph-${versionint}.sqlite3`;
 
         // builder.refdb = await AbstractSQLiteWorker.create(dbname);
-        builder.refdb = await AbstractSQLiteNode.create(dbname, { create: true, write: true });
-        await builder.refdb.exec(`CREATE TABLE IF NOT EXISTS refints (srcmode TEXT, srcid UINT, propname TEXT, value INT, dstmode TEXT);`);
-        await builder.refdb.exec(`CREATE TABLE IF NOT EXISTS refstrings (srcmode TEXT, srcid UINT, propname TEXT, value TEXT, dstmode TEXT);`);
-        await builder.refdb.exec(`CREATE INDEX IF NOT EXISTS idx_refints_value ON refints (value, dstmode);`);
-        await builder.refdb.exec(`CREATE INDEX IF NOT EXISTS idx_refstrings_value ON refstrings (value, dstmode);`);
-        builder.dbAddInt = await builder.refdb.prepare(`INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
-        builder.dbAddString = await builder.refdb.prepare(`INSERT INTO refstrings (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
-
+        let db = await AbstractSQLiteNode.create(dbname, { create: true, write: true });
+        builder.db = await ReferenceGraph.initDB(db);
         return builder;
     }
 
     async flush() {
-        await this.refdb.exec("BEGIN TRANSACTION;");
+        await this.db.sqlite.exec("BEGIN TRANSACTION;");
         try {
             await Promise.all(this.queue.map(entry => {
                 if (typeof entry.value == "number") {
-                    return this.dbAddInt.run([entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode]);
+                    return this.db.addInt.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode);
                 } else {
-                    return this.dbAddString.run([entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode]);
+                    return this.db.addString.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode);
                 }
             }));
-            await this.refdb.exec("COMMIT;");
+            await this.db.updateProgress.run(this.currentmode, this.currentlogicalpacked, this.currentlogicalmax, this.currenttypedonly ? 1 : 0);
+            await this.db.sqlite.exec("COMMIT;");
             this.queue = [];
         } catch (e) {
-            await this.refdb.exec("ROLLBACK;");
+            await this.db.sqlite.exec("ROLLBACK;");
             throw e;
         }
     }
@@ -261,7 +336,7 @@ class ReferenceGraph {
         }
         this.queue.push({
             srcmode: this.currentmode,
-            srcid: logicalIdToPackedInt(this.currentlogical, this.currentmode),
+            srcid: this.currentlogicalpacked,
             propname,
             value,
             dstmode: type
@@ -271,12 +346,30 @@ class ReferenceGraph {
     addString(propname: string, value: string, type: string) {
         this.queue.push({
             srcmode: this.currentmode,
-            srcid: logicalIdToPackedInt(this.currentlogical, this.currentmode),
+            srcid: this.currentlogicalpacked,
             propname,
             value,
             dstmode: type
         });
         // this.dbAddString.run([this.currentmode, logicalIdToPackedInt(this.currentlogical, this.currentmode), propname, value, type]);
+    }
+    async getProgress() {
+        let progress: { mode: string, completed: number, total: number, typedonly: boolean }[] = [];
+        for (let modename of allModes) {
+            let rows = await this.db.getProgress.run(modename);
+            let row = rows?.[0];
+            progress.push({
+                mode: modename,
+                completed: row?.completed ?? -1,
+                total: row?.max ?? -1,
+                typedonly: (row?.intensity ?? 0) == 1
+            });
+        }
+        return {
+            completed: progress.filter(q => q.completed != -1 && q.completed == q.total).length,
+            total: progress.length,
+            progress
+        }
     }
 
     async findReferences() { }
@@ -285,6 +378,9 @@ class ReferenceGraph {
 function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
     if (mode == "interfaces") {
         return packComponent(id[0], id[1]);
+    }
+    if (mode == "frames") {
+        return packAnimFrame(id[0], id[1]);
     }
     if (mode == "coordgrid") {
         return packCoordgrid(id[0], id[1], id[2]);

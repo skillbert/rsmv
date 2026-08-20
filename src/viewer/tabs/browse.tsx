@@ -16,7 +16,8 @@ import { parseMusic } from "../../scripts/musictrack";
 import { CheapMapView, MapviewMarker } from "../viewers/mappreview";
 import prettyJson from "json-stringify-pretty-compact";
 import { CacheFileSource } from "../../cache";
-import { vartypeToDecoder } from "../../scripts/jsonindexer";
+import { IndexGraphLoader, vartypeToDecoder } from "../../scripts/jsonindexer";
+import { ScriptOutput } from "../../scriptrunner";
 
 export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
 
@@ -141,9 +142,17 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
 }
 
 function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => void }) {
+    let engine = useContext(UIEngineContext)?.sceneCache.engine;
+    let indexgraph = useAwaited(async () => {
+        if (!engine) { return null; }
+        let graph = await IndexGraphLoader.forCache(engine).load(engine);
+        return {
+            graph,
+            progress: await graph.getProgress()
+        }
+    }, [engine]);
 
     let visited: string[] = [];
-
     let subgroup = (groupname: string, tabids: BrowseModes[]) => {
         let tabs: Record<string, string> = {};
         for (let tabid of tabids) {
@@ -159,7 +168,11 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
 
     return <div className="mv-sidebar-scroll">
         <h2>Browse cache data</h2>
-        <div>Index state:</div>
+        {!indexgraph && <div>Loading index state...</div>}
+        {indexgraph && <div>
+            <span>Index state: loaded {indexgraph.progress.completed} / {indexgraph.progress.total}</span>
+            <button className="sub-btn" onClick={e => indexGraphPopup(engine!)}>Open Index Graph</button>
+        </div>}
         {subgroup("Game", ["items", "npcs", "locs", "spotanims", "sounds", "music"])}
         {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests", "inventories"])}
         {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
@@ -201,23 +214,43 @@ export async function clientScriptDeobPopup(source: CacheFileSource) {
         return;
     }
 
+    let run = (script: ScriptOutput) => {
+        return ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => script);
+    }
+
+    return scriptRunnerPopup("Decode client script obfuscation", "Start deobfuscation", run, <>
+        <div>Clientscript in the cache is obfuscated and no previous deobfuscation were found in this browser.</div>
+        <div>RSMV can deobfuscate it for you. This process takes about 10 minutes and will be cached for future uses.</div>
+    </>);
+}
+
+export async function indexGraphPopup(source: CacheFileSource) {
+    let run = async (script: ScriptOutput) => {
+        let graph = await IndexGraphLoader.forCache(source).load(source);
+        return graph.runIndexer(script, source, false);
+    }
+
+    return scriptRunnerPopup("Cache not indexed", "Start indexing", run, <>
+        <div>Advanced features rely on indexing cache contents. This takes about 30 minutes.</div>
+    </>);
+}
+
+export async function scriptRunnerPopup(title: string, runtext: string, run: (script: ScriptOutput) => Promise<any>, children: JSX.Element) {
     let script = new UIScriptOutput();
-    function DeobDialog(p: {}) {
+    function ScriptDialog(p: {}) {
         let forceupdate = useForceUpdate();
 
         script.on("statechange", () => {
             forceupdate();
-            if (script.state == "done") { }
         });
 
-        let run = () => {
-            ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => script);
+        let runwrap = () => {
+            script.run(run);
         }
 
         return <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
-            <div>Clientscript in the cache is obfuscated and no previous deobfuscation were found in this browser.</div>
-            <div>RSMV can deobfuscate it for you. This process takes about 10 minutes and will be cached for future uses.</div>
-            <button className="sub-btn" onClick={run} disabled={script.state == "running" || script.state == "done"}>Start deobfuscation</button>
+            {children}
+            <button className="sub-btn" onClick={runwrap} disabled={script.state == "running" || script.state == "done"}>{runtext}</button>
             <UIScriptStatus output={script} />
             <UIScriptConsole output={script} />
             {script.state == "done" && <button className="sub-btn" onClick={() => dialog.close()}>Close</button>}
@@ -227,7 +260,7 @@ export async function clientScriptDeobPopup(source: CacheFileSource) {
     // new stack so react doesn't complain about state updates during render
     await delay(1);
     let res = Promise.withResolvers<void>();
-    let dialog = showModal({ maxWidth: "650px", title: "Decode client script obfuscation" }, <DeobDialog />);
+    let dialog = showModal({ maxWidth: "650px", title: title }, <ScriptDialog />);
     dialog.onClose = () => {
         if (script.state == "done") { res.resolve(); }
         script.setState("canceled");
@@ -239,7 +272,6 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
     let ctx = useContext(UIRootContext);
     let engine = useContext(UIEngineContext)?.sceneCache.engine;
     let index = fileIdToIndex(p.browse.id);
-
 
     let data = useAwaited(() => {
         if (!engine || !index) { return null; }

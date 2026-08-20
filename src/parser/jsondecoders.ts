@@ -109,21 +109,24 @@ export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBas
 		}
 		let file = arch[fileid.subindex];
 		let logicalid = mode.lookup.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
+		let res: T | null = null;
 		try {
-			let res = mode.parser.read(file.buffer, source);
+			res = mode.parser.read(file.buffer, source);
 			(res as any).$fileid = (logicalid.length == 1 ? logicalid[0] : logicalid);
 			let filename = namelist?.get(logicalid[0]);
 			if (filename) {
 				(res as any).$filename = filename;
 			}
-			let cbresult = callback(res, fileid, logicalid);
-			if (cbresult instanceof Promise) { await cbresult; }
 		} catch (err) {
 			if (errorcallback) {
 				errorcallback(err as Error, fileid, logicalid);
 			} else {
 				throw err;
 			}
+		}
+		if (res) {
+			let cbresult = callback(res, fileid, logicalid);
+			if (cbresult instanceof Promise) { await cbresult; }
 		}
 	}
 }

@@ -22,7 +22,7 @@ import { RSModel } from '../../3d/scene/model';
 import { diffFileDependencyHash } from '../../scripts/dependencydiff';
 import { depClasses } from '../../scripts/dependencies';
 import { LookupModeProps } from '../scenenodes';
-import { calculateReferenceGraph } from '../../scripts/jsonindexer';
+import { IndexGraphLoader } from '../../scripts/jsonindexer';
 
 function PreviewFilesScript(p: UiScriptProps) {
     let ctx = React.useContext(UIRootContext);
@@ -175,17 +175,20 @@ function MaprenderScript(p: UiScriptProps) {
 
 function ReferenceGraphScript(p: UiScriptProps) {
     let ctx = React.useContext(UIRootContext);
+    let [mode, setMode] = React.useState<"full" | "core">("core");
 
     let run = async () => {
         if (!ctx.source) { return; }
         let output = new UIScriptOutput();
         p.onRun(output, "");
-        let res = output.run(calculateReferenceGraph, ctx.source);
+        let graph = await IndexGraphLoader.forCache(ctx.source).load(ctx.source);
+        let res = await output.run(graph.runIndexer,  ctx.source, mode == "full");
     }
 
     return (
         <React.Fragment>
             <p>Indexes all references in the cache for later use.</p>
+            <TabStrip value={mode} tabs={{ core: "Core", full: "Full" }} onChange={v => setMode(v)} />
             <input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
         </React.Fragment>
     )

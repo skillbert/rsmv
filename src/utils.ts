@@ -476,6 +476,16 @@ export function packComponent(intf: number, sub: number) {
 	return (intf << 16) | sub;
 }
 
+export function unpackAnimFrame(comp: number) {
+	let intf = (comp >> 16) & 0xFFFF;
+	let sub = comp & 0xFFFF;
+	return { intf, sub };
+}
+
+export function packAnimFrame(intf: number, sub: number) {
+	return (intf << 16) | sub;
+}
+
 export function packMapsquare(x: number, z: number) {
 	const worldStride = 128;
 	return (z * worldStride) + x;
