@@ -7,7 +7,7 @@ import { BrowsePageId, UIEngineContext, UIRootContext } from "../maincomponents"
 import { jsonCacheSearch, JsonSearchFilter, showModal } from "../jsonsearch";
 import { FileListView, UIScriptConsole, UIScriptOutput, UIScriptStatus } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
-import { prepareClientScript, renderClientScript, tryPrepareClientScriptCached } from "../../clientscript";
+import { ClientScriptDeobLoader, renderClientScript } from "../../clientscript";
 import { cacheMajors } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { RsUIViewer } from "../viewers/rsuiviewer";
@@ -158,6 +158,8 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
     }
 
     return <div className="mv-sidebar-scroll">
+        <h2>Browse cache data</h2>
+        <div>Index state:</div>
         {subgroup("Game", ["items", "npcs", "locs", "spotanims", "sounds", "music"])}
         {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests", "inventories"])}
         {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
@@ -190,11 +192,12 @@ export function BrowseUI(p: LookupModeProps) {
 
 export async function clientScriptDeobPopup(source: CacheFileSource) {
     // already deobfuscated
-    if (source.decodeArgs.clientScriptDeob) {
+    let loader = ClientScriptDeobLoader.forCache(source);
+    if (loader.loaded) {
         return;
     }
     // cached deobfuscation found
-    if (await tryPrepareClientScriptCached(source)) {
+    if (await loader.tryLoadStored(source)) {
         return;
     }
 
@@ -208,7 +211,7 @@ export async function clientScriptDeobPopup(source: CacheFileSource) {
         });
 
         let run = () => {
-            prepareClientScript(source, async () => script);
+            ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => script);
         }
 
         return <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>

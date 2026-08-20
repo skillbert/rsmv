@@ -17,6 +17,7 @@ import { detectSubtypes as callibrateSubtypes, detectSubtypes } from "./subtyped
 import * as datastore from "idb-keyval";
 import { loadParams } from "../util";
 import { ScriptOutput } from "../../scriptrunner";
+import { ClientScriptDeobLoader } from "..";
 
 
 const detectableImmediates = ["byte", "int", "tribyte", "switch"] satisfies ImmediateType[];
@@ -398,9 +399,8 @@ export class ClientscriptObfuscation {
                 let scriptjson = (scriptfile ? JSON.parse(scriptfile) : null);
                 return this.fromJson(source, json, scriptjson);
             }
-        } catch {
-            return null;
-        }
+        } catch { }
+        return null;
     }
 
     static async create(source: CacheFileSource, nocached = false) {
@@ -519,7 +519,9 @@ export class ClientscriptObfuscation {
             out.log("Parsing candidate scripts");
             for (let cand of candidates.data.values()) {
                 try {
-                    cand.scriptcontents ??= parse.clientscript.read(cand.buf, this.source, { clientScriptDeob: this });
+                    cand.scriptcontents ??= parse.clientscript.read(cand.buf, this.source, {
+                        clientScriptDeob: new ClientScriptDeobLoader(this)
+                    });
                 } catch (e) { }
 
                 if (!cand.scriptcontents) { continue; }

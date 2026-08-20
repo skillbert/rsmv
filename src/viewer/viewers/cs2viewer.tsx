@@ -2,21 +2,18 @@ import * as React from "react";
 import { clientscript } from "../../../generated/clientscript";
 import { ClientScriptInterpreter } from "../../clientscript/interpreter";
 import { getOpName } from "../../clientscript/definitions";
-import { ThreejsSceneCache } from "../../3d/modeltothree";
-import { prepareClientScript } from "../../clientscript";
-import { ClientscriptObfuscation } from "../../clientscript/callibration/callibrator";
-import { useForceUpdate } from "../commoncontrols";
+import { useAwaited, useForceUpdate } from "../commoncontrols";
+import { ClientScriptDeobLoader } from "../../clientscript";
+import { UIEngineContext } from "../maincomponents";
 
 export function ClientScriptViewer(p: { data: string }) {
     let redraw = useForceUpdate();
+    let rootctx = React.useContext(UIEngineContext);
     let [resetcounter, reset] = React.useReducer(c => c + 1, 0);
-    let [calli, setcalli] = React.useState<ClientscriptObfuscation | null>(null);
-    let scene: ThreejsSceneCache = globalThis.sceneCache;//TODO pass this properly using args
-    React.useEffect(() => {
-        let current = true;
-        prepareClientScript(scene.engine).then(calli => current && setcalli(calli));
-        return () => { current = false; }
-    }, [resetcounter, calli]);
+    let calli = useAwaited(() => {
+        return rootctx?.sceneCache.engine && ClientScriptDeobLoader.forCache(rootctx.sceneCache.engine).loadOrGenerate(rootctx.sceneCache.engine);
+    }, [rootctx?.sceneCache.engine]);
+    
     let inter = React.useMemo(() => {
         if (!calli) { return null!; }//force non-null here to make typescript shut up about it being null in non-reachable callbacks
         let script: clientscript = JSON.parse(p.data);

@@ -6,7 +6,7 @@ import { binaryOpIds, binaryOpSymbols, typeToPrimitive, knownClientScriptOpNames
 import prettyJson from "json-stringify-pretty-compact";
 import { parse as opdecoder } from "../../parser/jsondecoders";
 import { CacheFileSource } from "../../cache";
-import { prepareClientScript } from "..";
+import { ClientScriptDeobLoader } from "..";
 import { astToImJson, intrinsics } from "../jsonwriter";
 import { vartypes } from "../../constants";
 import { reserved } from "./typescripthelpers";
@@ -850,7 +850,7 @@ globalThis.testy = async (range = "0-1999") => {
         delete jsondata.$schema;
         roundtripped.opcodedata.forEach(q => (q as any).opname = getOpName(q.opcode));
         let source = (globalThis.engine as CacheFileSource);
-        await prepareClientScript(source);
+        await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source);
         let binaryrountripped = opdecoder.clientscript.write(roundtripped, source.getDecodeArgs());
         let original = prettyJson(jsondata.opcodedata);
 

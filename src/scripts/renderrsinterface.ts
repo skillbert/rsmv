@@ -3,7 +3,7 @@ import { EngineCache, ThreejsSceneCache } from "../3d/modeltothree";
 import { RSModel } from "../3d/scene/model";
 import { expandSprite, parseSprite } from "../3d/materials/sprite";
 import { CacheFileSource } from "../cache";
-import { prepareClientScript } from "../clientscript";
+import { ClientScriptDeobLoader } from "../clientscript";
 import { ClientScriptInterpreter } from "../clientscript/interpreter";
 import { cacheMajors } from "../constants";
 import { makeImageData, pixelsToDataUrl } from "../imgutils";
@@ -104,7 +104,7 @@ export class UiRenderContext extends TypedEmitter<{ hover: RsInterfaceComponent 
     renderer: ThreeJsRenderer | null = null;
     comps = new Map<number, RsInterfaceComponent>();
     highlightstack: HTMLElement[] = [];
-    interpreterprom: Promise<ClientScriptInterpreter> | null = null;
+    interpreter: ClientScriptInterpreter | null = null;
     touchedComps = new Set<RsInterfaceComponent>();
     runOnloadScripts = false;
     constructor(source: CacheFileSource) {
@@ -133,14 +133,14 @@ export class UiRenderContext extends TypedEmitter<{ hover: RsInterfaceComponent 
     }
     async runClientScriptCallback(compid: number, cbdata: (number | string)[]) {
         if (cbdata.length == 0) { return; }
-        let inter = await (this.interpreterprom ??= prepareClientScript(this.source).then(q => new ClientScriptInterpreter(q, this)));
+        this.interpreter ??= new ClientScriptInterpreter(ClientScriptDeobLoader.forCache(this.source).getOrThrow(), this);
         if (typeof cbdata[0] != "number") { throw new Error("expected callback script id but got string"); }
 
-        inter.reset();//TODO warn if this actually does anything?
-        inter.pushlist(cbdata.slice(1));
-        inter.activecompid = compid;
-        await inter.callscriptid(cbdata[0]);
-        await inter.runToEnd();
+        this.interpreter.reset();//TODO warn if this actually does anything?
+        this.interpreter.pushlist(cbdata.slice(1));
+        this.interpreter.activecompid = compid;
+        await this.interpreter.callscriptid(cbdata[0]);
+        await this.interpreter.runToEnd();
         this.updateInvalidatedComps();
         // console.log(await renderClientScript(p.source, await p.source.getFileById(cacheMajors.clientscript, callbackid), callbackid))
     }

@@ -14,7 +14,7 @@ import { parseMusic } from "../scripts/musictrack";
 import { legacyGroups, legacyMajors } from "../cache/legacycache";
 import { renderCutscene } from "../scripts/rendercutscene";
 import { UiRenderContext, renderRsInterfaceHTML } from "../scripts/renderrsinterface";
-import { compileClientScript, prepareClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
+import { ClientScriptDeobLoader, compileClientScript, renderClientScript, writeClientVarFile, writeOpcodeFile } from "../clientscript";
 import { loadFontMetrics } from "../scripts/fontmetrics";
 import { anyFileIndex, CacheFileId, chunkedIndex, DecodeLookup, LogicalIndex, noArchiveIndex, singleMinorIndex, standardIndex } from "./filelookup";
 import { crc32 } from "../libs/crc32util";
@@ -274,7 +274,7 @@ const decodeClientScript: DecodeModeFactory = (ops) => {
 		...noArchiveIndex(cacheMajors.clientscript),
 		...throwOnNonSimple,
 		async prepareDump(out, source) {
-			let calli = await prepareClientScript(source);
+			let calli = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source);
 			out.writeFile("tsconfig.json", JSON.stringify({ "compilerOptions": { "lib": [], "target": "ESNext" } }, undefined, "\t"));//tsconfig to make the folder a project
 			out.writeFile("opcodes.d.ts", writeOpcodeFile(calli));
 			out.writeFile("clientvars.d.ts", writeClientVarFile(calli));
@@ -304,7 +304,7 @@ const decodeClientScriptViewer: DecodeModeFactory = () => {
 		...noArchiveIndex(cacheMajors.clientscript),
 		...throwOnNonSimple,
 		async prepareDump(fs, source) {
-			await prepareClientScript(source);
+			await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source);
 		},
 		read(buf, fileid, source) {
 			return JSON.stringify(parse.clientscript.read(buf, source));

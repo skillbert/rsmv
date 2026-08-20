@@ -1,4 +1,4 @@
-import { prepareClientScript, writeOpcodeFile } from "..";
+import { ClientScriptDeobLoader, writeOpcodeFile } from "..";
 import { CacheFileSource } from "../../cache";
 import { ClientScriptFunction, CodeBlockNode, isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor, FunctionBindNode } from "../ast";
 import { ClientscriptObfuscation } from "../callibration/callibrator";
@@ -73,7 +73,7 @@ export class IsolatedCS2Module {
     }
 
     static async fromSource(source: CacheFileSource) {
-        let deob = await prepareClientScript(source);
+        let deob = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source);
         return new IsolatedCS2Module(deob);
     }
 

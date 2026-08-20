@@ -14,7 +14,7 @@ import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
 export { writeClientVarFile, writeOpcodeFile } from "./typescript/codewriter";
 
 export async function compileClientScript(source: CacheFileSource, code: string) {
-    let calli = await prepareClientScript(source);
+    let calli = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source);
 
     let parseresult = parseClientscriptTs(calli, code);
     if (!parseresult.success) { throw new Error("failed to parse clientscript", { cause: parseresult.failedOn }); }
@@ -23,7 +23,7 @@ export async function compileClientScript(source: CacheFileSource, code: string)
 }
 
 export async function renderClientScript(source: CacheFileSource, buf: Buffer, fileid: number, relativeComps = false, notypes = false, int32casts = false) {
-    let calli = await prepareClientScript(source);
+    let calli = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source);
     let script = parse.clientscript.read(buf, source);
     let { rootfunc, sections, typectx } = parseClientScriptIm(calli, script, fileid);
     // globalThis[`cs${fileid}`] = rootfunc;//TODO remove
@@ -35,56 +35,62 @@ export async function renderClientScript(source: CacheFileSource, buf: Buffer, f
     return { writer, rootfunc };
 }
 
-export async function tryPrepareClientScriptCached(source: CacheFileSource) {
-    if (!source.decodeArgs.clientScriptDeob) {
-        let prom = source.decodeArgs.clientScriptDeobPromise ??= (async () => {
-            let res = await ClientscriptObfuscation.tryLoadCached(source).catch(() => null);
-            source.decodeArgs.clientScriptDeobPromise = null;
-            if (res) {
-                source.decodeArgs.clientScriptDeob = res;
-                globalThis.deob = res;
-            }
-            return res;
-        })();
-        await prom;
-    }
-    return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation | null;
-}
+export class ClientScriptDeobLoader {
+    loaded: ClientscriptObfuscation | null = null;
+    loadStoredPromise: Promise<ClientscriptObfuscation | null> | null = null;
+    generatePromise: Promise<ClientscriptObfuscation> | null = null;
 
-export async function prepareClientScript(source: CacheFileSource, makeScriptOutput?: () => Promise<ScriptOutput>) {
-    if (!source.decodeArgs.clientScriptDeob) {
-        let prom = source.decodeArgs.clientScriptDeobPromise ??= (async () => {
+    constructor(deob?: ClientscriptObfuscation) {
+        this.loaded = deob ?? null;
+    }
+
+    static forCache(source: CacheFileSource): ClientScriptDeobLoader {
+        return source.decodeArgs.clientScriptDeob ??= new ClientScriptDeobLoader();
+    }
+    static forCacheArgsOrThrow(args: Record<string, any>) {
+        let res = args.clientScriptDeob as ClientScriptDeobLoader | undefined;
+        if (!res || !res.loaded) { throw new Error("clientScriptDeob not set in args"); }
+        return res.loaded;
+    }
+
+    getOrThrow() {
+        if (!this.loaded) { throw new Error("clientscript deob not loaded yet"); }
+        return this.loaded;
+    }
+
+    tryLoadStored(source: CacheFileSource) {
+        if (this.loaded) { return this.loaded; }
+        if (this.generatePromise) { return this.generatePromise; }
+        this.loadStoredPromise ??= (async () => {
+            let deob = await ClientscriptObfuscation.tryLoadCached(source).catch(() => null);
+            if (deob) {
+                this.loaded = deob;
+                globalThis.deob = deob;
+            }
+            return deob;
+        })();
+        return this.loadStoredPromise;
+    }
+
+    async loadOrGenerate(source: CacheFileSource, makeScriptOutput?: () => Promise<ScriptOutput>) {
+        if (this.loadStoredPromise) { await this.loadStoredPromise; }
+        if (this.loaded) { return this.loaded; }
+        this.generatePromise ??= (async () => {
             let deob = await ClientscriptObfuscation.create(source);
             let scriptctx = (makeScriptOutput ? await makeScriptOutput() : new CLIScriptOutput());
             await scriptctx.run(out => deob.runAutoCallibrate(out, source));
             if (scriptctx.state != "done") {
-                source.decodeArgs.clientScriptDeobPromise = null;
+                this.generatePromise = null;
                 throw new Error("failed to run auto callibration");
             } else {
-                source.decodeArgs.clientScriptDeob = deob;
+                this.loaded = deob;
                 globalThis.deob = deob;
             }
+            return deob;
         })();
-        await prom;
+        return this.generatePromise;
     }
-    return source.decodeArgs.clientScriptDeob as ClientscriptObfuscation;
 }
-
-// const runtimesecret = 0x120B00B0;
-// const runtimename = `_runtime${runtimesecret.toString(16)}`;
-// const runtimeFuncs: Record<string, ClientScriptFunction> = {
-//     [`${runtimename}_call`]: (() => {
-//         let func = new ClientScriptFunction(`${runtimename}_call`, new StackList(), new StackList(), new StackDiff(1, 0, 0));
-//         let intr = intrinsics.get("call");
-//         if (!intr) { throw new Error("unexpected"); }
-//         let code = new CodeBlockNode(-1, -1);
-//         let node = new SubcallNode(-1, "call", intr.in, intr.out);
-//         code.push(node);
-//         func.children.push(code);
-//         return func;
-//     })()
-// }
-
 
 export function clientscriptHash(script: clientscript) {
     let hash = 0;
