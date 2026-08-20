@@ -9,7 +9,11 @@ import { params } from "../../generated/params";
 import { LogicalIndex } from "../parser/filelookup";
 import { AbstractSQLite, AbstractSQLiteNode } from "../libs/sqlite3wrap";
 import { packAnimFrame, packComponent, packCoordgrid, packMapsquare } from "../utils";
-import { ScriptOutput } from "../scriptrunner";
+import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
+import { ClientScriptDeobLoader, renderClientScript } from "../clientscript";
+import { isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor } from "../clientscript/ast";
+import { namedClientScriptOps } from "../clientscript/definitions";
+import { clientscript } from "../../generated/clientscript";
 
 
 type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey"
@@ -104,9 +108,9 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     mappastes: "full",
     stylesheets: "full",
     cutscenes: "full",
-    interfaces: "full",
     fontmetrics: "full",
     // only explicitly typed fields
+    interfaces: "typedonly",
     animgroupconfigs: "typedonly",
     // skip
     client_cutscenes: "skip",
@@ -147,6 +151,7 @@ const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full
     framemaps: "typedonly",
     sequences: "typedonly",
     models: "typedonly",
+    clientscriptops: "typedonly",
 }
 
 const allModes = new Set([
@@ -207,6 +212,12 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
         graph.currentlogicalmax = lastpackedlogical;
         graph.currenttypedonly = action == "typedonly";
 
+        if (modename == "clientscriptops") {
+            let subscriptout = new CLIScriptOutput();
+            subscriptout.log = out.log.bind(out);
+            await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => subscriptout);
+        }
+
         let count = 0;
         let lastprogress = Date.now();
         await iterateJsonFiles(source, mode, allfiles, (obj, fileid, logical) => {
@@ -220,7 +231,11 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
                 return;
             }
 
-            parseJsonValue(graph, "root", obj, schema);
+            if (modename == "clientscriptops") {
+                parseClientScriptValue(out, graph, source, obj, logical);
+            } else {
+                parseJsonValue(graph, "root", obj, schema);
+            }
 
             count++;
             if (Date.now() - lastprogress > 10000) {
@@ -239,8 +254,40 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
     out.log(`=== Finished indexing reference graph ===`);
 }
 
-async function calculateCS2References(source: CacheFileSource) {
-    // TODO
+function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, obj: clientscript, logical: number[]) {
+    let deob = ClientScriptDeobLoader.forCache(source).getOrThrow();
+    try {
+        var res = parseClientScriptIm(deob, obj, logical[0]);
+    } catch (e) {
+        out.log(`Error parsing clientscript ${logical[0]}: ${e.message}`);
+        return;
+    }
+    let cursor = new RewriteCursor(res.rootfunc);
+    for (let node = cursor.goToStart(); node; node = cursor.next()) {
+        if (isNamedOp(node, namedClientScriptOps.pushconst)) {
+            let vartype = node.knownStackDiff?.exactout?.all()?.[0];
+            if (vartype == undefined) {
+                out.log(`vartype not set for op pushconst at ${logical[0]}:${node.originalindex}`);
+                continue;
+            }
+            let solvedtype = res.typectx.getType(vartype);
+            let typename = vartypeReverseMap.get(solvedtype);
+            if (!typename) {
+                out.log(`vartype ${solvedtype} not recognized for op pushconst at ${logical[0]}:${node.originalindex}`);
+                continue;
+            }
+            if (Array.isArray(node.op.imm_obj)) {
+                // uint64 packed as [hi,lo]
+                out.log(`skipping unsupported pushconst i64 at ${logical[0]}:${node.originalindex}`);
+            } else if (typeof node.op.imm_obj == "number") {
+                // int
+                graph.addInt("pushconst", node.op.imm_obj, typename);
+            } else if (typeof node.op.imm_obj == "string") {
+                // string
+                graph.addString("pushconst", node.op.imm_obj, typename);
+            }
+        }
+    }
 }
 
 type RefEntry = { srcmode: string, srcid: number, propname: string, value: number | string, dstmode: string };

@@ -227,11 +227,11 @@ export async function clientScriptDeobPopup(source: CacheFileSource) {
 export async function indexGraphPopup(source: CacheFileSource) {
     let run = async (script: ScriptOutput) => {
         let graph = await IndexGraphLoader.forCache(source).load(source);
-        return graph.runIndexer(script, source, false);
+        return graph.runIndexer(script, source, true);
     }
 
     return scriptRunnerPopup("Cache not indexed", "Start indexing", run, <>
-        <div>Advanced features rely on indexing cache contents. This takes about 30 minutes.</div>
+        <div>Advanced features rely on indexing cache contents. This takes about 5 minutes.</div>
     </>);
 }
 
