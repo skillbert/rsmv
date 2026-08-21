@@ -54,6 +54,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     maparea: "mapzones",
     hitmark: "hitmarks",
     mapsceneicon: "mapscenes",
+    category: "categories",
     ["dbtable" as any]: "dbtables",
     // TODO fix these
     ["headbar" as any]: "headbars",

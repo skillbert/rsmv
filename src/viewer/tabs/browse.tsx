@@ -8,7 +8,7 @@ import { jsonCacheSearch, JsonSearchFilter, showModal } from "../jsonsearch";
 import { FileListView, UIScriptConsole, UIScriptOutput, UIScriptStatus } from "../scriptsui";
 import { JsonViewer } from "../viewers/fileviewer";
 import { ClientScriptDeobLoader, renderClientScript } from "../../clientscript";
-import { cacheMajors } from "../../constants";
+import { cacheMajors, internalNameFiles } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { RsUIViewer } from "../viewers/rsuiviewer";
 import { cacheFileDecodeModes } from "../../parser/filetypes";
@@ -20,7 +20,7 @@ import { IndexGraphLoader, vartypeToDecoder } from "../../scripts/jsonindexer";
 import { ScriptOutput } from "../../scriptrunner";
 import { ReferencesView } from "../viewers/configview";
 
-export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaces" | "sprites" | "sounds" | "music" | "coordgrid";
+export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaces" | "categories" | "sprites" | "sounds" | "music" | "coordgrid";
 
 const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -47,7 +47,7 @@ export function fileIdToIndex(fileid: string) {
         }
     }
     if (mode in vartypeToDecoder) { mode = vartypeToDecoder[mode]; }
-    if (mode != "coordgrid" && mode != "interfaces" && !cacheFileDecodeModes[mode as BrowseModes]) { return null; }
+    if (mode != "coordgrid" && mode != "interfaces" && mode != "categories" && !cacheFileDecodeModes[mode as BrowseModes]) { return null; }
     return { mode: mode as BrowseModes, index };
 }
 
@@ -291,6 +291,15 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 let dom = writer.getCodeDom(rootfunc, ctx.objectClick);
                 globalThis.cs2 = rootfunc;
                 return { viewer: "dom", mode: index.mode, dom } as const;
+            }
+            if (index.mode == "categories") {
+                return {
+                    viewer: "json", mode: index.mode, file: JSON.stringify({
+                        $fileid: index.index[0],
+                        $decoder: "categories",
+                        $filename: await engine.getInternalName(internalNameFiles.category, index.index[0])
+                    })
+                } as const;
             }
             if (index.mode == "sprites") {
                 let file = await engine.getFileById(cacheMajors.sprites, index.index[0]);
