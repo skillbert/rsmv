@@ -13,9 +13,10 @@ import { SceneScenario } from './tabs/scenario';
 import VR360Viewer from "../libs/vr360viewer";
 import { BrowseUI } from "./tabs/browse";
 import { BlobTS, prettyFileSize } from "../utils";
+import { GraphSearchView } from "./tabs/search";
 
 
-export type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "browse" | "scripts";
+export type LookupMode = "model" | "item" | "npc" | "object" | "material" | "map" | "avatar" | "spotanim" | "scenario" | "browse" | "scripts" | "search";
 
 type ModelBrowserState = { search: unknown, mode: LookupMode }
 
@@ -41,6 +42,7 @@ export function ModelBrowser(p: {}) {
 		spotanim: "Spotanim",
 		scenario: "Scenario",
 		browse: "Browse",
+		search: "Search",
 		scripts: "Scripts"
 	}
 
@@ -290,6 +292,7 @@ export type LookupModeProps = {
 
 const LookupModeComponentMap: Record<LookupMode, React.ComponentType<LookupModeProps>> = {
 	browse: BrowseUI,
+	search: GraphSearchView,
 	model: SceneRawModel,
 	item: SceneItem,
 	avatar: ScenePlayer,

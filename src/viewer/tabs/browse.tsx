@@ -142,16 +142,6 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
 }
 
 function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => void }) {
-    let engine = useContext(UIEngineContext)?.sceneCache.engine;
-    let indexgraph = useAwaited(async () => {
-        if (!engine) { return null; }
-        let graph = await IndexGraphLoader.forCache(engine).load(engine);
-        return {
-            graph,
-            progress: await graph.getProgress()
-        }
-    }, [engine]);
-
     let visited: string[] = [];
     let subgroup = (groupname: string, tabids: BrowseModes[]) => {
         let tabs: Record<string, string> = {};
@@ -168,11 +158,7 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
 
     return <div className="mv-sidebar-scroll">
         <h2>Browse cache data</h2>
-        {!indexgraph && <div>Loading index state...</div>}
-        {indexgraph && <div>
-            <span>Index state: loaded {indexgraph.progress.completed} / {indexgraph.progress.total}</span>
-            <button className="sub-btn" onClick={e => indexGraphPopup(engine!)}>Open Index Graph</button>
-        </div>}
+        <GraphIndexStateView />
         {subgroup("Game", ["items", "npcs", "locs", "spotanims", "sounds", "music"])}
         {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests", "inventories"])}
         {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
@@ -180,6 +166,25 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
         {subgroup("Rendering", ["underlays", "overlays", "skyboxes", "identitykit", "animgroupconfigs"])}
         {subgroup("Other", Object.keys(cacheFileJsonModes) as any)}
     </div>
+}
+
+export function GraphIndexStateView(p: {}) {
+    let engine = useContext(UIEngineContext)?.sceneCache.engine;
+    let indexgraph = useAwaited(async () => {
+        if (!engine) { return null; }
+        let graph = await IndexGraphLoader.forCache(engine).load(engine);
+        return {
+            graph,
+            progress: await graph.getProgress()
+        }
+    }, [engine]);
+    return <>
+        {!indexgraph && <div>Loading index state...</div>}
+        {indexgraph && <div>
+            <span>Index state: loaded {indexgraph.progress.completed} / {indexgraph.progress.total}</span>
+            <button className="sub-btn" onClick={e => indexGraphPopup(engine!)}>Open Index Graph</button>
+        </div>}
+    </>
 }
 
 export function BrowseUI(p: LookupModeProps) {
