@@ -47,11 +47,6 @@ export class ClientScriptDeobLoader {
     static forCache(source: CacheFileSource): ClientScriptDeobLoader {
         return source.decodeArgs.clientScriptDeob ??= new ClientScriptDeobLoader();
     }
-    static forCacheArgsOrThrow(args: Record<string, any>) {
-        let res = args.clientScriptDeob as ClientScriptDeobLoader | undefined;
-        if (!res || !res.loaded) { throw new Error("clientScriptDeob not set in args"); }
-        return res.loaded;
-    }
 
     getOrThrow() {
         if (!this.loaded) { throw new Error("clientscript deob not loaded yet"); }

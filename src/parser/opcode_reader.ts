@@ -1,6 +1,6 @@
 import { lastLegacyBuildnr } from "../constants";
 import type * as jsonschema from "json-schema";
-import { ClientScriptDeobLoader } from "../clientscript";
+import type { ClientScriptDeobLoader } from "../clientscript";
 
 export type TypeDef = { [name: string]: unknown };
 
@@ -1547,10 +1547,14 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 				if (debugdata) {
 					debugdata.opcodes.push({ op: "opcode", index: state.scan, stacksize: state.stack.length + 1 });
 				}
-				return ClientScriptDeobLoader.forCacheArgsOrThrow(state.args).readOpcode(state);
+				let deob = state.args.clientScriptDeob as ClientScriptDeobLoader | undefined;
+				if (!deob || !deob.loaded) { throw new Error("clientScriptDeob not set in args"); }
+				return deob.loaded.readOpcode(state);
 			},
 			write(state, v) {
-				ClientScriptDeobLoader.forCacheArgsOrThrow(state.args).writeOpCode(state, v);
+				let deob = state.args.clientScriptDeob as ClientScriptDeobLoader | undefined;
+				if (!deob || !deob.loaded) { throw new Error("clientScriptDeob not set in args"); }
+				deob.loaded.writeOpCode(state, v);
 			},
 			getJsonSchema() {
 				return {
