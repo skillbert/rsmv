@@ -20,7 +20,7 @@ import { IndexGraphLoader, vartypeToDecoder } from "../../scripts/jsonindexer";
 import { ScriptOutput } from "../../scriptrunner";
 import { ReferencesView } from "../viewers/configview";
 
-export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
+export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaces" | "sprites" | "sounds" | "music" | "coordgrid";
 
 const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -47,7 +47,7 @@ export function fileIdToIndex(fileid: string) {
         }
     }
     if (mode in vartypeToDecoder) { mode = vartypeToDecoder[mode]; }
-    if (mode != "coordgrid" && !cacheFileDecodeModes[mode as BrowseModes]) { return null; }
+    if (mode != "coordgrid" && mode != "interfaces" && !cacheFileDecodeModes[mode as BrowseModes]) { return null; }
     return { mode: mode as BrowseModes, index };
 }
 
@@ -162,7 +162,7 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
         <GraphIndexStateView />
         {subgroup("Game", ["items", "npcs", "locs", "spotanims", "sounds", "music"])}
         {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests", "inventories"])}
-        {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
+        {subgroup("UI", ["interfaces", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
         {subgroup("Map", ["mapscenes", "maplabels", "mapzones", "mappastes", "maplabellocations"])}
         {subgroup("Rendering", ["underlays", "overlays", "skyboxes", "identitykit", "animgroupconfigs"])}
         {subgroup("Other", Object.keys(cacheFileJsonModes) as any)}
@@ -297,7 +297,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 let sprite = parseSprite(file);
                 return { viewer: "sprite", mode: index.mode, sprite } as const;
             }
-            if (index.mode == "interfaceviewer") {
+            if (index.mode == "interfaces" || index.mode == "components") {
                 return { viewer: "interfaces", mode: index.mode, interfaceid: index.index } as const;
             }
             if (index.mode == "sounds" || index.mode == "music") {

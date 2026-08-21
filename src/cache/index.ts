@@ -250,7 +250,8 @@ export function archiveToFileId(major: number, minor: number, subfile: number) {
 	return minor * archsize + subfile;
 }
 
-export function parseFileNameList(buffer: Buffer) {
+export function parseFileNameList(fileid: number, buffer: Buffer) {
+	// can't use json decoder here since the stored string offsets might not be in order
 	let index = 0;
 	let version = buffer.readUInt32BE(index);
 	index += 4;
@@ -260,21 +261,25 @@ export function parseFileNameList(buffer: Buffer) {
 	let textoffset = index + nentries * (4 + (hasexplicitindex ? 4 : 0));
 	let res = new Map<number, string>();
 	let endoffset = 0;
+	let maxoffset = 0;
 	for (let i = 0; i < nentries; i++) {
 		let fileid = i;
 		if (hasexplicitindex) {
 			fileid = buffer.readUInt32BE(index);
 			index += 4;
 		}
-		let stringoffset = textoffset + buffer.readUInt32BE(index);
+		let stringoffset = buffer.readUInt32BE(index);
 		index += 4;
-		endoffset = stringoffset;
+		if (stringoffset == 0xffffffff) { continue; }
+		let stringlocation = textoffset + stringoffset;
+		endoffset = stringlocation;
 		while (endoffset < buffer.length && buffer[endoffset] != 0) { endoffset++; }
-		let name = buffer.toString("latin1", stringoffset, endoffset);
+		let name = buffer.toString("latin1", stringlocation, endoffset);
 		res.set(fileid, name);
+		maxoffset = Math.max(maxoffset, endoffset);
 	}
-	if (endoffset != buffer.length - 1) {
-		console.log("warning: didn't read entire filename file, remaining: " + (buffer.length - endoffset - 1));
+	if (maxoffset != buffer.length - 1) {
+		console.log(`warning: didn't read entire filename file ${fileid}, remaining: ${buffer.length - maxoffset - 1}`);
 	}
 	return res;
 }
@@ -285,7 +290,7 @@ async function testnamefilepacking() {
 	for (let [key, value] of internalNameFilesWithVarbit) {
 		let configindex = await source.getCacheIndex(cacheMajors.config);
 		let entrylist = configindex.at(value)!;
-		let namelist = parseFileNameList(await source.getFile(cacheMajors.filenames, key));
+		let namelist = parseFileNameList(key, await source.getFile(cacheMajors.filenames, key));
 		let name = Object.entries(internalNameFiles).find(([k, v]) => v == key)?.[0] ?? key;
 
 		let maxid = 0;
@@ -336,7 +341,7 @@ export abstract class CacheFileSource {
 					// console.log("failed to load filename file", namefile, e);
 					return null;
 				});
-				names = (file ? parseFileNameList(file) : new Map<number, string>());
+				names = (file ? parseFileNameList(namefile, file) : new Map<number, string>());
 
 				// special case for var files, they also contain names for varbits that target them
 				if (internalNameFilesWithVarbit.has(namefile)) {
@@ -451,17 +456,6 @@ export abstract class CacheFileSource {
 		let hash = cacheFilenameHash(name, this.getBuildNr() <= lastLegacyBuildnr);
 		let arch = await this.getArchiveById(major, minor);
 		return arch.find(q => q && q.namehash == hash);
-	}
-
-	//for testing only
-	async bruteForceFindAnyNamedFile(name: string) {
-		let rootindex = await this.getCacheIndex(cacheMajors.index);
-		for (let index of rootindex) {
-			if (!index) { continue; }
-			let res = await this.findFileByName(index.minor, name);
-			if (res) { return this.getFileArchive(res); }
-		}
-		return null;
 	}
 
 	close() { }

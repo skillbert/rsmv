@@ -24,9 +24,6 @@ export function RsUIViewer(p: { interfaceid: number, subcomponent?: number }) {
 		loadRsInterfaceData(ctx, p.interfaceid).then(ui => {
 			if (!needed) { return; }
 			let res = renderRsInterfaceDOM(ctx, ui);
-			if (p.subcomponent !== undefined) {
-				ctx.toggleHighLightComp(packComponent(p.interfaceid, p.subcomponent), true);
-			}
 			cleanup = res.dispose;
 			setui(res);
 		});
@@ -35,6 +32,12 @@ export function RsUIViewer(p: { interfaceid: number, subcomponent?: number }) {
 			cleanup();
 		}
 	}, [ctx, p.interfaceid, refreshcount, ctx.runOnloadScripts]);
+
+	React.useEffect(() => {
+		if (p.subcomponent !== undefined && ui?.interfaceid == p.interfaceid) {
+			ctx.toggleHighLightComp(packComponent(p.interfaceid, p.subcomponent), true);
+		}
+	}, [p.subcomponent, ctx, ui]);
 
 	let scrollfix = React.useCallback((el: HTMLElement | null) => {
 		if (!el || !ui) { return; }

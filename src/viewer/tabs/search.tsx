@@ -1,7 +1,7 @@
 import React from "react";
-import { UIEngineContext, UIRootContext } from "../maincomponents";
-import { GraphIndexStateView, makeFileId } from "./browse";
-import { InputCommitted, TabStrip, useAwaited, useEmitterProperty } from "../commoncontrols";
+import { UIRootContext } from "../maincomponents";
+import { GraphIndexStateView } from "./browse";
+import { TabStrip, useAwaited, useEmitterProperty } from "../commoncontrols";
 import { IndexGraphLoader } from "../../scripts/jsonindexer";
 import { FileListView } from "../scriptsui";
 

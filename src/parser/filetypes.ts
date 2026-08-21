@@ -215,15 +215,15 @@ const decodeCutscene: DecodeModeFactory = () => {
 const decodeInterface: DecodeModeFactory = () => {
 	return {
 		ext: "html",
-		major: cacheMajors.interfaces,
+		major: cacheMajors.components,
 		minor: undefined,
 		logicalDimensions: 1,
 		usesArchieves: true,
 		internalNamefile: internalNameFiles.interface,
 		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
-		logicalToFile(source, id) { return { major: cacheMajors.interfaces, minor: id[0], subid: 0 }; },
+		logicalToFile(source, id) { return { major: cacheMajors.components, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let indexfile = await source.getCacheIndex(cacheMajors.interfaces);
+			let indexfile = await source.getCacheIndex(cacheMajors.components);
 			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
 		},
 		...throwOnNonSimple,
@@ -237,15 +237,15 @@ const decodeInterface: DecodeModeFactory = () => {
 const decodeInterface2: DecodeModeFactory = () => {
 	return {
 		ext: "ui.json",
-		major: cacheMajors.interfaces,
+		major: cacheMajors.components,
 		minor: undefined,
 		logicalDimensions: 1,
 		usesArchieves: true,
 		internalNamefile: internalNameFiles.interface,
 		fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("subfile 0 expected") } return [minor]; },
-		logicalToFile(source, id) { return { major: cacheMajors.interfaces, minor: id[0], subid: 0 }; },
+		logicalToFile(source, id) { return { major: cacheMajors.components, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
-			let indexfile = await source.getCacheIndex(cacheMajors.interfaces);
+			let indexfile = await source.getCacheIndex(cacheMajors.components);
 			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
 		},
 		...throwOnNonSimple,

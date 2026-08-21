@@ -67,7 +67,7 @@ let majormap: Record<number, FileAction | ((major: number, minor: number) => Fil
 	[cacheMajors.texturesKtx]: { name: "texturesKtx", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.sprites]: { name: "sprites", comparesubfiles: false, parser: null, outputType: "png", getFileName: standardName },
 	[cacheMajors.cutscenes]: { name: "cutscenes", comparesubfiles: false, parser: parse.cutscenes, outputType: "json", getFileName: standardName },
-	[cacheMajors.interfaces]: { name: "interfaces", comparesubfiles: false, parser: null, outputType: "html", getFileName: standardName },
+	[cacheMajors.components]: { name: "interfaces", comparesubfiles: false, parser: null, outputType: "html", getFileName: standardName },
 	[cacheMajors.sounds]: { name: "sounds", comparesubfiles: false, parser: null, outputType: "ogg", getFileName: standardName },
 	[cacheMajors.music]: { name: "music", comparesubfiles: false, parser: null, outputType: "ogg", getFileName: standardName },
 	//need to first run deob first before this works

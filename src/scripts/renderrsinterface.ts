@@ -177,7 +177,7 @@ function embeddedjsmodule(comps: interfaces[]) {
 
 export async function loadRsInterfaceData(ctx: UiRenderContext, id: number) {
 
-    let arch = await ctx.source.getArchiveById(cacheMajors.interfaces, id);
+    let arch = await ctx.source.getArchiveById(cacheMajors.components, id);
 
     let comps = new Map<number, RsInterfaceComponent>();
 
@@ -185,7 +185,7 @@ export async function loadRsInterfaceData(ctx: UiRenderContext, id: number) {
         try {
             let compid = packComponent(id, sub.fileid);
             if (ctx.comps.has(compid)) { throw new Error("ui render context already had comp with same id"); }
-            let comp = new RsInterfaceComponent(ctx, parse.interfaces.read(sub.buffer, ctx.source), compid);
+            let comp = new RsInterfaceComponent(ctx, parse.components.read(sub.buffer, ctx.source), compid);
             comps.set(sub.fileid, comp);
             ctx.comps.set(compid, comp);
         } catch (e) {

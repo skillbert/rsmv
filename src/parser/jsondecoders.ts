@@ -195,7 +195,7 @@ function allParsers() {
 		cutscenes: FileParser.fromJson<import("../../generated/cutscenes").cutscenes>(require("../opcodes/cutscenes.jsonc")),
 		clientscript: FileParser.fromJson<import("../../generated/clientscript").clientscript>(require("../opcodes/clientscript.jsonc")),
 		clientscriptdata: FileParser.fromJson<import("../../generated/clientscriptdata").clientscriptdata>(require("../opcodes/clientscriptdata.jsonc")),
-		interfaces: FileParser.fromJson<import("../../generated/interfaces").interfaces>(require("../opcodes/interfaces.jsonc")),
+		components: FileParser.fromJson<import("../../generated/interfaces").interfaces>(require("../opcodes/interfaces.jsonc")),
 		dbtables: FileParser.fromJson<import("../../generated/dbtables").dbtables>(require("../opcodes/dbtables.jsonc")),
 		dbrows: FileParser.fromJson<import("../../generated/dbrows").dbrows>(require("../opcodes/dbrows.jsonc")),
 		vars: FileParser.fromJson<import("../../generated/vars").vars>(require("../opcodes/vars.jsonc")),
@@ -284,7 +284,7 @@ export const cacheFileJsonModes = {
 	skeletons: JsonBasedFile(parse.skeletalAnim, noArchiveIndex(cacheMajors.skeletalAnims)),
 	proctextures: JsonBasedFile(parse.proctexture, noArchiveIndex(cacheMajors.texturesOldPng)),
 	oldproctextures: JsonBasedFile(parse.oldproctexture, singleMinorIndex(cacheMajors.texturesOldPng, 0)),
-	interfaces: JsonBasedFile(parse.interfaces, standardIndex(cacheMajors.interfaces, internalNameFiles.interface)),
+	components: JsonBasedFile(parse.components, standardIndex(cacheMajors.components, internalNameFiles.component)),
 	fontmetrics: JsonBasedFile(parse.fontmetrics, noArchiveIndex(cacheMajors.fontmetrics, internalNameFiles.fontmetrics)),
 
 	config83: JsonBasedFile(parse.config83, singleMinorIndex(cacheMajors.config, 83)),

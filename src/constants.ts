@@ -1,7 +1,7 @@
 export const cacheMajors = {
 	framemaps: 1,
 	config: 2,
-	interfaces: 3,
+	components: 3,
 	mapsquares: 5,
 
 	oldmodels: 7,
@@ -92,7 +92,7 @@ export const internalNameFiles = {
 	ui_anim_curve: 96,
 	ui_anim: 97,
 
-	// hardcoded, extract their value from packed_varp_and_varbit
+	// hardcoded, extracts its values from various var_x files, not a real file in the cache
 	varbit: 1001
 }
 

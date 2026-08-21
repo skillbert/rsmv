@@ -46,6 +46,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     stylesheet: "stylesheets",
     skybox: "skyboxes",
     graphic: "sprites",
+    component: "components",
     interface: "interfaces",
     scriptref: "clientscript",
     inv: "inventories",
@@ -64,8 +65,6 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     // non-json
     // texture: "textures",
     // maparea: "mapareas",
-    component: "interfaceviewer",
-    // interface: "interfaces"
 }
 
 const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip"> = {
@@ -111,8 +110,10 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     cutscenes: "full",
     fontmetrics: "full",
     // only explicitly typed fields
-    interfaces: "typedonly",
+    components: "typedonly",
     animgroupconfigs: "typedonly",
+    // broken - fixable
+    mapenvs: "skip",
     // skip
     client_cutscenes: "skip",
     maptiles: "skip",
@@ -140,8 +141,6 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     rootindex: "skip",
     clientscriptops: "skip",
     test: "skip",
-    // broken - fixable
-    mapenvs: "skip",
 }
 const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip">> = {
     maptiles: "typedonly",
@@ -180,6 +179,9 @@ export class IndexGraphLoader {
 }
 
 async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, full: boolean) {
+    // internal file names
+    await parseNameFiles(out, graph, source);
+
     for (let [modenamestr, action] of Object.entries(modeactions)) {
         let modename = modenamestr as keyof typeof cacheFileJsonModes;
         if (full && extendedmodeactions[modename]) {
@@ -250,6 +252,37 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
         out.log(`Finished ${modename} - ${count} files`);
     }
     out.log(`=== Finished indexing reference graph ===`);
+}
+
+async function parseNameFiles(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource) {
+    out.log(`=== Parsing name files ===`);
+    let oldprogressrows = await graph.db.getProgress.run("namefiles");
+    let oldprogress = oldprogressrows?.[0]?.completed ?? 0;
+
+    graph.currentlogicalmax = Math.max(...Object.values(internalNameFiles));
+    for (let [mode, fileid] of Object.entries(internalNameFiles)) {
+        if (out.state != "running") { break; }
+        if (fileid <= oldprogress) { continue; }
+
+        let modename = vartypeToDecoder[mode as keyof typeof vartypes] ?? mode as BrowseModes;
+        graph.currentmode = modename;
+        graph.currentobjstack = [];
+        graph.currenttypedonly = false;
+
+        let count = 0;
+        let namedata = await source.getInternalNameList(fileid);
+        for (let [id, name] of namedata) {
+            graph.currentlogicalpacked = id;
+            graph.addString("filename", name, "");
+            if (++count % 1000 == 0) {
+                // technically wrong progress id since we treat the entire name file as one file
+                // however, we overflow the transaction limits otherwise
+                await graph.maybeFlush("namefiles" as any, fileid);
+            }
+        }
+        await graph.flush("namefiles" as any, fileid);
+    }
+    out.log(`name files completed`);
 }
 
 function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, obj: clientscript, logical: number[]) {
@@ -375,7 +408,7 @@ class ReferenceGraph {
         return builder;
     }
 
-    async flush() {
+    async flush(mode = this.currentmode, progress = this.currentlogicalpacked) {
         await this.db.sqlite.exec("BEGIN TRANSACTION;");
         try {
             let proms: Promise<any>[] = [];
@@ -393,7 +426,7 @@ class ReferenceGraph {
             proms.push(...this.intqueue.slice(lastintindex).map(entry => this.db.addInt.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode)));
             proms.push(...this.stringqueue.map(entry => this.db.addString.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode)));
             await Promise.all(proms);
-            await this.db.updateProgress.run(this.currentmode, this.currentlogicalpacked, this.currentlogicalmax, this.currenttypedonly ? 1 : 0);
+            await this.db.updateProgress.run(mode, progress, this.currentlogicalmax, this.currenttypedonly ? 1 : 0);
             await this.db.sqlite.exec("COMMIT;");
             this.intqueue = [];
             this.stringqueue = [];
@@ -403,9 +436,9 @@ class ReferenceGraph {
         }
     }
 
-    async maybeFlush() {
+    async maybeFlush(mode = this.currentmode, progress = this.currentlogicalpacked) {
         if (this.intqueue.length + this.stringqueue.length > 10000) {
-            await this.flush();
+            await this.flush(mode, progress);
         }
     }
 
@@ -484,7 +517,7 @@ class ReferenceGraph {
 }
 
 function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
-    if (mode == "interfaces") {
+    if (mode == "components") {
         return packComponent(id[0], id[1]);
     }
     if (mode == "frames") {
@@ -508,7 +541,7 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
 }
 
 function packedIntToLogical(id: number, mode: BrowseModes) {
-    if (mode == "interfaces") {
+    if (mode == "components") {
         let r = unpackComponent(id);
         return [r.intf, r.sub];
     }
