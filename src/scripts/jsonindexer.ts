@@ -275,14 +275,28 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
             }
             if (Array.isArray(node.op.imm_obj)) {
                 // uint64 packed as [hi,lo]
-                out.log(`skipping unsupported pushconst i64 at ${logical[0]}:${node.originalindex}`);
+                // not tracking these for now
             } else if (typeof node.op.imm_obj == "number") {
                 // int
                 graph.addInt("pushconst", node.op.imm_obj, typename);
             } else if (typeof node.op.imm_obj == "string") {
                 // string
                 graph.addString("pushconst", node.op.imm_obj, typename);
+                // embedded sprite tags
+                node.op.imm_obj.matchAll(/<sprite=(\d+)(,\d+)?>/g).forEach(match => {
+                    let spriteId = parseInt(match[1], 10);
+                    graph.addInt("pushconst", spriteId, "graphic");
+                });
             }
+        }
+        if (isNamedOp(node, namedClientScriptOps.pushvar) || isNamedOp(node, namedClientScriptOps.popvar)) {
+            let groupid = (node.op.imm >> 24) & 0xff;
+            let varid = (node.op.imm >> 8) & 0xffff;
+            let groupname = "var_" + (deob.varmeta.get(groupid) ?? "unk" + groupid);
+            graph.addInt(node.op.opcode == namedClientScriptOps.pushvar ? "read" : "write", varid, groupname);
+        }
+        if (isNamedOp(node, namedClientScriptOps.pushvarbit) || isNamedOp(node, namedClientScriptOps.popvarbit)) {
+            graph.addInt(node.op.opcode == namedClientScriptOps.pushvarbit ? "read" : "write", node.op.imm, "varbit");
         }
     }
 }
