@@ -52,6 +52,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     coordgrid: "coordgrid",
     maparea: "mapzones",
     hitmark: "hitmarks",
+    mapsceneicon: "mapscenes",
     ["dbtable" as any]: "dbtables",
     // TODO fix these
     ["headbar" as any]: "headbars",
@@ -59,7 +60,6 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     ["varbit" as any]: "varbits",
     ["clientscriptops" as any]: "clientscript",
     // need to confirm
-    // mapsceneicon: "mapscenes",
     // mapelement: "maplabels",
     // non-json
     // texture: "textures",
@@ -449,7 +449,19 @@ class ReferenceGraph {
     }
 
     async findStrings(pattern: string) {
-        return this.db.findstrings.run(pattern, 1000);
+        let res = await this.db.findstrings.run(pattern, 1000);
+        return res.map(q => {
+            let logical = packedIntToLogical(q.srcid, q.srcmode as BrowseModes);
+            return {
+                srcmode: q.srcmode,
+                srcpacked: q.srcid,
+                srclogical: logical,
+                srcobject: makeFileId(q.srcmode, logical),
+                propname: q.propname,
+                value: q.value,
+                dstmode: q.dstmode
+            };
+        });
     }
 }
 

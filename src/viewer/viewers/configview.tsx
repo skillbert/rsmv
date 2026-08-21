@@ -190,7 +190,7 @@ function CursorView(p: { id: number }) {
             return parsed.cursor;
         });
     }, [p.id, enginectx], 200);
-    return <SpriteView id={spriteid ?? 0} />;
+    return spriteid && <SpriteView id={spriteid} />;
 }
 
 function SoundView(p: { id: number }) {
@@ -218,7 +218,7 @@ function JsonImgFileView(p: { file: Uint8Array | string }) {
     return <BlobImage file={filedata} ext="png" />;
 }
 
-function ColorView(p: { hsl?: number, rgb?: number[] }) {
+function ColorView(p: { hsl?: number, rgb?: number[], hexrgb?: number }) {
     let alpha = 255;
     let hasalpha = false;
     let color = [0, 0, 0];
@@ -228,6 +228,10 @@ function ColorView(p: { hsl?: number, rgb?: number[] }) {
         let hsl = packedHSL2HSL(p.hsl);
         color = HSL2RGB(hsl);
         colorstring = "" + p.hsl;
+    }
+    if (p.hexrgb !== undefined) {
+        color = [(p.hexrgb >> 16) & 0xFF, (p.hexrgb >> 8) & 0xFF, p.hexrgb & 0xFF];
+        colorstring = color.join(" ");
     }
     if (p.rgb !== undefined) {
         if (p.rgb.length == 4) {
@@ -476,6 +480,9 @@ export function renderPrimitive(prop: DeepLinkElement) {
 
         if (prop.rsmvtype == "color") {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
+        }
+        if (prop.rsmvtype == "rgb" || prop.rsmvtype == "argb") {
+            return { isbig: false, el: <ColorView hexrgb={prop.primitive} /> };
         }
         if (prop.rsmvtype == "graphic") {
             return { isbig: false, el: <div><ObjectLink prop={prop} /><br /><SpriteView id={prop.primitive} /></div> };

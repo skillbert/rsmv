@@ -197,6 +197,7 @@ function simpleMapRenderer(engine: EngineCache | undefined, initialimgsource: "c
                         }
                         return bmp;
                     }
+                    throw new Error(`Unknown imgsource ${res.imgsource}`);
                 }));
             }
             if (chunkimg instanceof ImageBitmap || chunkimg instanceof HTMLImageElement) {

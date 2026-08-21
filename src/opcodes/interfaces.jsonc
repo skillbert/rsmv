@@ -23,24 +23,24 @@
         ["v6unk2",["opt","version==6","uint"]]
     ]]],
     ["figuredata",["opt","type=3",["struct",
-        ["color","uint"],
+        ["color","uint","rgb"],
         ["filled","ubyte"],//more to this, weird
         ["trans","byte"]
     ]]],
     ["textdata",["opt","type=4",["struct",
-        ["fontid","varuint"],
+        ["fontid","varuint","fontmetrics"],
         ["unk1",["match",{"version>=0":"ubyte","other":false}]],
         ["text","string"],
         ["unk2","ubyte"],
         ["alignhor","ubyte"],
         ["alignver","ubyte"],
         ["shadow","bool"],
-        ["color","uint"],
+        ["color","uint","rgb"],
         ["trans","ubyte"],
         ["multiline",["opt","version>=0","ubyte"]]
     ]]],
     ["spritedata",["opt","type=5",["struct",
-        ["spriteid","int"],
+        ["spriteid","int","graphic"],
         ["rotation","ushort"],
         ["tiling","ubyte"],
         ["aspectwidthdata",["match",{"aspectwidthtype==4":"uint","other":-1}]],
@@ -50,12 +50,12 @@
         ["unk2","int"],
         ["vflip","bool"],
         ["hflip","bool"],
-        ["color","uint"],
+        ["color","uint","argb"],
         ["clickmask",["opt","version>=0","ubyte"]],
         ["v6unk",["opt","version>=6","uint"]]
     ]]],
     ["modeldata",["opt","type=6",["struct",
-        ["modelid",["match","buildnr",{">616":"varuint","other":"ushort"}]],
+        ["modelid",["match","buildnr",{">616":"varuint","other":"ushort"}],"model"],
         ["mode",["match","buildnr",{">616":"ubyte","other":1}]],
         ["positiondata",["opt","mode!=0",["struct",
             ["translate_x","short"],
@@ -66,14 +66,14 @@
             ["rotate_z","ushort"],
             ["zoom","ushort"]//can be signed? if mode is 2
         ]]],
-        ["animid",["match","buildnr",{">616":"varuint","other":"ushort"}]],
+        ["animid",["match","buildnr",{">616":"varuint","other":"ushort"}],"seq"],
         ["unkdata",["match","buildnr",{">616":null,"other":["buffer",6,"hex"]}]],
         ["aspectwidthdata",["match",{"aspectwidthtype!=0":"ushort","other":-1}]],
         ["aspectheightdata",["match",{"aspectheighttype!=0":"ushort","other":-1}]]
     ]]],
     ["linedata",["opt","type=9",["struct",
         ["width","ubyte"],
-        ["color","uint"],
+        ["color","uint","argb"],
         ["dir","bool"]
     ]]],
     ["unk10data",["opt","type=10",["struct",
@@ -119,7 +119,7 @@
     ["rightclickopts",["array",["ref","menucounts",[0,4]],"string"]],
     ["rightclickcursors",["array",["ref","menucounts",[4,4]],["struct",
         ["op","ubyte"],
-        ["cursor","ushort"]
+        ["cursor","short","cursor"]
     ]]],
     ["unkstring1",["opt","optmask!&0x0400","string"]],
     ["unk4","ubyte"],
@@ -128,7 +128,7 @@
     ["unk6","ubyte"],
     ["unkstuff123","string"],
     ["optmask1data_bit40",["opt","optmask&0x0240",["buffer",6,"hex"]]],
-    ["cursor",["match",{"version>=0":"ushort","other":-1}]],
+    ["cursor",["match",{"version>=0":"short","other":-1}],"cursor"],
     ["unkdata",["opt","version>=0","ushort"]],
     ["unkdatadata",["opt","version>=0 && unkdata!=0",["buffer",6,"hex"]]],
 

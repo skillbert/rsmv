@@ -59,7 +59,7 @@
 	"0x41": { "name":                              "scaleX", "read": "short" },
 	"0x42": { "name":                              "scaleY", "read": "short" },
 	"0x43": { "name":                              "scaleZ", "read": "short" },
-	"0x44": { "name":                        "mapscene_old", "read": "unsigned short" },//replaced by 0x66
+	"0x44": { "name":                        "mapscene_old", "read": "unsigned short", "type":"mapsceneicon" },//replaced by 0x66
 	"0x45": { "name":                            "dummy_45", "read": "unsigned byte" },//seems clickbox related
 	"0x46": { "name":                          "translateX", "read": "short" },
 	"0x47": { "name":                          "translateY", "read": "short" },
@@ -99,7 +99,7 @@
 	"0x63": { "name":                            "dummy_63", "read": [ "struct", ["unknown_2", "unsigned byte"], ["unknown_1", "unsigned short"] ] },
 	"0x64": { "name":                            "dummy_64", "read": [ "struct", ["unknown_2", "unsigned byte"], ["unknown_1", "unsigned short"] ] },
 	"0x65": { "name":                           "unused_65", "read": "unsigned byte" },
-	"0x66": { "name":                            "mapscene", "read": "unsigned short" },
+	"0x66": { "name":                            "mapscene", "read": "unsigned short", "type":"mapsceneicon" },
 	"0x67": { "name":                          "occludes_2", "read": "false" },
 	"0x68": { "name":             "interactable_related_68", "read": "unsigned byte" },//used in locs with sound/light
 	"0x69": { "name":                      "invertMapScene", "read": "true" },
