@@ -18,6 +18,7 @@ import prettyJson from "json-stringify-pretty-compact";
 import { CacheFileSource } from "../../cache";
 import { IndexGraphLoader, vartypeToDecoder } from "../../scripts/jsonindexer";
 import { ScriptOutput } from "../../scriptrunner";
+import { ReferencesView } from "../viewers/configview";
 
 export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "sprites" | "sounds" | "music" | "coordgrid";
 
@@ -287,8 +288,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 await clientScriptDeobPopup(engine);
                 let buf = await engine.getFileById(cacheMajors.clientscript, index.index[0]);
                 let { writer, rootfunc } = await renderClientScript(engine, buf, index.index[0], false, false, false);
-                let clicker = (objectid: string) => ctx.openFile({ type: "browse", id: objectid });
-                let dom = writer.getCodeDom(rootfunc, clicker);
+                let dom = writer.getCodeDom(rootfunc, ctx.objectClick);
                 globalThis.cs2 = rootfunc;
                 return { viewer: "dom", mode: index.mode, dom } as const;
             }
@@ -330,11 +330,11 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
     if (data.viewer == "json") {
         return <JsonViewer data={data?.file} jsonmode={data?.mode ?? ""} />
     } else if (data.viewer == "dom") {
-        return <DomWrap el={data.dom} />
+        return <><DomWrap el={data.dom} /><ReferencesView jsonmode={index?.mode} id={index?.index} /></>
     } else if (data.viewer == "sprite") {
-        return <TextureView img={data.sprite[0].img} fillHeight />
+        return <><TextureView img={data.sprite[0].img} fillHeight /><ReferencesView jsonmode={index?.mode} id={index?.index} /></>
     } else if (data.viewer == "audio") {
-        return <BlobAudio file={data.file} autoplay />
+        return <><BlobAudio file={data.file} autoplay /><ReferencesView jsonmode={index?.mode} id={index?.index} /></>
     } else if (data.viewer == "interfaces") {
         return <RsUIViewer interfaceid={data.interfaceid[0]} subcomponent={data.interfaceid[1]} />
     } else if (data.viewer == "map") {

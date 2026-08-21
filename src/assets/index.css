@@ -433,6 +433,14 @@
 	cursor: pointer;
 }
 
+.mv-sublelink {
+	cursor: pointer;
+}
+
+.mv-sublelink:hover {
+	text-decoration: underline;
+}
+
 .mv-gridrow {
 	grid-column: 1/-1;
 	display: grid;
@@ -483,6 +491,7 @@
 .mv-code__link {
 	cursor: pointer;
 }
+
 .mv-code__link:hover {
 	text-decoration: underline;
 }

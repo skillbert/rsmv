@@ -116,15 +116,9 @@ export class TsWriterContext {
         return parts.join("");
     }
     @boundMethod
-    getCodeDom(node: AstNode, objclick?: (objectid: string) => void) {
+    getCodeDom(node: AstNode, objclick?: (e: MouseEvent) => void) {
         let root = document.createElement("div");
         root.classList.add("mv-codeview");
-        let clickevent = (e: MouseEvent) => {
-            let obj = (e.currentTarget as HTMLElement).dataset.objectid;
-            if (obj && objclick) {
-                objclick(obj);
-            }
-        }
 
         let recur = (frag: string | WriteResult, parent: DocumentFragment | HTMLElement) => {
             if (typeof frag == "string") {
@@ -134,7 +128,7 @@ export class TsWriterContext {
                 if (frag.objectid) {
                     group.classList.add(`mv-code__link`);
                     group.dataset.objectid = frag.objectid;
-                    group.addEventListener("click", clickevent);
+                    objclick && group.addEventListener("click", objclick);
                 }
                 if (frag.type) {
                     group.classList.add(`mv-code__${frag.type}`);
@@ -203,7 +197,7 @@ function getOpcodeCallCode(ctx: TsWriterContext, op: ClientScriptOp, children: A
         return new WriteResult(0, [writeLeaf("keyword", "return"), " ", valueList(children.map(ctx.getCode))]);
     }
     if (op.opcode == namedClientScriptOps.gosub) {
-        return writeCall(ctx, writeLeaf("scriptname", `script${op.imm}`, `scriptref_${op.imm}`), children);
+        return writeCall(ctx, writeLeaf("scriptname", `script${op.imm}`, `clientscript_${op.imm}`), children);
     }
     let metastr = "";
     if (branchInstructionsOrJump.includes(op.opcode)) {

@@ -210,6 +210,7 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
         graph.currenttypedonly = action == "typedonly";
 
         if (modename == "clientscriptops") {
+            graph.currentmode = "clientscript";
             let subscriptout = new CLIScriptOutput();
             subscriptout.log = out.log.bind(out);
             await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => subscriptout);
@@ -278,14 +279,14 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
                 // not tracking these for now
             } else if (typeof node.op.imm_obj == "number") {
                 // int
-                graph.addInt("pushconst", node.op.imm_obj, typename);
+                graph.addInt("const", node.op.imm_obj, typename);
             } else if (typeof node.op.imm_obj == "string") {
                 // string
-                graph.addString("pushconst", node.op.imm_obj, typename);
+                graph.addString("const", node.op.imm_obj, typename);
                 // embedded sprite tags
                 node.op.imm_obj.matchAll(/<sprite=(\d+)(,\d+)?>/g).forEach(match => {
                     let spriteId = parseInt(match[1], 10);
-                    graph.addInt("pushconst", spriteId, "graphic");
+                    graph.addInt("stringinsert", spriteId, "graphic");
                 });
             }
         }
@@ -297,6 +298,9 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
         }
         if (isNamedOp(node, namedClientScriptOps.pushvarbit) || isNamedOp(node, namedClientScriptOps.popvarbit)) {
             graph.addInt(node.op.opcode == namedClientScriptOps.pushvarbit ? "read" : "write", node.op.imm, "varbit");
+        }
+        if (isNamedOp(node, namedClientScriptOps.gosub)) {
+            graph.addInt("call", node.op.imm, "clientscript");
         }
     }
 }

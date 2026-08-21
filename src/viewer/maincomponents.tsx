@@ -537,6 +537,14 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 	}
 
 	@boundMethod
+	objectClick(e: React.MouseEvent<HTMLElement> | MouseEvent) {
+		e.preventDefault();
+		let fileid = (e.currentTarget as HTMLElement).dataset.objectid;
+		if (!fileid) { return; }
+		this.openFile({ type: "browse", id: fileid });
+	}
+
+	@boundMethod
 	openFile(tab: UIOpenedTab | null, newtab = false, isHistoryNavigation = false) {
 		let tabindex = this.activeTabIndex;
 		if (tabindex == -1) {

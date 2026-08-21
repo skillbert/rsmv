@@ -19,6 +19,7 @@ import { cacheFileDecodeModes } from "../../parser/filetypes";
 type DeepLinkElement = {
     rsmvtype: BrowsableType,
     name: string,
+    nameobj?: string,
     valuename?: string | undefined,
     primitive?: string | number | boolean | null,
     items?: DeepLinkElement[],
@@ -68,12 +69,14 @@ const skillNames = [
 async function deepLinkParamtable(ctx: DeepLinkContext, value: any[]) {
     let paramData = await loadParams(ctx.source);
     let paramNames = await ctx.source.getInternalNameList(internalNameFiles.param);
-    return Promise.all(value.map<Promise<DeepLinkElement>>(q => {
+    return Promise.all(value.map<Promise<DeepLinkElement>>(async q => {
         let paramname = paramNames.get(q.prop) ?? `param_${q.prop}`;
         let paramdata = paramData.get(q.prop);
         let typeid = paramdata?.type?.vartype ?? -1;
         let typename = vartypeReverseMap.get(typeid) ?? "unknown"
-        return deepLinkJson(ctx, paramname, q.intvalue ?? q.stringvalue, { "x-rsmv-type": typename } as any);
+        let res = await deepLinkJson(ctx, paramname, q.intvalue ?? q.stringvalue, { "x-rsmv-type": typename } as any);
+        res.nameobj = `params_${q.prop}`;
+        return res;
     }));
 }
 
@@ -461,13 +464,8 @@ function ObjectLink(p: { prop: DeepLinkElement }) {
 
     let fileid = makeFileId(p.prop.rsmvtype, index);
 
-    let onclick = (e: React.MouseEvent) => {
-        e.preventDefault();
-        ctx.openFile({ type: "browse", id: fileid });
-    }
-
     return <>
-        <span className={match && "mv-filelink"} onClick={match && onclick}>{fileid}</span>
+        <span className={match && "mv-filelink"} data-objectid={fileid} onClick={ctx.objectClick}>{fileid}</span>
         {p.prop.valuename ? ` (${p.prop.valuename})` : null}
     </>
 }
@@ -529,6 +527,7 @@ export function renderPrimitive(prop: DeepLinkElement) {
 
 export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
+    let ctx = React.useContext(UIRootContext);
     let source = React.useContext(UIEngineContext)?.source;
     let data = useAwaited(async () => {
         return source && deepLinkJson(new DeepLinkContext(source), "root", p.data, p.meta);
@@ -562,17 +561,20 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
             let el = <div className={classNames({ "mv-proplist": true, "mv-proplist--nested": !isroot })}>
                 {prop.items.map((q, i) => {
                     let child = handlenode(q);
+                    let nameel = (q.nameobj
+                        ? <div className="mv-proplist__name mv-sublelink" data-objectid={q.nameobj} onClick={ctx.objectClick}>{q.name}</div>
+                        : <div className="mv-proplist__name">{q.name}</div>);
                     if (child.isbig) {
                         return (
                             <div key={i} className="mv-proplist__entry">
-                                <div className="mv-proplist__name">{q.name}</div>
+                                {nameel}
                                 {child.el}
                             </div>
                         );
                     } else {
                         return (
                             <React.Fragment key={i}>
-                                <div className="mv-proplist__name">{q.name}</div>
+                                {nameel}
                                 <div className="mv-proplist__value">{child.el}</div>
                             </React.Fragment>
                         );
@@ -598,11 +600,12 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
     );
 }
 
-export function ReferencesView(p: { jsonmode: string, id: unknown }) {
+export function ReferencesView(p: { jsonmode?: string, id?: unknown }) {
     let ctx = React.useContext(UIRootContext);
+    let valid = p.jsonmode && p.id != undefined;
 
     let refs = useAwaited(async () => {
-        if (!ctx.source) { return null; }
+        if (!ctx.source || !valid) { return null; }
         let id = p.id;
         if (typeof id == "number") { id = [id]; }
         if (!Array.isArray(id)) { return null; }
@@ -620,19 +623,15 @@ export function ReferencesView(p: { jsonmode: string, id: unknown }) {
         }));
     }, [ctx.source, p.jsonmode, p.id]);
 
-    let onclick = (e: React.MouseEvent<HTMLSpanElement>) => {
-        e.preventDefault();
-        ctx.openFile({ type: "browse", id: e.currentTarget.dataset.fileid! });
-    }
-
     return <div className="mv-proplist">
         {refs && refs.map(q => <React.Fragment key={q.srcobject}>
             <div className="mv-proplist__value">
-                <span className="mv-filelink" data-fileid={q.srcobject} onClick={onclick}>{q.srcobject}</span>
+                <span className="mv-filelink" data-objectid={q.srcobject} onClick={ctx.objectClick}>{q.srcobject}</span>
                 {q.name && ` (${q.name})`}
             </div>
             <div className="mv-proplist__name">{q.propname}</div>
         </React.Fragment>)}
-        {!refs && <span>Loading...</span>}
+        {refs && refs.length == 0 && <span>No references found</span>}
+        {!refs && valid && <span>Loading...</span>}
     </div>
 }
