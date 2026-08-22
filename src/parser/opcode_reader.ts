@@ -319,114 +319,117 @@ function refgetter(refparent: ChunkParentCallback | null, propname: string, reso
 	}
 }
 
-function structParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
-	let refs: Record<string, ResolvedReference[] | undefined> = {};
-	let r: ChunkParser = {
-		read(state) {
-			let r = {};
-			let hidden = {};
-			state.stack.push(r);
-			state.hiddenstack.push(hidden);
-			if (debugdata && !debugdata.rootstate) { debugdata.rootstate = r; }
-			for (let key of keys) {
-				if (debugdata) { debugdata.opcodes.push({ op: key, index: state.scan, stacksize: state.stack.length }); }
-				let v = props[key].read(state);
-				if (v !== undefined) {
-					if (key[0] == "$") {
-						hidden[key] = v;
-					} else {
-						r[key] = v;
-					}
-				}
-			}
-			state.stack.pop();
-			state.hiddenstack.pop();
-			return r;
-		},
-		write(state, value) {
-			if (typeof value != "object" || !value) { throw new Error("object expected"); }
-			let hiddenvalue = {};
-			state.stack.push(value);
-			state.hiddenstack.push(hiddenvalue);
-			for (let key of keys) {
-				let propvalue = value[key as string];
-				let prop = props[key];
-
-				if (key.startsWith("$")) {
-					if (prop.readConst != undefined) {
-						propvalue = prop.readConst(state);
-					} else {
-						let refarray = refs[key];
-						if (!refarray) { throw new Error("cannot write hidden values if they are not constant or not referenced"); }
-						propvalue ??= 0;
-						for (let ref of refarray) {
-							propvalue = ref.resolve(value, propvalue);
+function structParserFactory(ismini: boolean) {
+	return function structParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
+		let refs: Record<string, ResolvedReference[] | undefined> = {};
+		let r: ChunkParser = {
+			read(state) {
+				let r = {};
+				let hidden = {};
+				state.stack.push(r);
+				state.hiddenstack.push(hidden);
+				if (debugdata && !debugdata.rootstate) { debugdata.rootstate = r; }
+				if (debugdata && ismini) { debugdata.opcodes.push({ op: "struct", index: state.scan, stacksize: state.stack.length }); }
+				for (let key of keys) {
+					if (debugdata && !ismini) { debugdata.opcodes.push({ op: key, index: state.scan, stacksize: state.stack.length }); }
+					let v = props[key].read(state);
+					if (v !== undefined) {
+						if (key[0] == "$") {
+							hidden[key] = v;
+						} else {
+							r[key] = v;
 						}
 					}
-					hiddenvalue[key] = propvalue;
 				}
-				prop.write(state, propvalue);
-			}
-			state.stack.pop();
-			state.hiddenstack.pop();
-		},
-		getTypescriptType(indent) {
-			let r = "{\n";
-			let newindent = indent + "\t";
-			for (let key of keys) {
-				if (key[0] == "$") { continue; }
-				r += newindent + key + ": " + props[key].getTypescriptType(newindent) + ",\n";
-			}
-			r += indent + "}";
-			return r;
-		},
-		getJsonSchema() {
-			let propschema: Record<string, jsonschema.JSONSchema6Definition> = {};
-			for (let prop in props) {
-				if (prop.startsWith("$")) { continue; }
-				propschema[prop] = (props[prop] as ChunkParser).getJsonSchema();
-				let proptype = proptypes[prop];
-				if (proptype) {
-					propschema[prop]["x-rsmv-type"] = proptype;
+				state.stack.pop();
+				state.hiddenstack.pop();
+				return r;
+			},
+			write(state, value) {
+				if (typeof value != "object" || !value) { throw new Error("object expected"); }
+				let hiddenvalue = {};
+				state.stack.push(value);
+				state.hiddenstack.push(hiddenvalue);
+				for (let key of keys) {
+					let propvalue = value[key as string];
+					let prop = props[key];
+
+					if (key.startsWith("$")) {
+						if (prop.readConst != undefined) {
+							propvalue = prop.readConst(state);
+						} else {
+							let refarray = refs[key];
+							if (!refarray) { throw new Error("cannot write hidden values if they are not constant or not referenced"); }
+							propvalue ??= 0;
+							for (let ref of refarray) {
+								propvalue = ref.resolve(value, propvalue);
+							}
+						}
+						hiddenvalue[key] = propvalue;
+					}
+					prop.write(state, propvalue);
 				}
-			}
-			return {
-				type: "object",
-				properties: propschema,
-				required: Object.keys(propschema)
+				state.stack.pop();
+				state.hiddenstack.pop();
+			},
+			getTypescriptType(indent) {
+				let r = "{\n";
+				let newindent = indent + "\t";
+				for (let key of keys) {
+					if (key[0] == "$") { continue; }
+					r += newindent + key + ": " + props[key].getTypescriptType(newindent) + ",\n";
+				}
+				r += indent + "}";
+				return r;
+			},
+			getJsonSchema() {
+				let propschema: Record<string, jsonschema.JSONSchema6Definition> = {};
+				for (let prop in props) {
+					if (prop.startsWith("$")) { continue; }
+					propschema[prop] = (props[prop] as ChunkParser).getJsonSchema();
+					let proptype = proptypes[prop];
+					if (proptype) {
+						propschema[prop]["x-rsmv-type"] = proptype;
+					}
+				}
+				return {
+					type: "object",
+					properties: propschema,
+					required: Object.keys(propschema)
+				}
 			}
 		}
-	}
 
-	let resolveReference = function (targetprop: string, name: string, childresolve: ResolvedReference) {
-		let result: ResolvedReference = {
-			stackdepth: childresolve.stackdepth + 1,
-			resolve(v, oldvalue) {
-				if (typeof v != "object" || !v) { throw new Error("object expected"); }
-				let res = v[targetprop!];
-				return childresolve.resolve(res, oldvalue);
+		let resolveReference = function (targetprop: string, name: string, childresolve: ResolvedReference) {
+			let result: ResolvedReference = {
+				stackdepth: childresolve.stackdepth + 1,
+				resolve(v, oldvalue) {
+					if (typeof v != "object" || !v) { throw new Error("object expected"); }
+					let res = v[targetprop!];
+					return childresolve.resolve(res, oldvalue);
+				}
+			};
+			if (Object.prototype.hasOwnProperty.call(props, name)) {
+				refs[name] ??= [];
+				refs[name]!.push(result);
+				return result;
+			} else {
+				return buildReference(name, parent, result);
 			}
-		};
-		if (Object.prototype.hasOwnProperty.call(props, name)) {
-			refs[name] ??= [];
-			refs[name]!.push(result);
-			return result;
-		} else {
-			return buildReference(name, parent, result);
 		}
-	}
 
-	let props = {};
-	let proptypes = {};
-	for (let propdef of args) {
-		if (!Array.isArray(propdef) || (propdef.length != 2 && propdef.length != 3)) { throw new Error("each struct args should be a [name,type] pair"); }
-		if (typeof propdef[0] != "string") { throw new Error("prop name should be string"); }
-		if (props[propdef[0]]) { throw new Error("duplicate struct prop " + propdef[0]); }
-		props[propdef[0]] = buildParser(resolveReference.bind(null, propdef[0]), propdef[1], typedef);
-		proptypes[propdef[0]] = propdef[2] ?? "";
+		let props = {};
+		let proptypes = {};
+		for (let propdef of args) {
+			if (!Array.isArray(propdef) || (propdef.length != 2 && propdef.length != 3)) { throw new Error("each struct args should be a [name,type] pair"); }
+			if (typeof propdef[0] != "string") { throw new Error("prop name should be string"); }
+			if (props[propdef[0]]) { throw new Error("duplicate struct prop " + propdef[0]); }
+			props[propdef[0]] = buildParser(resolveReference.bind(null, propdef[0]), propdef[1], typedef);
+			proptypes[propdef[0]] = propdef[2] ?? "";
+		}
+		let keys = Object.keys(props);
+		return r;
 	}
-	let keys = Object.keys(props);
-	return r;
 }
 
 function optParser(args: unknown[], parent: ChunkParentCallback, typedef: TypeDef) {
@@ -1800,7 +1803,8 @@ const parserFunctions = {
 	buffer: bufferParser,
 	nullarray: arrayNullTerminatedParser,
 	array: arrayParser,
-	struct: structParser,
+	struct: structParserFactory(false),
+	ministruct: structParserFactory(true),
 	tuple: tupleParserFactory(false),
 	typedtuple: tupleParserFactory(true),
 	typed: typedParser,

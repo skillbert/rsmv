@@ -161,6 +161,36 @@ export function singleMinorIndex(major: number, minor: number, internalNamefile:
     }
 }
 
+export function subfileIndex(major: number, subfile: number): DecodeLookup {
+    return {
+        major,
+        minor: undefined,
+        logicalDimensions: 1,
+        usesArchieves: true,
+        internalNamefile: undefined,
+        fileToLogical(source, major, minor, subfile) {
+            return [minor];
+        },
+        logicalToFile(source, id: LogicalIndex) {
+            return { major, minor: id[0], subid: subfile };
+        },
+        async logicalRangeToFiles(source, start, end) {
+            let indexfile = await source.getCacheIndex(major);
+            let files: CacheFileId[] = [];
+            for (let index of indexfile) {
+                if (!index) { continue; }
+                if (index.minor >= start[0] && index.minor <= end[0]) {
+                    let sub = index.subindices.findIndex(q => q == subfile);
+                    if (sub != -1) {
+                        files.push({ index, subindex: sub });
+                    }
+                }
+            }
+            return files;
+        }
+    }
+}
+
 export function chunkedIndex(major: number, internalNamefile: number | undefined = undefined): DecodeLookup {
     return {
         major,

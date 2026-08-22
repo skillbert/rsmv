@@ -3,11 +3,8 @@ export const cacheMajors = {
 	config: 2,
 	components: 3,
 	mapsquares: 5,
-
-	oldmodels: 7,
 	sprites: 8,
 	clientscript: 12,
-	fontmetricsOld: 13,
 	sounds: 14,
 	locs: 16,
 	enums: 17,
@@ -16,42 +13,54 @@ export const cacheMajors = {
 	sequences: 20,
 	spotanims: 21,
 	structs: 22,
+	worldmap: 23,
 	quickchat: 24,
 	materials: 26,
 	particles: 27,
-	worldmap: 23,
 	client_cutscenes: 35,
 	music: 40,
 	maplabellocations: 42,
 	models: 47,
 	frames: 48,
-
+	texturesDds: 52,
+	texturesPng: 53,
+	texturesBmp: 54,
+	texturesKtx: 55,
+	skeletalAnims: 56,
+	achievements: 57,
+	fontmetrics: 58,
+	vectorfonts: 59,
+	stylesheets: 60,
+	cutscenes: 66,
+	filenames: 67,
+	
+	// old stuff
+	oldmodels: 7,
 	texturesOldPng: 9,
+	fontmetricsOld: 13,
 	texturesOldCompoundPng: 37,
-
+	
 	textures2015Png: 43,
 	textures2015CompoundPng: 44,
 	textures2015Dds: 45,
 	textures2015CompoundPngMips: 46,
 	textures2015CompoundDds: 50,
 	textures2015PngMips: 51,
-
-	texturesDds: 52,
-	texturesPng: 53,
-	texturesBmp: 54,
-	texturesKtx: 55,
-
-	skeletalAnims: 56,
-
-	achievements: 57,
-	fontmetrics: 58,
-	vectorfonts: 59,
-	stylesheets: 60,
-	// 61 vfx
-	cutscenes: 66,
-	filenames: 67,
-
+	
 	index: 255
+
+	// unknown stuff
+	// 10: one single file, seems to contain a 32x8 1bpp bitmap or lookup table
+	// 28: 11 fairly complex files
+	// 29: 269 configs of some kind
+	// 32: 11 large files with low entropy
+	// 33: 3 files, contains text "Preparing Your Greatest Adventure"
+	// 34: 11 files very similar to 32
+	// 41: 771 archieve, subfile 0 seems to contain compressed tile data
+	// 49: 252 files, seems to repeat a series of numbers 2 times
+	// 61: 1283 files, vfx
+	// 62: 7 files, contains text that seems to imply experimental bas with anim blending
+	// 65: 2 small files
 } as const;
 
 export const internalNameFiles = {
@@ -111,11 +120,15 @@ export const cacheMapFiles = {
 
 export const cacheConfigPages = {
 	mapunderlays: 1,
+	// 2: 742 empty files (just one 0x00)
 	identityKit: 3,
 	mapoverlays: 4,
 	inventories: 5,
+	// 7: 350 empty files
 	params: 11,
+	// 18: 2888 empty files
 	skyboxes: 29,
+	// 31: 37 small files which seem to have color and some other data
 	animgroups: 32,
 	cursors: 33,
 	mapscenes: 34,
@@ -123,10 +136,10 @@ export const cacheConfigPages = {
 	maplabels: 36,
 	dbtables: 40,
 	dbrows: 41,
-	headbars: 72,
+	// 42: 1024 empty files
 	hitmarks: 46,
-
-	// 46 probly hitsplats
+	// 48: 19 empty files
+	// 49: 2 empty files
 	varplayer: 60,
 	varnpc: 61,
 	varclient: 62,
@@ -136,8 +149,14 @@ export const cacheConfigPages = {
 	varclan: 66,
 	varclansettings: 67,
 	varcampaign: 68,
-	varplayergroup: 75,
 	varbits: 69,
+	// 70: 365 empty files
+	headbars: 72,
+	// 73: 45 empty files
+	varplayergroup: 75,
+	// 76: 40 moderately complex files
+	// 80: 24 files only one having one value
+	// 83: 869 complex files, already decoded in config83.jsonc, meaning unclear
 
 	//used before 488 (feb 2008)
 	locs_old: 6,

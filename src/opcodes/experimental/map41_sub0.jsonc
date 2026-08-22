@@ -10,23 +10,65 @@
 // - first byte per tile could also be hardcoded opcode where majority are fixed colors
 // - length of array seems to decided externally, seems to correlate with number of chunks/size of mappastes in mapzones
 ["struct",
-  ["unk1",["array","ubyte","varushort"]],
-  ["unk2",["array","ubyte",["tuple","varushort"]]],
+  ["underlays",["array","ubyte","varushort"]],
+  ["overlays",["array","ubyte","varushort"]],
   // header
   ["data",["nullarray",["bytesleft"],["struct",
-    ["byte1","ubyte"],
+    ["chunksize",["match","ubyte",{"0":64,"1":8}]],//1 means 8x8 subchunks, 0 probably means 64x64
     ["x","ubyte"],
     ["z","ubyte"],
-    ["xsize","ubyte"],
-    ["zsize","ubyte"],
+    ["subx","ubyte"],
+    ["subz","ubyte"],
     ["level","ubyte"],
+    ["unkheader",["opt","chunksize=64",["buffer",5,"hex"]]],
     // tile data
-    ["tiles",["array",64,["struct",
-      ["op","ubyte"],
-      ["flag2",["opt","op=0x02","varushort"]],
-      ["flag9",["opt","op=0x09",["tuple","varushort","varushort","ubyte"]]],
-      ["flag11",["opt","op=0x11",["tuple","ushort","ushort","ubyte"]]],
-      ["flag19",["opt","op=0x19",["tuple","ushort","ushort","ushort","ubyte"]]]
-    ]]]
-  ]]]
+    ["tiles",
+      ["array",["ref","chunksize"],["ministruct",["v",
+        ["array",["ref","chunksize"],["ministruct",["v",["match","ubyte",{
+          "0x01":["tuple","varuint","ubyte"],//loc
+          "0x09":["tuple","varushort","varushort","ubyte"],
+          "0x19":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          
+          "0x03":["tuple","ubyte","ubyte"],
+          "0x11":["tuple","varushort",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x13":["tuple","varushort",["array","ubyte",["tuple","varuint","ubyte"]],"ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x0b":["tuple","varushort","varushort","ushort","varushort","byte"],
+          "0x1b":["tuple","varushort","ushort",["array","ubyte",["tuple","ushort","ubyte"]],"ubyte","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+
+          // not flag1
+          "0x02":"varushort",//water?
+          "0x06":"varushort",
+          "0x0a":"varushort",
+          "0x0e":"varushort",
+          "0x12":"varushort",
+          
+          //mark all with flag 0x1 or 0x2 in debug view
+          "&0x03":["struct",["unknown op",true]],
+          //all values without 0x3 are indexes into the palette
+          "other":true
+        }]]]]
+      ]]]
+  ]]]]
 ]
+
+
+
+
+
+// data should overlap this
+// async function debug(chunkx,chunkz,subx,subz,level=0){
+//     console.log(`${chunkx}.${chunkz}`);
+//     chunk=await source.getObject("maptiles",[chunkx,chunkz])
+//     tiles=[];
+//     tiletext=[];
+//     let offset=level*64*64+subx*64*8+subz*8;
+//     for(let x=0;x<8;x++){
+//         for(let z=0;z<8;z++){
+//             let t=chunk.tiles[offset+z+x*64];
+//             tiletext.push(`${tiles.length.toString(8).padStart(2,"0")}  s=${t.shape?.toString(16).padStart(2,"0")??"--"}  o=${t.overlay?.toString(16).padStart(2,"0")??"--"}  u=${t.underlay?.toString(16).padStart(2,"0")??"--"}`);
+//             tiles.push(t);
+//         }
+//     }
+//     console.log(tiletext.join("\n"));
+//     return tiles;
+// }
