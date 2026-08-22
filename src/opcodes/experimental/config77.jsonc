@@ -1,0 +1,7 @@
+{
+    "0x02":{"name":"unk02","read":["array","varushort","varushort"]},
+    "0x04":{"name":"unk04","read":["struct",
+        ["unkff","ubyte"],
+        ["data",["array","varushort",["tuple","ubyte","varushort"]]]
+    ]}
+}

@@ -1,0 +1,23 @@
+{
+	//0-7, often 0,-1,-10,-45
+	"0x01": { "name":                           "unk01", "read": ["tuple","ubyte","byte"] },
+
+	//weird, often at min or max of int range
+	"0x03": { "name":                           "unk03", "read": ["array",6,"short"] },
+	"0x04": { "name":                           "unk04", "read": ["struct",
+		["unk0","ubyte"],//always 1 or 2
+		["unk1_0000","ushort"],//always 0
+		["unk2","ushort"]//weird, 1-496
+	] },
+
+	//always 2
+	"0x06": { "name":                           "unk06", "read": "ubyte" },
+
+	//these flags often come together
+	//36/57 uses
+	"0x08": { "name":                           "unk08", "read": "true" },
+	//37/57 uses
+	"0x09": { "name":                           "unk09", "read": "true" },
+	//31/57 uses
+	"0x0A": { "name":                           "unk0A", "read": "true" }
+}

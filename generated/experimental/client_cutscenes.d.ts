@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\client_cutscenes.jsonc'
+// This source data is located at '..\..\src\opcodes\experimental\client_cutscenes.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type client_cutscenes = {

@@ -3,7 +3,7 @@ import * as opcode_reader from "./opcode_reader";
 import commentJson from "comment-json";
 import type { CacheFileSource, CacheIndex, SubFile } from "../cache";
 import { cacheConfigPages, cacheMajors, cacheMapFiles, internalNameFiles } from "../constants";
-import { anyFileIndex, blacklistIndex, CacheFileId, chunkedIndex, DecodeLookup, indexfileIndex, LogicalIndex, noArchiveIndex, oldWorldmapIndex, rootindexfileIndex, singleMinorIndex, standardIndex, worldmapIndex } from "./filelookup";
+import { anyFileIndex, blacklistIndex, CacheFileId, chunkedIndex, DecodeLookup, indexfileIndex, LogicalIndex, noArchiveIndex, oldWorldmapIndex, rootindexfileIndex, singleMinorIndex, standardIndex, subfileIndex, worldmapIndex } from "./filelookup";
 
 const typedef = commentJson.parse(require("../opcodes/typedef.jsonc")) as any;
 
@@ -154,8 +154,6 @@ function allParsers() {
 		mapsquareEnvironment: FileParser.fromJson<import("../../generated/mapsquare_envs").mapsquare_envs>(require("../opcodes/mapsquare_envs.jsonc")),
 		mapZones: FileParser.fromJson<import("../../generated/mapzones").mapzones>(require("../opcodes/mapzones.json")),
 		mapPastes: FileParser.fromJson<import("../../generated/mapzones_pastes").mapzones_pastes>(require("../opcodes/mapzones_pastes.json")),
-		mapZonesSub3: FileParser.fromJson<import("../../generated/mapzones_sub3").mapzones_sub3>(require("../opcodes/mapzones_sub3.jsonc")),
-		mapZonesSub4: FileParser.fromJson<import("../../generated/mapzones_sub4").mapzones_sub4>(require("../opcodes/mapzones_sub4.jsonc")),
 		enums: FileParser.fromJson<import("../../generated/enums").enums>(require("../opcodes/enums.json")),
 		fontmetrics: FileParser.fromJson<import("../../generated/fontmetrics").fontmetrics>(require("../opcodes/fontmetrics.jsonc")),
 		mapscenes: FileParser.fromJson<import("../../generated/mapscenes").mapscenes>(require("../opcodes/mapscenes.json")),
@@ -184,8 +182,6 @@ function allParsers() {
 		inventories: FileParser.fromJson<import("../../generated/inventories").inventories>(require("../opcodes/inventories.jsonc")),
 		structs: FileParser.fromJson<import("../../generated/structs").structs>(require("../opcodes/structs.jsonc")),
 		params: FileParser.fromJson<import("../../generated/params").params>(require("../opcodes/params.jsonc")),
-		particles_0: FileParser.fromJson<import("../../generated/particles_0").particles_0>(require("../opcodes/particles_0.jsonc")),
-		particles_1: FileParser.fromJson<import("../../generated/particles_1").particles_1>(require("../opcodes/particles_1.jsonc")),
 		audio: FileParser.fromJson<import("../../generated/audio").audio>(require("../opcodes/audio.jsonc")),
 		proctexture: FileParser.fromJson<import("../../generated/proctexture").proctexture>(require("../opcodes/proctexture.jsonc")),
 		oldproctexture: FileParser.fromJson<import("../../generated/oldproctexture").oldproctexture>(require("../opcodes/oldproctexture.jsonc")),
@@ -200,8 +196,14 @@ function allParsers() {
 		dbrows: FileParser.fromJson<import("../../generated/dbrows").dbrows>(require("../opcodes/dbrows.jsonc")),
 		vars: FileParser.fromJson<import("../../generated/vars").vars>(require("../opcodes/vars.jsonc")),
 		varbits: FileParser.fromJson<import("../../generated/varbits").varbits>(require("../opcodes/varbits.jsonc")),
-		config83: FileParser.fromJson<import("../../generated/config83").config83>(require("../opcodes/config83.jsonc")),
-		client_cutscenes: FileParser.fromJson<import("../../generated/client_cutscenes").client_cutscenes>(require("../opcodes/client_cutscenes.jsonc")),
+		// experimental
+		map41Sub0: FileParser.fromJson<import("../../generated/experimental/map41_sub0").map41_sub0>(require("../opcodes/experimental/map41_sub0.jsonc")),
+		mapZonesSub3: FileParser.fromJson<import("../../generated/experimental/mapzones_sub3").mapzones_sub3>(require("../opcodes/experimental/mapzones_sub3.jsonc")),
+		mapZonesSub4: FileParser.fromJson<import("../../generated/experimental/mapzones_sub4").mapzones_sub4>(require("../opcodes/experimental/mapzones_sub4.jsonc")),
+		particles_0: FileParser.fromJson<import("../../generated/experimental/particles_0").particles_0>(require("../opcodes/experimental/particles_0.jsonc")),
+		particles_1: FileParser.fromJson<import("../../generated/experimental/particles_1").particles_1>(require("../opcodes/experimental/particles_1.jsonc")),
+		config83: FileParser.fromJson<import("../../generated/experimental/config83").config83>(require("../opcodes/experimental/config83.jsonc")),
+		clientCutscenes: FileParser.fromJson<import("../../generated/experimental/client_cutscenes").client_cutscenes>(require("../opcodes/experimental/client_cutscenes.jsonc")),
 	}
 }
 
@@ -262,14 +264,8 @@ export const cacheFileJsonModes = {
 	maplabellocations: JsonBasedFile(parse.maplabellocations, noArchiveIndex(cacheMajors.maplabellocations)),
 	mapzones: JsonBasedFile(parse.mapZones, singleMinorIndex(cacheMajors.worldmap, 0)),
 	mappastes: JsonBasedFile(parse.mapPastes, singleMinorIndex(cacheMajors.worldmap, 1)),
-	mapzones_sub3: JsonBasedFile(parse.mapZonesSub3, singleMinorIndex(cacheMajors.worldmap, 3)),
-	mapzones_sub4: JsonBasedFile(parse.mapZonesSub4, singleMinorIndex(cacheMajors.worldmap, 4)),
 	stylesheets: JsonBasedFile(parse.stylesheets, noArchiveIndex(cacheMajors.stylesheets, internalNameFiles.stylesheet)),
 	cutscenes: JsonBasedFile(parse.cutscenes, noArchiveIndex(cacheMajors.cutscenes)),
-	client_cutscenes: JsonBasedFile(parse.client_cutscenes, noArchiveIndex(cacheMajors.client_cutscenes)),
-
-	particles0: JsonBasedFile(parse.particles_0, singleMinorIndex(cacheMajors.particles, 0)),
-	particles1: JsonBasedFile(parse.particles_1, singleMinorIndex(cacheMajors.particles, 1)),
 
 	maptiles: JsonBasedFile(parse.mapsquareTiles, worldmapIndex(cacheMapFiles.squares)),
 	maptiles_nxt: JsonBasedFile(parse.mapsquareTilesNxt, worldmapIndex(cacheMapFiles.square_nxt)),
@@ -287,12 +283,20 @@ export const cacheFileJsonModes = {
 	components: JsonBasedFile(parse.components, standardIndex(cacheMajors.components, internalNameFiles.component)),
 	fontmetrics: JsonBasedFile(parse.fontmetrics, noArchiveIndex(cacheMajors.fontmetrics, internalNameFiles.fontmetrics)),
 
-	config83: JsonBasedFile(parse.config83, singleMinorIndex(cacheMajors.config, 83)),
-
 	indices: JsonBasedFile(parse.cacheIndex, indexfileIndex()),
 	rootindex: JsonBasedFile(parse.rootCacheIndex, rootindexfileIndex()),
 
 	clientscriptops: JsonBasedFile(parse.clientscript, noArchiveIndex(cacheMajors.clientscript)),
+} satisfies Record<string, JsonBasedFile<any>>;
 
+export const cacheFileExperimentalModes = {
+	particles0: JsonBasedFile(parse.particles_0, singleMinorIndex(cacheMajors.particles, 0)),
+	particles1: JsonBasedFile(parse.particles_1, singleMinorIndex(cacheMajors.particles, 1)),
+	mapzones_sub3: JsonBasedFile(parse.mapZonesSub3, singleMinorIndex(cacheMajors.worldmap, 3)),
+	mapzones_sub4: JsonBasedFile(parse.mapZonesSub4, singleMinorIndex(cacheMajors.worldmap, 4)),
+	client_cutscenes: JsonBasedFile(parse.clientCutscenes, noArchiveIndex(cacheMajors.client_cutscenes)),
+	map41_sub0: JsonBasedFile(parse.map41Sub0, subfileIndex(41, 0)),
+	map41_sub1: JsonBasedFile(parse.maplabellocations, subfileIndex(41, 1)),//same decoder as maplabelocations at index 42, possibly identical data
+	config83: JsonBasedFile(parse.config83, singleMinorIndex(cacheMajors.config, 83)),
 	test: JsonBasedFile(FileParser.fromJson(`["struct",\n  \n]`), anyFileIndex()),
 } satisfies Record<string, JsonBasedFile<any>>;

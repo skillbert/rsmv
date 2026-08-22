@@ -11,7 +11,7 @@ import { runMapRender } from "../../map";
 import { diffCaches, FileEdit } from "../../scripts/cachediff";
 import { showModal } from "../jsonsearch";
 import { InputCommitted, LabeledInput, TabStrip } from "../commoncontrols";
-import { cacheFileJsonModes, FileParser } from '../../parser/jsondecoders';
+import { cacheFileExperimentalModes, cacheFileJsonModes, FileParser } from '../../parser/jsondecoders';
 import { fileHistory } from '../../scripts/filehistory';
 import { extractCacheFiles } from '../../scripts/extractfiles';
 import { MapRenderFsBacked, examplemapconfig, parseMapConfig } from '../../map/backends';
@@ -182,7 +182,7 @@ function ReferenceGraphScript(p: UiScriptProps) {
         let output = new UIScriptOutput();
         p.onRun(output, "");
         let graph = await IndexGraphLoader.forCache(ctx.source).load(ctx.source);
-        let res = await output.run(graph.runIndexer,  ctx.source, mode == "full");
+        let res = await output.run(graph.runIndexer, ctx.source, mode == "full");
     }
 
     return (
@@ -319,6 +319,11 @@ function DependencyDiffScript(p: UiScriptProps) {
     )
 }
 
+const testableJsonModes = {
+    ...cacheFileJsonModes,
+    ...cacheFileExperimentalModes
+}
+
 function TestFilesScript(p: UiScriptProps) {
     let ctx = React.useContext(UIRootContext);
     let [initmode, initrange, initdumpall, initordersize] = p.initialArgs.split(":") as (string | undefined)[];
@@ -329,7 +334,7 @@ function TestFilesScript(p: UiScriptProps) {
     let [customparser, setCustomparser] = React.useState("");
 
     let run = () => {
-        let modeobj = cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes];
+        let modeobj = testableJsonModes[mode as keyof typeof testableJsonModes];
         if (!modeobj || !ctx.source) { return; }
         let output = new UIScriptOutput();
         let outdir = output.makefs("output")
@@ -346,7 +351,7 @@ function TestFilesScript(p: UiScriptProps) {
     }
 
     let customparserUi = React.useCallback(() => {
-        let srctext = customparser || cacheFileJsonModes[mode as keyof typeof cacheFileJsonModes].parser.originalSource;
+        let srctext = customparser || testableJsonModes[mode as keyof typeof testableJsonModes].parser.originalSource;
         let modal = showModal({ title: "Edit parser" }, (
             <form style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                 <textarea name="parsertext" defaultValue={srctext} style={{ flex: "1000px 1 1", resize: "none", whiteSpace: "nowrap" }} />
@@ -361,7 +366,7 @@ function TestFilesScript(p: UiScriptProps) {
             <p>Run this script to test if the current cache parser is compatible with the loaded cache. Generates readable errors if not.</p>
             <LabeledInput label="Mode">
                 <select value={mode} onChange={e => setMode(e.currentTarget.value)}>
-                    {Object.keys(cacheFileJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
+                    {Object.keys(testableJsonModes).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
             </LabeledInput>
             <LabeledInput label="file range">
@@ -416,8 +421,8 @@ function RawCliScript(p: UiScriptProps) {
 
 type UiScriptProps = { onRun: (output: UIScriptOutput, args: string) => void, initialArgs: string };
 const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
-    test: TestFilesScript,
     extract: ExtractFilesScript,
+    test: TestFilesScript,
     preview: PreviewFilesScript,
     historic: ExtractHistoricScript,
     maprender: MaprenderScript,

@@ -1,6 +1,6 @@
 
 import { cacheConfigPages, cacheMajors, internalNameFiles } from "../constants";
-import { parse, FileParser, JsonBasedFile, cacheFileJsonModes } from "./jsondecoders";
+import { parse, FileParser, JsonBasedFile, cacheFileJsonModes, cacheFileExperimentalModes } from "./jsondecoders";
 import { CacheFileSource } from "../cache";
 import { constrainedMap } from "../utils";
 import prettyJson from "json-stringify-pretty-compact";
@@ -492,6 +492,9 @@ const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({
 const cacheFileDecodersJson = (Object.fromEntries(Object.entries(cacheFileJsonModes)
 	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 
+const cacheFileDecodersExperimentalJson = (Object.fromEntries(Object.entries(cacheFileExperimentalModes)
+	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k)])) as Record<keyof typeof cacheFileExperimentalModes, DecodeModeFactory>)
+
 export const cacheFileDecodeGroups = {
 	image: cacheFileDecodersImage,
 	legacyImage: cacheFileDecodersLegacyImage,
@@ -499,6 +502,7 @@ export const cacheFileDecodeGroups = {
 	sound: cacheFileDecodersSound,
 	other: cacheFileDecodersOther,
 	json: cacheFileDecodersJson,
+	experimental: cacheFileDecodersExperimentalJson,
 }
 
 export const cacheFileDecodeModes = Object.fromEntries(Object.values(cacheFileDecodeGroups).flatMap(q => Object.entries(q)))

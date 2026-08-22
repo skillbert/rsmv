@@ -1,0 +1,32 @@
+//41.x.0
+
+// contains tile data for mapzones
+// 1 byte when tile has no "shape"
+// - seems to be 5bit index into some unknown lookup table
+// 3 or 4 bytes for complex tiles
+// - contains overlay/underlay ids literally
+// - some other encoding for shape
+// only simple cases are understood, there are still lots of uknown
+// - first byte per tile could also be hardcoded opcode where majority are fixed colors
+// - length of array seems to decided externally, seems to correlate with number of chunks/size of mappastes in mapzones
+["struct",
+  ["unk1",["array","ubyte","varushort"]],
+  ["unk2",["array","ubyte",["tuple","varushort"]]],
+  // header
+  ["data",["nullarray",["bytesleft"],["struct",
+    ["byte1","ubyte"],
+    ["x","ubyte"],
+    ["z","ubyte"],
+    ["xsize","ubyte"],
+    ["zsize","ubyte"],
+    ["level","ubyte"],
+    // tile data
+    ["tiles",["array",64,["struct",
+      ["op","ubyte"],
+      ["flag2",["opt","op=0x02","varushort"]],
+      ["flag9",["opt","op=0x09",["tuple","varushort","varushort","ubyte"]]],
+      ["flag11",["opt","op=0x11",["tuple","ushort","ushort","ubyte"]]],
+      ["flag19",["opt","op=0x19",["tuple","ushort","ushort","ushort","ubyte"]]]
+    ]]]
+  ]]]
+]

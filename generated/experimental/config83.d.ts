@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\config83.jsonc'
+// This source data is located at '..\..\src\opcodes\experimental\config83.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type config83 = {

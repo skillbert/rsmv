@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\particles_1.jsonc'
+// This source data is located at '..\..\src\opcodes\experimental\particles_1.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type particles_1 = {

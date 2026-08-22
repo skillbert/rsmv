@@ -1,0 +1,7 @@
+{
+    "0x01":{"name":"unk01","read":"ubyte"},
+    "0x02":{"name":"unk02","read":"ushort"},
+    "0x03":{"name":"unk03","read":"ushort","type":"color"},
+    "0x04":{"name":"unk04","read":"ushort","type":"color"},
+    "0x08":{"name":"unk08","read":["buffer",25,"hex"]}
+}
