@@ -228,6 +228,7 @@ function AnnotatedHexViewer(p: { data: Buffer, chunks: DecodeErrorJson["chunks"]
 
 function FileDecodeErrorViewer(p: { file: string }) {
     let [mode, setmode] = React.useState("split" as "split" | "full");
+    let [chunklimit, setchunklimit] = React.useState(10000);
     let [err, buffer] = React.useMemo(() => {
         let err: DecodeErrorJson = JSON.parse(p.file);
         let buffer = Buffer.from(err.originalFile, "hex");
@@ -245,6 +246,18 @@ function FileDecodeErrorViewer(p: { file: string }) {
         scrollparent.scrollTop += (isbelow ? bounds.bottom - margin : bounds.top - scrollbounds.height + margin);
     }
 
+    let hiddenchunks = 0;
+    let chunks = err.chunks;
+    let visiblebuffer = buffer;
+    if (chunks.length > chunklimit) {
+        hiddenchunks = chunks.length - chunklimit;
+        chunks = chunks.slice(hiddenchunks);
+        let startoffset = err.chunks[0].offset;
+        let endoffset = Math.min(buffer.length, err.chunks.at(-2)!.offset + 10000);
+        chunks = chunks.map(q => ({ ...q, offset: q.offset - startoffset }));
+        visiblebuffer = buffer.subarray(startoffset, endoffset);
+    }
+
     return (
         <div className="mv-hexrow">
             <div>
@@ -252,18 +265,19 @@ function FileDecodeErrorViewer(p: { file: string }) {
                 <input type="button" className={classNames("sub-btn", { "active": mode == "full" })} onClick={e => setmode("full")} value="full" />
                 <input type="button" className="sub-btn" onClick={e => downloadBlob("file.bin", new BlobTS([buffer], { type: "application/octet-stream" }))} value="download original" />
                 <CopyButton getText={() => bufToHexView(buffer).resulthex} />
+                {hiddenchunks > 0 && <span>(first {hiddenchunks} chunks hidden to prevent a crash!)</span>}
             </div>
             {err.error}
             {mode == "full" && (
-                <AnnotatedHexViewer data={buffer} chunks={err.chunks} />
+                <AnnotatedHexViewer data={visiblebuffer} chunks={chunks} />
             )}
             {mode == "split" && (
                 <React.Fragment>
                     <div>Chunks</div>
                     <table>
                         <tbody>
-                            {err.chunks.map((q, i) => {
-                                let hexview = bufToHexView(buffer.slice(q.offset, q.offset + q.len));
+                            {chunks.map((q, i) => {
+                                let hexview = bufToHexView(visiblebuffer.subarray(q.offset, q.offset + q.len));
                                 return (
                                     <tr key={q.offset + "-" + i}>
                                         <td>{hexview.resulthex}</td>

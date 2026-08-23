@@ -372,7 +372,7 @@ function TestFilesScript(p: UiScriptProps) {
             <LabeledInput label="file range">
                 <input type="text" onChange={e => setRange(e.currentTarget.value)} value={range} />
             </LabeledInput>
-            <div><label><input type="checkbox" checked={ordersize} onChange={e => setOrdersize(e.currentTarget.checked)} />Order by size (puts everything in mem)</label></div>
+            <div><label><input type="checkbox" checked={ordersize} onChange={e => setOrdersize(e.currentTarget.checked)} />Order by size (stores everything in mem)</label></div>
             <div><label><input type="checkbox" checked={dumpall} onChange={e => setDumpall(e.currentTarget.checked)} />Output successes as well</label></div>
             <br />
             <input type="button" className="sub-btn" value="Edit parser" onClick={customparserUi} />
