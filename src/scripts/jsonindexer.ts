@@ -116,7 +116,6 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     // broken - fixable
     mapenvs: "skip",
     // skip
-    client_cutscenes: "skip",
     maptiles: "skip",
     maplocations: "skip",
     frames: "skip",
@@ -127,21 +126,15 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     soundjson: "skip",
     musicjson: "skip",
     oldmaterials: "skip",
-    mapzones_sub3: "skip",
-    mapzones_sub4: "skip",
-    particles0: "skip",
-    particles1: "skip",
     maptiles_nxt: "skip",
     maptiles_old: "skip",
     maplocations_old: "skip",
     oldmodels: "skip",
     proctextures: "skip",
     oldproctextures: "skip",
-    config83: "skip",
     indices: "skip",
     rootindex: "skip",
-    clientscriptops: "skip",
-    test: "skip",
+    clientscriptops: "skip"
 }
 const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip">> = {
     maptiles: "typedonly",
@@ -233,7 +226,7 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
             }
 
             if (modename == "clientscriptops") {
-                parseClientScriptValue(out, graph, source, obj, logical);
+                parseClientScriptValue(out, graph, source, obj as any, logical);
             } else {
                 parseJsonValue(graph, "root", obj, schema);
             }

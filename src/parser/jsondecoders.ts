@@ -93,8 +93,8 @@ export class FileParser<T> {
 }
 
 // not an async generator since that would incur async overhead for each file
-export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBasedFile<T>, allfiles: CacheFileId[],
-	callback: (obj: T, fileid: CacheFileId, logicalid: LogicalIndex) => void | Promise<void>,
+export async function iterateJsonFiles<T extends JsonBasedFile<any>>(source: CacheFileSource, mode: T, allfiles: CacheFileId[],
+	callback: (obj: T extends JsonBasedFile<infer U> ? U : never, fileid: CacheFileId, logicalid: LogicalIndex) => void | Promise<void>,
 	errorcallback?: (err: Error, fileid: CacheFileId, logicalid: LogicalIndex) => void
 ) {
 	let namelist = (typeof mode.lookup.internalNamefile == "number" ? await source.getInternalNameList(mode.lookup.internalNamefile) : null);
@@ -125,7 +125,7 @@ export async function iterateJsonFiles<T>(source: CacheFileSource, mode: JsonBas
 			}
 		}
 		if (res) {
-			let cbresult = callback(res, fileid, logicalid);
+			let cbresult = callback(res as any, fileid, logicalid);
 			if (cbresult instanceof Promise) { await cbresult; }
 		}
 	}

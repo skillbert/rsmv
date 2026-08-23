@@ -425,7 +425,7 @@ export abstract class CacheFileSource {
 	}
 
 	async getObject<T extends keyof typeof cacheFileJsonModes>(mode: T, id: number | number[])
-		: Promise<typeof cacheFileJsonModes[T] extends JsonBasedFile<infer U> ? U : never> {
+		: Promise<typeof cacheFileJsonModes[T] extends JsonBasedFile<infer U> ? U & { $fileid?: number | number[], $decoder?: string, $filename?: string } : never> {
 		let modefn = cacheFileJsonModes[mode];
 		let logicalid = Array.isArray(id) ? id : [id];
 		let fileid = modefn.lookup.logicalToFile(this, logicalid);
@@ -438,7 +438,7 @@ export abstract class CacheFileSource {
 		} else {
 			file = await this.getFileById(fileid.major, fileid.minor);
 		}
-		let json = modefn.parser.read(file, this);
+		let json: any = modefn.parser.read(file, this);
 		json.$fileid = logicalid.length == 1 ? logicalid[0] : logicalid;
 		json.$decoder = mode;
 		if (modefn.lookup.internalNamefile !== undefined) {

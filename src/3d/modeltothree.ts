@@ -348,7 +348,7 @@ export class EngineCache extends CachingFileSource {
 	/**
 	 * very aggressive caching, do not use for objects which take a lot of memory
 	 */
-	getJsonSearchData(modename: keyof typeof cacheFileJsonModes) {
+	getJsonSearchData<T extends keyof typeof cacheFileJsonModes>(modename: T) {
 		let cached = this.jsonSearchCache.get(modename);
 		if (!cached) {
 			let mode = cacheFileJsonModes[modename];
