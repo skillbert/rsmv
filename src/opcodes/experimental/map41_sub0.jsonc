@@ -25,31 +25,91 @@
     ["tiles",
       ["array",["ref","chunksize"],["ministruct",["v",
         ["array",["ref","chunksize"],["ministruct",["v",["match","ubyte",{
-          "0x01":["tuple","varuint","ubyte"],//loc
-          "0x09":["tuple","varushort","varushort","ubyte"],
-          "0x19":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x01":["tuple","varushort","varushort","ubyte"],//loc
+          "0x03":["tuple","varushort","varushort"],
+          //5
+          //7
+          "0x09":["tuple","varushort","varushort",                 "ubyte"],
+          "0x0b":["tuple","varushort","varushort",                 "ubyte",                            "varushort","varushort","ubyte"],
+          "0x0d":["tuple","varushort","varushort",                 "ubyte",                            "varushort","varushort","ubyte",                                              "varushort","varushort","ubyte"],
+          "0x0f":["tuple","varushort","varushort",                 "ubyte",                            "varushort","varushort","ubyte",                                              "varushort","varushort","ubyte",                                              "varushort","varushort","ubyte"],
           
-          "0x03":["tuple","ubyte","ubyte"],
-          "0x11":["tuple","varushort",["array","ubyte",["tuple","varuint","ubyte"]]],
-          "0x13":["tuple","varushort",["array","ubyte",["tuple","varuint","ubyte"]],"ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
-          "0x0b":["tuple","varushort","varushort","ushort","varushort","byte"],
-          "0x1b":["tuple","varushort","ushort",["array","ubyte",["tuple","ushort","ubyte"]],"ubyte","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x11":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x13":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],           "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x15":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],           "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],             "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x17":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],           "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],             "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
 
-          // not flag1
-          "0x02":"varushort",//water?
-          "0x06":"varushort",
-          "0x0a":"varushort",
-          "0x0e":"varushort",
-          "0x12":"varushort",
-          
+          "0x19":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x1b":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x1d":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+          "0x1f":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+
+          "&=0x02 && !&0x1":"varushort",
+          "&0xe0":["ref","$opcode"],
           //mark all with flag 0x1 or 0x2 in debug view
-          "&0x03":["struct",["unknown op",true]],
+          // "&0x03":["struct",["unknownop",true]],
+          "&0x03":["buffer",12312312,"hex"],
           //all values without 0x3 are indexes into the palette
-          "other":true
+          "other":["ref","$opcode"]
         }]]]]
       ]]]
   ]]]]
 ]
+
+// ["struct",
+//   ["underlays",["array","ubyte","varushort"]],
+//   ["overlays",["array","ubyte","varushort"]],
+//   // header
+//   ["data",["nullarray",["bytesleft"],["struct",
+//     ["chunksize",["match","ubyte",{"0":64,"1":8}]],//1 means 8x8 subchunks, 0 probably means 64x64
+//     ["x","ubyte"],
+//     ["z","ubyte"],
+//     ["subx","ubyte"],
+//     ["subz","ubyte"],
+//     ["level","ubyte"],
+//     ["unkheader",["opt","chunksize=64",["buffer",5,"hex"]]],
+//     // tile data
+//     ["tiles",
+//       ["array",["ref","chunksize"],["ministruct",["v",
+//         ["array",["ref","chunksize"],["ministruct",["v",["match","ubyte",{
+//           "0x01":["tuple","varushort","varushort","ubyte"],//loc
+//           "0x03":["tuple","varushort","varushort"],
+//           //5
+//           //7
+//           "0x09":["tuple","varushort","varushort",                 "ubyte"],
+//           "0x0b":["tuple","varushort","varushort",                 "ubyte",                            "varushort","varushort","ubyte"],
+//           "0x0d":["tuple","varushort","varushort",                 "ubyte",                            "varushort","varushort","ubyte",                                              "varushort","varushort","ubyte"],
+//           //f
+          
+//           "0x11":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+//           "0x13":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],           "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+//           "0x15":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],           "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],             "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+//           "0x17":["tuple",            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],           "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],             "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]],            "varushort",        ["array","ubyte",["tuple","varuint","ubyte"]]],
+//           //17
+//           "0x19":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+//           "0x1b":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+//           "0x1d":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+//           "0x1f":["tuple","varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]],"varushort","varushort","ubyte",["array","ubyte",["tuple","varuint","ubyte"]]],
+
+//           // not flag1
+//           "0x02":"varushort",//water?
+//           "0x06":"varushort",
+//           "0x0a":"varushort",
+//           "0x0e":"varushort",
+//           "0x12":"varushort",
+//           "0x16":"varushort",
+//           "0x1a":"varushort",
+//           "0x1e":"varushort",
+//           "0x22":"varushort",
+          
+//           //mark all with flag 0x1 or 0x2 in debug view
+//           "&0x03":["struct",["unknownop",true]],
+//           //all values without 0x3 are indexes into the palette
+//           "other":["ref","$opcode"]
+//         }]]]]
+//       ]]]
+//   ]]]]
+// ]
 
 
 
