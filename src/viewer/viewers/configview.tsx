@@ -11,7 +11,7 @@ import { BlobImage, useAwaited } from "../commoncontrols";
 import { parseMusic } from "../../scripts/musictrack";
 import { makeFileId } from "../tabs/browse";
 import { dbrows } from "../../../generated/dbrows";
-import { BrowsableType, IndexGraphLoader, iterateTypedJson, vartypeToDecoder } from "../../scripts/jsonindexer";
+import { BrowsableType, IndexGraphLoader, iterateTypedJson, packedIntToLogical, vartypeToDecoder } from "../../scripts/jsonindexer";
 import { CacheFileSource } from "../../cache";
 import { cacheFileJsonModes } from "../../parser/jsondecoders";
 import { cacheFileDecodeModes } from "../../parser/filetypes";
@@ -452,16 +452,7 @@ function ObjectLink(p: { prop: DeepLinkElement }) {
     let match = vartypeToDecoder[p.prop.rsmvtype];
     if (typeof p.prop.primitive != "number") { throw new Error("Objectlink primitive type number expected"); }
 
-    let index = [p.prop.primitive];
-    if (p.prop.rsmvtype == "component") {
-        let { intf, sub } = unpackComponent(p.prop.primitive);
-        index = [intf, sub];
-    }
-    if (p.prop.rsmvtype == "coordgrid") {
-        let { level, x, z } = unpackCoordgrid(p.prop.primitive);
-        index = [level, x, z];
-    }
-
+    let index = match ? packedIntToLogical(p.prop.primitive, match) : [p.prop.primitive];
     let fileid = makeFileId(p.prop.rsmvtype, index);
 
     return <>

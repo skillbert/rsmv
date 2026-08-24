@@ -175,20 +175,22 @@ function MaprenderScript(p: UiScriptProps) {
 
 function ReferenceGraphScript(p: UiScriptProps) {
     let ctx = React.useContext(UIRootContext);
-    let [mode, setMode] = React.useState<"full" | "core">("core");
+    let [includeexpensive, setIncludeexpensive] = React.useState(false);
+    let [includeclientscripts, setIncludeclientscripts] = React.useState(false);
 
     let run = async () => {
         if (!ctx.source) { return; }
         let output = new UIScriptOutput();
         p.onRun(output, "");
         let graph = await IndexGraphLoader.forCache(ctx.source).load(ctx.source);
-        let res = await output.run(graph.runIndexer, ctx.source, mode == "full");
+        let res = await output.run(graph.runIndexer, ctx.source, includeclientscripts, includeexpensive);
     }
 
     return (
         <React.Fragment>
             <p>Indexes all references in the cache for later use.</p>
-            <TabStrip value={mode} tabs={{ core: "Core", full: "Full" }} onChange={v => setMode(v)} />
+            <input type="checkbox" checked={includeclientscripts} onChange={e => setIncludeclientscripts(e.currentTarget.checked)} />Include client scripts<br />
+            <input type="checkbox" checked={includeexpensive} onChange={e => setIncludeexpensive(e.currentTarget.checked)} />Include expensive modes (models, maps, etc)<br />
             <input type="button" className="sub-btn" value="Run" disabled={!ctx.source} onClick={run} />
         </React.Fragment>
     )

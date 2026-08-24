@@ -11,7 +11,7 @@ import { ClientScriptDeobLoader, renderClientScript } from "../../clientscript";
 import { cacheMajors, internalNameFiles } from "../../constants";
 import { parseSprite } from "../../3d/materials/sprite";
 import { RsUIViewer } from "../viewers/rsuiviewer";
-import { cacheFileDecodeModes } from "../../parser/filetypes";
+import { cacheFileDecodeModes, DecodeMode } from "../../parser/filetypes";
 import { parseMusic } from "../../scripts/musictrack";
 import { CheapMapView, MapviewMarker } from "../viewers/mappreview";
 import prettyJson from "json-stringify-pretty-compact";
@@ -20,7 +20,7 @@ import { IndexGraphLoader, vartypeToDecoder } from "../../scripts/jsonindexer";
 import { ScriptOutput } from "../../scriptrunner";
 import { ReferencesView } from "../viewers/configview";
 
-export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaces" | "categories" | "sprites" | "sounds" | "music" | "coordgrid";
+export type BrowseModes = keyof typeof cacheFileJsonModes | "clientscript" | "interfaceviewer" | "categories" | "sprites" | "sounds" | "music" | "coordgrid";
 
 const modeOverrides: Partial<Record<BrowseModes, { jsonNameProperty?: string }>> = {
     items: { jsonNameProperty: "name" },
@@ -53,7 +53,7 @@ export function fileIdToIndex(fileid: string) {
 
 
 function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string, initialMode: string, onSearch: (search: string, searchmode: string) => void, onFileSelect: (id: string) => void }) {
-    let mode = cacheFileDecodeModes[p.modename]?.({}) ?? null;
+    let mode = (cacheFileDecodeModes[p.modename]?.({}) ?? null) as DecodeMode | null;
     let overrides = modeOverrides[p.modename] ?? {};
     let ctx = useContext(UIRootContext);
     let engine = useContext(UIEngineContext)?.sceneCache.engine;
@@ -65,15 +65,15 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
     let [searchmode, setSearchmode] = React.useState(p.initialMode);
 
     let canjsonsearch = overrides.jsonNameProperty != undefined;
-    let caninternalnamesearch = mode.internalNamefile != undefined;
+    let caninternalnamesearch = mode?.internalNamefile != undefined;
     const searchModes: Record<string, string> = { id: "ID" };
     if (canjsonsearch) { searchModes.objectname = "Object Name"; }
     if (caninternalnamesearch) { searchModes.internalname = "Internal Name"; }
     if (!searchModes[searchmode]) { searchmode = "id"; }
 
     let searcher = useAwaited(async () => {
+        if (!engine || !mode) { return null; }
         if (searchmode == "id") {
-            if (!engine) { return null; }
             return async (searchtext: string) => {
                 let ranges = stringToFileRange(searchtext);
                 let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(engine, q.start, q.end))))
@@ -90,7 +90,7 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
             }
         }
         if (searchmode == "internalname") {
-            if (!engine || mode.internalNamefile == null) { return null; }
+            if (mode.internalNamefile == null) { return null; }
             let internalnames = await engine.getInternalNameList(mode.internalNamefile);
             return (searchtext: string) => {
                 let matches = new Map<string, string>();
@@ -105,7 +105,7 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
             }
         }
         if (searchmode == "objectname") {
-            if (!engine || !overrides.jsonNameProperty) { return null; }
+            if (!overrides.jsonNameProperty) { return null; }
             if (!(p.modename in cacheFileJsonModes)) { return null; }
             let jsonsearch = await jsonCacheSearch(engine, p.modename as any);
             return (searchtext: string) => {
@@ -119,7 +119,7 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
             }
         }
         return null;
-    }, [searchmode, engine], 200);
+    }, [searchmode, engine, p.modename], 200);
 
 
     let searchresult = useAwaited(() => searcher?.(searchtext), [searchtext, searcher], 200);
@@ -233,11 +233,11 @@ export async function clientScriptDeobPopup(source: CacheFileSource) {
 export async function indexGraphPopup(source: CacheFileSource) {
     let run = async (script: ScriptOutput) => {
         let graph = await IndexGraphLoader.forCache(source).load(source);
-        return graph.runIndexer(script, source, true);
+        return graph.runIndexer(script, source, true, false);
     }
 
     return scriptRunnerPopup("Cache not indexed", "Start indexing", run, <>
-        <div>Advanced features rely on indexing cache contents. This takes about 5 minutes.</div>
+        <div>Advanced features rely on indexing cache contents. This takes about 5 minutes. Afterwards the index will be stored on your browser for future use.</div>
     </>);
 }
 

@@ -14,9 +14,10 @@ import { ClientScriptDeobLoader, renderClientScript } from "../clientscript";
 import { isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor } from "../clientscript/ast";
 import { namedClientScriptOps } from "../clientscript/definitions";
 import { clientscript } from "../../generated/clientscript";
+import { ClientscriptObfuscation } from "../clientscript/callibration/callibrator";
 
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey"
+type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "clientscriptcall"
     | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "varbit" | "stylevalue";
 export type BrowsableType = keyof typeof vartypes | CustomPropTypes | "unknown" | "";
 
@@ -47,7 +48,7 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     skybox: "skyboxes",
     graphic: "sprites",
     component: "components",
-    interface: "interfaces",
+    interface: "interfaceviewer",
     scriptref: "clientscript",
     inv: "inventories",
     coordgrid: "coordgrid",
@@ -105,12 +106,12 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     cursors: "full",
     maplabels: "full",
     maplabellocations: "full",
-    mapzones: "full",
-    mappastes: "full",
     stylesheets: "full",
     cutscenes: "full",
     fontmetrics: "full",
     // only explicitly typed fields
+    mapzones: "typedonly",
+    mappastes: "typedonly",
     components: "typedonly",
     animgroupconfigs: "typedonly",
     // broken - fixable
@@ -141,15 +142,13 @@ const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full
     maplocations: "typedonly",
     frames: "typedonly",
     framemaps: "typedonly",
-    sequences: "typedonly",
-    clientscriptops: "typedonly",
-    // models: "typedonly",
+    sequences: "typedonly"
 }
-
-const allModes = new Set([
-    ...Object.entries(modeactions).filter(([_, action]) => action != "skip").map(q => q[0]),
-    ...Object.entries(extendedmodeactions).filter(([_, action]) => action != "skip").map(q => q[0]),
-]);
+const allModes = {
+    ...modeactions,
+    ...extendedmodeactions,
+    clientscriptops: "typedonly"
+};
 
 export class IndexGraphLoader {
     source: CacheFileSource;
@@ -172,20 +171,33 @@ export class IndexGraphLoader {
     }
 }
 
-async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, full: boolean) {
+async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph, source: CacheFileSource, clientscript: boolean, extramodes: boolean) {
+    let modes = { ...modeactions };
+    if (extramodes) {
+        Object.assign(modes, extendedmodeactions);
+    }
+
+    if (clientscript) {
+        try {
+            out.log(`Loading client script deobfuscation data...`);
+            graph.deob = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => out);
+            out.log(`Client script deobfuscation data loaded`);
+            modes.clientscriptops = "typedonly";
+        } catch (e) {
+            out.log(`Failed to load client script deob: ${e}`);
+        }
+    }
+
     // internal file names
     await parseNameFiles(out, graph, source);
 
-    for (let [modenamestr, action] of Object.entries(modeactions)) {
+    for (let [modenamestr, action] of Object.entries(modes)) {
         let modename = modenamestr as keyof typeof cacheFileJsonModes;
-        if (full && extendedmodeactions[modename]) {
-            action = extendedmodeactions[modename]!;
-        }
+        if (action == "skip") { continue; }
         let oldprogressrows = await graph.db.getProgress.run(modename);
         let oldprogress = oldprogressrows?.[0]?.completed ?? 0;
 
         let mode = cacheFileJsonModes[modename];
-        if (action == "skip") { continue; }
         if (out.state != "running") { break; }
 
         out.log(`=== Indexing ${modename} ===`);
@@ -337,6 +349,7 @@ type RefEntry<T> = { srcmode: string, srcid: number, propname: string, value: T,
 class ReferenceGraph {
     params!: Map<number, params>;
     paramnames!: Map<number, string>;
+    deob?: ClientscriptObfuscation;
 
     currentobjstack: any[] = [];
     currentlogicalmax = 0;
@@ -354,10 +367,10 @@ class ReferenceGraph {
 
     locked = Promise.resolve();
 
-    runIndexer(script: ScriptOutput, source: CacheFileSource, full: boolean) {
+    runIndexer(script: ScriptOutput, source: CacheFileSource, clientscript: boolean, extramodes: boolean) {
         return this.locked = this.locked.finally(async () => {
             if (script.state != "running") { return; }
-            await calculateReferenceGraph(script, this, source, full);
+            await calculateReferenceGraph(script, this, source, clientscript, extramodes);
         });
     }
 
@@ -455,7 +468,8 @@ class ReferenceGraph {
     }
     async getProgress() {
         let progress: { mode: string, completed: number, total: number, typedonly: boolean }[] = [];
-        for (let modename of allModes) {
+        for (let [modename, action] of Object.entries(allModes)) {
+            if (action == "skip") { continue; }
             let rows = await this.db.getProgress.run(modename);
             let row = rows?.[0];
             progress.push({
@@ -528,7 +542,7 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
     return id[0];
 }
 
-function packedIntToLogical(id: number, mode: BrowseModes) {
+export function packedIntToLogical(id: number, mode: BrowseModes) {
     if (mode == "components") {
         let r = unpackComponent(id);
         return [r.intf, r.sub];
@@ -629,6 +643,34 @@ function parseParamtable(graph: ReferenceGraph, value: any[]) {
     }
 }
 
+function parseClientScriptCall(graph: ReferenceGraph, propname: string, data: any[]) {
+    if (data.length == 0) { return; }
+    let scriptid = data[0];
+    graph.addInt(propname, scriptid, "clientscript");
+
+    let scripttype = graph.deob?.scriptargs.get(scriptid);
+    if (!scripttype || !scripttype.stack.exactin) { return; }
+
+    let intcount = 0;
+    let stringcount = 0;
+    for (let i = 1; i < data.length; i++) {
+        let arg = data[i];
+        if (typeof arg == "number") {
+            let argtype = scripttype.stack.exactin.int[intcount];
+            let typename = vartypeReverseMap.get(argtype) ?? "unknown";
+            graph.addInt(`${propname}_arg${i - 1}`, arg, typename);
+            intcount++;
+        }
+        if (typeof arg == "string") {
+            let argtype = scripttype.stack.exactin.string[stringcount];
+            let typename = vartypeReverseMap.get(argtype) ?? "unknown";
+            graph.addString(`${propname}_arg${i - 1}`, arg, typename);
+            stringcount++;
+        }
+    }
+}
+
+
 function parseJsonValue(graph: ReferenceGraph, nameorindex: string | number, data: any, meta: JSONSchema6Definition | null | undefined) {
     let name = typeof nameorindex == "number" ? "" : nameorindex;
     graph.currentobjstack.push(data);
@@ -649,6 +691,9 @@ function parseJsonValue(graph: ReferenceGraph, nameorindex: string | number, dat
         } else if (typeof data == "string") {
             graph.addString(name, data, rsmvtype);
         } else if (Array.isArray(data)) {
+            if (rsmvtype == "clientscriptcall") {
+                parseClientScriptCall(graph, nameorindex.toString(), data);
+            }
             if (rsmvtype == "params") {
                 parseParamtable(graph, data);
             } else {
