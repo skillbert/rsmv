@@ -19,6 +19,7 @@ export const cacheMajors = {
 	particles: 27,
 	client_cutscenes: 35,
 	music: 40,
+	worldmaprender: 41,
 	maplabellocations: 42,
 	models: 47,
 	frames: 48,
@@ -33,20 +34,20 @@ export const cacheMajors = {
 	stylesheets: 60,
 	cutscenes: 66,
 	filenames: 67,
-	
+
 	// old stuff
 	oldmodels: 7,
 	texturesOldPng: 9,
 	fontmetricsOld: 13,
 	texturesOldCompoundPng: 37,
-	
+
 	textures2015Png: 43,
 	textures2015CompoundPng: 44,
 	textures2015Dds: 45,
 	textures2015CompoundPngMips: 46,
 	textures2015CompoundDds: 50,
 	textures2015PngMips: 51,
-	
+
 	index: 255
 
 	// unknown stuff

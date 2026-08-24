@@ -6,6 +6,8 @@ import { cacheMajors } from "../../constants";
 import { CacheIndexFile } from "../../cache";
 import { packMapsquare, taskTrickler } from "../../utils";
 import { TabStrip, useForceUpdate } from "../commoncontrols";
+import { parse } from "../../parser/jsondecoders";
+import { dumpTexture } from "../../imgutils";
 
 export type MapviewMarker = { x: number, z: number };
 
@@ -87,6 +89,58 @@ export async function renderMapPreview(engine: EngineCache, rect: MapRect, level
     }
     return img;
 }
+
+async function renderWorldMap42(engine: EngineCache, zoneid: number, scale = 4) {
+    let arch = await engine.getArchiveById(cacheMajors.worldmaprender, zoneid);
+    let mapfile = arch.find(q => q.fileid == 0);
+    let labelfile = arch.find(q => q.fileid == 1);
+    if (!mapfile) { throw new Error(`World map ${zoneid} has no map file`); }
+    let map = parse.map41Sub0.read(mapfile.buffer, engine);
+    let labels = labelfile && parse.maplabellocations.read(labelfile.buffer, engine);
+
+    let palette: { colorhex: string }[] = [];
+    palette.push(...map.underlays.map(q => {
+        let underlay = engine.mapUnderlays[q - 1];
+        return { colorhex: underlay?.color ? "#" + underlay.color.map(q => q.toString(16).padStart(2, "0")).join("") : "#000000" };
+    }));
+    palette.push(...map.overlays.map(q => {
+        let overlay = engine.mapOverlays[q - 1];
+        return { colorhex: overlay.color ? "#" + overlay.color.map(q => q.toString(16).padStart(2, "0")).join("") : "#000000" };
+    }));
+
+    let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
+    for (let chunk of map.data) {
+        minx = Math.min(minx, chunk.x * rs2ChunkSize + chunk.subx * chunk.chunksize);
+        minz = Math.min(minz, chunk.z * rs2ChunkSize + chunk.subz * chunk.chunksize);
+        maxx = Math.max(maxx, chunk.x * rs2ChunkSize + chunk.subx * chunk.chunksize + chunk.chunksize);
+        maxz = Math.max(maxz, chunk.z * rs2ChunkSize + chunk.subz * chunk.chunksize + chunk.chunksize);
+    }
+    let maprect: MapRect = { x: minx, z: minz, xsize: maxx - minx, zsize: maxz - minz };
+    let cnv = document.createElement("canvas");
+    cnv.width = maprect.xsize * scale;
+    cnv.height = maprect.zsize * scale;
+    let ctx = cnv.getContext("2d")!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.scale(scale, scale);
+    for (let chunk of map.data) {
+        for (let subx = 0; subx < chunk.chunksize; subx++) {
+            let col = chunk.tiles[subx];
+            for (let subz = 0; subz < chunk.chunksize; subz++) {
+                let tile = col.v[subz].v;
+                if (typeof tile != "number") { continue; }
+                let imgx = chunk.x * rs2ChunkSize + chunk.subx * chunk.chunksize + subx - maprect.x;
+                let imgz = chunk.z * rs2ChunkSize + chunk.subz * chunk.chunksize + subz - maprect.z;
+                let paletteindex = tile >> 2;
+                let colorhex = palette[paletteindex]?.colorhex ?? "#000000";
+                ctx.fillStyle = colorhex;
+                ctx.fillRect(imgx, imgz, 1, 1);
+            }
+        }
+    }
+    return dumpTexture(cnv);
+}
+
+globalThis.renderWorldMap42 = renderWorldMap42;
 
 function simpleMapRenderer(engine: EngineCache | undefined, initialimgsource: "cache" | "runeapps", initialx?: number, initialz?: number, initialpxpertile?: number) {
     let chunkindex: CacheIndexFile | null = null;

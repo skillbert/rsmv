@@ -98,7 +98,6 @@ module.exports = (env) => {
 			path: path.resolve(__dirname, 'dist')
 		},
 		plugins: [
-			new TypeScriptWatchPlugin(),
 			new CopyWebpackPlugin({
 				patterns: [
 					{ from: 'src/assets', to: "assets" }
