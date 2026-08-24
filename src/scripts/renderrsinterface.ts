@@ -680,6 +680,7 @@ export class CS2Api {
             rightclickcursors: [],
             rightclickopts: [],
             scripts: {} as any,
+            scriptdata: {} as any,
             unkdata: null,
             unk10data: null,
             unk11data: null,

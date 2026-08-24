@@ -9,9 +9,9 @@ export type map41_sub0 = {
 		chunksize: (64|8),
 		x: number,
 		z: number,
-		subx: number,
-		subz: number,
-		level: number,
+		subx: (number|0),
+		subz: (number|0),
+		level: (number|0),
 		unkheader: Uint8Array | null,
 		tiles: {
 			v: {
@@ -30,6 +30,10 @@ export type map41_sub0 = {
 						number,
 						number,
 						number,
+					]|[
+						number,
+						number,
+						number,
 						number,
 						number,
 						number,
@@ -184,6 +188,9 @@ export type map41_sub0 = {
 							number,
 							number,
 						][],
+					]|number|[
+						number,
+						number,
 					]|number|number|Uint8Array|number),
 			}[],
 		}[],

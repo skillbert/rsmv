@@ -157,12 +157,13 @@
         ["unk17",["opt","version>=6","uivalues"]],
         ["unk18",["opt","version>=6","uivalues"]],
         ["unk19",["opt","version>=6","uivalues"]],
-        ["unk20",["opt","version>=7","uivalues"]],
-
-        ["v2unk0","uivaluesint"],//"config"
-        ["v2unk1","uivaluesint"],
-        ["v2unk2","uivaluesint"],
-        ["v2unk3","uivaluesint"],
-        ["v2unk4","uivaluesint"]
+        ["unk20",["opt","version>=7","uivalues"]]
+    ]],
+    ["scriptdata",["struct",
+        ["data_0",["array","ubyte","int"]],
+        ["data_1",["array","ubyte","int"]],
+        ["data_2",["array","ubyte","int"]],
+        ["data_3",["array","ubyte","int"]],
+        ["data_4",["array","ubyte","int"]]
     ]]
 ]

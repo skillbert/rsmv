@@ -153,10 +153,12 @@ export type interfaces = {
 		unk18: (number|string)[] | null,
 		unk19: (number|string)[] | null,
 		unk20: (number|string)[] | null,
-		v2unk0: number[],
-		v2unk1: number[],
-		v2unk2: number[],
-		v2unk3: number[],
-		v2unk4: number[],
+	},
+	scriptdata: {
+		data_0: number[],
+		data_1: number[],
+		data_2: number[],
+		data_3: number[],
+		data_4: number[],
 	},
 };

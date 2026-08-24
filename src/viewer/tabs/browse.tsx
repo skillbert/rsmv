@@ -162,7 +162,7 @@ function BrowseModeSelect(p: { mode?: string, onSelect: (mode: BrowseModes) => v
         <GraphIndexStateView />
         {subgroup("Game", ["items", "npcs", "locs", "spotanims", "sounds", "music"])}
         {subgroup("Data", ["clientscript", "dbrows", "dbtables", "enums", "structs", "params", "achievements", "quests", "inventories"])}
-        {subgroup("UI", ["interfaces", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
+        {subgroup("UI", ["interfaceviewer", "sprites", "cursors", "fontmetrics", "stylesheets", "quickchatcats", "quickchatlines"])}
         {subgroup("Map", ["mapscenes", "maplabels", "mapzones", "mappastes", "maplabellocations"])}
         {subgroup("Rendering", ["underlays", "overlays", "skyboxes", "identitykit", "animgroupconfigs"])}
         {subgroup("Other", Object.keys(cacheFileJsonModes) as any)}
@@ -306,7 +306,7 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
                 let sprite = parseSprite(file);
                 return { viewer: "sprite", mode: index.mode, sprite } as const;
             }
-            if (index.mode == "interfaces" || index.mode == "components") {
+            if (index.mode == "interfaceviewer" || index.mode == "components") {
                 return { viewer: "interfaces", mode: index.mode, interfaceid: index.index } as const;
             }
             if (index.mode == "sounds" || index.mode == "music") {
