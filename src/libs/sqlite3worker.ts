@@ -7,7 +7,7 @@ export type SharedWorkerPackets = {
 } | {
 	type: "sqliteprepare", dbid: number, query: string
 } | {
-	type: "sqliterunprepared", queryid: number, args?: any[]
+	type: "sqliterunprepared", queryid: number, args: any[]
 } | {
 	type: "sqliteclose", dbid: number
 };
@@ -50,7 +50,7 @@ async function sqliteOpen(packet: SharedWorkerPackets & { type: "sqliteopen" }) 
 			refs: 0,
 			name: packet.dbname,
 			id: idcounter++,
-			backend: await AbstractSQLiteWasm.create(packet.file)
+			backend: await AbstractSQLiteWasm.create(packet.dbname, packet.file)
 		}
 		opentables.set(entry.id, entry);
 	}
@@ -76,7 +76,7 @@ async function sqlitePrepare(packet: SharedWorkerPackets & { type: "sqliteprepar
 async function sqliteRunPrepared(packet: SharedWorkerPackets & { type: "sqliterunprepared" }) {
 	let entry = openstatements.get(packet.queryid);
 	if (!entry) { throw new Error(`no such queryid ${packet.queryid}`); }
-	return entry.backend.run(packet.args);
+	return entry.backend.run(...packet.args);
 }
 
 async function sqliteClose(packet: SharedWorkerPackets & { type: "sqliteclose" }) {

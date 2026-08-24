@@ -396,15 +396,13 @@ class ReferenceGraph {
         }
         let dbname = `build${source.getBuildNr()}-refgraph-${versionint}.sqlite3`;
 
-        // builder.refdb = await AbstractSQLiteWorker.create(dbname);
-        let db = await AbstractSQLiteNode.create(dbname, { create: true, write: true });
-        builder.db = await ReferenceGraph.initDB(db);
+        let backend = await AbstractSQLite.createAutoCache(dbname);
+        builder.db = await ReferenceGraph.initDB(backend);
         return builder;
     }
 
     async flush(mode = this.currentmode, progress = this.currentlogicalpacked) {
-        await this.db.sqlite.exec("BEGIN TRANSACTION;");
-        try {
+        await this.db.sqlite.transaction(async () => {
             let proms: Promise<any>[] = [];
             let lastintindex = 0;
             for (; lastintindex + this.db.addIntBatchSize < this.intqueue.length; lastintindex += this.db.addIntBatchSize) {
@@ -421,13 +419,9 @@ class ReferenceGraph {
             proms.push(...this.stringqueue.map(entry => this.db.addString.run(entry.srcmode, entry.srcid, entry.propname, entry.value, entry.dstmode)));
             await Promise.all(proms);
             await this.db.updateProgress.run(mode, progress, this.currentlogicalmax, this.currenttypedonly ? 1 : 0);
-            await this.db.sqlite.exec("COMMIT;");
-            this.intqueue = [];
-            this.stringqueue = [];
-        } catch (e) {
-            await this.db.sqlite.exec("ROLLBACK;");
-            throw e;
-        }
+        });
+        this.intqueue = [];
+        this.stringqueue = [];
     }
 
     async maybeFlush(mode = this.currentmode, progress = this.currentlogicalpacked) {

@@ -21,13 +21,7 @@ export class FileSourceFsCache {
     constructor(filename: string) {
         this.isready = false;
         this.ready = (async () => {
-            if (!!fs.constants) {
-                // nodejs
-                this.database = await AbstractSQLiteNode.create(filename, { create: true, write: true });
-            } else {
-                // web
-                this.database = await AbstractSQLiteWorker.create(filename);
-            }
+            this.database = await AbstractSQLite.createAutoCache(filename);
             await this.database.exec(`CREATE TABLE IF NOT EXISTS groupcache (major INT, minor INT, crc UNSIGNED INT, file BLOB);`);
             await this.database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mainindex ON groupcache(major,minor,crc)`);
 
