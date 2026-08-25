@@ -107,7 +107,9 @@ export async function iterateJsonFiles<T extends JsonBasedFile<any>>(source: Cac
 			arch = await source.getFileArchive(fileid.index);
 			lastarchive = { index: fileid.index, subfiles: arch };
 		}
-		let file = arch[fileid.subindex];
+		let subindex = fileid.index.subindices.findIndex(q => q == fileid.subid);
+		if (subindex == -1) { throw new Error("subindex not found in archive subindices"); }
+		let file = arch[subindex];
 		let logicalid = mode.lookup.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
 		let res: T | null = null;
 		try {

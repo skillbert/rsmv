@@ -25,20 +25,20 @@ type FileAction = {
 })
 
 //TODO merge all this with defs in extract
-function chunkedIndexName(major: number, minor: number, subfile: number) {
+function chunkedIndexName(major: number, minor: number, subfileid: number) {
 	let name = majormap[major]?.name ?? `${major}`;
-	return `${name}-${archiveToFileId(major, minor, subfile)}`;
+	return `${name}-${archiveToFileId(major, minor, subfileid)}`;
 }
-function standardName(major: number, minor: number, subfile: number) {
+function standardName(major: number, minor: number, subfileid: number) {
 	let name = majormap[major]?.name ?? `${major}`;
-	return `${name}-${major}_${minor}${subfile != -1 ? `_${subfile}` : ""}`;
+	return `${name}-${major}_${minor}${subfileid != -1 ? `_${subfileid}` : ""}`;
 }
-function worldmapFilename(major: number, minor: number, subfile: number) {
+function worldmapFilename(major: number, minor: number, subfileid: number) {
 	const worldStride = 128;
 	return `mapsquare-${minor % worldStride}_${Math.floor(minor / worldStride)}`;
 }
-function subfileFilename(major: number, minor: number, subfile: number) {
-	return subfile + "";
+function subfileFilename(major: number, minor: number, subfileid: number) {
+	return subfileid + "";
 }
 
 let configmap: Record<number, FileAction> = {
@@ -103,16 +103,16 @@ export class FileEdit {
 	type: CacheEditType;
 	major: number;
 	minor: number;
-	subfile: number;
+	subfileid: number;
 	action: FileAction;
 	before: Buffer | Loadable | null;
 	after: Buffer | Loadable | null;
-	constructor(action: FileAction, type: CacheEditType, major: number, minor: number, subfile: number, before: Buffer | Loadable | null, after: Buffer | Loadable | null) {
+	constructor(action: FileAction, type: CacheEditType, major: number, minor: number, subfileid: number, before: Buffer | Loadable | null, after: Buffer | Loadable | null) {
 		this.action = action;
 		this.type = type;
 		this.major = major;
 		this.minor = minor;
-		this.subfile = subfile;
+		this.subfileid = subfileid;
 		this.before = before;
 		this.after = after;
 	}
@@ -242,7 +242,7 @@ export async function diffCaches(output: ScriptOutput, outdir: ScriptFS, sourcea
 		changes.push(...newchanges);
 
 		for (let change of newchanges) {
-			let name = change.action.getFileName(change.major, change.minor, change.subfile);
+			let name = change.action.getFileName(change.major, change.minor, change.subfileid);
 			let dir = `${change.action.name}`;
 
 			await outdir.mkDir(dir);

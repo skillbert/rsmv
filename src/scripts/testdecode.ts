@@ -101,7 +101,7 @@ export async function testDecodeHistoric(output: ScriptOutput, outdir: ScriptFS,
 						if (!res.success) {
 							errorcount++;
 							if (errorcount < maxerrs) {
-								let errlocation = change.action.getFileName(change.major, change.minor, change.subfile);
+								let errlocation = change.action.getFileName(change.major, change.minor, change.subfileid);
 								let filename = `${currentcache.source.getCacheMeta().name.replace(/\W/g, "_")}_${errlocation}`;
 								output.log(`error in ${change.action.name} ${errlocation}`);
 
@@ -164,17 +164,19 @@ export async function testDecode(output: ScriptOutput, outdir: ScriptFS, source:
 				memuse += subfiles.reduce((a, v) => a + v.size, 0);
 			}
 
-			let subfile = currentarch.subfiles[file.subindex];
+			let subindex = currentarch.index.subindices.findIndex(q => q == file.subid);
+			if (subindex == -1) { throw new Error("subindex not found in archive subindices"); }
+			let subfile = currentarch.subfiles[subindex];
 			if (!subfile) {
 				if (currentarch.error) {
-					let id = mode.lookup.fileToLogical(source, file.index.major, file.index.minor, file.subindex);
+					let id = mode.lookup.fileToLogical(source, file.index.major, file.index.minor, file.subid);
 					output.log(`skipped ${id.join(".")} due to error: ${currentarch.error}`);
 				} else {
 					output.log("subfile not found");
 				}
 				continue;
 			}
-			let entry: DecodeEntry = { major: index.major, minor: index.minor, subfile: file.subindex, file: subfile.buffer };
+			let entry: DecodeEntry = { major: index.major, minor: index.minor, subfile: file.subid, file: subfile.buffer };
 			if (globalThis.testDecodeFilter && !globalThis.testDecodeFilter(entry)) {
 				continue;
 			}

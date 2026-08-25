@@ -245,9 +245,9 @@ export function fileIdToArchiveminor(major: number, fileid: number, buildnr: num
 	let holderindex = Math.floor(fileid / archsize);
 	return { minor: holderindex, major, subid: fileid % archsize };
 }
-export function archiveToFileId(major: number, minor: number, subfile: number) {
+export function archiveToFileId(major: number, minor: number, subfileid: number) {
 	let archsize = mappedFileIds[major] ?? 1;
-	return minor * archsize + subfile;
+	return minor * archsize + subfileid;
 }
 
 export function parseFileNameList(fileid: number, buffer: Buffer) {

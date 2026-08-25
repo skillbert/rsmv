@@ -78,12 +78,11 @@ function AdvancedIdInputSearch(p: { modename: BrowseModes, initialValue: string,
                 let ranges = stringToFileRange(searchtext);
                 let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(engine, q.start, q.end))))
                     .flat()
-                    .sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subindex - b.subindex);
+                    .sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subid - b.subid);
 
                 let matches = new Map<string, string>();
                 for (let file of allfiles) {
-                    let subid = file.index.subindices[file.subindex];
-                    let filename = makeFileId(p.modename, mode.fileToLogical(engine, file.index.major, file.index.minor, subid));
+                    let filename = makeFileId(p.modename, mode.fileToLogical(engine, file.index.major, file.index.minor, file.subid));
                     matches.set(filename, filename);
                 }
                 return matches;

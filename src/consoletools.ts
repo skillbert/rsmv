@@ -80,7 +80,7 @@ async function getKnownCounts() {
 
             let lastfile = fileids.at(-1);
             if (lastfile) {
-                let lastindex = mode.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subindex);
+                let lastindex = mode.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subid);
                 res[modename] = (Array.isArray(lastindex) && lastindex.length == 1 ? lastindex[0] : lastindex);
             }
         } catch (e) {

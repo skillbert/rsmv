@@ -9,7 +9,7 @@ export type DecodeLookup = {
     usesArchieves: boolean,
     internalNamefile: number | undefined,
     logicalRangeToFiles(source: CacheFileSource, start: LogicalIndex, end: LogicalIndex): Promise<CacheFileId[]>,
-    fileToLogical(source: CacheFileSource, major: number, minor: number, subfile: number): LogicalIndex,
+    fileToLogical(source: CacheFileSource, major: number, minor: number, subfileid: number): LogicalIndex,
     logicalToFile(source: CacheFileSource, id: LogicalIndex): FileId
 }
 
@@ -21,7 +21,7 @@ export type FileId = {
 
 export type CacheFileId = {
     index: CacheIndex,
-    subindex: number
+    subid: number
 }
 
 export type LogicalIndex = number[];
@@ -46,14 +46,14 @@ export async function filerange(source: CacheFileSource, startindex: FileId, end
                     name: null,
                     subindexcount: group.length,
                     subindices: group.map(q => q.fileid),
-                    subnames: group.map(q => q.fileid),
+                    subnames: (group[0].namehash != null ? group.map(q => q.namehash!) : null),
                     version: 0
                 };
                 for (let sub of group) {
                     if (sub.fileid >= startindex.subid && sub.fileid <= endindex.subid) {
                         files.push({
                             index: groupindex,
-                            subindex: sub.fileid
+                            subid: sub.fileid
                         });
                     }
                 }
@@ -70,7 +70,7 @@ export async function filerange(source: CacheFileSource, startindex: FileId, end
                     let subfileid = index.subindices[fileindex];
                     if (index.minor == startindex.minor && subfileid < startindex.subid) { continue; }
                     if (index.minor == endindex.minor && subfileid > endindex.subid) { continue; }
-                    files.push({ index, subindex: fileindex });
+                    files.push({ index, subid: subfileid });
                 }
             }
         }
@@ -86,7 +86,7 @@ export function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
         logicalDimensions: 2,
         usesArchieves: false,
         internalNamefile: undefined,
-        fileToLogical(source, major, minor, subfile) {
+        fileToLogical(source, major, minor, subfileid) {
             return [255, minor];
         },
         logicalToFile(source, id) {
@@ -99,7 +99,7 @@ export function oldWorldmapIndex(key: "l" | "m"): DecodeLookup {
                 for (let z = start[1]; z <= Math.min(end[1], 200); z++) {
                     let namehash = cacheFilenameHash(`${key}${x}_${z}`, source.getBuildNr() <= lastLegacyBuildnr);
                     let file = index.find(q => q && q.name == namehash);
-                    if (file) { res.push({ index: file, subindex: 0 }); }
+                    if (file) { res.push({ index: file, subid: 0 }); }
                 }
             }
             return res;
@@ -115,7 +115,7 @@ export function worldmapIndex(subfile: number): DecodeLookup {
         logicalDimensions: 2,
         usesArchieves: true,
         internalNamefile: undefined,
-        fileToLogical(source, major, minor, subfile) {
+        fileToLogical(source, major, minor, subfileid) {
             let { x, z } = unpackMapsquare(minor)
             return [x, z];
         },
@@ -132,7 +132,7 @@ export function worldmapIndex(subfile: number): DecodeLookup {
                     for (let fileindex = 0; fileindex < index.subindices.length; fileindex++) {
                         let subfileid = index.subindices[fileindex];
                         if (subfileid == subfile) {
-                            files.push({ index, subindex: fileindex });
+                            files.push({ index, subid: subfileid });
                         }
                     }
                 }
@@ -149,8 +149,8 @@ export function singleMinorIndex(major: number, minor: number, internalNamefile:
         logicalDimensions: 1,
         usesArchieves: true,
         internalNamefile,
-        fileToLogical(source, major, minor, subfile) {
-            return [subfile];
+        fileToLogical(source, major, minor, subfileid) {
+            return [subfileid];
         },
         logicalToFile(source, id: LogicalIndex) {
             return { major, minor, subid: id[0] };
@@ -168,7 +168,7 @@ export function subfileIndex(major: number, subfile: number): DecodeLookup {
         logicalDimensions: 1,
         usesArchieves: true,
         internalNamefile: undefined,
-        fileToLogical(source, major, minor, subfile) {
+        fileToLogical(source, major, minor, subfileid) {
             return [minor];
         },
         logicalToFile(source, id: LogicalIndex) {
@@ -182,7 +182,7 @@ export function subfileIndex(major: number, subfile: number): DecodeLookup {
                 if (index.minor >= start[0] && index.minor <= end[0]) {
                     let sub = index.subindices.findIndex(q => q == subfile);
                     if (sub != -1) {
-                        files.push({ index, subindex: sub });
+                        files.push({ index, subid: subfile });
                     }
                 }
             }
@@ -198,8 +198,8 @@ export function chunkedIndex(major: number, internalNamefile: number | undefined
         logicalDimensions: 1,
         usesArchieves: true,
         internalNamefile,
-        fileToLogical(source, major, minor, subfile) {
-            return [archiveToFileId(major, minor, subfile)];
+        fileToLogical(source, major, minor, subfileid) {
+            return [archiveToFileId(major, minor, subfileid)];
         },
         logicalToFile(source, id: LogicalIndex) {
             return fileIdToArchiveminor(major, id[0], source.getBuildNr());
@@ -219,7 +219,7 @@ export function anyFileIndex(): DecodeLookup {
         logicalDimensions: 3,
         usesArchieves: true,
         internalNamefile: undefined,
-        fileToLogical(source, major, minor, subfile) { return [major, minor, subfile]; },
+        fileToLogical(source, major, minor, subfileid) { return [major, minor, subfileid]; },
         logicalToFile(source, id) { return { major: id[0], minor: id[1], subid: id[2] }; },
         async logicalRangeToFiles(source, start, end) {
             if (start[0] != end[0]) { throw new Error("can only do one major at a time"); }
@@ -236,7 +236,7 @@ export function noArchiveIndex(major: number, internalNamefile: number | undefin
         logicalDimensions: 1,
         usesArchieves: false,
         internalNamefile,
-        fileToLogical(source, major, minor, subfile) { if (subfile != 0) { throw new Error("nonzero subfile in noarch index"); } return [minor]; },
+        fileToLogical(source, major, minor, subfileid) { if (subfileid != 0) { throw new Error("nonzero subfile in noarch index"); } return [minor]; },
         logicalToFile(source, id) { return { major, minor: id[0], subid: 0 }; },
         async logicalRangeToFiles(source, start, end) {
             return filerange(source, { major, minor: start[0], subid: 0 }, { major, minor: end[0], subid: 0 });
@@ -251,7 +251,7 @@ export function standardIndex(major: number, internalNamefile: number | undefine
         logicalDimensions: 2,
         usesArchieves: true,
         internalNamefile,
-        fileToLogical(source, major, minor, subfile) { return [minor, subfile]; },
+        fileToLogical(source, major, minor, subfileid) { return [minor, subfileid]; },
         logicalToFile(source, id) { return { major, minor: id[0], subid: id[1] }; },
         async logicalRangeToFiles(source, start, end) {
             return filerange(source, { major, minor: start[0], subid: start[1] }, { major, minor: end[0], subid: end[1] });
@@ -274,13 +274,13 @@ export function indexfileIndex(): DecodeLookup {
         logicalDimensions: 1,
         usesArchieves: false,
         internalNamefile: undefined,
-        fileToLogical(source, major, minor, subfile) { return [minor]; },
+        fileToLogical(source, major, minor, subfileid) { return [minor]; },
         logicalToFile(source, id) { return { major: cacheMajors.index, minor: id[0], subid: 0 }; },
         async logicalRangeToFiles(source, start, end) {
             let indices = await source.getCacheIndex(cacheMajors.index);
             return indices
                 .filter(index => index && index.minor >= start[0] && index.minor <= end[0])
-                .map(index => ({ index, subindex: 0 }));
+                .map(index => ({ index, subid: 0 }));
         }
     }
 }
@@ -292,11 +292,11 @@ export function rootindexfileIndex(): DecodeLookup {
         logicalDimensions: 0,
         usesArchieves: false,
         internalNamefile: undefined,
-        fileToLogical(source, major, minor, subfile) { return []; },
+        fileToLogical(source, major, minor, subfileid) { return []; },
         logicalToFile(source, id) { return { major: cacheMajors.index, minor: 255, subid: 0 }; },
         async logicalRangeToFiles(source, start, end) {
             return [
-                { index: { major: 255, minor: 255, crc: 0, size: 0, version: 0, name: null, subindexcount: 1, subindices: [0], subnames: null }, subindex: 0 }
+                { index: { major: cacheMajors.index, minor: 255, crc: 0, size: 0, version: 0, name: null, subindexcount: 1, subindices: [0], subnames: null }, subid: 0 }
             ];
         }
     }

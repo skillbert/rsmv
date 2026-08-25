@@ -19,7 +19,7 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 
 	let allfiles = (await Promise.all(ranges.map(q => mode.logicalRangeToFiles(source, q.start, q.end))))
 		.flat()
-		.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subindex - b.subindex);
+		.sort((a, b) => a.index.major != b.index.major ? a.index.major - b.index.major : a.index.minor != b.index.minor ? a.index.minor - b.index.minor : a.subid - b.subid);
 
 
 	if (!args.skipread) {
@@ -52,9 +52,11 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 				}
 				lastarchive = { index: fileid.index, subfiles: arch, error: err };
 			}
-			let file = arch[fileid.subindex];
+			let subindex = fileid.index.subindices.findIndex(q => q == fileid.subid);
+			if (subindex == -1) { throw new Error("subindex not found in archive subindices"); }
+			let file = arch[subindex];
 			if (!file) {
-				output.log(`skipped ${mode.fileToLogical(source, fileid.index.major, fileid.index.minor, fileid.subindex).join(".")} due to error: ${lastarchive.error}`);
+				output.log(`skipped ${mode.fileToLogical(source, fileid.index.major, fileid.index.minor, fileid.subid).join(".")} due to error: ${lastarchive.error}`);
 				continue;
 			}
 			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, file.fileid);
@@ -116,9 +118,11 @@ export async function extractCacheFiles(output: ScriptOutput, outdir: ScriptFS, 
 				arch = await source.getFileArchive(fileid.index);
 				lastarchive = { index: fileid.index, subfiles: arch, error: null };
 			}
-			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, arch[fileid.subindex].fileid);
+			let logicalid = mode.fileToLogical(source, fileid.index.major, fileid.index.minor, fileid.subid);
+			let subindex = fileid.index.subindices.findIndex(q => q == fileid.subid);
+			if (subindex == -1) { throw new Error("subindex not found in archive subindices"); }
 			let newfile = await outdir.readFileBuffer(`${args.mode}-${logicalid.join("_")}.${mode.ext}`);
-			arch[fileid.subindex].buffer = await mode.write(newfile, logicalid, source);
+			arch[subindex].buffer = await mode.write(newfile, logicalid, source);
 		}
 		await archedited();
 	}

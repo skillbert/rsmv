@@ -139,14 +139,14 @@ const decodeMusic: DecodeModeFactory = () => {
 			if (namefile.size != 0) {
 				return [...namefile.keys()]
 					.filter(q => q >= start[0] && q <= end[0])
-					.map<CacheFileId>(q => ({ index: indexfile[q], subindex: 0 }));
+					.map<CacheFileId>(q => ({ index: indexfile[q], subid: 0 }));
 			} else {
 				let enumdata = await source.getObject("enums", 1351);
 				return enumdata.intArrayValue2!.values
 					.filter(q => q[1] >= start[0] && q[1] <= end[0])
 					.sort((a, b) => a[1] - b[1])
 					.filter((q, i, arr) => i == 0 || arr[i - 1][1] != q[1])//filter duplicates
-					.map<CacheFileId>(q => ({ index: indexfile[q[1]], subindex: 0 }))
+					.map<CacheFileId>(q => ({ index: indexfile[q[1]], subid: 0 }))
 			}
 		},
 		...throwOnNonSimple,
@@ -187,7 +187,7 @@ const decodeSlideshow: DecodeModeFactory = () => {
 				let dbrow = parse.dbrows.read(subfile.buffer, source);
 				if (dbrow.table == 40) { ids.push(subfile.fileid); }
 			}
-			return ids.map(q => ({ index: indexfile[cacheConfigPages.dbrows], subindex: q }));
+			return ids.map(q => ({ index: indexfile[cacheConfigPages.dbrows], subid: q }));
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
@@ -224,7 +224,7 @@ const decodeInterface: DecodeModeFactory = () => {
 		logicalToFile(source, id) { return { major: cacheMajors.components, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let indexfile = await source.getCacheIndex(cacheMajors.components);
-			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
+			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subid: 0 }));
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
@@ -246,7 +246,7 @@ const decodeInterface2: DecodeModeFactory = () => {
 		logicalToFile(source, id) { return { major: cacheMajors.components, minor: id[0], subid: 0 }; },
 		async logicalRangeToFiles(source, start, end) {
 			let indexfile = await source.getCacheIndex(cacheMajors.components);
-			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subindex: 0 }));
+			return indexfile.filter(q => q && q.minor >= start[0] && q.minor <= end[0]).map(q => ({ index: q, subid: 0 }));
 		},
 		...throwOnNonSimple,
 		async read(buf, fileid, source) {
