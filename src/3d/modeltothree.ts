@@ -358,6 +358,8 @@ export class EngineCache extends CachingFileSource {
 				let files: any[] = [];
 				await iterateJsonFiles(this, mode, allfiles, obj => {
 					files.push(obj);
+				}, (err, id, logical) => {
+					console.warn(`error parsing ${modename} file ${id} logical ${logical}: ${err}`);
 				});
 				return files;
 			})();

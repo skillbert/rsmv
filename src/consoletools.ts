@@ -145,30 +145,31 @@ async function dumpjson(mode: string) {
     let res = await engine.getJsonSearchData(mode as any).files;
     let remapped: any[] = [];
     for (let f of res) {
-        remapped[f.$fileid] = f;
+        let id = Array.isArray(f.$fileid) ? ((f.$fileid[0] << 16) | f.$fileid[1]) : f.$fileid;
+        remapped[id] = f;
     }
     return remapped;
 }
 
 function bin(arr: any[]) {
     let bins = {};
-    for (let i = 0; i < arr.length; i++) {
+    for (let i in arr) {
         let key = arr[i];
         if (!bins[key]) { bins[key] = []; }
-        bins[key].push(i);
+        bins[key].push(+i);
     }
     return bins;
 }
 
 function binarr(arr: any[][]) {
     let bins = {};
-    for (let i = 0; i < arr.length; i++) {
+    for (let i in arr) {
         let sub = arr[i];
         if (sub) {
             for (let j = 0; j < sub.length; j++) {
                 let key = sub[j];
                 if (!bins[key]) { bins[key] = []; }
-                bins[key].push(i);
+                bins[key].push(+i);
             }
         }
     }

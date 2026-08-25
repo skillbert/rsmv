@@ -252,8 +252,8 @@ export const vartypes = {
 	inputtype: 72,
 	struct: 73,
 	dbrow: 74,
-	type_75: 75,
-	type_76: 76,
+	type_75: 75,//CBTV2CA_COURSE_LABEL
+	type_76: 76,//STATSTORABLEPROC/BANK_STORABLEPROC_PREVENT/CHEEVO_PATH_STORABLEPROC
 	type_77: 77,
 	type_78: 78,
 	type_79: 79,
@@ -269,7 +269,7 @@ export const vartypes = {
 	type_90: 90,
 	type_91: 91,
 	type_92: 92,
-	type_93: 93,
+	headbar: 93,
 	bug_template: 94,
 	billing_auth_flag: 95,
 	account_feature_flag: 96,

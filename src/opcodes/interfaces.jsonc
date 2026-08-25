@@ -96,7 +96,7 @@
         ["data",["buffer",10,"hex"]]
     ]]],
     ["unk16data",["opt","type=16",["struct",
-        ["data",["buffer",179,"hex"]]//or 188 or 238, no clue how this works
+        ["data",["buffer",188,"hex"]]//179, 188 or 238, no clue how this works
     ]]],
     ["unkffff",["opt","version>=6","uint"]],
 
@@ -133,37 +133,37 @@
     ["unkdatadata",["opt","version>=0 && unkdata!=0",["buffer",6,"hex"]]],
 
     ["scripts",["struct",
-        ["load","uivalues"],
-        ["mousehover","uivalues"],
-        ["mouseleave","uivalues"],
-        ["unk0","uivalues"],
-        ["unk1","uivalues"],
-        ["unk2","uivalues"],
-        ["unk3","uivalues"],
-        ["unk4","uivalues"],
-        ["unk5","uivalues"],
-        ["unk6","uivalues"],//triggerop
-        ["unk7",["opt","version>=0","uivalues"]],
-        ["hovertext","uivalues"],
-        ["unk8","uivalues"],//mousedown
-        ["unk9","uivalues"],
-        ["unk10","uivalues"],//mouseup
-        ["unk11","uivalues"],
-        ["unk12","uivalues"],
-        ["unk13","uivalues"],
-        ["unk14","uivalues"],
-        ["unk15","uivalues"],
-        ["unk16","uivalues"],
-        ["unk17",["opt","version>=6","uivalues"]],
-        ["unk18",["opt","version>=6","uivalues"]],
-        ["unk19",["opt","version>=6","uivalues"]],
-        ["unk20",["opt","version>=7","uivalues"]]
+        ["load","scriptbinding"],
+        ["mouseenter","scriptbinding"],
+        ["mouseleave","scriptbinding"],
+        ["unk0","scriptbinding"],//also mouseleave
+        ["unk1","scriptbinding"],//also mouseenter
+        ["var_player_onchange","scriptbinding"],
+        ["var_unk1_onchange","scriptbinding"],
+        ["var_unk2_onchange","scriptbinding"],
+        ["unk5","scriptbinding"],//timer related idk
+        ["click","scriptbinding"],//triggerop
+        ["unk7",["opt","version>=0","scriptbinding"]],//unused
+        ["hovertext","scriptbinding"],
+        ["click_v2","scriptbinding"],//unclear
+        ["mousedown","scriptbinding"],//possibly mousedown repeat
+        ["mouseup","scriptbinding"],//mouseup
+        ["mousemove","scriptbinding"],
+        ["dragstart","scriptbinding"],
+        ["drag","scriptbinding"],
+        ["unk14","scriptbinding"],//not actually in use
+        ["var_client_onchange_0","scriptbinding"],
+        ["var_client_onchange_1","scriptbinding"],
+        ["unk17",["opt","version>=6","scriptbinding"]],//also click, possibly touch related
+        ["unk18",["opt","version>=6","scriptbinding"]],//(ui) animation related
+        ["unk19",["opt","version>=6","scriptbinding"]],//?
+        ["unk20",["opt","version>=7","scriptbinding"]]//unused
     ]],
     ["scriptdata",["struct",
-        ["data_0",["array","ubyte","int"]],
-        ["data_1",["array","ubyte","int"]],
-        ["data_2",["array","ubyte","int"]],
-        ["data_3",["array","ubyte","int"]],
-        ["data_4",["array","ubyte","int"]]
+        ["var_player_trigger",["array","ubyte","int"],"var_player"],
+        ["var_unk1_trigger",["array","ubyte","int"]],//counts match suspiciously with config42, which holds empty 1 byte files
+        ["var_unk2_trigger",["array","ubyte","int"]],//unknown
+        ["var_client_trigger_0",["array","ubyte","int"],"var_client"],
+        ["var_client_trigger_1",["array","ubyte","int"],"var_client"]
     ]]
 ]

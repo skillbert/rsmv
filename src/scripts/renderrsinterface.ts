@@ -802,23 +802,23 @@ export class CS2Api {
         this.changed();
     }
 
-    setHide(hide: number) { this.data && (this.data.hidden = hide); }
-    setWidth(w: number) { this.data && (this.data.basewidth = w); }
-    setHeight(h: number) { this.data && (this.data.basewidth = h); }
-    setX(x: number) { this.data && (this.data.baseposx = x); }
-    setY(y: number) { this.data && (this.data.baseposy = y); }
+    setHide(hide: number) { this.data && (this.data.hidden = hide); this.changed(); }
+    setWidth(w: number) { this.data && (this.data.basewidth = w); this.changed(); }
+    setHeight(h: number) { this.data && (this.data.baseheight = h); this.changed(); }
+    setX(x: number) { this.data && (this.data.baseposx = x); this.changed(); }
+    setY(y: number) { this.data && (this.data.baseposy = y); this.changed(); }
     getHide() { return this.data?.hidden ?? 0; }
     getWidth() { return this.data?.basewidth ?? 0; }
     getHeight() { return this.data?.baseheight ?? 0; }
     getX() { return this.data?.baseposx ?? 0; }
     getY() { return this.data?.baseposy ?? 0; }
-    setOp(index: number, text: string) { console.log(`setop ${this.comp?.compid ?? -1} ${index} ${text}`); }//TODO
+    setOp(index: number, text: string) { console.log(`setop ${this.comp?.compid ?? -1} ${index} ${text}`); this.changed(); }//TODO
     getOp(index: number) { return this.data?.rightclickopts[index] ?? ""; }
 
     //text
-    setText(text: string) { if (this.data?.textdata) { this.data.textdata.text = text; } }
+    setText(text: string) { if (this.data?.textdata) { this.data.textdata.text = text; } this.changed(); }
     getText() { return this.data?.textdata?.text ?? ""; }
-    setTextAlign(a: number, b: number, c: number) { this.data?.textdata && (this.data.textdata.alignhor = c, this.data.textdata.alignver = b, this.data.textdata.multiline = a | 0); }
+    setTextAlign(a: number, b: number, c: number) { this.data?.textdata && (this.data.textdata.alignhor = c, this.data.textdata.alignver = b, this.data.textdata.multiline = a | 0); this.changed(); }
     getTextAlign() { return [this.data?.textdata?.alignhor ?? 0, this.data?.textdata?.alignver ?? 0, this.data?.textdata?.multiline ?? 0]; }
 
     //sprite
