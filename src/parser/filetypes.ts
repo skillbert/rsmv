@@ -1,5 +1,5 @@
 
-import { cacheConfigPages, cacheMajors, internalNameFiles } from "../constants";
+import { cacheConfigPages, cacheMajors, internalNameFiles, JsonFieldTypes } from "../constants";
 import { parse, FileParser, JsonBasedFile, cacheFileJsonModes, cacheFileExperimentalModes } from "./jsondecoders";
 import { CacheFileSource } from "../cache";
 import { constrainedMap } from "../utils";
@@ -26,6 +26,7 @@ export type DecodeModeFactory<T = Buffer | string, CTX = any> = (flags: Record<s
 export type DecodeMode<T = Buffer | string, CTX = void> = {
 	ext: string,
 	parser?: FileParser<any>,
+	rstype?: JsonFieldTypes,
 	read(buf: Buffer, fileid: LogicalIndex, source: CacheFileSource, ctx: CTX | undefined): T | Promise<T>,
 	prepareDump(output: ScriptFS, source: CacheFileSource): Promise<CTX> | CTX,
 	prepareWrite(source: CacheFileSource): Promise<void> | void,
@@ -43,7 +44,7 @@ const throwOnNonSimple = {
 }
 
 
-function standardFile(mode: JsonBasedFile<any>, decodername: string): DecodeModeFactory {
+function standardFile(mode: JsonBasedFile<any>, decodername: string, rstype?: JsonFieldTypes): DecodeModeFactory {
 	let constr = ((args: Record<string, string>) => {
 		let singleschemaurl = "";
 		let batchschemaurl = "";
@@ -51,6 +52,7 @@ function standardFile(mode: JsonBasedFile<any>, decodername: string): DecodeMode
 			ext: "json",
 			...mode.lookup,
 			parser: mode.parser,
+			rstype: rstype,
 			async prepareDump(output, source) {
 				let name = Object.entries(cacheFileDecodeModes).find(q => q[1] == constr);
 				if (!name) { throw new Error(); }
@@ -490,10 +492,10 @@ const cacheFileDecodersOther = constrainedMap<DecodeModeFactory>()({
 });
 
 const cacheFileDecodersJson = (Object.fromEntries(Object.entries(cacheFileJsonModes)
-	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
+	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k, v.proptype)])) as Record<keyof typeof cacheFileJsonModes, DecodeModeFactory>)
 
 const cacheFileDecodersExperimentalJson = (Object.fromEntries(Object.entries(cacheFileExperimentalModes)
-	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k)])) as Record<keyof typeof cacheFileExperimentalModes, DecodeModeFactory>)
+	.map(([k, v]) => [k, standardFile(v as JsonBasedFile<any>, k, v.proptype)])) as Record<keyof typeof cacheFileExperimentalModes, DecodeModeFactory>)
 
 export const cacheFileDecodeGroups = {
 	image: cacheFileDecodersImage,

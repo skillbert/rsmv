@@ -36,7 +36,7 @@ export function addBracketsIfNeeded(slotprec: number, assoc: "left" | "right" | 
 }
 
 export function subtypeToTs(subt: number) {
-    let res = vartypeReverseMap.get(subt)
+    let res: string | undefined = vartypeReverseMap.get(subt);
     if (!res) { return `type_${subt}`; }
     // prevent conflict with ts keywords
     // if (res == "boolean") { res = "cs2bool"; }

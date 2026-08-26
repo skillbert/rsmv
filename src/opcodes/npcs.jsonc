@@ -103,6 +103,6 @@
 	"0xB9": { "name":                          "unknown_B9", "read": "true" },
 	"0xBA": { "name":                          "unknown_BA", "read": "modelmorphs"},
 	"0xDB": { "name":                          "unknown_DB", "read": "ubyte" },//might be wrong and part of other op
-	"0xF9": { "name":                               "extra", "read": "extrasmap", "type": "params" },
+	"0xF9": { "name":                               "extra", "read": "extrasmap" },
 	"0xFD": { "name":                          "unknown_FD", "read": "ubyte" }//probably render priority
 }

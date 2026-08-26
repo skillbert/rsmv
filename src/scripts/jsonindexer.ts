@@ -1,5 +1,5 @@
 import { JSONSchema6, JSONSchema6Definition } from "json-schema";
-import { cacheMajors, internalNameFiles, vartypeReverseMap, vartypes } from "../constants";
+import { cacheMajors, internalNameFiles, JsonFieldTypes, vartypeReverseMap, vartypes } from "../constants";
 import { cacheFileJsonModes, iterateJsonFiles, JsonBasedFile } from "../parser/jsondecoders";
 import { styleSheetImageProps, styleSheetRGBAProps, styleSheetRGBProps } from "./renderrsinterface";
 import { BrowseModes, makeFileId } from "../viewer/tabs/browse";
@@ -15,13 +15,16 @@ import { isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor } from "..
 import { namedClientScriptOps } from "../clientscript/definitions";
 import { clientscript } from "../../generated/clientscript";
 import { ClientscriptObfuscation } from "../clientscript/callibration/callibrator";
+import { cacheFileDecodeModes } from "../parser/filetypes";
 
+// technical types with custom handling, usually objects
+type ComposedPropTypes = "paramtable" | "enumkey" | "clientscriptbinding" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "stylevalue";
+// specializations with custom display that the client handles as primitives
+type DisplayPropTypes = "color" | "rgb" | "argb" | "type" | "imagefile";
+// types that are missing from vartypes, possibly not identified
+export type ExtendedJsonFieldTypes = JsonFieldTypes | ComposedPropTypes | DisplayPropTypes;
 
-type CustomPropTypes = "params" | "color" | "imagefile" | "rgb" | "argb" | "type" | "enumkey" | "clientscriptcall"
-    | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "varbit" | "stylevalue";
-export type BrowsableType = keyof typeof vartypes | CustomPropTypes | "unknown" | "";
-
-export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes>> = {
+export const vartypeToDecoder: Partial<Record<JsonFieldTypes, BrowseModes>> = {
     achievement: "achievements",
     bas: "animgroupconfigs",
     chatcat: "quickchatcats",
@@ -45,31 +48,37 @@ export const vartypeToDecoder: Partial<Record<keyof typeof vartypes, BrowseModes
     struct: "structs",
     quest: "quests",
     material: "materials",
+    varbit: "varbits",
     var_player: "var_player",
+    var_world: "var_world",
+    var_player_group: "var_player_group",
+    var_region: "var_region",
+    var_clan_setting: "var_clan_setting",
+    var_campaign: "var_campaign",
+    var_clan: "var_clan",
+    var_client: "var_client",
+    var_npc: "var_npc",
+    var_object: "var_object",
+
     stylesheet: "stylesheets",
     skybox: "skyboxes",
     graphic: "sprites",
     component: "components",
     interface: "interfaceviewer",
     overlayinterface: "interfaceviewer",
-    scriptref: "clientscript",
+    clientscript: "clientscript",
     inv: "inventories",
     coordgrid: "coordgrid",
     maparea: "mapzones",
     hitmark: "hitmarks",
+    headbar: "headbars",
     mapsceneicon: "mapscenes",
     category: "categories",
-    ["dbtable" as any]: "dbtables",
-    // TODO fix these
-    ["headbar" as any]: "headbars",
-    ["maplabel" as any]: "maplabels",
-    ["varbit" as any]: "varbits",
-    ["clientscriptops" as any]: "clientscript",
-    // need to confirm
-    // mapelement: "maplabels",
+
+    dbtable: "dbtables",
+    mapelement: "maplabels",
     // non-json
-    // texture: "textures",
-    // maparea: "mapareas",
+    // texture: "textures"
 }
 
 const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip"> = {
@@ -96,7 +105,7 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     var_region: "full",
     var_object: "full",
     var_clan: "full",
-    var_clansetting: "full",
+    var_clan_setting: "full",
     var_campaign: "full",
     var_player_group: "full",
     overlays: "full",
@@ -183,7 +192,9 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
     if (clientscript) {
         try {
             out.log(`Loading client script deobfuscation data...`);
-            graph.deob = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => out);
+            let subscriptout = new CLIScriptOutput();
+            subscriptout.log = out.log.bind(out);
+            graph.deob = await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => subscriptout);
             out.log(`Client script deobfuscation data loaded`);
             modes.clientscriptops = "typedonly";
         } catch (e) {
@@ -195,21 +206,23 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
     await parseNameFiles(out, graph, source);
 
     for (let [modenamestr, action] of Object.entries(modes)) {
-        let modename = modenamestr as keyof typeof cacheFileJsonModes;
+        let modename = modenamestr as keyof typeof modeactions;
         if (action == "skip") { continue; }
+
         let oldprogressrows = await graph.db.getProgress.run(modename);
         let oldprogress = oldprogressrows?.[0]?.completed ?? 0;
 
         let mode = cacheFileJsonModes[modename];
         if (out.state != "running") { break; }
+        let rstype = mode.proptype ?? "unknown";
 
         out.log(`=== Indexing ${modename} ===`);
         let allfiles = await mode.lookup.logicalRangeToFiles(source, [0, 0, 0], [Infinity, Infinity, Infinity]);
         let schema = mode.parser.parser.getJsonSchema();
 
         let lastfile = allfiles.at(-1);
-        let lastlogical = (lastfile ? mode.lookup.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subindex) : [0, 0, 0]);
-        let lastpackedlogical = logicalIdToPackedInt(lastlogical, modename);
+        let lastlogical = (lastfile ? mode.lookup.fileToLogical(source, lastfile.index.major, lastfile.index.minor, lastfile.subid) : [0, 0, 0]);
+        let lastpackedlogical = logicalIdToPackedInt(lastlogical, rstype);
 
         if (lastpackedlogical <= oldprogress) {
             out.log(`Skipping ${modename} - already completed`);
@@ -220,19 +233,12 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
         graph.currentlogicalmax = lastpackedlogical;
         graph.currenttypedonly = action == "typedonly";
 
-        if (modename == "clientscriptops") {
-            graph.currentmode = "clientscript";
-            let subscriptout = new CLIScriptOutput();
-            subscriptout.log = out.log.bind(out);
-            await ClientScriptDeobLoader.forCache(source).loadOrGenerate(source, async () => subscriptout);
-        }
-
         let count = 0;
         let lastprogress = Date.now();
         await iterateJsonFiles(source, mode, allfiles, (obj, fileid, logical) => {
             if (out.state != "running") { throw new Error("script aborted"); }
 
-            let packed = logicalIdToPackedInt(logical, modename);
+            let packed = logicalIdToPackedInt(logical, rstype);
             graph.currentlogicalpacked = packed;
             graph.currentobjstack = [];
 
@@ -273,8 +279,13 @@ async function parseNameFiles(out: ScriptOutput, graph: ReferenceGraph, source: 
         if (out.state != "running") { break; }
         if (fileid <= oldprogress) { continue; }
 
-        let modename = vartypeToDecoder[mode as keyof typeof vartypes] ?? mode as BrowseModes;
-        graph.currentmode = modename;
+        let decoder = vartypeToDecoder[mode] as BrowseModes | undefined;
+        if (!decoder) {
+            out.log(`No decoder for name file ${mode} - skipping`);
+            continue;
+        }
+
+        graph.currentmode = decoder ?? mode;
         graph.currentobjstack = [];
         graph.currenttypedonly = false;
 
@@ -335,8 +346,8 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
         if (isNamedOp(node, namedClientScriptOps.pushvar) || isNamedOp(node, namedClientScriptOps.popvar)) {
             let groupid = (node.op.imm >> 24) & 0xff;
             let varid = (node.op.imm >> 8) & 0xffff;
-            let groupname = "var_" + (deob.varmeta.get(groupid) ?? "unk" + groupid);
-            graph.addInt(node.op.opcode == namedClientScriptOps.pushvar ? "read" : "write", varid, groupname);
+            let groupname = "var_" + (deob.varmeta.get(groupid) ?? ("unk" + groupid));
+            graph.addInt(node.op.opcode == namedClientScriptOps.pushvar ? "read" : "write", varid, groupname as any);
         }
         if (isNamedOp(node, namedClientScriptOps.pushvarbit) || isNamedOp(node, namedClientScriptOps.popvarbit)) {
             graph.addInt(node.op.opcode == namedClientScriptOps.pushvarbit ? "read" : "write", node.op.imm, "varbit");
@@ -347,7 +358,7 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
     }
 }
 
-type RefEntry<T> = { srcmode: string, srcid: number, propname: string, value: T, dstmode: string };
+type RefEntry<T> = { srcmode: BrowseModes, srcid: number, propname: string, value: T, dstmode: ExtendedJsonFieldTypes };
 
 class ReferenceGraph {
     params!: Map<number, params>;
@@ -378,25 +389,33 @@ class ReferenceGraph {
     }
 
     private static async initDB(db: AbstractSQLite) {
-        // int table
-        await db.exec(`CREATE TABLE IF NOT EXISTS refints (srcmode TEXT, srcid UINT, propname TEXT, value INT, dstmode TEXT);`);
-        await db.exec(`CREATE INDEX IF NOT EXISTS idx_refints_value ON refints (value, dstmode);`);
-        let addInt = await db.prepare<[srcmode: string, srcid: number, propname: string, value: number, dstmode: string], any>(`INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
+        // ===== int table =====
+        await db.exec(`CREATE TABLE IF NOT EXISTS refints (srcdecoder TEXT, srcid UINT, propname TEXT, value INT, dsttype TEXT);`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_refints_value ON refints (value, dsttype);`);
+        let addInt = await db.prepare<[srcdecoder: BrowseModes, srcid: number, propname: string, value: number, dsttype: ExtendedJsonFieldTypes], any>(
+            `INSERT INTO refints (srcdecoder, srcid, propname, value, dsttype) VALUES (?,?,?,?,?)`);
         let addIntBatchSize = 32;
-        let addIntBatchQuery = `INSERT INTO refints (srcmode, srcid, propname, value, dstmode) VALUES ${Array.from({ length: addIntBatchSize }).fill("(?,?,?,?,?)").join(",")}`;
+        let addIntBatchQuery =
+            `INSERT INTO refints (srcdecoder, srcid, propname, value, dsttype) VALUES ${Array.from({ length: addIntBatchSize }).fill("(?,?,?,?,?)").join(",")}`;
         let addIntBatch = await db.prepare<any, any>(addIntBatchQuery);
-        // strings table
-        await db.exec(`CREATE TABLE IF NOT EXISTS refstrings (srcmode TEXT, srcid UINT, propname TEXT, value TEXT, dstmode TEXT);`);
-        await db.exec(`CREATE INDEX IF NOT EXISTS idx_refstrings_value ON refstrings (value, dstmode);`);
-        let addString = await db.prepare<[srcmode: string, srcid: number, propname: string, value: string, dstmode: string], any>(`INSERT INTO refstrings (srcmode, srcid, propname, value, dstmode) VALUES (?,?,?,?,?)`);
-        // progress table
+        // ===== strings table =====
+        await db.exec(`CREATE TABLE IF NOT EXISTS refstrings (srcdecoder TEXT, srcid UINT, propname TEXT, value TEXT, dsttype TEXT);`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_refstrings_value ON refstrings (value, dsttype);`);
+        let addString = await db.prepare<[srcdecoder: BrowseModes, srcid: number, propname: string, value: string, dsttype: ExtendedJsonFieldTypes], any>(
+            `INSERT INTO refstrings (srcdecoder, srcid, propname, value, dsttype) VALUES (?,?,?,?,?)`);
+        // ===== progress table =====
         await db.exec(`CREATE TABLE IF NOT EXISTS progress (mode TEXT PRIMARY KEY, completed INT, max INT, intensity INT);`);
-        let updateProgress = await db.prepare<[mode: string, completed: number, max: number, intensity: number], any>(`INSERT OR REPLACE INTO progress (mode, completed, max, intensity) VALUES (?,?,?,?)`);
-        let getProgress = await db.prepare<[mode: string], { completed: number, max: number, intensity: number }>(`SELECT completed, max, intensity FROM progress WHERE mode=?`);
-        // search
-        let findrefs = await db.prepare<[mode: string, id: number, limit: number], { srcmode: string, srcid: number, propname: string, value: number, dstmode: string }>(`SELECT * FROM refints WHERE dstmode=? AND value=? GROUP BY srcmode,srcid LIMIT ?`);
-        let findints = await db.prepare<[int: number, limit: number], { srcmode: string, srcid: number, propname: string, value: number, dstmode: string }>(`SELECT * FROM refints WHERE value=? LIMIT ?`);
-        let findstrings = await db.prepare<[pattern: string, limit: number], { srcmode: string, srcid: number, propname: string, value: string, dstmode: string }>(`SELECT * FROM refstrings WHERE value LIKE ? LIMIT ?`);
+        let updateProgress = await db.prepare<[mode: string, completed: number, max: number, intensity: number], any>(
+            `INSERT OR REPLACE INTO progress (mode, completed, max, intensity) VALUES (?,?,?,?)`);
+        let getProgress = await db.prepare<[mode: string], { completed: number, max: number, intensity: number }>(
+            `SELECT completed, max, intensity FROM progress WHERE mode=?`);
+        // ===== search =====
+        let findrefs = await db.prepare<[dsttype: ExtendedJsonFieldTypes, id: number, limit: number], { srcdecoder: BrowseModes, srcid: number, propname: string, value: number, dsttype: ExtendedJsonFieldTypes }>(
+            `SELECT * FROM refints WHERE dsttype=? AND value=? GROUP BY srcdecoder,srcid LIMIT ?`);
+        let findints = await db.prepare<[int: number, limit: number], { srcdecoder: BrowseModes, srcid: number, propname: string, value: number, dsttype: ExtendedJsonFieldTypes }>(
+            `SELECT * FROM refints WHERE value=? LIMIT ?`);
+        let findstrings = await db.prepare<[pattern: string, limit: number], { srcdecoder: BrowseModes, srcid: number, propname: string, value: string, dsttype: ExtendedJsonFieldTypes }>(
+            `SELECT * FROM refstrings WHERE value LIKE ? LIMIT ?`);
         return { sqlite: db, addInt, addIntBatch, addIntBatchSize, addString, updateProgress, getProgress, findrefs, findints, findstrings };
     }
 
@@ -446,10 +465,10 @@ class ReferenceGraph {
         }
     }
 
-    addInt(propname: string, value: number, type: string) {
-        let rsmvtype = vartypeToDecoder[type];
-        if (rsmvtype) { type = rsmvtype; }
-        if (this.currenttypedonly && (type == "unknown" || type == "" || type == "unknown_int")) {
+    addInt(propname: string, value: number, type: ExtendedJsonFieldTypes) {
+        // let rsmvtype = vartypeToDecoder[type];
+        // if (rsmvtype) { type = rsmvtype; }
+        if (this.currenttypedonly && (type == "int" || type == "unknown" || type == "" || type == "unknown_int")) {
             return;
         }
         this.intqueue.push({
@@ -460,7 +479,7 @@ class ReferenceGraph {
             dstmode: type
         });
     }
-    addString(propname: string, value: string, type: string) {
+    addString(propname: string, value: string, type: ExtendedJsonFieldTypes) {
         this.stringqueue.push({
             srcmode: this.currentmode,
             srcid: this.currentlogicalpacked,
@@ -489,16 +508,13 @@ class ReferenceGraph {
         }
     }
 
-    async findReferences(mode: BrowseModes, logical: LogicalIndex) {
+    async findReferences(mode: ExtendedJsonFieldTypes, logical: LogicalIndex) {
         let packed = logicalIdToPackedInt(logical, mode);
         let res = await this.db.findrefs.run(mode, packed, 1000);
         return res.map(q => {
-            let logical = packedIntToLogical(q.srcid, q.srcmode as BrowseModes);
             return {
-                srcmode: q.srcmode,
+                srcdecoder: q.srcdecoder,
                 srcpacked: q.srcid,
-                srclogical: logical,
-                srcobject: makeFileId(q.srcmode, logical),
                 propname: q.propname
             };
         });
@@ -507,22 +523,22 @@ class ReferenceGraph {
     async findStrings(pattern: string) {
         let res = await this.db.findstrings.run(pattern, 1000);
         return res.map(q => {
-            let logical = packedIntToLogical(q.srcid, q.srcmode as BrowseModes);
+            let logical = packedIntToLogical(q.srcid, q.srcdecoder);
             return {
-                srcmode: q.srcmode,
+                srcmode: q.srcdecoder,
                 srcpacked: q.srcid,
                 srclogical: logical,
-                srcobject: makeFileId(q.srcmode, logical),
+                srcobject: makeFileId(q.srcdecoder, logical),
                 propname: q.propname,
                 value: q.value,
-                dstmode: q.dstmode
+                dstmode: q.dsttype
             };
         });
     }
 }
 
-function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
-    if (mode == "components") {
+function logicalIdToPackedInt(id: LogicalIndex, mode: ExtendedJsonFieldTypes | BrowseModes) {
+    if (mode == "component" || mode == "components") {
         return packComponent(id[0], id[1]);
     }
     if (mode == "frames") {
@@ -531,7 +547,7 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
     if (mode == "coordgrid") {
         return packCoordgrid(id[0], id[1], id[2]);
     }
-    if (mode == "maptiles" || mode == "maptiles_nxt" || mode == "maplocations" || mode == "mapenvs") {
+    if (mode == "mapsquare" || mode == "maptiles" || mode == "maptiles_nxt" || mode == "maplocations" || mode == "mapenvs") {
         return packMapsquare(id[0], id[1]);
     }
 
@@ -545,8 +561,8 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: BrowseModes) {
     return id[0];
 }
 
-export function packedIntToLogical(id: number, mode: BrowseModes) {
-    if (mode == "components") {
+export function packedIntToLogical(id: number, mode: ExtendedJsonFieldTypes | BrowseModes) {
+    if (mode == "component" || mode == "components") {
         let r = unpackComponent(id);
         return [r.intf, r.sub];
     }
@@ -558,7 +574,7 @@ export function packedIntToLogical(id: number, mode: BrowseModes) {
         let r = unpackCoordgrid(id);
         return [r.level, r.x, r.z];
     }
-    if (mode == "maptiles" || mode == "maptiles_nxt" || mode == "maplocations" || mode == "mapenvs") {
+    if (mode == "mapsquare" || mode == "maptiles" || mode == "maptiles_nxt" || mode == "maplocations" || mode == "mapenvs") {
         let r = unpackMapsquare(id);
         return [r.x, r.z];
     }
@@ -566,7 +582,20 @@ export function packedIntToLogical(id: number, mode: BrowseModes) {
 }
 
 export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | null | undefined, data: any, nameorindex: string | number) {
-    let rsmvtype = meta?.["x-rsmv-type"] ?? "unknown";
+    let rsmvtype: ExtendedJsonFieldTypes = meta?.["x-rsmv-type"] ?? "";
+
+    // make typescript happy
+    if (typeof meta == "boolean") { meta = null; }
+    // strip nullable type from schema
+    if (meta?.oneOf) {
+        meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+        rsmvtype ||= meta?.["x-rsmv-type"];
+    }
+    if (meta?.anyOf) {
+        meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+        rsmvtype ||= meta?.["x-rsmv-type"];
+    }
+
     if (rsmvtype == "enumkey") {
         let keyint = objstack.at(0)?.key_type1 ?? objstack.at(0)?.key_type2;
         rsmvtype = vartypeReverseMap.get(keyint) as any ?? "unknown";
@@ -614,39 +643,22 @@ export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | 
         else if (domainid == 1) { rsmvtype = "varbit"; }
         else { console.log("unknown achievement_or_varbit domainid: " + domainid); }
     }
-    meta = shedSchemaNull(meta);
     return { rsmvtype, data, meta };
 }
-
-function shedSchemaNull(meta: JSONSchema6Definition | undefined | null) {
-    // make typescript happy
-    if (typeof meta == "boolean") {
-        meta = null;
-    }
-    // strip nullable type from schema
-    if (meta?.oneOf) {
-        meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
-    }
-    if (meta?.anyOf) {
-        meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
-    }
-    return meta;
-}
-
 
 function parseParamtable(graph: ReferenceGraph, value: any[]) {
     for (let entry of value) {
         let paramname = graph.paramnames.get(entry.prop) ?? `param_${entry.prop}`;
         let paramdata = graph.params.get(entry.prop);
         let typeid = paramdata?.type?.vartype ?? -1;
-        let typename = vartypeReverseMap.get(typeid) ?? "unknown";
+        let typename = vartypeReverseMap.get(typeid) ?? "unknown" as const;
         if (entry.intvalue != undefined) { graph.addInt(paramname, entry.intvalue, typename); }
         if (entry.stringvalue != undefined) { graph.addString(paramname, entry.stringvalue, typename); }
-        graph.addInt("" + (entry.intvalue ?? entry.stringvalue), entry.prop, "params");
+        graph.addInt("" + (entry.intvalue ?? entry.stringvalue), entry.prop, "param");
     }
 }
 
-function parseClientScriptCall(graph: ReferenceGraph, propname: string, data: any[]) {
+function parseClientScriptBinding(graph: ReferenceGraph, propname: string, data: any[]) {
     if (data.length == 0) { return; }
     let scriptid = data[0];
     graph.addInt(propname, scriptid, "clientscript");
@@ -660,13 +672,13 @@ function parseClientScriptCall(graph: ReferenceGraph, propname: string, data: an
         let arg = data[i];
         if (typeof arg == "number") {
             let argtype = scripttype.stack.exactin.int[intcount];
-            let typename = vartypeReverseMap.get(argtype) ?? "unknown";
+            let typename = vartypeReverseMap.get(argtype) ?? "int";
             graph.addInt(`${propname}_arg${i - 1}`, arg, typename);
             intcount++;
         }
         if (typeof arg == "string") {
             let argtype = scripttype.stack.exactin.string[stringcount];
-            let typename = vartypeReverseMap.get(argtype) ?? "unknown";
+            let typename = vartypeReverseMap.get(argtype) ?? "string";
             graph.addString(`${propname}_arg${i - 1}`, arg, typename);
             stringcount++;
         }
@@ -679,7 +691,7 @@ function parseJsonValue(graph: ReferenceGraph, nameorindex: string | number, dat
     graph.currentobjstack.push(data);
     try {
         // === find expected type ===
-        let rsmvtype: BrowsableType;
+        let rsmvtype: ExtendedJsonFieldTypes;
         ({ rsmvtype, data, meta } = iterateTypedJson(graph.currentobjstack, meta, data, nameorindex));
 
         // === render data ===
@@ -694,10 +706,10 @@ function parseJsonValue(graph: ReferenceGraph, nameorindex: string | number, dat
         } else if (typeof data == "string") {
             graph.addString(name, data, rsmvtype);
         } else if (Array.isArray(data)) {
-            if (rsmvtype == "clientscriptcall") {
-                parseClientScriptCall(graph, nameorindex.toString(), data);
+            if (rsmvtype == "clientscriptbinding") {
+                parseClientScriptBinding(graph, nameorindex.toString(), data);
             }
-            if (rsmvtype == "params") {
+            if (rsmvtype == "paramtable") {
                 parseParamtable(graph, data);
             } else {
                 for (let i = 0; i < data.length; i++) {

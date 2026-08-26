@@ -119,5 +119,5 @@
 	"0xCE": { "name":                        "bindTemplate", "read": "unsigned tribyte", "type": "obj" },
 	"0xCF": { "name":                        "combine_info", "read": "unsigned tribyte", "type": "obj" },
 	"0xD0": { "name":                    "combine_template", "read": "unsigned tribyte", "type": "obj" },
-	"0xF9": { "name":                               "extra", "read": "extrasmap", "type": "params" }
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

@@ -104,7 +104,7 @@ export const internalNameFiles = {
 
 	// hardcoded, extracts its values from various var_x files, not a real file in the cache
 	varbit: 1001
-}
+} satisfies Partial<Record<JsonFieldTypes, number>>;
 
 //represents the largest build number that this application is aware off
 //is used as default value when a cache is considered "current"
@@ -327,11 +327,16 @@ export const vartypes = {
 	unknown_int: 501,
 	unknown_long: 502,
 	unknown_string: 503,
-	scriptref: 504,
+	clientscript: 504,
 	scriptsubref: 505
 	//max 511 (9bit) or overflow elsewhere in code
 }
-export const vartypeReverseMap = new Map(Object.entries(vartypes).map(q => [q[1], q[0]]));
+export const vartypeReverseMap = new Map<number, keyof typeof vartypes>(Object.entries(vartypes).map(q => [q[1], q[0] as any]));
+
+type ExtraPropTypes =
+	"varbit" | "var_world" | "var_player_group" | "var_region" | "var_clansetting" | "var_campaign" | "var_clan" | "var_clan_setting" | "var_client" | "var_npc" | "var_object"
+	| "dbtable" | "mapsquare" | "maplabel" | "param" | "ui_anim_curve" | "ui_anim" | "ui_anim_curve" | "overlay" | "underlay";
+export type JsonFieldTypes = keyof typeof vartypes | ExtraPropTypes | "unknown" | "";
 
 export const lastLegacyBuildnr = 377;
 //unclear if there ended up being overlap with (public) rs2 since this was 12 years after rs2 release

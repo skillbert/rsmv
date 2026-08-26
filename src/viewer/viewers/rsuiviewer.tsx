@@ -185,11 +185,11 @@ function CallbackDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent 
 							callbackargs.push(<span key={i} className="mv-code__opname">{magicmatch}</span>);
 						} else {
 							let argtype = stackin?.int[intcount];
-							let typename = argtype != undefined && vartypeReverseMap.get(argtype);
+							let typename = argtype != undefined && vartypeReverseMap.get(argtype) || "unknown" as const;
 							let browsemode = typename && vartypeToDecoder[typename];
 							if (browsemode) {
-								let index = packedIntToLogical(arg, browsemode);
-								let fileid = makeFileId(browsemode, index);
+								let index = packedIntToLogical(arg, typename);
+								let fileid = makeFileId(typename, index);
 								callbackargs.push(<span key={i} className="mv-code__link mv-code__global" data-objectid={fileid} onClick={ctx.objectClick}>{fileid}</span>)
 							} else {
 								callbackargs.push(<span key={i} className="mv-code__literalint">{arg}</span>);

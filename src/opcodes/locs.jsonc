@@ -151,5 +151,5 @@
 																		["bytelength","ushort"],
 																		["elements",["array","varushort",["buffer",37,"hex"]]]
 																	] },
-	"0xF9": { "name":                               "extra", "read": "extrasmap", "type": "params" }
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
 }

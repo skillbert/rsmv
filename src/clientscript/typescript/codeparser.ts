@@ -98,7 +98,7 @@ function scriptContext(ctx: ParseContext) {
             islocal = true;
         } else if (match) {
             if (match[1] == "script") {
-                vartype = vartypes.scriptref;
+                vartype = vartypes.clientscript;
                 varid = +match[4];
             } else if (match[3]) {
                 if (match[2] == "bit") {
@@ -642,7 +642,7 @@ function scriptContext(ctx: ParseContext) {
         if (!preop) {
             postop = yield ["++", "--", ""];
         }
-        if (vartype == vartypes.scriptref) {
+        if (vartype == vartypes.clientscript) {
             //used in callback
             return makeIntConst(varid, "");
         }

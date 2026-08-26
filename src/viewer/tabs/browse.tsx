@@ -236,7 +236,7 @@ export async function indexGraphPopup(source: CacheFileSource) {
     }
 
     return scriptRunnerPopup("Cache not indexed", "Start indexing", run, <>
-        <div>Advanced features rely on indexing cache contents. This takes about 5 minutes. Afterwards the index will be stored on your browser for future use.</div>
+        <div>Advanced features rely on indexing cache contents. This takes about 5 minutes. Afterwards the index will be stored on your browser for future use. Keep this window visible or your browser will slow down processing.</div>
     </>);
 }
 
@@ -338,11 +338,11 @@ export function BrowseDisplay(p: { browse: BrowsePageId }) {
     if (data.viewer == "json") {
         return <JsonViewer data={data?.file} jsonmode={data?.mode ?? ""} />
     } else if (data.viewer == "dom") {
-        return <><DomWrap el={data.dom} /><ReferencesView jsonmode={index?.mode} id={index?.index} /></>
+        return <><DomWrap el={data.dom} /><ReferencesView browsemode={index?.mode} id={index?.index} /></>
     } else if (data.viewer == "sprite") {
-        return <><TextureView img={data.sprite[0].img} fillHeight /><ReferencesView jsonmode={index?.mode} id={index?.index} /></>
+        return <><TextureView img={data.sprite[0].img} fillHeight /><ReferencesView browsemode={index?.mode} id={index?.index} /></>
     } else if (data.viewer == "audio") {
-        return <><BlobAudio file={data.file} autoplay /><ReferencesView jsonmode={index?.mode} id={index?.index} /></>
+        return <><BlobAudio file={data.file} autoplay /><ReferencesView browsemode={index?.mode} id={index?.index} /></>
     } else if (data.viewer == "interfaces") {
         return <RsUIViewer interfaceid={data.interfaceid[0]} subcomponent={data.interfaceid[1]} />
     } else if (data.viewer == "map") {

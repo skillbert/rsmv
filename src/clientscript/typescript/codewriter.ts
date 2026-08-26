@@ -514,7 +514,7 @@ addWriter(ClientScriptFunction, (node, ctx) => {
 addWriter(FunctionBindNode, (node, ctx) => {
     let scriptid = node.children[0]?.knownStackDiff?.constout ?? -1;
     if (scriptid == -1 && node.children.length == 1) { return new WriteResult(19, [writeLeaf("keyword", "callback"), "()"]); }
-    let scriptnode = writeLeaf("scriptname", `script${scriptid}`, `scriptref_${scriptid}`);
+    let scriptnode = writeLeaf("scriptname", `script${scriptid}`, `clientscript_${scriptid}`);
     let children = node.children.slice(1).map(ctx.getCode);
     return new WriteResult(19, [writeLeaf("keyword", "callback"), "(", scriptnode, ...children.flatMap(q => [", ", q]), ")"]);
 });
