@@ -6,6 +6,7 @@ import { branchInstructions, branchInstructionsOrJump, dynamicOps, typeToPrimiti
 import { OpcodeWriterContext, intrinsics } from "./jsonwriter";
 import { ClientScriptSubtypeSolver } from "./callibration/subtypedetector";
 import { vartypes } from "../constants";
+import { unpackDBTableField } from "../utils";
 
 /**
  * known issues
@@ -1063,15 +1064,27 @@ export function setRawOpcodeStackDiff(consts: StackConstants | null, calli: Clie
         //args are rowid,tablefield,subrow
         let tablefield = consts?.values.at(-2);
         if (typeof tablefield == "number") {
-            let dbtable = (tablefield >> 12) & 0xffff;
-            let columnid = (tablefield >> 4) & 0xff;
-            let subfield = tablefield & 0xf;
+            let { dbtable, columnid, subfield } = unpackDBTableField(tablefield);
             let table = calli.dbtables.get(dbtable);
             let column = table?.columndata?.find(q => q.id == columnid);
             if (column) {
                 node.knownStackDiff = StackInOut.fromExact(
                     [vartypes.dbrow, vartypes.int, vartypes.int],
                     (subfield != 0 ? [column.columns[subfield - 1].type] : column.columns.map(q => q.type))
+                )
+            }
+        }
+    } else if (node.opinfo.id == namedClientScriptOps.dbtable_find) {
+        //args are tablefield,lookupvalue,??,??
+        let tablefield = consts?.values.at(-4);
+        if (typeof tablefield == "number") {
+            let { dbtable, columnid, subfield } = unpackDBTableField(tablefield);
+            let table = calli.dbtables.get(dbtable);
+            let column = table?.columndata?.find(q => q.id == columnid);
+            if (column) {
+                node.knownStackDiff = StackInOut.fromExact(
+                    [vartypes.unknown_int, column.columns[0].type, vartypes.unknown_int, vartypes.unknown_int],
+                    [vartypes.unknown_int]
                 )
             }
         }

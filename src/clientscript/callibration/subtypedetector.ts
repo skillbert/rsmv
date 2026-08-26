@@ -21,16 +21,11 @@ const looseKeys = [
 
     dependencyGroup("opin", namedClientScriptOps.pop_array) | dependencyIndex("int", 1),
     dependencyGroup("opout", namedClientScriptOps.push_array) | dependencyIndex("int", 0),
-    // dependencyGroup("opin", namedClientScriptOps.switch) | dependencyIndex("int", 0),
     vartypes.unknown_int,
     vartypes.unknown_long,
     vartypes.unknown_string,
     ...branchInstructionsInt.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("int", 0), dependencyGroup("opin", q) | dependencyIndex("int", 1)]),
     ...branchInstructionsLong.flatMap(q => [dependencyGroup("opin", q) | dependencyIndex("long", 0), dependencyGroup("opin", q) | dependencyIndex("long", 1)]),
-
-    // unknown op that messes it up for openrs2:2630
-    // 412857857,
-    // 135295488, //arg0 IF_SETGRAPHIC
 ];
 
 function debugAstTypes(node: AstNode) {

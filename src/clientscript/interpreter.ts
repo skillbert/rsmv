@@ -4,6 +4,7 @@ import { ClientScriptOp, StackDiff, StackList, SwitchJumpTable, branchInstructio
 import { rs3opnames } from "./callibration/opnames";
 import { CS2Api, MAGIC_CONST_CURRENTCOMP, UiRenderContext } from "../scripts/renderrsinterface";
 import { getEnumInt, getStructInt } from "./util";
+import { unpackDBTableField } from "../utils";
 
 
 type ScriptScope = {
@@ -190,7 +191,7 @@ export class ClientScriptInterpreter {
         } else {
             let opinfo = this.calli.ops.get(op.opcode);
             if (!opinfo) { throw new Error(`Uknown op with opcode ${op.opcode}`); }
-            if (!opinfo.stackinfo.initializedthrough) { throw new Error(`Unknown params/returns for op ${op.opcode}`); }
+            if (!opinfo.stackinfo.initializedthrough) { throw new Error(`Unknown params/returns for op ${op.opcode} (${op.opname ?? "no name"})`); }
             this.popStacklist(opinfo.stackinfo.in);
             this.pushStackdiff(opinfo.stackinfo.out.toStackDiff());
         }
@@ -320,9 +321,7 @@ implementedops.set(namedClientScriptOps.dbrow_getfield, inter => {
     let tablefield = inter.popint();
     let rowid = inter.popint();
 
-    let dbtable = (tablefield >> 12) & 0xffff;
-    let columnid = (tablefield >> 4) & 0xff;
-    let subfield = tablefield & 0xf;
+    let { dbtable, columnid, subfield } = unpackDBTableField(tablefield);
     let table = inter.calli.dbtables.get(dbtable);
     let column = table?.columndata?.find(q => q.id == columnid);
     if (!column) { throw new Error(`couldn't find dbtable ${dbtable}.${columnid}`); }

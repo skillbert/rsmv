@@ -616,7 +616,6 @@ export function ReferencesView(p: { browsemode?: BrowseModes, id?: number[] }) {
             let rstype = decoderinst.rstype;
             let namefile = decoderinst?.internalNamefile;
             let name = (namefile == undefined ? "" : await ctx.source!.getInternalName(namefile, q.srcpacked));
-            console.log("found reference", q, name);
             let res: DeepLinkElement = {
                 rsmvtype: rstype ?? q.srcdecoder as any,
                 primitive: q.srcpacked,

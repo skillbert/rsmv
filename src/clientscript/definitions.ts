@@ -88,6 +88,7 @@ export const namedClientScriptOps = {
     mec_getparam: 10192,
     dbrow_getfield: 10094,
     dbrow_findnext: 10112,
+    dbtable_find: 10257,
 
     //dynamic subtype ops
     cc_setparam: 10098,
@@ -329,6 +330,7 @@ export const dynamicOps = [
     namedClientScriptOps.enum_getvalue,
     namedClientScriptOps.dbrow_getfield,
     namedClientScriptOps.dbrow_findnext,
+    namedClientScriptOps.dbtable_find,
 ];
 
 export function makeop(opcode: number, imm = 0, imm_obj: ClientScriptOp["imm_obj"] = null) {

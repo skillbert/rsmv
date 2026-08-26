@@ -1,5 +1,5 @@
 import { CacheFileSource } from "./cache";
-import { unpackCoordgrid } from "./utils";
+import { unpackCoordgrid, unpackDBTableField } from "./utils";
 import { cliApi, CliApiContext } from "./clicommands";
 import * as cmdts from "cmd-ts";
 import { cacheConfigPages, internalNameFiles, cacheMajors, vartypes } from "./constants";
@@ -37,6 +37,7 @@ export function exposeDebugToolsInGlobal() {
     globalThis.getConfigCounts = getConfigCounts;
     globalThis.getlasttimestamp = getlasttimestamp;
     globalThis.browse = browse;
+    globalThis.dbfield = unpackDBTableField;
 }
 
 function coordgrid(coord: number) {
