@@ -263,7 +263,7 @@ export const cacheFileJsonModes = {
 	skyboxes: JsonBasedFile(parse.skyboxes, "skybox", singleMinorIndex(cacheMajors.config, cacheConfigPages.skyboxes)),
 	animgroupconfigs: JsonBasedFile(parse.animgroupConfigs, "bas", singleMinorIndex(cacheMajors.config, cacheConfigPages.animgroups, internalNameFiles.bas)),
 	cursors: JsonBasedFile(parse.cursors, "cursor", singleMinorIndex(cacheMajors.config, cacheConfigPages.cursors, internalNameFiles.cursor)),
-	maplabels: JsonBasedFile(parse.maplabels, "mapelement", singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels, internalNameFiles.maplabel)),
+	maplabels: JsonBasedFile(parse.maplabels, "mapelement", singleMinorIndex(cacheMajors.config, cacheConfigPages.maplabels, internalNameFiles.mapelement)),
 	maplabellocations: JsonBasedFile(parse.maplabellocations, "unknown", noArchiveIndex(cacheMajors.maplabellocations)),
 	mapzones: JsonBasedFile(parse.mapZones, "maparea", singleMinorIndex(cacheMajors.worldmap, 0)),
 	mappastes: JsonBasedFile(parse.mapPastes, "maparea", singleMinorIndex(cacheMajors.worldmap, 1)),

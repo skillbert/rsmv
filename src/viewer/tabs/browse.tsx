@@ -173,15 +173,13 @@ export function GraphIndexStateView(p: {}) {
     let indexgraph = useAwaited(async () => {
         if (!engine) { return null; }
         let graph = await IndexGraphLoader.forCache(engine).load(engine);
-        return {
-            graph,
-            progress: await graph.getProgress()
-        }
+        let progress = await graph.getProgress();
+        return { graph, progress };
     }, [engine]);
     return <>
         {!indexgraph && <div>Loading index state...</div>}
         {indexgraph && <div>
-            <span>Index state: loaded {indexgraph.progress.completed} / {indexgraph.progress.total}</span>
+            <span>Index state: loaded {indexgraph.progress.completed} / {indexgraph.progress.completed + indexgraph.progress.missingdefaults}</span>
             <button className="sub-btn" onClick={e => indexGraphPopup(engine!)}>Open Index Graph</button>
         </div>}
     </>

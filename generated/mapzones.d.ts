@@ -6,7 +6,7 @@ export type mapzones = {
 	internal_name: string,
 	name: string,
 	center: number,
-	unknown_1: number,
+	background: number,
 	show: boolean,
 	default_zoom: number,
 	unknown_2: number,

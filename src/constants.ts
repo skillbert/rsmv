@@ -77,7 +77,7 @@ export const internalNameFiles = {
 	interface: 24,
 	inv: 25,
 	loc: 28,
-	maplabel: 29,
+	mapelement: 29,
 	material: 32,
 	model: 34,
 	npc: 35,
@@ -335,7 +335,7 @@ export const vartypeReverseMap = new Map<number, keyof typeof vartypes>(Object.e
 
 type ExtraPropTypes =
 	"varbit" | "var_world" | "var_player_group" | "var_region" | "var_clansetting" | "var_campaign" | "var_clan" | "var_clan_setting" | "var_client" | "var_npc" | "var_object"
-	| "dbtable" | "mapsquare" | "maplabel" | "param" | "ui_anim_curve" | "ui_anim" | "ui_anim_curve" | "overlay" | "underlay";
+	| "dbtable" | "mapsquare" | "mapelement" | "param" | "ui_anim_curve" | "ui_anim" | "ui_anim_curve" | "overlay" | "underlay";
 export type JsonFieldTypes = keyof typeof vartypes | ExtraPropTypes | "unknown" | "";
 
 export const lastLegacyBuildnr = 377;

@@ -248,6 +248,7 @@ async function calculateReferenceGraph(out: ScriptOutput, graph: ReferenceGraph,
             }
 
             if (modename == "clientscriptops") {
+                graph.currentmode = "clientscript";
                 parseClientScriptValue(out, graph, source, obj as any, logical);
             } else {
                 parseJsonValue(graph, "root", obj, schema);
@@ -347,7 +348,7 @@ function parseClientScriptValue(out: ScriptOutput, graph: ReferenceGraph, source
         if (isNamedOp(node, namedClientScriptOps.pushvar) || isNamedOp(node, namedClientScriptOps.popvar)) {
             let groupid = (node.op.imm >> 24) & 0xff;
             let varid = (node.op.imm >> 8) & 0xffff;
-            let groupname = "var_" + (deob.varmeta.get(groupid) ?? ("unk" + groupid));
+            let groupname = "var_" + (deob.varmeta.get(groupid)?.name ?? ("unk" + groupid));
             graph.addInt(node.op.opcode == namedClientScriptOps.pushvar ? "read" : "write", varid, groupname as any);
         }
         if (isNamedOp(node, namedClientScriptOps.pushvarbit) || isNamedOp(node, namedClientScriptOps.popvarbit)) {
@@ -490,7 +491,7 @@ class ReferenceGraph {
         });
     }
     async getProgress() {
-        let progress: { mode: string, completed: number, total: number, typedonly: boolean }[] = [];
+        let progress: { mode: string, completed: number, total: number, finished: boolean, typedonly: boolean, optional: boolean }[] = [];
         for (let [modename, action] of Object.entries(allModes)) {
             if (action == "skip") { continue; }
             let rows = await this.db.getProgress.run(modename);
@@ -499,11 +500,14 @@ class ReferenceGraph {
                 mode: modename,
                 completed: row?.completed ?? -1,
                 total: row?.max ?? -1,
-                typedonly: (row?.intensity ?? 0) == 1
+                finished: row && row.completed != -1 && row.completed == row.max,
+                typedonly: (row?.intensity ?? 0) == 1,
+                optional: modeactions[modename] == "skip"
             });
         }
         return {
-            completed: progress.filter(q => q.completed != -1 && q.completed == q.total).length,
+            completed: progress.filter(q => q.finished).length,
+            missingdefaults: progress.filter(q => !q.finished && !q.optional).length,
             total: progress.length,
             progress
         }
