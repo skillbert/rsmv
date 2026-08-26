@@ -25,7 +25,7 @@
     ["figuredata",["opt","type=3",["struct",
         ["color","uint","rgb"],
         ["filled","ubyte"],//more to this, weird
-        ["trans","byte"]
+        ["trans","ubyte"]
     ]]],
     ["textdata",["opt","type=4",["struct",
         ["fontid","varuint","fontmetrics"],
@@ -139,13 +139,13 @@
         ["unk0","scriptbinding"],//also mouseleave
         ["unk1","scriptbinding"],//also mouseenter
         ["var_player_onchange","scriptbinding"],
-        ["var_unk1_onchange","scriptbinding"],
-        ["var_unk2_onchange","scriptbinding"],
+        ["inventory_onchange","scriptbinding"],
+        ["stat_onchange","scriptbinding"],
         ["unk5","scriptbinding"],//timer related idk
-        ["click","scriptbinding"],//triggerop
+        ["triggerop","scriptbinding"],//triggerop
         ["unk7",["opt","version>=0","scriptbinding"]],//unused
         ["hovertext","scriptbinding"],
-        ["click_v2","scriptbinding"],//unclear
+        ["click","scriptbinding"],//unclear
         ["mousedown","scriptbinding"],//possibly mousedown repeat
         ["mouseup","scriptbinding"],//mouseup
         ["mousemove","scriptbinding"],
@@ -160,10 +160,10 @@
         ["unk20",["opt","version>=7","scriptbinding"]]//unused
     ]],
     ["scriptdata",["struct",
-        ["var_player_trigger",["array","ubyte","int"],"var_player"],
-        ["var_unk1_trigger",["array","ubyte","int"]],//counts match suspiciously with config42, which holds empty 1 byte files
-        ["var_unk2_trigger",["array","ubyte","int"]],//unknown
-        ["var_client_trigger_0",["array","ubyte","int"],"var_client"],
-        ["var_client_trigger_1",["array","ubyte","int"],"var_client"]
+        ["var_player_trigger",["array","ubyte","int","var_player"]],
+        ["inventory_trigger",["array","ubyte","int","inv"]],
+        ["stat_trigger",["array","ubyte","int","stat"]],
+        ["var_client_trigger_0",["array","ubyte","int","var_client"]],
+        ["var_client_trigger_1",["array","ubyte","int","var_client"]]
     ]]
 ]

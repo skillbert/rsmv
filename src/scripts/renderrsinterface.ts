@@ -19,7 +19,7 @@ export const MAGIC_CONST_MOUSE_Y = 0x80000002 | 0;
 export const MAGIC_CONST_CURRENTCOMP = 0x80000003 | 0;
 export const MAGIC_CONST_OPNR = 0x80000004 | 0;
 export const MAGIC_CONST_IF_AS_CC = 0x80000005 | 0;
-export const MAGIC_UNK06 = 0x80000006 | 0;
+export const MAGIC_CONST_MOUSE_DRAG_ICON = 0x80000006 | 0;//might be hardcoded reference to a mouse drag icon component
 
 // map props defined in stylesheets cache
 export const styleSheetImageProps = [
@@ -87,6 +87,15 @@ export const styleSheetRGBAProps = [
     0xe0836933,
     0xee712164
 ];
+
+export const componentTypeNames: Record<number, string> = {
+    0: "container",
+    3: "box",
+    4: "text",
+    5: "sprite",
+    6: "model",
+    9: "line"
+}
 
 type HTMLResult = string;
 export type RsInterfaceDomTree = {
@@ -573,6 +582,7 @@ export class RsInterfaceComponent {
             this.spriteChild.remove();
             this.spriteChild = null;
         }
+        // this.element.style.display = this.data.hidden ? "none" : "block";
         this.element.style.cssText = style;
         this.element.title = title;
     }

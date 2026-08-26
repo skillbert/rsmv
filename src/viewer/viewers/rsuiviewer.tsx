@@ -1,12 +1,14 @@
 import * as React from "react";
-import { MAGIC_CONST_CURRENTCOMP, MAGIC_CONST_IF_AS_CC, MAGIC_CONST_MOUSE_X, MAGIC_CONST_MOUSE_Y, MAGIC_CONST_OPNR, MAGIC_UNK06, RsInterfaceComponent, RsInterfaceDomTree, UiRenderContext, loadRsInterfaceData, renderRsInterfaceDOM } from "../../scripts/renderrsinterface";
-import { DomWrap } from "../commoncontrols";
-import { packComponent } from "../../utils";
+import { MAGIC_CONST_CURRENTCOMP, MAGIC_CONST_IF_AS_CC, MAGIC_CONST_MOUSE_X, MAGIC_CONST_MOUSE_Y, MAGIC_CONST_OPNR, MAGIC_CONST_MOUSE_DRAG_ICON, RsInterfaceComponent, RsInterfaceDomTree, UiRenderContext, componentTypeNames, loadRsInterfaceData, renderRsInterfaceDOM } from "../../scripts/renderrsinterface";
+import { DomWrap, useAwaited } from "../commoncontrols";
+import { packComponent, unpackComponent } from "../../utils";
 import { UIEngineContext, UIRootContext } from "../maincomponents";
 import { ClientScriptDeobLoader } from "../../clientscript";
-import { vartypeReverseMap } from "../../constants";
+import { internalNameFiles, vartypeReverseMap } from "../../constants";
 import { makeFileId } from "../tabs/browse";
-import { packedIntToLogical, vartypeToDecoder } from "../../scripts/jsonindexer";
+import { packedIntToLogical, traverseJsonSchema, vartypeToDecoder } from "../../scripts/jsonindexer";
+import { ObjectLink, ReferencesView, renderPrimitive, StructDataView, StructView } from "./configview";
+import { parse } from "../../parser/jsondecoders";
 
 export function RsUIViewer(p: { interfaceid: number, subcomponent?: number }) {
 	let [ui, setui] = React.useState<RsInterfaceDomTree | null>(null);
@@ -113,6 +115,7 @@ function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceCompone
 	let [selected, setselected] = React.useState(false);
 	let [hovered, sethovered] = React.useState(false);
 	let rootctx = React.useContext(UIRootContext);
+	let id = unpackComponent(p.comp.compid);
 
 	let mouseevent = React.useCallback((e: React.MouseEvent) => {
 		p.ctx.toggleHighLightComp(p.comp.compid, e.type == "mouseenter");
@@ -131,11 +134,18 @@ function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceCompone
 
 	let ref = React.useCallback((el: HTMLElement | null) => {
 		if (el && selected) { el.scrollIntoView(); }
-	}, [selected])
+	}, [selected]);
+
+	let name = useAwaited(async () => {
+		let fullname = await rootctx.source?.getInternalName(internalNameFiles.component, p.comp.compid) ?? "";
+		return fullname.split("__")[1];
+	}, [p.comp.compid, rootctx.source]);
+
+	let typetext = componentTypeNames[data.type] ?? `type_${data.type}`;
 
 	return (
 		<div className={"rs-componentmeta" + (selected || hovered ? " rs-componentmeta--active" : "")} ref={ref} onMouseEnter={mouseevent} onMouseLeave={mouseevent} onClick={e => e.target == e.currentTarget && console.log(p.comp)}>
-			id={p.comp.compid & 0xffff} t={data.type}
+			id={id.sub} ({typetext}) - {name}
 			<br />
 			{data.textdata && (
 				<div>{data.textdata.text}</div>
@@ -147,6 +157,7 @@ function RsInterfaceDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceCompone
 				<span className="mv-filelink" data-objectid={`model_${data.modeldata.modelid}`} onClick={rootctx.objectClick}>model_{data.modeldata.modelid}</span>
 			)}
 			<CallbackDebugger ctx={p.ctx} comp={p.comp} />
+			<ReferencesView browsemode="components" id={[id.intf, id.sub]} />
 			<hr />
 			<div className="rs-componentmeta-children">
 				{p.comp.children.map((q, i) => <RsInterfaceDebugger ctx={p.ctx} key={i} comp={q} />)}
@@ -161,8 +172,11 @@ const intMagicMap = new Map<number, string>([
 	[MAGIC_CONST_CURRENTCOMP, "CURRENTCOMP"],
 	[MAGIC_CONST_OPNR, "OPNR"],
 	[MAGIC_CONST_IF_AS_CC, "IF_AS_CC"],
-	[MAGIC_UNK06, "UNK06"],
+	[MAGIC_CONST_MOUSE_DRAG_ICON, "MOUSE_DRAG_ICON"],
 ]);
+
+const componentschema = parse.components.parser.getJsonSchema();
+
 
 function CallbackDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent }) {
 	let ctx = React.useContext(UIRootContext);
@@ -213,10 +227,12 @@ function CallbackDebugger(p: { ctx: UiRenderContext, comp: RsInterfaceComponent 
 				)
 			})}
 			{Object.entries(p.comp.data.scriptdata).filter(q => q[1] && q[1].length != 0).map(([key, v]) => {
+				let schema = traverseJsonSchema(traverseJsonSchema(componentschema, "scriptdata"), key);
+
 				return <div key={key}>
 					<span>{key}:</span>
 					<span className="mv-codeview" style={{ background: "#0004" }}>
-						[{v.join(", ")}]
+						<StructDataView data={v} meta={schema} />
 					</span>
 				</div>
 			})}

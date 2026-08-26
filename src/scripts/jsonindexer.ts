@@ -74,6 +74,7 @@ export const vartypeToDecoder: Partial<Record<JsonFieldTypes, BrowseModes>> = {
     headbar: "headbars",
     mapsceneicon: "mapscenes",
     category: "categories",
+    param: "params",
 
     dbtable: "dbtables",
     mapelement: "maplabels",
@@ -581,6 +582,20 @@ export function packedIntToLogical(id: number, mode: ExtendedJsonFieldTypes | Br
     return [id];
 }
 
+export function traverseJsonSchema(meta: JSONSchema6Definition | null | undefined, prop: string) {
+    if (typeof meta == "boolean" || !meta) { return; null; }
+
+    // strip nullable type from schema
+    if (meta?.oneOf) {
+        meta = meta.oneOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+    }
+    if (meta?.anyOf) {
+        meta = meta.anyOf.find(q => (q as JSONSchema6).type != "null") as JSONSchema6;
+    }
+    if (!meta.properties || !meta.properties[prop]) { return null; }
+    return meta.properties[prop];
+}
+
 export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | null | undefined, data: any, nameorindex: string | number) {
     let rsmvtype: ExtendedJsonFieldTypes = meta?.["x-rsmv-type"] ?? "";
 
@@ -638,9 +653,16 @@ export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | 
     }
     if (typeof data == "number" && rsmvtype == "achievement_or_varbit") {
         let domainid = (data >> 24) & 0xff;
-        data = data & 0xffff;
-        if (domainid == 0) { rsmvtype = "achievement"; }
-        else if (domainid == 1) { rsmvtype = "varbit"; }
+        data = data & 0xffffff;
+        if (domainid == 0) {
+            rsmvtype = "achievement";
+        } else if (domainid == 1) {
+            rsmvtype = "varbit";
+        } else if (domainid == 0xff && data == 0xffffff) {
+            //null achievement
+            rsmvtype = "achievement";
+            data = -1;
+        }
         else { console.log("unknown achievement_or_varbit domainid: " + domainid); }
     }
     return { rsmvtype, data, meta };

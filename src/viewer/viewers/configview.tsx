@@ -446,7 +446,7 @@ function DBRowsView(p: { data: DeepLinkElement }) {
     </div>;
 }
 
-function ObjectLink(p: { prop?: DeepLinkElement, rsmvtype?: ExtendedJsonFieldTypes, value?: number, valuename?: string }) {
+export function ObjectLink(p: { prop?: DeepLinkElement, rsmvtype?: ExtendedJsonFieldTypes, value?: number, valuename?: string }) {
     let rsmvtype = p.rsmvtype ?? p.prop?.rsmvtype ?? "unknown";
     let value = p.value ?? p.prop?.primitive ?? -1;
     let valuename = p.valuename ?? p.prop?.valuename;
@@ -518,7 +518,7 @@ export function renderPrimitive(prop: DeepLinkElement) {
     return null;
 }
 
-export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
+export function StructDataView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
     let ctx = React.useContext(UIRootContext);
     let source = React.useContext(UIEngineContext)?.source;
@@ -579,15 +579,19 @@ export function StructView(p: { data: any, meta: JSONSchema6Definition | null | 
         return { isbig: false, el: <span>NULL</span> };
     }
 
+    return (data ? handlenode(data, true).el : <span>Loading...</span>);
+}
+
+export function StructView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let decoder = p.data?.$decoder ?? "unknown";
     let fileidstring = (p.data?.$fileid != undefined ? (Array.isArray(p.data.$fileid) ? p.data.$fileid.join(".") : p.data.$fileid) : "");
     let filename = p.data?.$filename ?? "";
-    let fileid: number[] = p.data.$fileid != undefined ? (Array.isArray(p.data.$fileid) ? p.data.$fileid : [p.data.$fileid]) : undefined;
+    let fileid: number[] = p.data?.$fileid != undefined ? (Array.isArray(p.data.$fileid) ? p.data.$fileid : [p.data.$fileid]) : undefined;
 
     return (
         <div style={{ userSelect: "text" }}>
             <h3>{decoder}_{fileidstring} - {filename}</h3>
-            {data ? handlenode(data, true).el : <span>Loading...</span>}
+            <StructDataView data={p.data} meta={p.meta} />
             <h3>Referenced By</h3>
             <ReferencesView browsemode={p.data?.$decoder ?? "unknown"} id={fileid} />
         </div>
@@ -610,9 +614,8 @@ export function ReferencesView(p: { browsemode?: BrowseModes, id?: number[] }) {
             let decoder = cacheFileDecodeModes[q.srcdecoder];
             let decoderinst = decoder?.({});
             let rstype = decoderinst.rstype;
-            let srclogical = packedIntToLogical(q.srcpacked, rstype ?? "");
             let namefile = decoderinst?.internalNamefile;
-            let name = (namefile == undefined ? "" : await ctx.source!.getInternalName(namefile, srclogical[0]));
+            let name = (namefile == undefined ? "" : await ctx.source!.getInternalName(namefile, q.srcpacked));
             console.log("found reference", q, name);
             let res: DeepLinkElement = {
                 rsmvtype: rstype ?? q.srcdecoder as any,
