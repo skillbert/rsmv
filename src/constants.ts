@@ -109,7 +109,7 @@ export const internalNameFiles = {
 //represents the largest build number that this application is aware off
 //is used as default value when a cache is considered "current"
 //only needs to be updated when backward incompatible code paths are added
-export const latestBuildNumber = 940;
+export const latestBuildNumber = 950;
 
 export const cacheMapFiles = {
 	locations: 0,

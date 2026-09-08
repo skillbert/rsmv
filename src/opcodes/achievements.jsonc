@@ -1,5 +1,3 @@
-
-
 {
 	"0x01": { "name":                           "name", "read": "paddedstring"},
 	"0x02": { "name":                    "description", "read": ["struct",
@@ -52,13 +50,13 @@
 		["unk1","unsigned byte"],
 		["skill","unsigned short","stat"]
 	]]},
-	"0x0E": { "name":                "progress_states", "read": ["array", "variable unsigned short", ["struct",
+	"0x0D": { "name":                        "subreqs", "read": ["array", "variable unsigned short", ["struct",
 		["unk0","unsigned byte"],
 		["value","variable unsigned int"],
 		["name","paddedstring"],
 		["varbits",["array","varushort","unsigned short","varbit"]]
 	]]},
-	"0x0D": { "name":                        "subreqs", "read": ["array", "variable unsigned short", ["struct",
+	"0x0E": { "name":                "progress_states", "read": ["array", "variable unsigned short", ["struct",
 		["unk0","unsigned byte"],
 		["value","variable unsigned int"],
 		["name","paddedstring"],
@@ -96,5 +94,26 @@
 	"0x1D": { "name":                   "unknown_0x1D", "read": "unsigned byte"},
 	"0x1E": { "name":                   "subreq_count", "read": ["array", "variable unsigned short"]},
 	"0x1F": { "name":                   "unknown_0x1F", "read": "unsigned byte"},
-	"0x20": { "name":                   "unknown_0x20", "read": "unsigned tribyte"}//only 0x10000 and 0x20000
+	"0x20": { "name":                   "unknown_0x20", "read": "unsigned tribyte"},//only 0x10000 and 0x20000
+	"0x21": { "name":        "varbit_partial_state_v2", "read": ["array", ["struct",
+		["type","unsigned byte"],
+		["value","variable unsigned int"],
+		["name","paddedstring"],
+		["stepsize","unsigned byte"],
+		["varbit","utribyte","varbit"]
+	]]},
+	"0x23": { "name":             "progress_states_v2", "read": ["array", "variable unsigned short", ["struct",
+		["unk0","unsigned byte"],
+		["value","variable unsigned int"],
+		["name","paddedstring"],
+		["varbits",["array","varushort","utribyte","varbit"]]
+	]]},
+	"0x24": { "name":                      "reqs25_v2", "read": ["array", "variable unsigned short",["struct",
+		["type","unsigned byte"],
+		["varbit","utribyte","varbit"],
+		["value","unsigned byte"],
+		["name",["opt",["type",0],"paddedstring"]],
+		["requirement",["opt",["type",1],"unsigned short"]],
+		["subbit","unsigned byte"]
+	]]},
 }

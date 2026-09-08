@@ -22,5 +22,10 @@
     "0x0E": { "name": "skill_requirements", "read": [ "array", "ubyte", ["struct", ["skill","unsigned byte","stat"],["level","unsigned byte"]] ]},
     "0x0F": { "name": "quest_point_req", "read": "unsigned short" },
     "0x11": { "name": "quest_item_sprite", "read": "variable unsigned int","type":"graphic" },
+    "0x16": { "name": "varbits_v2", "read": ["array", "ubyte", ["struct", 
+                                            ["varbit", "utribyte","varbit"],
+                                            ["startvalue", "int"],
+                                            ["endvalue", "int"]
+                                        ]]},
     "0xF9": { "name": "extra", "read": "extrasmap" }
 }

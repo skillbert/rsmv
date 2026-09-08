@@ -29,5 +29,18 @@
         ["unk1","ushort","hitmark"]
     ]},
     "0x13":{"name":"unk13","read":"ushort"},
-    "0x14":{"name":"unk14","read":"ushort"}
+    "0x14":{"name":"unk14","read":"ushort"},
+    "0x15":{"name":"morph_11_v2","read":["struct",
+        ["varbit","utribyte","varbit"],
+        ["varp","ushort","var_player"],
+        ["values",["array","ubyte","ushort","hitmark"]],
+        ["default","ushort","hitmark"]
+    ]},
+    "0x16":{"name":"morph_12_v2","read":["struct",
+        ["varbit","utribyte","varbit"],
+        ["varp","ushort","var_player"],
+        ["default","ushort","hitmark"],
+        ["values",["array","ubyte","ushort","hitmark"]],
+        ["unk1","ushort","hitmark"]
+    ]},
 }

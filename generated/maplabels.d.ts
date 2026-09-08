@@ -73,4 +73,23 @@ export type maplabels = {
 		intvalue: number | null,
 		stringvalue: string | null,
 	}[] | null
+	toggle_1_v2?: {
+		varbit: number,
+		varp: number,
+		lower: number,
+		upper: number,
+	} | null
+	toggle_2_v2?: {
+		varbit: number,
+		varp: number,
+		lower: number,
+		upper: number,
+	} | null
+	legacy_switch_v2?: {
+		varbit: number,
+		varp: number,
+		value: number,
+		default_ref: number,
+		legacy_ref: number,
+	} | null
 };

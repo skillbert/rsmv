@@ -38,7 +38,7 @@
 	],
 	"modelmorphs":      ["struct",
 		["unk0","ushort"],
-		["varbit","ushort","varbit"],
+		["varbit",["match","buildnr",{">=950":"utribyte",">=0":"ushort"}],"varbit"],
 		["varp","ushort","var_player"],
 		["$flags","ubyte"],
 		["multimodel",["opt","$flags&1",["array","ubyte",["struct",

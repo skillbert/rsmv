@@ -131,6 +131,7 @@ export type locs = {
 	unknown_6C?: true | null
 	unknown_6D?: true | null
 	unknown_6E?: true | null
+	unknown_6F?: true | null
 	unknown_71?: number | null
 	members_action_1?: string | null
 	members_action_2?: string | null
@@ -181,7 +182,7 @@ export type locs = {
 	unknown_CC?: Uint8Array[] | null
 	unknown_CD?: {
 		unk0: number,
-		varbit: number,
+		varbit: (number|number),
 		varp: number,
 		multimodel: {
 			value: number,
@@ -234,6 +235,71 @@ export type locs = {
 	unknown_CE?: {
 		bytelength: number,
 		elements: Uint8Array[],
+	} | null
+	morphs_1_v2?: {
+		varbit: number,
+		varp: number,
+		options: (number|number)[],
+		default: (number|number),
+	} | null
+	morphs_2_v2?: {
+		varbit: number,
+		varp: number,
+		unk2: (number|number),
+		options: (number|number)[],
+		default: (number|number),
+	} | null
+	unknown_CD_v2?: {
+		unk0: number,
+		varbit: (number|number),
+		varp: number,
+		multimodel: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				model: number,
+				extracount: number,
+				extra1: number | null,
+				extra2: number | null,
+				extra3: number | null,
+			}[],
+		}[] | null,
+		multiheadmodel: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				model: number,
+			}[],
+		}[] | null,
+		multiretex: {
+			value: number,
+			entries: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				unk4: number,
+			}[],
+		}[] | null,
+		multirecol: {
+			value: number,
+			entries: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				unk4: number,
+			}[],
+		}[] | null,
+		multiretint: {
+			value: number,
+			entries: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+			}[],
+		}[] | null,
+		default: number,
 	} | null
 	extra?: {
 		prop: number,
