@@ -54,13 +54,13 @@ export type achievements = {
 		unk1: number,
 		skill: number,
 	}[] | null
-	progress_states?: {
+	subreqs?: {
 		unk0: number,
 		value: number,
 		name: string,
 		varbits: number[],
 	}[] | null
-	subreqs?: {
+	progress_states?: {
 		unk0: number,
 		value: number,
 		name: string,
@@ -99,4 +99,25 @@ export type achievements = {
 	subreq_count?: number[] | null
 	unknown_0x1F?: number | null
 	unknown_0x20?: number | null
+	varbit_partial_state_v2?: {
+		type: number,
+		value: number,
+		name: string,
+		stepsize: number,
+		varbit: number,
+	}[] | null
+	progress_states_v2?: {
+		unk0: number,
+		value: number,
+		name: string,
+		varbits: number[],
+	}[] | null
+	reqs25_v2?: {
+		type: number,
+		varbit: number,
+		value: number,
+		name: string | null,
+		requirement: number | null,
+		subbit: number,
+	}[] | null
 };

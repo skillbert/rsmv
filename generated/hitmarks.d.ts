@@ -37,4 +37,17 @@ export type hitmarks = {
 	} | null
 	unk13?: number | null
 	unk14?: number | null
+	morph_11_v2?: {
+		varbit: number,
+		varp: number,
+		values: number[],
+		default: number,
+	} | null
+	morph_12_v2?: {
+		varbit: number,
+		varp: number,
+		default: number,
+		values: number[],
+		unk1: number,
+	} | null
 };

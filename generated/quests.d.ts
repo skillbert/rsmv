@@ -29,6 +29,11 @@ export type quests = {
 	}[] | null
 	quest_point_req?: number | null
 	quest_item_sprite?: number | null
+	varbits_v2?: {
+		varbit: number,
+		startvalue: number,
+		endvalue: number,
+	}[] | null
 	extra?: {
 		prop: number,
 		intvalue: number | null,

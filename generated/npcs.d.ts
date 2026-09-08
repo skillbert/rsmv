@@ -153,7 +153,74 @@ export type npcs = {
 	unknown_B9?: true | null
 	unknown_BA?: {
 		unk0: number,
+		varbit: (number|number),
+		varp: number,
+		multimodel: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				model: number,
+				extracount: number,
+				extra1: number | null,
+				extra2: number | null,
+				extra3: number | null,
+			}[],
+		}[] | null,
+		multiheadmodel: {
+			value: number,
+			models: {
+				unk1: number,
+				unk2: number,
+				model: number,
+			}[],
+		}[] | null,
+		multiretex: {
+			value: number,
+			entries: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				unk4: number,
+			}[],
+		}[] | null,
+		multirecol: {
+			value: number,
+			entries: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+				unk4: number,
+			}[],
+		}[] | null,
+		multiretint: {
+			value: number,
+			entries: {
+				unk1: number,
+				unk2: number,
+				unk3: number,
+			}[],
+		}[] | null,
+		default: number,
+	} | null
+	morphs_1_v2?: {
 		varbit: number,
+		varp: number,
+		options: number[],
+		default: number,
+		unk5: (number|null),
+	} | null
+	morphs_2_v2?: {
+		varbit: number,
+		varp: number,
+		unk2: number,
+		options: number[],
+		default: number,
+		unk5: number,
+	} | null
+	unknown_BA_v2?: {
+		unk0: number,
+		varbit: (number|number),
 		varp: number,
 		multimodel: {
 			value: number,

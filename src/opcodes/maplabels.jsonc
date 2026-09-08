@@ -50,5 +50,25 @@
                                                                     ] },
 	"0x1c": { "name":                          "unknown_1c", "read": "ubyte" },//maybe scale (50/75/100)
 	"0x1e": { "name":                          "unknown_1e", "read": "ubyte" },
-	"0xF9": { "name":                               "extra", "read": "extrasmap" }
+	"0xf9": { "name":                               "extra", "read": "extrasmap" },
+	"0xfa": { "name":                         "toggle_1_v2", "read": ["struct",
+                                                                        ["varbit","utribyte","varbit"],
+                                                                        ["varp","ushort","var_player"],
+                                                                        ["lower","uint"],
+                                                                        ["upper","uint"]
+                                                                    ] },
+	"0xfb": { "name":                         "toggle_2_v2", "read": ["struct",
+                                                                        ["varbit","utribyte","varbit"],
+                                                                        ["varp","ushort","var_player"],
+                                                                        ["lower","uint"],
+                                                                        ["upper","uint"]
+                                                                    ] },
+	"0xfc": { "name":                    "legacy_switch_v2", "read": ["struct",
+                                                                        ["varbit","utribyte","varbit"],
+                                                                        ["varp","ushort","var_player"],
+                                                                        ["value","ubyte"],
+                                                                        ["default_ref","ushort","maplabel"],
+                                                                        ["legacy_ref","ushort","maplabel"]
+                                                                    ] },
+	
 }
