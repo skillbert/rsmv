@@ -25,5 +25,29 @@
 			["varbit","ushort","varbit"]
 		]]]
 	]]},
-	"0x04": { "name":      "nonsearchable", "read": "true" }
+	"0x04": { "name":      "nonsearchable", "read": "true" },
+	"0x05": { "name":         "inserts_v2", "read": ["array","ubyte",["struct",
+		["type","ushort"],
+		["pickEnum",["opt",["type",0],["flipped varushort"]],"enum"],
+		["pickTtem",["opt",["type",1],"true"]],
+		["skillLevel",["opt",["type",4],["flipped varushort"]],"stat"],
+		["varplayerEnum",["opt",["type",6],["struct",
+			["enum",["flipped varushort"],"enum"],
+			["varbit",["flipped varushort"],"varbit"]
+		]]],
+		["varplayer",["opt",["type",8],["flipped varushort"]],"var_player"],
+		["varbit",["opt",["type",9],["flipped varushort"]],"varbit"],
+		["pickTradeableItem",["opt",["type",10],"true"]],
+		["skillLevelEnum",["opt",["type",11],["struct",
+			["enum",["flipped varushort"],"enum"],
+			["skill",["flipped varushort"],"stat"]
+		]]],
+		["friendsChatCount",["opt",["type",12],"true"]],
+		["varWorld",["opt",["type",14],["flipped varushort"]],"var_world"],
+		["combatlevel",["opt",["type",15],"true"]],
+		["varbitEnumstring",["opt",["type",16],["struct",
+			["enum",["flipped varushort"],"enum"],
+			["varbit",["flipped varushort"],"varbit"]
+		]]]
+	]]},
 }

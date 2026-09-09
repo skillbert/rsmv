@@ -1428,12 +1428,19 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 		// TODO i remember this existing in skeletal anims as well, merge implementations
 		return {
 			read(state) {
-				let byte0 = state.buffer.readUint8(state.scan++);
-				if ((byte0 & 0x80) == 0) {
-					return byte0;
+				let value = 0;
+				let bits = 0;
+				while (true) {
+					let data = state.buffer.readUint8(state.scan++);
+					value |= (data & 0x7f) << bits;
+					bits += 7;
+					
+					if (data < 0x80) {
+						break;
+					}
 				}
-				let byte1 = state.buffer.readUint8(state.scan++);
-				return (byte1 << 7) | (byte0 & 0x7f);
+				
+				return value;
 			},
 			write(state, v) {
 				if (typeof v != "number") { throw new Error("number expected"); }
