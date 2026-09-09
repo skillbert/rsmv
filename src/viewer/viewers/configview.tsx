@@ -451,9 +451,13 @@ export function ObjectLink(p: { prop?: DeepLinkElement, rsmvtype?: ExtendedJsonF
     let value = p.value ?? p.prop?.primitive ?? -1;
     let valuename = p.valuename ?? p.prop?.valuename;
     let ctx = React.useContext(UIRootContext);
-    let match = vartypeToDecoder[rsmvtype];
     if (typeof value != "number") { throw new Error("Objectlink primitive type number expected"); }
 
+    if (rsmvtype == "" || rsmvtype == "unknown" || rsmvtype == 'int') {
+        return <span>{value}</span>;
+    }
+
+    let match = vartypeToDecoder[rsmvtype];
     let index = match ? packedIntToLogical(value, match) : [value];
     let fileid = makeFileId(rsmvtype, index);
 
@@ -465,10 +469,6 @@ export function ObjectLink(p: { prop?: DeepLinkElement, rsmvtype?: ExtendedJsonF
 
 export function renderPrimitive(prop: DeepLinkElement) {
     if (typeof prop.primitive == "number") {
-        if (prop.rsmvtype == "" || prop.rsmvtype == "unknown" || prop.rsmvtype == 'int') {
-            return { isbig: false, el: <span>{prop.primitive}</span> };
-        }
-
         if (prop.rsmvtype == "color") {
             return { isbig: false, el: <ColorView hsl={prop.primitive} /> };
         }
