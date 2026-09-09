@@ -14,5 +14,5 @@
             }],"dbvalue"]]]
         ]]
     ]]},
-    "0x04":{"name":"table","read":["flipped varushort"],"type":"dbtable"}
+    "0x04":{"name":"table","read":"denseuint","type":"dbtable"}
 }
