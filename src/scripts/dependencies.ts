@@ -210,7 +210,7 @@ const locationDeps: DepCollector = async (cache, addDep, addHash) => {
 					}
 				}
 			}
-			if (loc.morphs_1 || loc.morphs_2) {
+			if (loc.morphs_1 || loc.morphs_2 || loc.morphs_1_v2 || loc.morphs_2_v2) {
 				let morphid = defaultMorphId(loc);
 				if (morphid != -1) {
 					addDep("loc", morphid, "loc", id);

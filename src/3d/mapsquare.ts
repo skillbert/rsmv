@@ -1396,8 +1396,10 @@ type MapsquareLocation = {
 
 export function defaultMorphId(locmeta: locs) {
 	let newid = -1;
-	if (locmeta.morphs_1) { newid = locmeta.morphs_1.options[0] ?? locmeta.morphs_1.default; }
-	if (locmeta.morphs_2) { newid = locmeta.morphs_2.unk2; }
+	let morph1 = locmeta.morphs_1 ?? locmeta.morphs_1_v2;
+	let morph2 = locmeta.morphs_2 ?? locmeta.morphs_2_v2;
+	if (morph1) { newid = morph1.options[0] ?? morph1.default; }
+	if (morph2) { newid = morph2.unk2; }
 	if (newid == (1 << 15) - 1) { newid = -1; }//new caches with varuint
 	if (newid == (1 << 16) - 1) { newid = -1; }//old caches which use ushort
 	return newid;
@@ -1412,7 +1414,7 @@ export async function resolveMorphedObject(source: EngineCache, id: number) {
 	} else {
 		let rawloc = await source.getObject("locs", id);
 		let morphedloc = rawloc;
-		if (rawloc.morphs_1 || rawloc.morphs_2) {
+		if (rawloc.morphs_1 || rawloc.morphs_2 || rawloc.morphs_1_v2 || rawloc.morphs_2_v2) {
 			let newid = defaultMorphId(rawloc);
 			if (newid != -1) {
 				let newloc = await source.getObject("locs", newid);
