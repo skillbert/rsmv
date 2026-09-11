@@ -283,10 +283,11 @@ export class InputCommitted extends React.Component<React.DetailedHTMLProps<Reac
 	}
 }
 
-export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefined, tagName?: "div" | "td" | "span" | "p", style?: React.CSSProperties, className?: string }) {
-	let ref = (el: HTMLElement | null) => {
+export function DomWrap(p: { el: HTMLElement | DocumentFragment | null | undefined, tagName?: "div" | "td" | "span" | "p", style?: React.CSSProperties, className?: string, containerref?: (p: HTMLElement | null) => void }) {
+	let ref = React.useCallback((el: HTMLElement | null) => {
 		p.el && el && el.replaceChildren(p.el);
-	}
+		p.containerref?.(el);
+	}, [p.el, p.containerref]);
 	let Tagname = p.tagName ?? "div";
 	return <Tagname ref={ref} style={p.style} className={p.className} />;
 }
@@ -372,4 +373,35 @@ export function useForceUpdateDebounce(delay = 50) {
 		}
 	}, [forceUpdate, ref]);
 	return ref.current;
+}
+
+export function useDisposableMemo<T extends { dispose: () => void }>(factory: () => T, deps: React.DependencyList): T {
+	const cacheRef = React.useRef<T | null>(null);
+	const lastDepsRef = React.useRef<React.DependencyList | null>(null);
+
+	// Check if dependencies have changed (or if it's the initial render)
+	const depsChanged =
+		!lastDepsRef.current ||
+		deps.length !== lastDepsRef.current.length ||
+		deps.some((dep, i) => !Object.is(dep, lastDepsRef.current![i]));
+
+	if (depsChanged) {
+		if (cacheRef.current) {
+			cacheRef.current.dispose();
+		}
+		cacheRef.current = factory();
+		lastDepsRef.current = deps;
+	}
+
+	// handle unmount
+	React.useEffect(() => {
+		return () => {
+			if (cacheRef.current) {
+				cacheRef.current.dispose();
+				cacheRef.current = null;
+			}
+		};
+	}, []);
+
+	return cacheRef.current!;
 }

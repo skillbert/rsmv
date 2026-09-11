@@ -55,8 +55,8 @@ type AutoFrameMode = "forced" | "continuous" | "never";
 export type RenderCameraMode = "standard" | "vr360" | "item" | "topdown";
 
 export class ThreeJsRenderer extends TypedEmitter<ThreeJsRendererEvents> {
+	canvas: HTMLCanvasElement;
 	private renderer: THREE.WebGLRenderer;
-	private canvas: HTMLCanvasElement;
 	private skybox: { scene: THREE.Scene, camera: THREE.Camera } | null = null;
 	private scene: THREE.Scene;
 	private modelnode: THREE.Group;

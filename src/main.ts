@@ -25,6 +25,10 @@ app.whenReady().then(async () => {
 	ipcMain.handle("openfolder", async (e, startfolder?: string) => {
 		return dialog.showOpenDialog(index, { properties: ["openDirectory"], defaultPath: startfolder });
 	});
+
+	ipcMain.handle("toggledevtools", async (e) => {
+		index.webContents.toggleDevTools();
+	});
 });
 
 app.on("window-all-closed", () => {

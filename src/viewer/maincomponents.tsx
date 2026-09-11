@@ -352,11 +352,11 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 	source: CacheFileSource | null = null;
 	sourceIdentifier: string | null = null;
 	sceneCache: ThreejsSceneCache | null = null;
-	renderer: ThreeJsRenderer | null = null;
 	openedTabs: UIOpenedTab[] = [];
 	activeTabIndex = -1;
 	renderable: RenderableContext | null = null;
 	rootElement: HTMLElement;
+	renderer: ThreeJsRenderer;
 	useServiceWorker: boolean;
 
 	multitab = multitabManager(this);
@@ -376,11 +376,15 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 
 		navigation.addEventListener("navigate", this.onNavigate);
 		this.setStateFromUrl(new URL(document.location.href));
+
+		let cnv = document.createElement("canvas");
+		this.renderer = new ThreeJsRenderer(cnv);
 	}
 
 	close() {
 		this.source?.close();
 		this.multitab.close();
+		this.renderer.dispose();
 		navigation.removeEventListener("navigate", this.onNavigate);
 	}
 
@@ -438,12 +442,6 @@ export class UIContext extends TypedEmitter<{ showTab: UIOpenedTab | null, state
 			this.renderable = null;
 			this.emit("statechange", undefined);
 		}
-	}
-
-	setRenderer(renderer: ThreeJsRenderer | null) {
-		this.renderer = renderer;
-		this.emit("statechange", undefined);
-		this.fixRenderable();
 	}
 
 	canRender(): boolean {

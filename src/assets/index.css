@@ -130,6 +130,11 @@
 	height: 100%;
 }
 
+.mv-canvas>canvas {
+	width: 100%;
+	height: 100%;
+}
+
 .mv-sidebar {
 	background-color: var(--secondary-bg-colour);
 	min-width: 220px;

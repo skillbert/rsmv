@@ -6,11 +6,11 @@ import { ModelBrowser, RendererControls } from "./scenenodes";
 import { UIContext, CacheSelector, UIOpenedFile, UIRootContext, UIEngineContext, downloadBlob, BrowsePageId } from "./maincomponents";
 import classNames from "classnames";
 import { exposeDebugToolsInGlobal } from "../consoletools";
-import { useForceUpdate } from "./commoncontrols";
+import { DomWrap, useAwaited, useDisposableMemo, useForceUpdate } from "./commoncontrols";
 import { FileDisplay } from "./viewers/fileviewer";
 import { BrowseDisplay } from "./tabs/browse";
 import { BlobTS } from "../utils";
-
+import * as electron from "electron/renderer";
 
 exposeDebugToolsInGlobal();
 
@@ -21,10 +21,15 @@ export function unload(obj: { root: ReactDOM.Root, ctx: UIContext }) {
 }
 
 export function start(rootelement: HTMLElement, serviceworker?: boolean) {
-	window.addEventListener("keydown", e => {
-		if (e.key == "F5") { document.location.reload(); }
-		// if (e.key == "F12") { electron.remote.getCurrentWebContents().toggleDevTools(); }
-	});
+	if (electron) {
+		// electron doesn't bind these
+		window.addEventListener("keydown", e => {
+			if (e.altKey && e.key == "ArrowLeft") { navigation.back(); }
+			if (e.altKey && e.key == "ArrowRight") { navigation.forward(); }
+			if (e.key == "F5") { navigation.reload(); }
+			if (e.key == "F12") { electron.ipcRenderer.invoke("toggledevtools"); }
+		});
+	}
 
 	let ctx = new UIContext(rootelement, serviceworker ?? false);
 	let root = ReactDOM.createRoot(rootelement);
@@ -42,19 +47,19 @@ export function start(rootelement: HTMLElement, serviceworker?: boolean) {
 function App(p: {}) {
 	let ctx = React.useContext(UIRootContext);
 
-	let initCnv = React.useCallback((cnv: HTMLCanvasElement | null) => {
-		ctx.setRenderer(cnv ? new ThreeJsRenderer(cnv) : null);
-	}, []);
-
 	let redraw = useForceUpdate();
 	React.useEffect(() => {
+		let resize = () => {
+			redraw();
+			ctx.renderer.forceFrame();
+		}
 		ctx.on("statechange", redraw);
 		ctx.on("showTab", redraw);
-		window.addEventListener("resize", redraw);
+		window.addEventListener("resize", resize);
 		return () => {
 			ctx.off("statechange", redraw);
 			ctx.off("showTab", redraw);
-			window.removeEventListener("resize", redraw);
+			window.removeEventListener("resize", resize);
 		}
 	}, [ctx]);
 
@@ -67,7 +72,7 @@ function App(p: {}) {
 	return (
 		<UIEngineContext.Provider value={ctx.renderable}>
 			<div className={classNames("mv-root", "mv-style", { "mv-root--vertical": vertical })}>
-				<canvas className="mv-canvas" ref={initCnv} style={{ display: visibletab ? "none" : "block" }}></canvas>
+				{visibletab ? null : <DomWrap containerref={ctx.renderer.forceFrame} className="mv-canvas" el={ctx.renderer.canvas} />}
 				{visibletab?.type == "file" && <FileViewer file={visibletab} onSelectFile={ctx.openFile} />}
 				{visibletab?.type == "browse" && <BrowseViewer browse={visibletab} onSelectFile={ctx.openFile} />}
 				<div className="mv-sidebar">
