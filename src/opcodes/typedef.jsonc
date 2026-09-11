@@ -122,7 +122,7 @@
 	"buildnr":          ["buildnr"],//needs to be in array to get invoked as function
 
 	"item_modelid":     ["match","buildnr",{">=670":"varuint",">=0":"ushort"}],
-	"animid":           ["match","buildnr",{">=670":"varint",">=0":"ushort"}],
+	"animid":           ["match","buildnr",{">=670":"varuint",">=0":"ushort"}],
 
 	"scriptbinding":    ["typed",["array","ubyte",["match","ubyte",{"0":"int","1":"string"}]],"clientscriptbinding"]
 }

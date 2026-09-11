@@ -1,5 +1,5 @@
 // GENERATED DO NOT EDIT
-// This source data is located at '..\src\opcodes\sequences.json'
+// This source data is located at '..\src\opcodes\sequences.jsonc'
 // run `npm run filetypes` to rebuild
 
 export type sequences = {
@@ -7,6 +7,7 @@ export type sequences = {
 		framelength: number,
 		frameindex: number,
 		framefile: number,
+		frame: null,
 	}[] | null
 	unknown_02?: number | null
 	unknown_03?: number[] | null

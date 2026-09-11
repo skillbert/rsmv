@@ -479,17 +479,16 @@ export function unpackComponent(comp: number) {
 	return { intf, sub };
 }
 
+export function packFrameid(file: number, index: number) {
+	return (file << 16) | index;
+}
+export function unpackFrameid(value: number) {
+	let file = (value >>> 16) & 0xFFFF;
+	let index = value & 0xFFFF;
+	return { file, index };
+}
+
 export function packComponent(intf: number, sub: number) {
-	return (intf << 16) | sub;
-}
-
-export function unpackAnimFrame(comp: number) {
-	let intf = (comp >>> 16) & 0xFFFF;
-	let sub = comp & 0xFFFF;
-	return { intf, sub };
-}
-
-export function packAnimFrame(intf: number, sub: number) {
 	return (intf << 16) | sub;
 }
 

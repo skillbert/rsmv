@@ -436,7 +436,7 @@ const uiScripts: Record<string, React.ComponentType<UiScriptProps>> = {
 
 export function ScriptsUI(p: LookupModeProps) {
     let ctx = React.useContext(UIRootContext);
-    let initialscript = "test";
+    let initialscript = "extract";
     let initialargs = "";
     if (typeof p.initialId == "string") {
         [initialscript, initialargs] = p.initialId.split(/(?<=^[^:]*):/);

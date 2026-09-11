@@ -432,6 +432,10 @@
 	vertical-align: top;
 }
 
+.mv-objectentry {
+	white-space: nowrap;
+}
+
 .mv-filelink {
 	color: #438ab5;
 	text-decoration: underline;

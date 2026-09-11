@@ -27,7 +27,7 @@ export async function getSequenceGroups(output: ScriptOutput, outdir: ScriptFS, 
     for (let skeletalid of skeletalindex) {
         if (!skeletalid) { continue; }
         try {
-            let anim = await source.getObject("skeletons", skeletalid.minor);
+            let anim = await source.getObject("skeletalanims", skeletalid.minor);
             skeletaltoframemap.set(skeletalid.minor, anim.framebase);
         } catch (e) {
             // currently known error in the bzip2 decompression on file 56.2242

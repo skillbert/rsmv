@@ -1,0 +1,52 @@
+{
+	"0x01": { "name":                              "frames", "read": ["chunkedarray","unsigned short",
+																[
+																	["framelength","unsigned short"]
+																],[
+																	["frameindex","unsigned short"]
+																],[
+																	["framefile","unsigned short"],
+																	["frame",["typed",null,"frameref"]]//just here to make json viewer generate a link
+																]
+															]},
+	"0x02": { "name":                          "unknown_02", "read": "ushort" },
+	"0x03": { "name":                          "unknown_03", "read": ["array","ubyte","ubyte"] },
+	"0x04": { "name":                          "unknown_04", "read": "true" },
+	"0x05": { "name":                          "unknown_05", "read": "ubyte" },
+	"0x06": { "name":                          "unknown_06", "read": "ushort" },
+	"0x07": { "name":                          "unknown_07", "read": "ushort" },
+	"0x08": { "name":                          "unknown_08", "read": "ubyte" },
+	"0x09": { "name":                          "unknown_09", "read": "ubyte" },
+	"0x0A": { "name":                          "unknown_0A", "read": "ubyte" },
+	"0x0B": { "name":                          "unknown_0B", "read": "ubyte" },
+	"0x0C": { "name":                          "unknown_0C", "read": ["chunkedarray","ubyte",
+																[["framelength","unsigned short"]],
+																[["frameidlow","unsigned short"]]
+															]},
+	"0x0D": { "name":                          "unknown_0D", "read": ["array","unsigned short",["struct",
+																["$keys","unsigned byte"],
+																["default",["opt",["$keys",0,"eqnot"],"unsigned short"]],
+																["weirdbyte",["opt",["$keys",0,"eqnot"],"unsigned byte"]],
+																["extras",["array",["ref","$keys",null,-1],"unsigned short"]] 
+															]]},
+	"0x0E": { "name":                          "unknown_0E", "read": "true" },
+	"0x0F": { "name":                          "unknown_0F", "read": "true" },
+	"0x10": { "name":                          "unknown_10", "read": "true" },
+	"0x11": { "name":                          "unknown_11", "read": "ubyte" },
+	"0x12": { "name":                          "unknown_12", "read": "true" },
+	"0x13": { "name":                          "unknown_13", "read": "unsigned short" },
+	"0x14": { "name":                          "unknown_14", "read": ["buffer",5,"hex"] },
+	"0x16": { "name":                          "unknown_16", "read": "unsigned byte" },
+	"0x18": { "name":                          "unknown_18", "read": "unsigned short" },
+	"0x19": { "name":                  "skeletal_animation", "read": "unsigned short", "type":"skeletalanim" },
+	"0x1a": { "name":                      "skeletal_range", "read": ["tuple","ushort","ushort"] },	
+	"0x1b": { "name":                          "unknown_1B", "read": "ubyte" },	
+
+	"0x70": { "name":                          "unknown_70", "read": ["chunkedarray","unsigned short",
+																[["intlow","unsigned short"]],
+																[["maybe_file","unsigned short"]]] },
+	"0x77": { "name":                          "unknown_77", "read": ["tuple","unsigned short","unsigned byte"] },
+	"0x78": { "name":                          "unknown_78", "read": ["tuple","unsigned short","unsigned short","unsigned short"] },
+
+	"0xF9": { "name":                               "extra", "read": "extrasmap" }
+}

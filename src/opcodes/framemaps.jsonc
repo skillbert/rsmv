@@ -8,20 +8,26 @@
 		[["length","varushort"]],
 		[["data",["array",["ref","length"],"varushort"]]]
 	]],
-	["skeleton",["chunkedarray","ushort",
+	["bonecount","ushort"],
+	["unkbyte","ubyte"],
+	["skeleton",["chunkedarray",["ref","bonecount"],
 		[
-			["parentbone","ubyte"],//TODO this is wrong, this byte is part of dataq from the previous bone
-			["nonskinboneid","ushort"],
+			["parentbone","ushort"],
 			["bonematrix",["array",16,"float"]],
-			//unknown, always the same for all bones in a skeleton
-			["dataq",["buffer",11,"hex"]]
+			// nearly always identical for bones in the same skeleton, but different between skeletons
+			["unkbuffer",["buffer",12,"hex"]],
+			["bonematrix2",["opt","unkbyte==2",["array",16,"float"]]],
+			["unkextra0",["opt","unkbyte==2","ubyte"]],
+			["unkextra1",["opt","unkbyte==2","float"]],
+			["unkextra2",["opt","unkbyte==2","ubyte"]],
+			["unkextra3",["opt","unkbyte==2","ushort"]],
+			["unkextra4",["opt","unkbyte==2","ushort"]],
+			["unkextra5",["opt","unkbyte==2","ushort"]]
 		]
 	]],
 	
-	//exact use unknown
-	//contains more entries that the skeleton list
-	//seems to be a list of "short le"
-	//highest possible rounded up to 16 for first bone, always counts down to 2 on bones after that
-	//but also some times starts at 0 or a different number and not always unique
-	["activebones",["buffer",["bytesleft"],"hex"]]
+	// seems to contain a list of (most) bone ids
+	["unkarr",["array","ushort","ushort"]],
+	//always 0
+	["foot","ubyte"]
 ]

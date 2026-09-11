@@ -339,7 +339,7 @@ const skeletonDeps: DepCollector = async (cache, addDep, addHash) => {
 	for (let skelindex of skelindices) {
 		if (!skelindex) { continue; }
 		addHash("skeleton", skelindex.minor, skelindex.crc, skelindex.version);
-		let skel = await cache.getObject("skeletons", skelindex.minor);
+		let skel = await cache.getObject("skeletalanims", skelindex.minor);
 		addDep("framebase", skel.framebase, "skeleton", skelindex.minor);
 	}
 }

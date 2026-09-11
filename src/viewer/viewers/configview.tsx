@@ -461,10 +461,10 @@ export function ObjectLink(p: { prop?: DeepLinkElement, rsmvtype?: ExtendedJsonF
     let index = match ? packedIntToLogical(value, match) : [value];
     let fileid = makeFileId(rsmvtype, index);
 
-    return <>
+    return <span className="mv-objectentry" title={valuename}>
         <span className={match && "mv-filelink"} data-objectid={fileid} onClick={ctx.objectClick}>{fileid}</span>
         {valuename ? ` (${valuename})` : null}
-    </>
+    </span>
 }
 
 export function renderPrimitive(prop: DeepLinkElement) {
@@ -521,7 +521,8 @@ export function renderPrimitive(prop: DeepLinkElement) {
 export function StructDataView(p: { data: any, meta: JSONSchema6Definition | null | undefined }) {
     let [maxarraylen, setmaxarraylen] = React.useState(1000);
     let ctx = React.useContext(UIRootContext);
-    let source = React.useContext(UIEngineContext)?.source;
+    let engine = React.useContext(UIEngineContext);
+    let source = engine?.source;
     let data = useAwaited(async () => {
         return source && deepLinkJson(new DeepLinkContext(source), "root", p.data, p.meta);
     }, [p.data, p.meta, source], 200);

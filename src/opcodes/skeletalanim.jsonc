@@ -1,6 +1,6 @@
 ["struct",
 	["header","ubyte"],
-	["framebase","ushort"],
+	["framebase","ushort","framemap"],
 	["endtime","uint"],
 	["unk_always0","ubyte"],
 	["tracks",["array","ushort",["struct",

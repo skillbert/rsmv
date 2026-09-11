@@ -335,7 +335,7 @@ export const vartypeReverseMap = new Map<number, keyof typeof vartypes>(Object.e
 
 type ExtraPropTypes =
 	"varbit" | "var_world" | "var_player_group" | "var_region" | "var_clansetting" | "var_campaign" | "var_clan" | "var_clan_setting" | "var_client" | "var_npc" | "var_object"
-	| "dbtable" | "mapsquare" | "mapelement" | "param" | "ui_anim_curve" | "ui_anim" | "ui_anim_curve" | "overlay" | "underlay";
+	| "dbtable" | "mapsquare" | "mapelement" | "param" | "ui_anim_curve" | "ui_anim" | "ui_anim_curve" | "overlay" | "underlay" | "frame" | "framemap" | "skeletalanim";
 export type JsonFieldTypes = keyof typeof vartypes | ExtraPropTypes | "unknown" | "";
 
 export const lastLegacyBuildnr = 377;

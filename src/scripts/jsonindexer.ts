@@ -8,7 +8,7 @@ import { loadParams } from "../clientscript/util";
 import { params } from "../../generated/params";
 import { LogicalIndex } from "../parser/filelookup";
 import { AbstractSQLite, AbstractSQLiteNode } from "../libs/sqlite3wrap";
-import { packAnimFrame, packComponent, packCoordgrid, packMapsquare, unpackComponent, unpackMapsquare, unpackCoordgrid, unpackAnimFrame } from "../utils";
+import { packComponent, packCoordgrid, packMapsquare, unpackComponent, unpackMapsquare, unpackCoordgrid, unpackFrameid, packFrameid } from "../utils";
 import { CLIScriptOutput, ScriptOutput } from "../scriptrunner";
 import { ClientScriptDeobLoader, renderClientScript } from "../clientscript";
 import { isNamedOp, parseClientScriptIm, RawOpcodeNode, RewriteCursor } from "../clientscript/ast";
@@ -18,7 +18,7 @@ import { ClientscriptObfuscation } from "../clientscript/callibration/callibrato
 import { cacheFileDecodeModes } from "../parser/filetypes";
 
 // technical types with custom handling, usually objects
-type ComposedPropTypes = "paramtable" | "enumkey" | "clientscriptbinding" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "stylevalue";
+type ComposedPropTypes = "paramtable" | "enumkey" | "clientscriptbinding" | "enumvalue" | "paramvalue" | "dbvalue" | "dbrow_definition" | "dbtable_definition" | "stylevalue" | "frameref";
 // specializations with custom display that the client handles as primitives
 type DisplayPropTypes = "color" | "rgb" | "argb" | "type" | "imagefile";
 // types that are missing from vartypes, possibly not identified
@@ -78,6 +78,9 @@ export const vartypeToDecoder: Partial<Record<JsonFieldTypes, BrowseModes>> = {
 
     dbtable: "dbtables",
     mapelement: "maplabels",
+    frame: "frames",
+    framemap: "framemaps",
+    skeletalanim: "skeletalanims"
     // non-json
     // texture: "textures"
 }
@@ -133,7 +136,7 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     maptiles: "skip",
     maplocations: "skip",
     frames: "skip",
-    skeletons: "skip",
+    skeletalanims: "skip",
     framemaps: "skip",
     sequences: "skip",
     models: "skip",
@@ -153,7 +156,7 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
 const extendedmodeactions: Partial<Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" | "skip">> = {
     maptiles: "typedonly",
     maplocations: "typedonly",
-    frames: "typedonly",
+    // frames: "typedonly",
     framemaps: "typedonly",
     sequences: "typedonly"
 }
@@ -546,8 +549,8 @@ function logicalIdToPackedInt(id: LogicalIndex, mode: ExtendedJsonFieldTypes | B
     if (mode == "component" || mode == "components") {
         return packComponent(id[0], id[1]);
     }
-    if (mode == "frames") {
-        return packAnimFrame(id[0], id[1]);
+    if (mode == "frame" || mode == "frames") {
+        return packFrameid(id[0], id[1]);
     }
     if (mode == "coordgrid") {
         return packCoordgrid(id[0], id[1], id[2]);
@@ -571,9 +574,9 @@ export function packedIntToLogical(id: number, mode: ExtendedJsonFieldTypes | Br
         let r = unpackComponent(id);
         return [r.intf, r.sub];
     }
-    if (mode == "frames") {
-        let r = unpackAnimFrame(id);
-        return [r.intf, r.sub];
+    if (mode == "frame" || mode == "frames") {
+        let r = unpackFrameid(id);
+        return [r.file, r.index];
     }
     if (mode == "coordgrid") {
         let r = unpackCoordgrid(id);
@@ -600,7 +603,7 @@ export function traverseJsonSchema(meta: JSONSchema6Definition | null | undefine
     return meta.properties[prop];
 }
 
-export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | null | undefined, data: any, nameorindex: string | number) {
+export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | null | undefined, data: unknown, nameorindex: string | number) {
     let rsmvtype: ExtendedJsonFieldTypes = meta?.["x-rsmv-type"] ?? "";
 
     // make typescript happy
@@ -622,6 +625,14 @@ export function iterateTypedJson(objstack: any[], meta: JSONSchema6Definition | 
     if (rsmvtype == "enumvalue") {
         let valueint = objstack.at(0)?.value_type1 ?? objstack.at(0)?.value_type2;
         rsmvtype = vartypeReverseMap.get(valueint) as any ?? "unknown";
+    }
+    if (rsmvtype == "frameref") {
+        let file = objstack.at(-2).framefile;
+        let index = objstack.at(-2).frameindex;
+        if (typeof file == "number" && typeof index == "number") {
+            data = packFrameid(file, index);
+            rsmvtype = "frame";
+        }
     }
     if (rsmvtype == "paramvalue") {
         let paramint = objstack.at(0)?.type?.vartype;
