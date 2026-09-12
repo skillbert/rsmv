@@ -17,6 +17,7 @@ import { debugProcTexture } from '../../3d/materials/proceduraltexture';
 import { RSModel } from '../../3d/scene/model';
 import { StructView } from '../viewers/configview';
 import { LookupModeProps } from '../scenenodes';
+import { useEffect } from 'react';
 
 
 type AsyncModelData<ID, T> = [
@@ -278,6 +279,16 @@ export function SceneItem(p: LookupModeProps) {
 export function SceneNpc(p: LookupModeProps) {
     const ctx = React.useContext(UIEngineContext);
     const [data, model, id, setId] = useAsyncModelData(ctx, npcToModel);
+    // useEffect(() => {
+    //     if (ctx && id?.head) {
+    //         let el = {
+    //             getSceneElements() { return { options: { hideFloor: true } } }
+    //         };
+    //         ctx.renderer.addSceneElement(el);
+    //         return () => ctx.renderer.removeSceneElement(el);
+    //     }
+    // }, [ctx, id?.head]);
+
     const forceUpdate = useForceUpdate();
     const initid = id ?? checkObject(p.initialId, { id: "number", head: "boolean" }) ?? { id: 0, head: false };
 

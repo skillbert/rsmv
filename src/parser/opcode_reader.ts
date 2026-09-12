@@ -1422,6 +1422,34 @@ const hardcodes: Record<string, (args: unknown[], parent: ChunkParentCallback, t
 			},
 		}
 	},
+	varushortbias: function () {
+		return {
+			read(s) {
+				let firstByte = s.buffer.readUInt8(s.scan++);
+				if ((firstByte & 0x80) == 0) {
+					return firstByte - 0x40;
+				}
+				let secondByte = s.buffer.readUInt8(s.scan++);
+				return (((firstByte & 0x7f) << 8) | secondByte) - 0x4000;
+			},
+			write(s, v) {
+				if (typeof v != "number") { throw new Error("number expected"); }
+				if (v < 0x40 && v >= -0x40) {
+					s.buffer.writeUInt8(v + 0x40, s.scan);
+					s.scan += 1;
+				} else {
+					s.buffer.writeInt16BE((v | 0x8000) + 0x4000, s.scan);
+					s.scan += 2;
+				}
+			},
+			getTypescriptType(indent) {
+				return "number";
+			},
+			getJsonSchema() {
+				return { type: "number" };
+			}
+		};
+	},
 	"tailed varushort": function (args, parent, typedef) {
 		const overflowchunk = 0x7fff;
 		return {

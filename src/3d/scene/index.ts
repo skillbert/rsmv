@@ -244,6 +244,7 @@ export function serializeAnimset(group: animgroupconfigs) {
 	}
 	//TODO yikes, this object is not a map
 	for (let [key, val] of Object.entries(group)) {
+		if (key.startsWith("$")) { continue; }
 		if (typeof val == "number") {
 			addanim(key, group[key]);
 		}

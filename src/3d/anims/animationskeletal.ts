@@ -299,9 +299,6 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		let zvalues: skeletalanim["tracks"][number]["chunks"] | null = null;
 
 		let tracktype = actiontypemap[track.type_0to9];
-		//no clue what these offsets are about
-		//(related to variable size encoding of the integers)
-		let boneid = (track.boneid < 0x4000 ? track.boneid - 0x40 : track.boneid - 0x4000);
 
 		while (index < animtracks.length) {
 			let track2 = animtracks[index];
@@ -314,7 +311,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		}
 		// if (track.bonetype_01or3 == 3) { continue; }
 		// if (boneid >= 6 && boneid <= 8) { continue; }
-		let bonename = "bone_" + boneid;
+		let bonename = "bone_" + track.boneid;
 
 		let defaultvalue = (tracktype.t == "scale" ? 1 : 0);
 		// let intp = (v: { time: number, value: number[] }[] | null, i: number, t: number) => {
@@ -365,7 +362,7 @@ export async function parseSkeletalAnimation(cache: ThreejsSceneCache, animid: n
 		}
 		if (tracktype.t == "scale") {
 			//flip the root bone in z direction
-			if (boneid == 0) {
+			if (track.boneid == 0) {
 				for (let i = 0; i < data.length; i += 3) { data[i + 2] *= -1; }
 			}
 			convertedtracks.push(new VectorKeyframeTrack(`${bonename}.scale`, times as any, data));

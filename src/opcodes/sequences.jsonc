@@ -13,8 +13,8 @@
 	"0x03": { "name":                          "unknown_03", "read": ["array","ubyte","ubyte"] },
 	"0x04": { "name":                          "unknown_04", "read": "true" },
 	"0x05": { "name":                          "unknown_05", "read": "ubyte" },
-	"0x06": { "name":                          "unknown_06", "read": "ushort" },
-	"0x07": { "name":                          "unknown_07", "read": "ushort" },
+	"0x06": { "name":                               "equip", "read": "ushort","type":"obj" },
+	"0x07": { "name":                              "equip2", "read": "ushort","type":"obj" },
 	"0x08": { "name":                          "unknown_08", "read": "ubyte" },
 	"0x09": { "name":                          "unknown_09", "read": "ubyte" },
 	"0x0A": { "name":                          "unknown_0A", "read": "ubyte" },
@@ -23,11 +23,11 @@
 																[["framelength","unsigned short"]],
 																[["frameidlow","unsigned short"]]
 															]},
-	"0x0D": { "name":                          "unknown_0D", "read": ["array","unsigned short",["struct",
+	"0x0D": { "name":                              "sounds", "read": ["array","unsigned short",["struct",
 																["$keys","unsigned byte"],
-																["default",["opt",["$keys",0,"eqnot"],"unsigned short"]],
-																["weirdbyte",["opt",["$keys",0,"eqnot"],"unsigned byte"]],
-																["extras",["array",["ref","$keys",null,-1],"unsigned short"]] 
+																["default",["opt","$keys!=0","unsigned short"],"sound"],
+																["unk",["opt","$keys!=0","unsigned byte"]],
+																["variants",["array",["ref","$keys",null,-1],"unsigned short","sound"]]
 															]]},
 	"0x0E": { "name":                          "unknown_0E", "read": "true" },
 	"0x0F": { "name":                          "unknown_0F", "read": "true" },
