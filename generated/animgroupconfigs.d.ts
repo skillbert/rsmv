@@ -12,7 +12,7 @@ export type animgroupconfigs = {
 	unknown_05?: (number|number) | null
 	unknown_04?: (number|number) | null
 	run?: (number|number) | null
-	unknown_07?: (number|number) | null
+	run_back?: (number|number) | null
 	unknown_08?: (number|number) | null
 	unknown_09?: (number|number) | null
 	unknown_1a?: [

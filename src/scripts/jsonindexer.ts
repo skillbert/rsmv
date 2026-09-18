@@ -68,6 +68,7 @@ export const vartypeToDecoder: Partial<Record<JsonFieldTypes, BrowseModes>> = {
     overlayinterface: "interfaceviewer",
     clientscript: "clientscript",
     inv: "inventories",
+    area: "areas",
     coordgrid: "coordgrid",
     maparea: "mapzones",
     hitmark: "hitmarks",
@@ -133,6 +134,7 @@ const modeactions: Record<keyof typeof cacheFileJsonModes, "full" | "typedonly" 
     // broken - fixable
     mapenvs: "skip",
     // skip
+    areas: "skip",
     maptiles: "skip",
     maplocations: "skip",
     frames: "skip",

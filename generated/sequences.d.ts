@@ -13,8 +13,8 @@ export type sequences = {
 	unknown_03?: number[] | null
 	unknown_04?: true | null
 	unknown_05?: number | null
-	unknown_06?: number | null
-	unknown_07?: number | null
+	equip?: number | null
+	equip2?: number | null
 	unknown_08?: number | null
 	unknown_09?: number | null
 	unknown_0A?: number | null
@@ -23,10 +23,10 @@ export type sequences = {
 		framelength: number,
 		frameidlow: number,
 	}[] | null
-	unknown_0D?: {
+	sounds?: {
 		default: number | null,
-		weirdbyte: number | null,
-		extras: number[],
+		unk: number | null,
+		variants: number[],
 	}[] | null
 	unknown_0E?: true | null
 	unknown_0F?: true | null

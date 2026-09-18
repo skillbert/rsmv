@@ -1,0 +1,3 @@
+// all properties of this config are server-side, however we can still analyze references to it
+{
+}

@@ -127,7 +127,7 @@ export const cacheConfigPages = {
 	inventories: 5,
 	// 7: 350 empty files
 	params: 11,
-	// 18: 2888 empty files, file count seem to correspond to "area" vars
+	areas: 18,
 	skyboxes: 29,
 	// 31: 37 small files which seem to have color and some other data
 	animgroups: 32,
@@ -281,7 +281,7 @@ export const vartypes = {
 	material: 102,
 	seqgroup: 103,
 	temp_hiscore: 104,
-	temp_hiscore_length_type: 105,
+	temp_hiscore_length_type: 105,//seems to be country id instead?
 	temp_hiscore_display_type: 106,
 	temp_hiscore_contribute_result: 107,
 	audiogroup: 108,
