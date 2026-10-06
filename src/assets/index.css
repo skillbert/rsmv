@@ -106,7 +106,7 @@
 }
 
 .mv-closebutton::before {
-	content: "×";
+	content: "\00d7";/* × MULTIPLICATION SIGN*/
 }
 
 .mv-closebutton:hover {
