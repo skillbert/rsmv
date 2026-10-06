@@ -3,5 +3,6 @@
     "0x04": { "name": "lifetime", "read": "ubyte" },
     "0x07": { "name": "domaindefault", "read": true },
     "0x08": { "name": "wikisync", "read": true },
+    "0x09": { "name": "unk09", "read": true },//only used once, first seen in plugins runefest beta
     "0x6e": { "name": "clientcode", "read": "ushort" }
 }
