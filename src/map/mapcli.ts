@@ -34,6 +34,7 @@ let cmd = cmdts.command({
 	},
 	handler: async (args) => {
 		let output = new CLIScriptOutput();
+		output.setState("running");//little hacky, ideally we're running under output.run(fn)
 
 		let ismultiversion = !!args.builds || !!args.cacheids || !!args.livefolder;
 
