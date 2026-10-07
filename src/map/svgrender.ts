@@ -87,6 +87,8 @@ export async function jsonIcons(engine: EngineCache, locs: WorldLocation[], rect
 				let maplabel = engine.mapMaplabels[loc.location.maplabel];
 				if (maplabel.legacy_switch) {
 					maplabel = engine.mapMaplabels[maplabel.legacy_switch.default_ref];
+				} else if (maplabel.legacy_switch_v2) {
+					maplabel = engine.mapMaplabels[maplabel.legacy_switch_v2.default_ref];
 				}
 				let src = "";
 				let width = 0;
@@ -241,6 +243,8 @@ export async function svgfloor(engine: EngineCache, grid: TileGridSource, locs: 
 				let maplabel = engine.mapMaplabels[loc.location.maplabel];
 				if (maplabel.legacy_switch) {
 					maplabel = engine.mapMaplabels[maplabel.legacy_switch.default_ref];
+				} else if (maplabel.legacy_switch_v2) {
+					maplabel = engine.mapMaplabels[maplabel.legacy_switch_v2.default_ref];
 				}
 				let src = "";
 				let width = 0;
